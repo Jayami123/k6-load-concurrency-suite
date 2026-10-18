@@ -102,10 +102,6 @@ install_medusa_deps() {
     log "BOOTSTRAP_SKIP_INSTALL=1; skipping Medusa pnpm install."
     return
   fi
-  if [ -d "$dest/node_modules" ]; then
-    log "Medusa node_modules present; skipping pnpm install."
-    return
-  fi
   local pnpm_cmd=(pnpm)
   if ! command -v pnpm >/dev/null 2>&1; then
     pnpm_cmd=(corepack "pnpm@$MEDUSA_PNPM")
