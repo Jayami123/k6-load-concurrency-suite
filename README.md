@@ -49,7 +49,23 @@ the burst together.
 - Spread ≥ `RACE_MAX_SPREAD_MS` (default 5) with successful responses → **TEST BUG** (barrier
   ran sequentially or was not a gate). Raise the env var on noisy CI runners; do not change the
   helper.
-- Mapped race case IDs (for example Medusa oversell) start in Phase 1 Task 2.
+- Mapped oversell race `P6-MED-RACE-001` writes `results/races/P6-MED-RACE-001.json` when Medusa is
+  up with admin credentials set (see below).
+
+### Medusa oversell histogram (`P6-MED-RACE-001`)
+
+Needs `MEDUSA_ADMIN_EMAIL` and `MEDUSA_ADMIN_PASSWORD` in the environment (CI generates the
+password; locally copy names from `.env.example`). The oversell spec calls harness `seed()` in
+`beforeAll` to create the admin user, then logs in with `POST /auth/user/emailpass`.
+
+- `statusCounts["200"]` are cart completions that returned `{ type: "order" }`. On the mapped
+  case, unique HTTP order ids must equal stock `S`. The same-cart extra may show many `200` rows
+  that share one order id (idempotent complete).
+- `statusCounts["400"]` with per-trial oracle `loserType=not_allowed` is a **clean refusal** (out of
+  stock). That is an expected loser, not a failure.
+- Any `"500"` or `"error"` count is a **PRODUCT BUG** (report status and body summary). Do not treat
+  it as a stock loser.
+- `dispatchSpreadMs` is still the Node start spread for the burst (see above).
 
 ## Rule for numbers
 
