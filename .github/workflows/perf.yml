@@ -36,6 +36,7 @@ jobs:
       MEDUSA_DB_URL: postgres://medusa:medusa@127.0.0.1:5433/medusa
       MEDUSA_ADMIN_EMAIL: admin@qa.local
       MEDUSA_SKIP_STOREFRONT: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       COREPACK_ENABLE_STRICT: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,7 +82,7 @@ jobs:
         with:
           k6-version: ${{ env.K6_VERSION }}
 
-      - name: Check (format, typecheck, k6 inspect)
+      - name: Check (format, typecheck, k6 inspect, unit tests)
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail

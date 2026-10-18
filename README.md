@@ -4,8 +4,9 @@ P6 of the QA portfolio: load, concurrency and performance tests with [k6](https:
 against self-hosted products started by
 [qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.11`.
 
-Phase 0 only proves the setup: the harness starts Medusa and a 1-VU k6 smoke check gets
-HTTP 200 from `GET /health`.
+Phase 0 proves the harness and k6 smoke. Phase 1 Task 1 adds the Playwright race framework
+(API-only, no browser) and an unmapped Medusa self-test against `GET /health` plus a read-only
+Postgres oracle.
 
 ## Run the smoke check locally
 
@@ -19,7 +20,33 @@ npm run smoke:medusa
 npm run down:medusa
 ```
 
-`npm run check` runs Prettier, the TypeScript check and `k6 inspect` (skipped when k6 is missing).
+`npm run check` runs Prettier, the TypeScript check, `k6 inspect` (skipped when k6 is missing),
+and unit tests (`npm run test:unit`).
+
+## Run a race locally
+
+Needs Medusa up (same as the smoke check). Use Node 22.23+ on PATH (see AGENTS.md).
+
+```bash
+export PATH="/usr/local/bin:$PATH"
+npm run test:unit
+npm run up:medusa
+RACE_TRIALS=3 npm run race:medusa
+npm run down:medusa
+```
+
+The self-test writes `results/races/framework-self-test.json` (gitignored). Playwright race
+projects use `retries: 0` and `workers: 1`; concurrency is inside the test via `fireTogether`.
+
+`dispatchSpreadMs` is how far apart Node started the requests (max start minus min start, in ms).
+It is not the time at which the server received them. A small spread means the client released
+the burst together.
+
+- `/health` not HTTP 200 with body `OK` → **PRODUCT BUG** (paste status and body).
+- Spread ≥ `RACE_MAX_SPREAD_MS` (default 5) with successful responses → **TEST BUG** (barrier
+  ran sequentially or was not a gate). Raise the env var on noisy CI runners; do not change the
+  helper.
+- Mapped race case IDs (for example Medusa oversell) start in Phase 1 Task 2.
 
 ## Rule for numbers
 
