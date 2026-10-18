@@ -38,6 +38,9 @@ npm run down:medusa
 The self-test writes `results/races/framework-self-test.json` (gitignored). Playwright race
 projects use `retries: 0` and `workers: 1`; concurrency is inside the test via `fireTogether`.
 
+CI runs this self-test (`RACE_TRIALS=3`) in the `medusa-smoke` job on every PR and uploads
+`results/races/` as the `race-histograms-medusa` artifact.
+
 `dispatchSpreadMs` is how far apart Node started the requests (max start minus min start, in ms).
 It is not the time at which the server received them. A small spread means the client released
 the burst together.

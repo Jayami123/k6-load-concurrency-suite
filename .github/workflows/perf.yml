@@ -151,6 +151,25 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # API-only Playwright project: no browser install needed (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD above).
+      # The race spec reads MEDUSA_BASE_URL and MEDUSA_DB_URL from the job env.
+      - name: Race self-test (medusa-race, 3 trials)
+        if: ${{ steps.medusa_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          RACE_TRIALS: "3"
+        run: |
+          set -euo pipefail
+          npm run race:medusa
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        with:
+          name: race-histograms-medusa
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Stop Medusa (harness down)
         if: ${{ always() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
