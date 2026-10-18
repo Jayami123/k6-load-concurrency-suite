@@ -1,8 +1,10 @@
 function positiveIntFromEnv(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return defaultValue;
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 1) {
+  const trimmed = raw.trim();
+  // Whole value must be a positive decimal integer: rejects "3.5", "1e3", "3abc", "0", "-1".
+  const n = /^[1-9]\d*$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(n)) {
     throw new Error(`TEST BUG: ${name} must be an integer >= 1, got ${raw}`);
   }
   return n;

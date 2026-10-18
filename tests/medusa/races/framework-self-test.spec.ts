@@ -6,9 +6,9 @@ import {
   aggregateDispatchSpread,
   createHistogram,
   mergeStatusCounts,
-  statusCountsFromRequests,
   writeHistogram,
 } from "../../../src/races/histogram.ts";
+import { recordTrial } from "../../../src/races/trial-record.ts";
 import {
   raceMaxSpreadMsFromEnv,
   raceTrialsFromEnv,
@@ -64,49 +64,51 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
     const perTrial: RaceTrialResult[] = [];
 
     const trialResults = await runTrials(trials, async (trial) => {
-      const { requests, dispatchSpreadMs: spread } = await fireTogether(
+      // Raw bodies by request index: the exact "OK" check uses these, while
+      // bodySummary stays diagnostics-only.
+      const rawBodies: Array<string | undefined> = Array.from({ length: CONCURRENCY });
+      const fired = await fireTogether(
         CONCURRENCY,
-        async () => {
+        async (index) => {
           const res = await fetch(`${base}/health`);
           const body = await res.text();
+          rawBodies[index] = body;
           return { status: res.status, body };
         },
-        { warm: () => fetch(`${base}/health`) },
+        {
+          warm: async () => {
+            const res = await fetch(`${base}/health`);
+            await res.text();
+          },
+        },
       );
 
-      for (const req of requests) {
-        if (req.status !== 200) {
-          throw new Error(`PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`);
+      // Record first so perTrial and statusCounts keep the real statuses even
+      // when validation fails.
+      const record = recordTrial(trial, fired, () => {
+        for (const req of fired.requests) {
+          if (req.status !== 200 || rawBodies[req.index] !== "OK") {
+            throw new Error(`PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`);
+          }
         }
-        if (!req.bodySummary.endsWith(": OK")) {
-          throw new Error(`PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`);
+        if (fired.dispatchSpreadMs >= spreadLimit) {
+          throw new Error(`TEST BUG: dispatchSpreadMs ${fired.dispatchSpreadMs} >= ${spreadLimit}`);
         }
-      }
-
-      if (spread >= spreadLimit) {
-        throw new Error(`TEST BUG: dispatchSpreadMs ${spread} >= ${spreadLimit}`);
-      }
-
-      spreads.push(spread);
-      const statuses = requests.map((r) => r.status);
-      const trialCounts = statusCountsFromRequests(statuses);
-      mergeStatusCounts(histogram.statusCounts, trialCounts);
-
-      perTrial.push({
-        trial,
-        ok: true,
-        statuses,
-        statusCounts: trialCounts,
-        dispatchSpreadMs: spread,
-        oracle: {},
-        invariantViolations: [],
-        requests,
       });
 
-      return { requests, dispatchSpreadMs: spread };
+      perTrial.push(record);
+      spreads.push(record.dispatchSpreadMs);
+      mergeStatusCounts(histogram.statusCounts, record.statusCounts);
+
+      if (!record.ok) {
+        throw new Error(record.error);
+      }
+      return fired;
     });
 
-    for (const failed of trialResults.filter((t) => !t.ok)) {
+    // Trials that failed before a record existed (e.g. fireTogether threw).
+    const recorded = new Set(perTrial.map((t) => t.trial));
+    for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
       perTrial.push({
         trial: failed.trial,
         ok: false,
@@ -114,7 +116,7 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
         statusCounts: {},
         dispatchSpreadMs: 0,
         oracle: {},
-        invariantViolations: [],
+        invariantViolations: failed.error ? [failed.error] : [],
         error: failed.error,
       });
     }

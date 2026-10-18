@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { dispatchSpreadMs, fireTogether, summariseBody } from "../../src/races/fire-together.ts";
-import { raceMaxSpreadMsFromEnv } from "../../src/races/env.ts";
+
+const DEFAULT_MAX_SPREAD_MS = 5;
 
 describe("dispatchSpreadMs", () => {
   it("returns max minus min", () => {
@@ -11,7 +12,7 @@ describe("dispatchSpreadMs", () => {
   it("flags sequential-style spreads", () => {
     const sequentialStarts = [0, 12.687, 15, 28];
     const spread = dispatchSpreadMs(sequentialStarts);
-    assert.ok(spread >= raceMaxSpreadMsFromEnv());
+    assert.ok(spread >= DEFAULT_MAX_SPREAD_MS);
   });
 });
 

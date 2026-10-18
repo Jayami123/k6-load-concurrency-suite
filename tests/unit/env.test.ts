@@ -17,9 +17,19 @@ describe("env", () => {
   });
 
   it("rejects invalid RACE_TRIALS", () => {
-    for (const raw of ["0", "-1", "abc"]) {
+    for (const raw of ["0", "-1", "abc", "3abc", "3.5", "1e3"]) {
       assert.throws(() => raceTrialsFromEnv({ RACE_TRIALS: raw }), /TEST BUG/);
     }
+  });
+
+  it("rejects fractional and exponent RACE_TRIALS", () => {
+    assert.throws(() => raceTrialsFromEnv({ RACE_TRIALS: "3.5" }), /TEST BUG: RACE_TRIALS/);
+    assert.throws(() => raceTrialsFromEnv({ RACE_TRIALS: "1e3" }), /TEST BUG: RACE_TRIALS/);
+  });
+
+  it("trims RACE_TRIALS and treats blank as default", () => {
+    assert.equal(raceTrialsFromEnv({ RACE_TRIALS: " 3 " }), 3);
+    assert.equal(raceTrialsFromEnv({ RACE_TRIALS: "   " }), 5);
   });
 
   it("defaults RACE_MAX_SPREAD_MS to 5 when unset", () => {
@@ -31,9 +41,20 @@ describe("env", () => {
   });
 
   it("rejects invalid RACE_MAX_SPREAD_MS", () => {
-    for (const raw of ["0", "-1", "abc"]) {
+    for (const raw of ["0", "-1", "abc", "3abc", "3.5", "1e3"]) {
       assert.throws(() => raceMaxSpreadMsFromEnv({ RACE_MAX_SPREAD_MS: raw }), /TEST BUG/);
     }
+  });
+
+  it("rejects fractional and exponent RACE_MAX_SPREAD_MS", () => {
+    assert.throws(
+      () => raceMaxSpreadMsFromEnv({ RACE_MAX_SPREAD_MS: "3.5" }),
+      /TEST BUG: RACE_MAX_SPREAD_MS/,
+    );
+    assert.throws(
+      () => raceMaxSpreadMsFromEnv({ RACE_MAX_SPREAD_MS: "1e3" }),
+      /TEST BUG: RACE_MAX_SPREAD_MS/,
+    );
   });
 
   it("medusa base URL fallback strips trailing slash", () => {
