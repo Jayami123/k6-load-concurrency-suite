@@ -86,3 +86,9 @@ export function likeLiteralPrefix(prefix: string): string {
 export function setupStepError(step: string, status: number): string | null {
   return status === 200 ? null : `TEST BUG: cart setup ${step} HTTP ${status}`;
 }
+
+/** Leak-gate message for a QA-owned row the cleanup could not remove. Capped at 200 chars. */
+export function cleanupFailure(kind: string, key: string, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `TEST BUG: ${kind} cleanup failed for ${key}: ${message.slice(0, 200)}`;
+}

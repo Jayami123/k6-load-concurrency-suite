@@ -44,6 +44,12 @@ SELECT COUNT(*)::int AS n FROM "order"
 WHERE email LIKE $1 AND deleted_at IS NULL AND status <> 'archived' AND status <> 'canceled'
 `;
 
+/** Medusa 2.21.2 customer module: table "customer", soft delete via deleted_at. */
+export const LEAK_CUSTOMERS_SQL = `
+SELECT COUNT(*)::int AS n FROM customer
+WHERE email LIKE $1 AND deleted_at IS NULL
+`;
+
 export const LEAK_LIVE_RESERVATIONS_SQL = `
 SELECT COUNT(*)::int AS n FROM reservation_item
 WHERE inventory_item_id = $1 AND deleted_at IS NULL
@@ -99,9 +105,10 @@ export async function leakCheck(
   inventoryItemIds: string[],
 ): Promise<string[]> {
   const violations: string[] = [];
-  const [products, orders, ...reservations] = await Promise.all([
+  const [products, orders, customers, ...reservations] = await Promise.all([
     selectRows<{ n: number }>(pool, LEAK_PRODUCTS_SQL, [likePrefix]),
     selectRows<{ n: number }>(pool, LEAK_LIVE_ORDERS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_CUSTOMERS_SQL, [likePrefix]),
     ...inventoryItemIds.map((id) =>
       selectRows<{ n: number }>(pool, LEAK_LIVE_RESERVATIONS_SQL, [id]),
     ),
@@ -111,6 +118,9 @@ export async function leakCheck(
   }
   if (Number(orders?.[0]?.n ?? 0) !== 0) {
     violations.push(`TEST BUG: leak live orders email LIKE ${likePrefix}`);
+  }
+  if (Number(customers?.[0]?.n ?? 0) !== 0) {
+    violations.push(`TEST BUG: leak customers email LIKE ${likePrefix}`);
   }
   reservations.forEach((rows, i) => {
     if (Number(rows[0]?.n ?? 0) !== 0) {

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   caseLeakPattern,
   casePrefix,
+  cleanupFailure,
   likeLiteralPrefix,
   paymentSessionBody,
   prefixedEmail,
@@ -93,5 +94,14 @@ describe("medusa payloads", () => {
     const likeStart = pattern.slice(0, -1);
     assert.ok(own.startsWith(likeStart));
     assert.ok(!other.startsWith(likeStart));
+  });
+
+  it("cleanupFailure names the row and the error as a TEST BUG", () => {
+    assert.equal(
+      cleanupFailure("customer", "p6-qa-x-case-t1-c00@qa.local", new Error("HTTP 400")),
+      "TEST BUG: customer cleanup failed for p6-qa-x-case-t1-c00@qa.local: HTTP 400",
+    );
+    const long = cleanupFailure("customer", "a@qa.local", "x".repeat(300));
+    assert.equal(long, `TEST BUG: customer cleanup failed for a@qa.local: ${"x".repeat(200)}`);
   });
 });

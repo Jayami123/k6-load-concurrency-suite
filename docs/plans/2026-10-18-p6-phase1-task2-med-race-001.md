@@ -681,8 +681,11 @@ Rules (implement exactly):
   `DELETE /admin/customers/{id}` found by `GET /admin/customers?q=<email>`. Carts stay.
   `createStockedVariant` reports the product id and inventory item id through `onCreated` the
   moment each exists, so a later setup failure still deletes the product. Customer emails are
-  recorded before carts are created; order ids right after the burst.
-- Leak check at end of each test (after cleanup): `LEAK_PRODUCTS_SQL` / `LEAK_LIVE_ORDERS_SQL`
+  recorded before carts are created; order ids right after the burst. Order and product cleanup
+  errors are best effort because the leak SQL below still catches those rows. A failed customer
+  delete is pushed as `TEST BUG: customer cleanup failed for <email>: <message>`.
+- Leak check at end of each test (after cleanup): `LEAK_PRODUCTS_SQL` / `LEAK_LIVE_ORDERS_SQL` /
+  `LEAK_CUSTOMERS_SQL` (Medusa 2.21.2 `customer` table, `email LIKE $1 AND deleted_at IS NULL`)
   bind `caseLeakPattern(runPrefix, caseId)` = `likeLiteralPrefix(casePrefix + "-")` (D18), never a
   raw `prefix + "%"`, so a case only counts its own rows. Counts = 0, checked once per case even
   when no inventory item was created. Live reservations for inventory items created in this

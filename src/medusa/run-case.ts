@@ -19,7 +19,7 @@ import {
 } from "./admin.ts";
 import { checkOversellInvariants, type OversellMode } from "./invariants.ts";
 import { leakCheck, waitForOversellStable } from "./oracle.ts";
-import { caseLeakPattern, casePrefix, prefixedEmail } from "./payloads.ts";
+import { caseLeakPattern, casePrefix, cleanupFailure, prefixedEmail } from "./payloads.ts";
 import { completeCart, prepareReadyCarts } from "./store.ts";
 
 function parseCompleteBody(body: string): {
@@ -72,6 +72,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
   const spreads: number[] = [];
   const perTrial: RaceTrialResult[] = [];
   const inventoryItemIds: string[] = [];
+  const cleanupViolations: string[] = [];
   const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
 
   try {
@@ -286,8 +287,8 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
         for (const email of customerEmails) {
           try {
             await deleteCustomersByEmail(input.token, email);
-          } catch {
-            /* ignore */
+          } catch (err) {
+            cleanupViolations.push(cleanupFailure("customer", email, err));
           }
         }
       }
@@ -311,6 +312,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     histogram.invariantViolations.push(
+      ...cleanupViolations,
       ...(await leakCheck(input.pool, leakPrefix, inventoryItemIds)),
     );
 
