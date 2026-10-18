@@ -71,7 +71,7 @@ k6 run --summary-export docs/feasibility/2026-10-18-results/probe-health-load.js
 
 (JSON stream used only to derive per-stage latency; not committed.)
 
-Exit code: `0`. Threshold `http_req_failed rate<1`: satisfied (`0.00%`).
+Exit code: `0`. The run used a loose threshold (`http_req_failed rate<1`). The script now requires `http_req_failed rate<0.01` and `checks rate==1`, and the recorded results (0 failed requests, 568,332 of 568,332 checks passed) meet both.
 
 ### Overall (from `docs/feasibility/2026-10-18-results/probe-health-load.json`)
 
@@ -102,7 +102,7 @@ Samples: `docs/feasibility/2026-10-18-results/probe-resources.txt` (`docker stat
 | ------------------------------------- | ---------------------------- |
 | `qa-harness-medusa-postgres-1` CPU    | `5.49%`                      |
 | `qa-harness-medusa-postgres-1` memory | `83.21` MiB                  |
-| Host load average (1 min)             | `1.85` (sample at 11:22:22Z) |
+| Host load average (1 min)             | `1.85` (sample at 11:30:05Z) |
 
 Medusa backend runs as a host Node process (not in `docker stats`); only Postgres appears in container stats.
 
