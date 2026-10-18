@@ -1,3 +1,11 @@
+function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
+  const raw = env[name];
+  if (raw === undefined || raw.trim() === "") {
+    throw new Error(`TEST BUG: ${name} is unset or empty`);
+  }
+  return raw.trim();
+}
+
 function positiveIntFromEnv(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return defaultValue;
@@ -21,6 +29,14 @@ export function raceMaxSpreadMsFromEnv(env: NodeJS.ProcessEnv = process.env): nu
 export function medusaBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   const raw = env.MEDUSA_BASE_URL?.trim();
   return (raw && raw.length > 0 ? raw : "http://127.0.0.1:9000").replace(/\/$/, "");
+}
+
+export function medusaAdminEmailFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  return requiredEnv(env, "MEDUSA_ADMIN_EMAIL");
+}
+
+export function medusaAdminPasswordFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  return requiredEnv(env, "MEDUSA_ADMIN_PASSWORD");
 }
 
 export function medusaDatabaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {

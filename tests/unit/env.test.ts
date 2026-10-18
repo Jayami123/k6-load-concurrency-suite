@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  medusaAdminEmailFromEnv,
+  medusaAdminPasswordFromEnv,
   medusaBaseUrlFromEnv,
   medusaDatabaseUrlFromEnv,
   raceMaxSpreadMsFromEnv,
@@ -62,6 +64,26 @@ describe("env", () => {
     assert.equal(
       medusaBaseUrlFromEnv({ MEDUSA_BASE_URL: "http://127.0.0.1:9000/" }),
       "http://127.0.0.1:9000",
+    );
+  });
+
+  it("medusa admin email unset throws TEST BUG with env name", () => {
+    assert.throws(() => medusaAdminEmailFromEnv({}), /TEST BUG: MEDUSA_ADMIN_EMAIL/);
+    assert.throws(
+      () => medusaAdminEmailFromEnv({ MEDUSA_ADMIN_EMAIL: "  " }),
+      /MEDUSA_ADMIN_EMAIL/,
+    );
+    assert.equal(
+      medusaAdminEmailFromEnv({ MEDUSA_ADMIN_EMAIL: " admin@qa.local " }),
+      "admin@qa.local",
+    );
+  });
+
+  it("medusa admin password unset throws TEST BUG with env name", () => {
+    assert.throws(() => medusaAdminPasswordFromEnv({}), /TEST BUG: MEDUSA_ADMIN_PASSWORD/);
+    assert.throws(
+      () => medusaAdminPasswordFromEnv({ MEDUSA_ADMIN_PASSWORD: "" }),
+      /MEDUSA_ADMIN_PASSWORD/,
     );
   });
 
