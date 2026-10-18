@@ -11,16 +11,21 @@
     "smoke:medusa": "k6 run --summary-export results/medusa-health-summary.json k6/smoke/medusa-health.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/unit/*.test.ts",
+    "race:medusa": "playwright test --project=medusa-race",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.races.json",
     "k6:inspect": "node scripts/k6-inspect.mjs",
-    "check": "npm run format:check && npm run typecheck && npm run k6:inspect"
+    "check": "npm run format:check && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },
   "dependencies": {
     "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/k6": "^2",
     "@types/node": "^22",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "prettier": "^3.6.2",
     "typescript": "^5"
   }
