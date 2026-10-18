@@ -6,3 +6,4 @@ products/
 results/*
 !results/.gitkeep
 *.log
+test-results/
