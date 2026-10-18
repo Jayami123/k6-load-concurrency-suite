@@ -29,9 +29,10 @@ Extend it only where this probe proved a gap (admin env getters), and unit-test 
   `P6-MED-RACE-002/003` (Phase 4).
 - PATH before every harness command: `export PATH="/usr/local/bin:$PATH"` (Cursor puts Node 22.14
   first; Medusa needs 22.23).
-- Status: Step 1 probe done once in this session. **Not built.** Probe scripts lived only in
-  `/tmp/p6-med-race-001-probe/` and were not written to the repo, harness or fork. Medusa was
-  stopped with `npm run down:medusa` (exit 0).
+- Status: Step 1 probe done once in this session. Review answers **OQ1–OQ2 applied** (D15, D2)
+  plus mixed-mode, unique-order-id, leak-`LIKE`, and no-PR rules (2026-10-18). **Not built.**
+  Probe scripts lived only in `/tmp/p6-med-race-001-probe/` and were not written to the repo,
+  harness or fork. Medusa was stopped with `npm run down:medusa` (exit 0).
 
 Master-plan names used as-is ([docs/master-plan.html](../master-plan.html) MED01 plus §§5, 7, 9):
 
@@ -264,13 +265,13 @@ soft-deleted shortly after insert. Always `waitForStable` on
 
 ### 2.10 Extra cases (live)
 
-| Extra                        | HTTP                                                                                                                                                  | DB / inventory                                               | Notes                                                                                                                                       |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| S=1 vs N=2                   | 200×1, 400×1 `not_allowed`                                                                                                                            | 1 order, reserved 1, stocked 1, available 0                  | Same loser shape as mapped.                                                                                                                 |
-| S=0 vs N=5                   | add-item 400 `not_allowed` "Some variant does not have the required inventory"; complete 400 `invalid_data` "Cannot complete a cart with no items" ×5 | 0 orders, 0 reservations, stocked 0, reserved 0              | The inventory gate is **add line-item**, not complete. Complete-of-empty is a follow-on. Still 0 orders.                                    |
-| Mixed qty (3+1+1+1+1 vs S=5) | 200×3, 400×2 `not_allowed`                                                                                                                            | reservations qty **3+1+1=5**, 3 orders, stocked 5 reserved 5 | Reservation **sum** equals S, **not** the order count (3). Qty-1-only invariant "reservation qty === order count" must not be applied here. |
-| Same cart ×10                | 200×10, all `type=order`                                                                                                                              | **1** order, **1** reservation qty 1, reserved 1             | Follow-up 5-wide parallel: **the same `order.id` five times**. Idempotent HTTP 200 is success, not oversell. Count **unique** order ids.    |
-| Sequential complete twice    | 200 then 200, same keys                                                                                                                               | 1 order                                                      | Matches the parallel same-cart result.                                                                                                      |
+| Extra                        | HTTP                                                                                                                                                  | DB / inventory                                                           | Notes                                                                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| S=1 vs N=2                   | 200×1, 400×1 `not_allowed`                                                                                                                            | 1 order, reserved 1, stocked 1, available 0                              | Same loser shape as mapped.                                                                                                              |
+| S=0 vs N=5                   | add-item 400 `not_allowed` "Some variant does not have the required inventory"; complete 400 `invalid_data` "Cannot complete a cart with no items" ×5 | 0 orders, 0 reservations, stocked 0, reserved 0                          | The inventory gate is **add line-item**, not complete. Complete-of-empty is a follow-on. Still 0 orders.                                 |
+| Mixed qty (3+1+1+1+1 vs S=5) | 200×3, 400×2 `not_allowed`                                                                                                                            | this round: reservations qty **3+1+1=5**, 3 orders, stocked 5 reserved 5 | Probe outcome A (qty-3 won). Outcome B (qty-3 loses, 4×qty-1, available 1) is also valid (D11).                                          |
+| Same cart ×10                | 200×10, all `type=order`                                                                                                                              | **1** order, **1** reservation qty 1, reserved 1                         | Follow-up 5-wide parallel: **the same `order.id` five times**. Idempotent HTTP 200 is success, not oversell. Count **unique** order ids. |
+| Sequential complete twice    | 200 then 200, same keys                                                                                                                               | 1 order                                                                  | Matches the parallel same-cart result.                                                                                                   |
 
 ### 2.11 Cleanup the Admin API actually allows
 
@@ -342,7 +343,8 @@ Lead with the industry-standard approach, then the rejected alternative.
   `perf.yml` change is required for the spec to run in `npm run race:medusa`. `seed()` is
   idempotent (0.6 s when already done). Rejected: a new CI "Seed Medusa" step (Task 6 owns job
   shape; the user asked the spec to run in the existing step). Rejected: `pnpm medusa user` from
-  the spec (that is starting the product by hand).
+  the spec (that is starting the product by hand). **Approved 2026-10-18 (OQ2):** keep seed in
+  `beforeAll`; do not edit `perf.yml`.
 
 - **D3 Catalog = Europe / EUR / Default Sales Channel / European Warehouse / Standard Shipping /
   `pp_system_default`.** Probe §2.3. P1 uses the same region, channel, shipping name and provider
@@ -366,7 +368,9 @@ Lead with the industry-standard approach, then the rejected alternative.
 - **D7 Count orders by `variant_id` via `"order"` → `order_item` → `order_line_item`, not by
   email-only and not by `order_cart`.** Email LIKE missed rows until lowercased (§2.8).
   `order_cart` can be briefly extra then soft-deleted. HTTP winners = **unique** `order.id` from
-  `type==="order"` bodies, then compared to the DB count.
+  `type==="order"` bodies, then compared to the DB count. For every mode **except** `sameCart`,
+  also `httpWinnerCount === uniqueOrderIds` (two carts must not share an order id). `sameCart`
+  is the opposite: many 200s, one id.
 
 - **D8 `available = stocked_quantity - reserved_quantity`. Do not wait for stocked to drop.**
   Probe: stocked stays 5; reserved goes to 5. `waitForStable` on
@@ -384,16 +388,24 @@ Lead with the industry-standard approach, then the rejected alternative.
   expected (never seen). S=0 extras use the add-item / empty-complete messages from §2.6. Same-cart
   extras expect 200 + identical order id, not 400.
 
-- **D11 Mixed extra: `sum(reservation.quantity) <= S` and equals `sum(order_item.quantity)`, not
-  order count.** Probe: 3 orders, reservation qtys 3+1+1. Applying the qty-1 equality would
-  false-fail a correct mixed run.
+- **D11 Mixed extra: do not require `orderQty === S` or `reservationQty === S`.** Which carts win
+  is non-deterministic. If the qty-3 cart wins with two qty-1 carts, 5 units sell and
+  `available === 0`. If the qty-3 cart loses, the four qty-1 carts sell 4 and `available === 1`.
+  Both are correct. Assert instead: `orderQty <= S`, `reservationQty === orderQty` (not order
+  count), `available === stocked - reserved >= 0`, and **every loser's quantity > the final
+  available** (no refused cart could still have fit). Rejected: requiring a full sell-out of S
+  (false-fails the qty-3-loses outcome). Rejected: applying qty-1 `reservationQty === orderCount`
+  (probe: 3 orders, 5 units).
 
 - **D12 Prefix isolation; emails/handles/SKUs lowercased.** `p6RunPrefix()` plus `-t{trial}-c{i}`.
   `p6RunPrefix` contains `T` and `Z`; Medusa lowercases emails. Helper `prefixedEmail(prefix, leaf)`
-  returns `${prefix.toLowerCase()}-${leaf}@qa.local`. SQL uses the same lowercased string.
+  returns `${prefix.toLowerCase()}-${leaf}@qa.local`. SQL uses the same lowercased string. Leak
+  `LIKE` patterns go through `likeLiteralPrefix` (D18): the prefix must match `^[a-z0-9-]+$` so
+  `_` or `%` can never widen the match.
 
 - **D13 Cleanup through Admin where it works: cancel → archive orders, DELETE products, DELETE
-  customers. Leave carts and archived orders.** Leak check: 0 live products with our title prefix;
+  customers. Leave carts and archived orders.** Leak check binds `likeLiteralPrefix(lowerPrefix)`
+  (D18) so `_` or `%` can never widen the `LIKE` match: 0 live products with our handle prefix;
   0 non-archived orders with our email prefix; 0 live reservations for our inventory items; pool
   closed. Leftover carts and archived orders are expected and isolated by prefix.
 
@@ -403,16 +415,24 @@ Lead with the industry-standard approach, then the rejected alternative.
 
 - **D15 Extras cap at `min(RACE_TRIALS, 3)` trials.** Mapped case uses `RACE_TRIALS` (CI=3, local
   default 5). Uncapped extras at Task 6's 50 would dominate the job for little extra evidence.
-  Open question OQ1 if Jayami wants extras at full `RACE_TRIALS`.
+  **Approved 2026-10-18 (OQ1).** Rejected: extras at full `RACE_TRIALS` (four extras × 50 trials
+  would dominate the CI race step).
 
 - **D16 Framework gap: add `medusaAdminEmailFromEnv` / `medusaAdminPasswordFromEnv` to
   `src/races/env.ts`.** Unit-test them. Do not change `fireTogether`, `runTrials`, histogram
   writers, prefix, `recordTrial`, or `src/oracles/pg.ts` unless a build-step probe shows a new
   gap (none found).
 
-- **D17 No `test.fail()` in this PR.** Probe did not prove a product bug. Oversell held. Same-cart
-  10×200 with one id is correct idempotency, not a bug. If implementation sees a 5xx or
+- **D17 No `test.fail()` on this branch.** Probe did not prove a product bug. Oversell held.
+  Same-cart 10×200 with one id is correct idempotency, not a bug. If implementation sees a 5xx or
   `orderCount > S`, fail hard with PRODUCT BUG + HTTP/DB evidence. Do not skip.
+
+- **D18 Leak `LIKE` is a literal prefix.** Industry standard: never concatenate an untrusted or
+  unvalidated string into `LIKE` with `%`/`_` as wildcards. Helper `likeLiteralPrefix(prefix)`
+  throws `TEST BUG` unless `prefix` matches `^[a-z0-9-]+$`, then returns `` `${prefix}%` ``.
+  `p6RunPrefix()` lowercased is already in that class (`p6-qa-` + UTC digits + `t`/`z` + hex).
+  Rejected: raw `prefix + "%"` (a `_` would match any character). Rejected: SQL `ESCAPE` only
+  without a charset assert (the generator must not emit wildcards; fail loud if it does).
 
 ## 4. Goal and scope
 
@@ -423,20 +443,21 @@ Lead with the industry-standard approach, then the rejected alternative.
 - Live spec `tests/medusa/races/med-race-001-oversell.spec.ts` in project `medusa-race`
 - Mapped `P6-MED-RACE-001` (S=5, N=20, qty 1) with histogram `results/races/P6-MED-RACE-001.json`
 - Four extras (unmapped), each its own `test()`, own histogram file, same oracle helpers
-- Unit tests for payloads, invariants, new env getters
+- Unit tests for payloads (including `likeLiteralPrefix`), invariants (including mixed A/B and
+  shared order ids), new env getters
 - README: how to read the oversell histogram; 400 `not_allowed` vs 5xx
 
 **Out:** see §18.
 
 ## 5. Test-case mapping
 
-| ID                                 | File                                               | Project       | Histogram `caseId` | Title                                            | Oracle                                                                                           |
-| ---------------------------------- | -------------------------------------------------- | ------------- | ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| P6-MED-RACE-001                    | `tests/medusa/races/med-race-001-oversell.spec.ts` | `medusa-race` | `P6-MED-RACE-001`  | `N carts vs stock S → orders≤S`                  | §9 SQL; HTTP unique order ids; 400 `not_allowed` losers; spread; `available=0`; `orderCount===5` |
-| extra (unmapped): S=1 vs N=2       | same file, own `test()`                            | same          | `extra-s1-n2`      | `extra (unmapped): S=1 vs N=2`                   | same, S=1, N=2                                                                                   |
-| extra (unmapped): S=0 vs N=5       | same                                               | same          | `extra-s0-n5`      | `extra (unmapped): S=0 vs N=5`                   | 0 orders; add-item 400 `not_allowed`; complete 400 `invalid_data`; reserved 0                    |
-| extra (unmapped): mixed quantities | same                                               | same          | `extra-mixed-qty`  | `extra (unmapped): mixed quantities`             | reservation qty sum = 5; order count 3 (probe); D11                                              |
-| extra (unmapped): same cart ×10    | same                                               | same          | `extra-same-cart`  | `extra (unmapped): same cart completed 10 times` | unique order ids === 1; HTTP 200 ×10; reservation qty 1                                          |
+| ID                                 | File                                               | Project       | Histogram `caseId` | Title                                            | Oracle                                                                                            |
+| ---------------------------------- | -------------------------------------------------- | ------------- | ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| P6-MED-RACE-001                    | `tests/medusa/races/med-race-001-oversell.spec.ts` | `medusa-race` | `P6-MED-RACE-001`  | `N carts vs stock S → orders≤S`                  | §9 SQL; HTTP unique order ids; 400 `not_allowed` losers; spread; `available=0`; `orderCount===5`  |
+| extra (unmapped): S=1 vs N=2       | same file, own `test()`                            | same          | `extra-s1-n2`      | `extra (unmapped): S=1 vs N=2`                   | same, S=1, N=2                                                                                    |
+| extra (unmapped): S=0 vs N=5       | same                                               | same          | `extra-s0-n5`      | `extra (unmapped): S=0 vs N=5`                   | 0 orders; add-item 400 `not_allowed`; complete 400 `invalid_data`; reserved 0                     |
+| extra (unmapped): mixed quantities | same                                               | same          | `extra-mixed-qty`  | `extra (unmapped): mixed quantities`             | D11: `orderQty <= 5`, `reservationQty === orderQty`, `available >= 0`, each loser qty > available |
+| extra (unmapped): same cart ×10    | same                                               | same          | `extra-same-cart`  | `extra (unmapped): same cart completed 10 times` | unique order ids === 1; HTTP 200 ×10; reservation qty 1                                           |
 
 Framework self-test stays. Do not rename its `caseId`.
 
@@ -447,8 +468,9 @@ All share `checkOversellInvariants` with flags:
 1. **S=1 vs N=2** — boundary. Expect 1 order, 1 loser 400 `not_allowed`, available 0.
 2. **S=0 vs N=5** — `prepareReadyCart` records line-item 400; still `fireTogether` complete; 0
    orders; complete 400 `invalid_data`; no reservations. Do not hide the add-item error.
-3. **Mixed** — quantities `[3,1,1,1,1]`, S=5, N=5. Expect reservation qty 5, order count ≤5,
-   `sum(order_item.quantity) <= 5`, available 0. Do **not** require `reservationQty === orderCount`.
+3. **Mixed** — quantities `[3,1,1,1,1]`, S=5, N=5. Both probe-possible outcomes pass (D11): qty-3
+   wins → 5 sold, available 0; qty-3 loses → 4 sold, available 1. Fail if a qty-1 cart is refused
+   while `available >= 1`.
 4. **Same cart ×10** — one prepared cart, `fireTogether(10, complete that id)`. Unique HTTP
    `order.id` length 1; DB 1; all status 200; `type=order`. Fail if 10 different ids (PRODUCT BUG
    oversell) or if any 5xx.
@@ -462,14 +484,14 @@ New:
 
 | Path                                               | Responsibility                                                                                  |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/medusa/payloads.ts`                           | Pure JSON builders: product, address, cart, line-item, payment session. No I/O.                 |
+| `src/medusa/payloads.ts`                           | Pure JSON builders plus `prefixedEmail` / `prefixedHandle` / `likeLiteralPrefix`. No I/O.       |
 | `src/medusa/invariants.ts`                         | Pure `checkOversellInvariants` → `string[]` violations. No I/O.                                 |
 | `src/medusa/admin.ts`                              | `seedAndLogin`, `loadCatalog`, `createStockedVariant`, cancel/archive, delete product/customer. |
 | `src/medusa/store.ts`                              | `prepareReadyCart`, `prepareReadyCarts` (parallel), `completeCart`.                             |
 | `src/medusa/oracle.ts`                             | SELECT helpers using `selectRows` / `waitForStable`. Exact SQL §9.                              |
 | `tests/medusa/races/med-race-001-oversell.spec.ts` | Live tests.                                                                                     |
 | `tests/unit/medusa-payloads.test.ts`               | Payload builders.                                                                               |
-| `tests/unit/medusa-invariants.test.ts`             | Invariant matrix including mixed and same-cart.                                                 |
+| `tests/unit/medusa-invariants.test.ts`             | Invariant matrix: qty1, mixed A/B + fit-violation, same-cart, shared HTTP order ids.            |
 
 Modified:
 
@@ -600,8 +622,10 @@ export function checkOversellInvariants(input: {
   reservationQty: number;
   stocked: number;
   reserved: number;
+  available: number;
   statuses: Array<number | null>;
   loserTypes: string[]; // parsed `type` for non-200
+  loserQuantities: number[]; // cart qty of each non-200; required for mixed
   dispatchSpreadMs: number;
   spreadLimit: number;
 }): string[] {
@@ -615,14 +639,20 @@ Rules (implement exactly):
   summary already on the request; cap 200 chars via existing `summariseBody`).
 - `dispatchSpreadMs >= spreadLimit` → `TEST BUG: dispatchSpreadMs …`.
 - `orderCount > s` or `reservationQty > s` or `orderQty > s` → `PRODUCT BUG: oversold`.
-- `stocked - reserved < 0` → `PRODUCT BUG: available negative`.
-- `httpWinnerCount !== uniqueOrderIds` is OK for same-cart (many 200s, one id). For other modes,
-  `uniqueOrderIds === orderCount` (no phantom / lost orders). If they differ:
+- `available !== stocked - reserved` → `TEST BUG: available is not stocked - reserved`.
+- `stocked - reserved < 0` (equivalently `available < 0`) → `PRODUCT BUG: available negative`.
+- For every mode **except** `sameCart`: `httpWinnerCount === uniqueOrderIds`. If they differ:
+  `PRODUCT BUG: HTTP winners ${httpWinnerCount} shared order ids (unique ${uniqueOrderIds})`.
+  `sameCart` allows many 200s for one id.
+- For every mode including `sameCart`: `uniqueOrderIds === orderCount` (no phantom / lost
+  orders vs DB). If they differ:
   `PRODUCT BUG: HTTP unique order ids ${uniqueOrderIds} != DB orders ${orderCount}`.
 - mode `qty1`: `orderCount === s`, `reservationQty === orderCount`, `available === 0`, every
   non-200 has `type === "not_allowed"` and message includes `Not enough stock available`.
-- mode `mixed`: `reservationQty === s` (probe: sold exactly S units), `orderQty === s`,
-  `available === 0`, do not require `reservationQty === orderCount`.
+- mode `mixed`: **do not** require `orderQty === s` or `reservationQty === s`. Require
+  `orderQty <= s`, `reservationQty === orderQty`, `available === stocked - reserved >= 0`,
+  and every entry of `loserQuantities` is `> available` (a refused cart could not still have
+  fit). Do not require `reservationQty === orderCount`.
 - mode `s0`: `orderCount === 0`, `reservationQty === 0`, `reserved === 0`, complete statuses all
   400, loser type `invalid_data`.
 - mode `sameCart`: `uniqueOrderIds === 1`, `orderCount === 1`, `reservationQty === 1`, every
@@ -638,8 +668,8 @@ Rules (implement exactly):
 - Cleanup per trial `finally`: for each created order id, `POST /admin/orders/{id}/cancel` then
   `/archive` (ignore 400 if already canceled); `DELETE /admin/products/{id}`;
   `DELETE /admin/customers/{id}` found by `GET /admin/customers?q=<email>`. Carts stay.
-- Leak check at end of each test (after cleanup): `LEAK_PRODUCTS_SQL` with `handle LIKE
-'<lowerPrefix>%'` = 0; `LEAK_LIVE_ORDERS_SQL` with `email LIKE '<lowerPrefix>%'` = 0; live
+- Leak check at end of each test (after cleanup): `LEAK_PRODUCTS_SQL` / `LEAK_LIVE_ORDERS_SQL`
+  bind `likeLiteralPrefix(lowerPrefix)` (D18), never a raw `prefix + "%"`. Counts = 0. Live
   reservations for inventory items created in this test = 0. On mismatch: push TEST BUG (or
   PRODUCT BUG if cancel did not release a reservation — paste inventory_item id, not secrets)
   onto `histogram.invariantViolations`, set `verdict: "fail"`, then `expect`.
@@ -660,7 +690,7 @@ If a live run disagrees:
 - Histogram schema missing fields → TEST BUG.
 
 Place any future `test.fail()` immediately before the product assertion, after setup assertions,
-and only with evidence from two runs — not in this PR.
+and only with evidence from two runs — not on this branch.
 
 ## 12. CI impact
 
@@ -702,7 +732,7 @@ Do not start these until Jayami approves this plan. Never `git add -A`. Never pr
 
 ### Step 0. Branch
 
-The plan-only commit already lives on `feat/2026-10-18-p6-med-race-001`. After approval:
+The plan-only commits already live on `feat/2026-10-18-p6-med-race-001`. After approval:
 
 ```bash
 export PATH="/usr/local/bin:$PATH"
@@ -793,6 +823,14 @@ export function prefixedEmail(prefix: string, leaf: string): string {
 export function prefixedHandle(prefix: string, leaf: string): string {
   return `${prefix.toLowerCase()}-${leaf}`;
 }
+
+/** Leak SQL LIKE argument. Throws TEST BUG unless prefix is [a-z0-9-]. */
+export function likeLiteralPrefix(prefix: string): string {
+  if (!/^[a-z0-9-]+$/.test(prefix)) {
+    throw new Error("TEST BUG: prefix is not a safe LIKE literal");
+  }
+  return `${prefix}%`;
+}
 ```
 
 Implement `checkOversellInvariants` per §9.
@@ -802,15 +840,24 @@ Unit tests (node --test):
 - `tests/unit/env.test.ts`: unset / blank email and password throw `TEST BUG` containing the env
   **name** only; `" admin@qa.local "` trims.
 - `tests/unit/medusa-payloads.test.ts`: `manage_inventory: true`, `allow_backorder: false`,
-  `provider_id: "pp_system_default"`, `prefixedEmail` lowercases `T`/`Z`.
+  `provider_id: "pp_system_default"`, `prefixedEmail` lowercases `T`/`Z`;
+  `likeLiteralPrefix("p6-qa-20261018t143012z-a1b2c3d4")` → that string plus `%`;
+  `likeLiteralPrefix("foo_bar")` and `likeLiteralPrefix("foo%bar")` throw `TEST BUG` (must not
+  mention the thrown prefix as a SQL pattern).
 - `tests/unit/medusa-invariants.test.ts` (table):
-  - qty1 happy: 5 orders, 5 unique, 15×400 `not_allowed`, available 0, spread 1 → `[]`
+  - qty1 happy: 5 orders, 5 unique, httpWinnerCount 5, 15×400 `not_allowed`, available 0, spread 1 → `[]`
   - qty1 oversell 6 orders → violation contains `PRODUCT BUG` and `oversold`
   - qty1 5xx → `PRODUCT BUG` and `500`
   - qty1 spread 9 with limit 5 → `TEST BUG` and `dispatchSpreadMs`
-  - mixed: orderCount 3, orderQty 5, reservationQty 5, available 0 → `[]`
-  - mixed with reservationQty === orderCount required would be wrong: 3 vs 5 must **pass**
-  - sameCart: httpWinnerCount 10, uniqueOrderIds 1, orderCount 1 → `[]`
+  - qty1 two carts same order id: httpWinnerCount 5, uniqueOrderIds 4, orderCount 4 → `PRODUCT BUG`
+    and `shared order ids`
+  - mixed qty-3 wins: orderCount 3, orderQty 5, reservationQty 5, stocked 5, reserved 5, available 0,
+    loserQuantities `[1, 1]` → `[]`
+  - mixed qty-3 loses: orderCount 4, orderQty 4, reservationQty 4, stocked 5, reserved 4, available 1,
+    loserQuantities `[3]` → `[]`
+  - mixed violation: qty-1 loser while available >= 1 (orderQty 4, available 1, loserQuantities `[1]`)
+    → `PRODUCT BUG` (loser still fits)
+  - sameCart: httpWinnerCount 10, uniqueOrderIds 1, orderCount 1 → `[]` (the shared-id rule is skipped)
   - sameCart uniqueOrderIds 10 → `PRODUCT BUG`
   - s0: orderCount 0, all 400 `invalid_data` → `[]`
   - phantom: uniqueOrderIds 5, orderCount 4 → `PRODUCT BUG` and `unique order ids`
@@ -979,7 +1026,8 @@ the spec — prefer `src/medusa/run-case.ts` if the spec would duplicate histogr
 3. `try`: `runTrials(trials, async (trial) => { ... })`.
 4. Each trial: `createStockedVariant` S; `prepareReadyCarts` N (or 1 cart for sameCart);
    `fireTogether(N or 10, (i) => completeCart(..., cartIds[i]), { warm: () => fetch health })`;
-   parse JSON for `type` / `order.id` / `error type`; `waitForStable` oracle snapshot;
+   parse JSON for `type` / `order.id` / `error type`; pass each non-200 cart's quantity as
+   `loserQuantities` (needed by mixed D11); `waitForStable` oracle snapshot;
    `recordTrial` → `validate` calls `checkOversellInvariants` and throws the joined violations;
    push record; `mergeStatusCounts`; cleanup cancel/archive/delete (even on trial failure).
 5. Leak check. `verdict` pass only if every trial `ok` and no leak violations.
@@ -1028,23 +1076,27 @@ to “make it pass”.
 
 ## 16. Commit plan (Conventional, lowercase subjects, explicit paths, never `git add -A`)
 
-Plan-only commit (this Cursor task):
+**Plan and build: commit and push only. Never open a pull request.** That applies to these
+plan-only commits and to every implementation commit after approval.
+
+Plan-only commits on `feat/2026-10-18-p6-med-race-001`:
 
 1. `docs: add p6 phase 1 task 2 medusa oversell plan` —
    `docs/plans/2026-10-18-p6-phase1-task2-med-race-001.md` only
+2. `docs: revise p6 task 2 plan after review` — same file (this revision)
 
-After Jayami approves (implementation, later commits on this branch):
+After Jayami approves (implementation, later commits on this branch, still **no pull request**):
 
-2. `feat(races): add medusa admin env, payloads and oversell invariants`
+3. `feat(races): add medusa admin env, payloads and oversell invariants`
    (`src/races/env.ts`, `src/medusa/payloads.ts`, `src/medusa/invariants.ts`, unit tests)
-3. `feat(medusa): add admin catalog, store checkout and oversell SQL`
+4. `feat(medusa): add admin catalog, store checkout and oversell SQL`
    (`src/medusa/admin.ts`, `store.ts`, `oracle.ts`, optional `run-case.ts`)
-4. `test(medusa): add P6-MED-RACE-001 oversell race and extras`
+5. `test(medusa): add P6-MED-RACE-001 oversell race and extras`
    (`tests/medusa/races/med-race-001-oversell.spec.ts`)
-5. `docs: explain medusa oversell histogram and refusals` (`README.md`)
+6. `docs: explain medusa oversell histogram and refusals` (`README.md`)
 
-No merge, tag or force-push. No Co-Authored-By. No `Generated with` / attribution lines. No
-CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
+No merge, tag, force-push, or pull request. No Co-Authored-By. No `Generated with` / attribution
+lines. No CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
 
 ## 17. Docs
 
@@ -1067,15 +1119,15 @@ CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
 - Stocking German Warehouse; United States region; Stripe
 - Warm-up that completes carts
 - Published RPS/p95 from this VM
-- Opening a pull request from the plan-only Cursor task
+- Opening a pull request at any point on this task (plan commits **and** implementation
+  commits: commit and push only)
 - Co-Authored-By / Generated-with / force-push / merge
 
 ## 19. Open questions for Jayami
 
-1. **OQ1 Extras vs `RACE_TRIALS=50`.** This plan caps extras at `min(RACE_TRIALS, 3)` (D15) so
-   Task 6 does not run 200 extra trials. Prefer full `RACE_TRIALS` on extras too?
-2. **OQ2 Seed in spec vs CI step.** Probe: `up()` does not seed. This plan calls harness
-   `seed()` in `beforeAll` so the existing race step works with the env CI already sets. Prefer a
-   dedicated CI seed step instead (would edit `perf.yml` in this PR)?
+None remaining. OQ1–OQ2 were answered 2026-10-18 and are recorded as:
 
-No other blockers. Probe is done. Building waits on approval of this plan.
+1. **OQ1** Extras run `min(RACE_TRIALS, 3)` (D15). Not full `RACE_TRIALS`.
+2. **OQ2** Harness `seed()` in spec `beforeAll` (D2). No `perf.yml` change.
+
+Probe is done. Review edits are in this file. Building still waits on approval of this plan.
