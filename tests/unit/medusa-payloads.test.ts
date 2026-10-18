@@ -5,6 +5,7 @@ import {
   paymentSessionBody,
   prefixedEmail,
   productCreateBody,
+  setupStepError,
 } from "../../src/medusa/payloads.ts";
 
 describe("medusa payloads", () => {
@@ -47,5 +48,13 @@ describe("medusa payloads", () => {
     for (const bad of ["foo_bar", "foo%bar"]) {
       assert.throws(() => likeLiteralPrefix(bad), /TEST BUG/);
     }
+  });
+
+  it("setupStepError passes 200 and names the step otherwise", () => {
+    assert.equal(setupStepError("POST /store/carts/:id", 200), null);
+    assert.equal(
+      setupStepError("POST /store/carts/:id/shipping-methods", 400),
+      "TEST BUG: cart setup POST /store/carts/:id/shipping-methods HTTP 400",
+    );
   });
 });

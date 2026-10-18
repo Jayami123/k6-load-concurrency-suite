@@ -117,6 +117,11 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
             email,
             quantity: 1,
           }));
+          if (carts[0]?.lineItemStatus !== 200) {
+            throw new Error(
+              `TEST BUG: add line item HTTP ${carts[0]?.lineItemStatus ?? "missing"}`,
+            );
+          }
           cartIds = carts.map((c) => c.cartId);
           cartQuantities = Array.from({ length: input.n }, () => 1);
         } else {
@@ -136,6 +141,15 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
             };
           });
           cartIds = carts.map((c) => c.cartId);
+
+          if (input.mode !== "s0") {
+            const bad = carts.find((c) => c.lineItemStatus !== 200);
+            if (bad) {
+              throw new Error(
+                `TEST BUG: add line item HTTP ${bad.lineItemStatus} type=${bad.lineItemType ?? "missing"}`,
+              );
+            }
+          }
 
           if (input.mode === "s0") {
             const bad = carts.find((c) => c.lineItemStatus !== 400);
@@ -180,6 +194,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           }
         }
 
+        const loserStatuses: Array<number | null> = [];
         const loserTypes: string[] = [];
         const loserMessages: string[] = [];
         const loserQuantities: number[] = [];
@@ -187,6 +202,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           const req = fired.requests[i]!;
           if (req.status === 200) continue;
           const p = parsedBodies[i]!;
+          loserStatuses.push(req.status);
           loserTypes.push(p.type ?? "");
           loserMessages.push(p.message ?? "");
           loserQuantities.push(cartQuantities[i] ?? 1);
@@ -235,7 +251,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           stocked: snapshot.stocked,
           reserved: snapshot.reserved,
           available,
-          loserStatus: loserTypes.length > 0 ? 400 : null,
+          loserStatus: loserStatuses[0] ?? null,
           loserType: loserTypes[0] ?? null,
           orderQty: snapshot.orderQty,
         };

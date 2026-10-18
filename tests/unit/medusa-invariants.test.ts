@@ -181,4 +181,40 @@ describe("checkOversellInvariants", () => {
     const v = checkOversellInvariants(base({ uniqueOrderIds: 5, orderCount: 4 }));
     assert.ok(v.some((x) => x.includes("unique order ids")));
   });
+
+  it("qty1 right order count but wrong status split", () => {
+    const v = checkOversellInvariants(
+      base({
+        statuses: [
+          ...Array.from({ length: 5 }, () => 200),
+          ...Array.from({ length: 14 }, () => 400),
+          409,
+        ],
+      }),
+    );
+    assert.ok(v.some((x) => x.includes("expected 200x5 400x15")));
+    assert.ok(v.some((x) => x.includes("other than 200 or 400")));
+  });
+
+  it("missing responses are a TEST BUG", () => {
+    const v = checkOversellInvariants(base({ statuses: Array.from({ length: 5 }, () => 200) }));
+    assert.ok(v.some((x) => x.includes("TEST BUG") && x.includes("expected N 20")));
+  });
+
+  it("HTTP 200 that is not type=order", () => {
+    const v = checkOversellInvariants(base({ httpWinnerCount: 4, uniqueOrderIds: 4 }));
+    assert.ok(v.some((x) => x.includes("returned type=order")));
+  });
+
+  it("stocked_quantity not equal to S", () => {
+    const v = checkOversellInvariants(base({ stocked: 6, available: 1 }));
+    assert.ok(v.some((x) => x.includes("TEST BUG") && x.includes("stocked_quantity 6")));
+  });
+
+  it("inventory reserved drifts from reservation rows", () => {
+    const v = checkOversellInvariants(
+      base({ mode: "mixed", n: 5, reserved: 4, available: 1, reservationQty: 5 }),
+    );
+    assert.ok(v.some((x) => x.includes("PRODUCT BUG") && x.includes("reservation_item sum")));
+  });
 });

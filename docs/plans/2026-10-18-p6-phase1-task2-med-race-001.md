@@ -30,7 +30,8 @@ Extend it only where this probe proved a gap (admin env getters), and unit-test 
 - PATH before every harness command: `export PATH="/usr/local/bin:$PATH"` (Cursor puts Node 22.14
   first; Medusa needs 22.23).
 - Status: Step 1 probe done once in this session. Review answers **OQ1–OQ2 applied** (D15, D2)
-  plus mixed-mode, unique-order-id, leak-`LIKE`, and no-PR rules (2026-10-18). **Not built.**
+  plus mixed-mode, unique-order-id, leak-`LIKE`, and no-PR rules (2026-10-18). Built, then
+  tightened after review (status split, stock/reservation cross-checks, setup status checks).
   Probe scripts lived only in `/tmp/p6-med-race-001-probe/` and were not written to the repo,
   harness or fork. Medusa was stopped with `npm run down:medusa` (exit 0).
 
@@ -647,7 +648,15 @@ Rules (implement exactly):
 - For every mode including `sameCart`: `uniqueOrderIds === orderCount` (no phantom / lost
   orders vs DB). If they differ:
   `PRODUCT BUG: HTTP unique order ids ${uniqueOrderIds} != DB orders ${orderCount}`.
-- mode `qty1`: `orderCount === s`, `reservationQty === orderCount`, `available === 0`, every
+- `stocked === s` (setup put exactly S on the level) → else `TEST BUG`.
+- `reserved === reservationQty` (inventory level matches `reservation_item` rows) → else
+  `PRODUCT BUG`.
+- `statuses.length === n` → else `TEST BUG`. `httpWinnerCount` equals the number of HTTP 200s
+  (every 200 returned `type: "order"`). Except `sameCart`, every status is 200 or 400.
+- Cart setup (line item outside `s0`, address, shipping method, payment collection and session)
+  must return 200 or the trial fails as `TEST BUG`, so a broken setup is never read as a stock
+  loser. `completeCart` never throws, so a 5xx keeps its real status in `statusCounts`.
+- mode `qty1`: statuses exactly 200×`s` and 400×(`n - s`), `orderCount === s`, `reservationQty === orderCount`, `available === 0`, every
   non-200 has `type === "not_allowed"` and message includes `Not enough stock available`.
 - mode `mixed`: **do not** require `orderQty === s` or `reservationQty === s`. Require
   `orderQty <= s`, `reservationQty === orderQty`, `available === stocked - reserved >= 0`,

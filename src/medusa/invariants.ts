@@ -39,6 +39,33 @@ export function checkOversellInvariants(input: {
     violations.push("TEST BUG: available is not stocked - reserved");
   }
 
+  if (input.stocked !== input.s) {
+    violations.push(`TEST BUG: stocked_quantity ${input.stocked} !== S ${input.s}`);
+  }
+
+  if (input.reserved !== input.reservationQty) {
+    violations.push(
+      `PRODUCT BUG: inventory_level reserved ${input.reserved} !== reservation_item sum ${input.reservationQty}`,
+    );
+  }
+
+  if (input.statuses.length !== input.n) {
+    violations.push(`TEST BUG: ${input.statuses.length} responses recorded, expected N ${input.n}`);
+  }
+
+  const ok200 = input.statuses.filter((status) => status === 200).length;
+  const refused400 = input.statuses.filter((status) => status === 400).length;
+
+  if (input.httpWinnerCount !== ok200) {
+    violations.push(
+      `PRODUCT BUG: ${ok200} HTTP 200 but only ${input.httpWinnerCount} returned type=order`,
+    );
+  }
+
+  if (input.mode !== "sameCart" && ok200 + refused400 !== input.statuses.length) {
+    violations.push("PRODUCT BUG: completion status other than 200 or 400");
+  }
+
   if (input.stocked - input.reserved < 0) {
     violations.push("PRODUCT BUG: available negative");
   }
@@ -58,6 +85,11 @@ export function checkOversellInvariants(input: {
   if (input.mode === "qty1") {
     if (input.orderCount !== input.s) {
       violations.push(`PRODUCT BUG: orderCount ${input.orderCount} !== S ${input.s}`);
+    }
+    if (ok200 !== input.s || refused400 !== input.n - input.s) {
+      violations.push(
+        `PRODUCT BUG: statuses 200x${ok200} 400x${refused400}, expected 200x${input.s} 400x${input.n - input.s}`,
+      );
     }
     if (input.reservationQty !== input.orderCount) {
       violations.push(

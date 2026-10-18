@@ -63,3 +63,8 @@ export function likeLiteralPrefix(prefix: string): string {
   }
   return `${prefix}%`;
 }
+
+/** Cart setup must succeed before the race; a failed step would look like a stock loser. */
+export function setupStepError(step: string, status: number): string | null {
+  return status === 200 ? null : `TEST BUG: cart setup ${step} HTTP ${status}`;
+}
