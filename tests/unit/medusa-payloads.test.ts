@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  caseLeakPattern,
+  casePrefix,
   likeLiteralPrefix,
   paymentSessionBody,
   prefixedEmail,
+  prefixedHandle,
   productCreateBody,
   setupStepError,
 } from "../../src/medusa/payloads.ts";
@@ -56,5 +59,39 @@ describe("medusa payloads", () => {
       setupStepError("POST /store/carts/:id/shipping-methods", 400),
       "TEST BUG: cart setup POST /store/carts/:id/shipping-methods HTTP 400",
     );
+  });
+
+  it("casePrefix is case-scoped, lowercased and a safe LIKE literal", () => {
+    const run = "p6-qa-20261018T143056Z-0a1b2c3d";
+    const ids = [
+      "P6-MED-RACE-001",
+      "extra-s1-n2",
+      "extra-s0-n5",
+      "extra-mixed-qty",
+      "extra-same-cart",
+    ];
+    const prefixes = ids.map((id) => casePrefix(run, id));
+    assert.equal(prefixes[0], "p6-qa-20261018t143056z-0a1b2c3d-p6-med-race-001");
+    assert.equal(new Set(prefixes).size, ids.length);
+    for (const prefix of prefixes) {
+      assert.match(prefix, /^[a-z0-9-]+$/);
+      assert.equal(likeLiteralPrefix(prefix), `${prefix}%`);
+    }
+  });
+
+  it("casePrefix rejects a case id with LIKE wildcards or spaces", () => {
+    assert.throws(() => casePrefix("p6-qa-x", "extra_s1"), /TEST BUG/);
+    assert.throws(() => casePrefix("p6-qa-x", "extra 50%"), /TEST BUG/);
+  });
+
+  it("caseLeakPattern only matches its own case", () => {
+    const run = "p6-qa-20261018T143056Z-0a1b2c3d";
+    const pattern = caseLeakPattern(run, "extra-s1-n2");
+    assert.equal(pattern, "p6-qa-20261018t143056z-0a1b2c3d-extra-s1-n2-%");
+    const own = prefixedHandle(casePrefix(run, "extra-s1-n2"), "t1-product");
+    const other = prefixedHandle(casePrefix(run, "extra-s0-n5"), "t1-product");
+    const likeStart = pattern.slice(0, -1);
+    assert.ok(own.startsWith(likeStart));
+    assert.ok(!other.startsWith(likeStart));
   });
 });

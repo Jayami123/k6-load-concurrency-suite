@@ -134,6 +134,8 @@ export async function createStockedVariant(input: {
   prefix: string;
   leaf: string;
   s: number;
+  /** Called as soon as each id exists, so cleanup learns it even if a later step throws. */
+  onCreated?: (ids: { productId?: string; inventoryItemId?: string }) => void;
 }): Promise<{ productId: string; variantId: string; inventoryItemId: string; title: string }> {
   const handle = prefixedHandle(input.prefix, input.leaf);
   const sku = `${handle}-sku`;
@@ -155,6 +157,7 @@ export async function createStockedVariant(input: {
   if (!product?.id) {
     throw new Error("TEST BUG: product id missing from create response");
   }
+  input.onCreated?.({ productId: product.id });
 
   const detailRes = await adminJson(
     `/products/${product.id}?fields=*variants,*variants.inventory_items`,
@@ -169,6 +172,9 @@ export async function createStockedVariant(input: {
   ).product?.variants;
   const variantId = variants?.[0]?.id;
   const inventoryItemId = variants?.[0]?.inventory_items?.[0]?.inventory_item_id;
+  if (inventoryItemId) {
+    input.onCreated?.({ inventoryItemId });
+  }
   if (!variantId || !inventoryItemId) {
     throw new Error("TEST BUG: variant or inventory_item_id missing");
   }

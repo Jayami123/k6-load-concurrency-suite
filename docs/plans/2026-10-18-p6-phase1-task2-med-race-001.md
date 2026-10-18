@@ -669,17 +669,24 @@ Rules (implement exactly):
 
 ## 10. Test data, isolation, cleanup and leak check
 
-- Run prefix: `p6RunPrefix()` once per spec file (`beforeAll`). Per trial leaf:
-  `${prefix.toLowerCase()}-t${trial}`. Product title/handle/sku and emails all lowercased.
-  Example email: `p6-qa-20261018t143012z-a1b2c3d4-t1-c00@qa.local`.
+- Run prefix: `p6RunPrefix()` once per spec file (`beforeAll`). Each case scopes it with
+  `casePrefix(runPrefix, caseId)` = lowercased `${runPrefix}-${caseId}` (throws TEST BUG unless
+  `[a-z0-9-]`), then per trial leaf `t${trial}`. Product title/handle/sku and emails all
+  lowercased, so two cases never share a handle, SKU or email. Example email:
+  `p6-qa-20261018t143012z-a1b2c3d4-p6-med-race-001-t1-c00@qa.local`.
 - Isolation: `workers: 1`; unique prefix; do not truncate seed tables; do not use harness seed
   SKUs (`customer@test.com`, promo `QA10`) as assertions.
 - Cleanup per trial `finally`: for each created order id, `POST /admin/orders/{id}/cancel` then
   `/archive` (ignore 400 if already canceled); `DELETE /admin/products/{id}`;
   `DELETE /admin/customers/{id}` found by `GET /admin/customers?q=<email>`. Carts stay.
+  `createStockedVariant` reports the product id and inventory item id through `onCreated` the
+  moment each exists, so a later setup failure still deletes the product. Customer emails are
+  recorded before carts are created; order ids right after the burst.
 - Leak check at end of each test (after cleanup): `LEAK_PRODUCTS_SQL` / `LEAK_LIVE_ORDERS_SQL`
-  bind `likeLiteralPrefix(lowerPrefix)` (D18), never a raw `prefix + "%"`. Counts = 0. Live
-  reservations for inventory items created in this test = 0. On mismatch: push TEST BUG (or
+  bind `caseLeakPattern(runPrefix, caseId)` = `likeLiteralPrefix(casePrefix + "-")` (D18), never a
+  raw `prefix + "%"`, so a case only counts its own rows. Counts = 0, checked once per case even
+  when no inventory item was created. Live reservations for inventory items created in this
+  test = 0. On mismatch: push TEST BUG (or
   PRODUCT BUG if cancel did not release a reservation — paste inventory_item id, not secrets)
   onto `histogram.invariantViolations`, set `verdict: "fail"`, then `expect`.
 - `closePool` in the spec `finally`.

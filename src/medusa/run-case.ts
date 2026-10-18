@@ -19,7 +19,7 @@ import {
 } from "./admin.ts";
 import { checkOversellInvariants, type OversellMode } from "./invariants.ts";
 import { leakCheck, waitForOversellStable } from "./oracle.ts";
-import { likeLiteralPrefix, prefixedEmail } from "./payloads.ts";
+import { caseLeakPattern, casePrefix, prefixedEmail } from "./payloads.ts";
 import { completeCart, prepareReadyCarts } from "./store.ts";
 
 function parseCompleteBody(body: string): {
@@ -60,7 +60,7 @@ export type RunOversellCaseInput = {
 export async function runOversellCase(input: RunOversellCaseInput): Promise<RaceHistogram> {
   const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = medusaBaseUrlFromEnv();
-  const lowerPrefix = input.runPrefix.toLowerCase();
+  const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const histogram = createHistogram({
     caseId: input.caseId,
     title: input.title,
@@ -72,7 +72,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
   const spreads: number[] = [];
   const perTrial: RaceTrialResult[] = [];
   const inventoryItemIds: string[] = [];
-  const leakPrefix = likeLiteralPrefix(lowerPrefix);
+  const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
 
   try {
     const trialResults = await runTrials(input.trials, async (trial) => {
@@ -89,14 +89,18 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
         const stocked = await createStockedVariant({
           token: input.token,
           catalog: input.catalog,
-          prefix: input.runPrefix,
+          prefix: dataPrefix,
           leaf: productLeaf,
           s: input.s,
+          onCreated: (ids) => {
+            if (ids.productId) productId = ids.productId;
+            if (ids.inventoryItemId && !inventoryItemIds.includes(ids.inventoryItemId)) {
+              inventoryItemIds.push(ids.inventoryItemId);
+            }
+          },
         });
-        productId = stocked.productId;
         variantId = stocked.variantId;
         inventoryItemId = stocked.inventoryItemId;
-        inventoryItemIds.push(inventoryItemId);
 
         const quantities =
           input.mode === "mixed"
@@ -107,7 +111,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
         let cartQuantities: number[] = quantities;
 
         if (input.mode === "sameCart") {
-          const email = prefixedEmail(input.runPrefix, `${trialLeaf}-c0`);
+          const email = prefixedEmail(dataPrefix, `${trialLeaf}-c0`);
           customerEmails.push(email);
           const carts = await prepareReadyCarts(1, () => ({
             publishableKey: input.catalog.publishableKey,
@@ -126,10 +130,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           cartQuantities = Array.from({ length: input.n }, () => 1);
         } else {
           const carts = await prepareReadyCarts(input.n, (i) => {
-            const email = prefixedEmail(
-              input.runPrefix,
-              `${trialLeaf}-c${String(i).padStart(2, "0")}`,
-            );
+            const email = prefixedEmail(dataPrefix, `${trialLeaf}-c${String(i).padStart(2, "0")}`);
             customerEmails.push(email);
             return {
               publishableKey: input.catalog.publishableKey,
@@ -309,10 +310,9 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
-    for (const inventoryItemId of inventoryItemIds) {
-      const leaks = await leakCheck(input.pool, leakPrefix, inventoryItemId);
-      histogram.invariantViolations.push(...leaks);
-    }
+    histogram.invariantViolations.push(
+      ...(await leakCheck(input.pool, leakPrefix, inventoryItemIds)),
+    );
 
     const trialsOk = trialResults.every((t) => t.ok);
     histogram.verdict = trialsOk && histogram.invariantViolations.length === 0 ? "pass" : "fail";

@@ -92,25 +92,32 @@ export async function waitForOversellStable(
   return waitForStable(() => readOversellSnapshot(pool, variantId, inventoryItemId, locationId));
 }
 
+/** Products and orders are checked once per case even if no inventory item was ever created. */
 export async function leakCheck(
   pool: pg.Pool,
   likePrefix: string,
-  inventoryItemId: string,
+  inventoryItemIds: string[],
 ): Promise<string[]> {
   const violations: string[] = [];
-  const [products, orders, reservations] = await Promise.all([
+  const [products, orders, ...reservations] = await Promise.all([
     selectRows<{ n: number }>(pool, LEAK_PRODUCTS_SQL, [likePrefix]),
     selectRows<{ n: number }>(pool, LEAK_LIVE_ORDERS_SQL, [likePrefix]),
-    selectRows<{ n: number }>(pool, LEAK_LIVE_RESERVATIONS_SQL, [inventoryItemId]),
+    ...inventoryItemIds.map((id) =>
+      selectRows<{ n: number }>(pool, LEAK_LIVE_RESERVATIONS_SQL, [id]),
+    ),
   ]);
-  if (Number(products[0]?.n ?? 0) !== 0) {
+  if (Number(products?.[0]?.n ?? 0) !== 0) {
     violations.push(`TEST BUG: leak products handle LIKE ${likePrefix}`);
   }
-  if (Number(orders[0]?.n ?? 0) !== 0) {
+  if (Number(orders?.[0]?.n ?? 0) !== 0) {
     violations.push(`TEST BUG: leak live orders email LIKE ${likePrefix}`);
   }
-  if (Number(reservations[0]?.n ?? 0) !== 0) {
-    violations.push(`PRODUCT BUG: live reservations remain for inventory item ${inventoryItemId}`);
-  }
+  reservations.forEach((rows, i) => {
+    if (Number(rows[0]?.n ?? 0) !== 0) {
+      violations.push(
+        `PRODUCT BUG: live reservations remain for inventory item ${inventoryItemIds[i]}`,
+      );
+    }
+  });
   return violations;
 }

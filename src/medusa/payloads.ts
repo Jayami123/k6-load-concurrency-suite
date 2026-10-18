@@ -56,6 +56,24 @@ export function prefixedHandle(prefix: string, leaf: string): string {
   return `${prefix.toLowerCase()}-${leaf}`;
 }
 
+/**
+ * Per-case data prefix: lowercased `${runPrefix}-${caseId}`. Every handle, SKU and email of one
+ * case starts with it, so cases never share rows and the leak check only sees its own case.
+ * Throws TEST BUG unless the result is [a-z0-9-].
+ */
+export function casePrefix(runPrefix: string, caseId: string): string {
+  const prefix = `${runPrefix}-${caseId}`.toLowerCase();
+  if (!/^[a-z0-9-]+$/.test(prefix)) {
+    throw new Error(`TEST BUG: case prefix "${prefix}" is not [a-z0-9-]`);
+  }
+  return prefix;
+}
+
+/** Leak SQL LIKE argument for one case. The trailing "-" stops one case id matching another. */
+export function caseLeakPattern(runPrefix: string, caseId: string): string {
+  return likeLiteralPrefix(`${casePrefix(runPrefix, caseId)}-`);
+}
+
 /** Leak SQL LIKE argument. Throws TEST BUG unless prefix is [a-z0-9-]. */
 export function likeLiteralPrefix(prefix: string): string {
   if (!/^[a-z0-9-]+$/.test(prefix)) {
