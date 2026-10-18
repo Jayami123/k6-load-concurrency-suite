@@ -1,0 +1,27 @@
+{
+  "name": "k6-load-concurrency-suite",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "up:medusa": "node scripts/harness.mjs up medusa",
+    "down:medusa": "node scripts/harness.mjs down medusa",
+    "smoke:medusa": "k6 run --summary-export results/medusa-health-summary.json k6/smoke/medusa-health.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "k6:inspect": "node scripts/k6-inspect.mjs",
+    "check": "npm run format:check && npm run typecheck && npm run k6:inspect"
+  },
+  "dependencies": {
+    "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.11"
+  },
+  "devDependencies": {
+    "@types/k6": "^2",
+    "@types/node": "^22",
+    "prettier": "^3.6.2",
+    "typescript": "^5"
+  }
+}

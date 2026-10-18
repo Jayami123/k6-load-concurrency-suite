@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+!.env.example
+products/
+results/*
+!results/.gitkeep
+*.log
