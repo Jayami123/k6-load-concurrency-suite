@@ -261,10 +261,11 @@ GitHub Actions `main` run [39434721131](https://github.com/Jayami123/k6-load-con
 Steps: `Start Cal (harness up)` 78 s, `Race self-test` 9 s, `Race P6-CAL-RACE-001` **62 s**
 (50 mapped + 3 × 3 extra trials of N=20/21).
 
-Task 5 adds one step: 30 mapped pair trials + 3 sequential-control trials. VM: 0.4 s per pair trial
+Task 5 adds one step: 30 mapped pair trials + 4 sequential-control trials. VM: 0.4 s per pair trial
 (max 0.7 s) vs 1.2 s for a Task 4 trial; CI ran Task 4 at ~1.05 s per trial (62 s / 59), so
 assume ≤ 1 s per pair trial on CI: **≈ 30–45 s**, plus ~5 s Playwright start. New job estimate
 **≈ 5–5.5 min** of the 60-min job timeout. Fits with large headroom; PR runs (5 trials) add ~10 s.
+The sequential control's four trials also have to see exactly 409 on every second leg.
 
 ### 2.10 Cleanup and leak (live)
 
@@ -307,15 +308,20 @@ Lead with the industry-standard approach, then the rejected alternative and its 
   - 2 responses;
   - no 5xx/network error (PRODUCT BUG);
   - no 429 (ENV);
-  - losers only `slot-taken` or `booking-conflict` 409 — a `db-unique-redacted` 400 in a pair would
-    mean two identical windows were sent (TEST BUG), and anything else is a TEST BUG;
+  - losers only `slot-taken` or `booking-conflict` 409, or a redacted db 400 (`refused-db-error`,
+    a refused leg: no double booking in that trial; counted, with its traceId, never a violation).
+    The idempotency key cannot collide in a pair (the windows differ in start or end), so that 400
+    is some other db error (CI run 39441132613 saw it on 2 of 5 trials, not reproducible locally;
+    see §13 R8). Anything else is a TEST BUG;
   - at least one 2xx (PRODUCT BUG "no booking for a free window");
   - every 2xx body `ACCEPTED` with a uid in the window's accepted rows, and HTTP 2xx count = DB
     accepted rows in the window (PRODUCT BUG on mismatch);
   - spread < `RACE_MAX_SPREAD_MS` (TEST BUG).
 
   The overlap pairs are reported separately (`overlapViolations`). Rejected: one combined list (a
-  setup failure would then be hidden by `test.fail()`).
+  setup failure would then be hidden by `test.fail()`). In sequential mode `checkSequentialRefusal`
+  additionally requires a 2xx ACCEPTED first leg and exactly 409 `no_available_users_found_error`
+  on the second, so a refused-leg 400 never passes the control.
 
 - **D8 Known bug → `test.fail()` in the mapped test, placed after the guard assertion and right
   before the overlap assertion.** Evidence: 50/50 pairs, three separate runs, both shapes, code path
@@ -327,7 +333,8 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D10 Trial count in the case itself: `Math.min(raceTrialsFromEnv(), 30)`.** CI already sets
   `RACE_TRIALS` 5 on `pull_request` and 50 on `main`/nightly/dispatch for `cal-smoke`; the case caps
   at 30, so PRs run 5 and full runs 30 (roadmap D2, master plan trials=30). The extra uses
-  `min(RACE_TRIALS, 3)`. Rejected: a second env variable (one name is enough; the cap documents the
+  `min(RACE_TRIALS, 4)` (one trial per sequential shape A–D; a cap of 3 never ran shape D). The four trials of the control are a hard check that Cal refuses the second booking with 409.
+  Rejected: a second env variable (one name is enough; the cap documents the
   case's count where the case is defined); a separate `RACE_TRIALS: 30` step env (count would live
   in YAML, not in the case).
 - **D11 Setup asserted.** `resolveHostSetup(pool, "30min", 30)` and `resolveHostSetup(pool, "60min", 60)`
@@ -343,7 +350,7 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D13 Extend, do not duplicate.** Additions per file in §7; the only refactor is moving three
   private blocks of `runIdenticalSlotCase` into private helpers used by both run-cases. Task 4's
   spec and 98 unit tests must stay green unchanged.
-- **D14 One extra: sequential overlap control** (`min(RACE_TRIALS, 3)` trials, shapes A/B/C/D by
+- **D14 One extra: sequential overlap control** (`min(RACE_TRIALS, 4)` trials, so every shape A/B/C/D runs once on a PR; shapes by
   `trial % 4`, first request then second, no barrier). Expected: second 409 `slot-taken`, 0 pairs.
   It proves on every CI run that the guard works sequentially, so the mapped failure stays a race
   finding and not a configuration change. No `test.fail()`. Rejected: no control (a seed change
@@ -450,13 +457,14 @@ Reuse `RaceHistogram` unchanged. `caseId: "P6-CAL-RACE-003"`,
 - `statusCounts`: status → count across trials (probe behaviour would give `{"200": 2 × trials}`).
 - Per-trial `oracle`: `windowStart`, `shape` (`same-start` | `inside`), `httpWinners`,
   `windowAccepted`, `overlapPairs` (the trial's double-book count), `doubleBooked` (boolean,
-  `overlapPairs > 0`), `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), and the four `loser_*`
-  counts (Task 4 kinds).
+  `overlapPairs > 0`), `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), the loser counts
+  `loser_slot-taken`, `loser_booking-conflict`, `loser_refused-db-error`, `loser_unexpected`, and
+  `refusedTraceIds` (comma-joined traceIds of refused legs).
 - Histogram `oracle` (D16): `hostUserId`, `eventTypeId30`, `eventTypeId60`, `overlapPairsTotal`,
   `trialsDoubleBooked`, `trialsClean`, `doubleBookedByTrial` (per-trial pair counts in trial order,
   comma-joined, e.g. `"1,1,0,1,1"`; a string because `RaceOracleValue` has no arrays),
-  `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four `loser_*` totals,
-  `leakAccepted`. A slower runner with some clean trials therefore shows up as `trialsClean > 0`
+  `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four `loser_*` totals
+  (same kinds as per trial), `refusedTraceIds` (`t<trial>:<traceId>`, comma-joined), `leakAccepted`. A slower runner with some clean trials therefore shows up as `trialsClean > 0`
   and zeros in `doubleBookedByTrial`, not as a silent pass.
 - Per-trial `invariantViolations` carry `pairEvidence` text (ids, uids, event type ids, times). No
   emails, tokens, cookies or seed credentials.
@@ -649,12 +657,8 @@ export function checkOverlapPairGuards(input: {
     } else if (r.status === 429) {
       out.push("ENV: HTTP 429 rate limited (UNKEY_ROOT_KEY set?)");
     } else if (!isWinner(r)) {
-      const kind = classifyLoser(r.status, r.message);
-      if (kind === "db-unique-redacted") {
-        out.push(
-          `TEST BUG: idempotency key collided in an overlap pair (identical windows?) ${r.summary}`,
-        );
-      } else if (kind === "unexpected") {
+      // A refused leg (redacted db 400) is not a violation (see classifyOverlapLoser).
+      if (classifyOverlapLoser(r.status, r.message) === "unexpected") {
         out.push(`TEST BUG: unexpected loser ${r.summary}`);
       }
     }
@@ -707,7 +711,8 @@ export function doubleBookSummary(pairsByTrial: number[]): {
 
 - Run prefix `p6RunPrefix()` once per spec file. Case prefix `casePrefix(runPrefix, caseId)`
   (`src/medusa/payloads.ts`, reused as in Task 4). Trial pattern
-  `likeLiteralPrefix(\`${casePrefix}-t${trial}-\`)`— the trailing`-`keeps`t1-`from matching`t10-`. Attendees `attendeeEmail(casePrefix, \`t${trial}-r60\`)`and`…-r30`.
+  ``likeLiteralPrefix(`${casePrefix}-t${trial}-`)``. The trailing `-` keeps `t1-` from matching
+  `t10-`. Attendees ``attendeeEmail(casePrefix, `t${trial}-r60`)`` and `…-r30`.
 - One `createSlotAllocator(eventTypeId60, { slug: "60min", minutes: 60 })` per spec file, shared by
   both tests.
 - Per-trial `finally`: cancel every 2xx uid, then every row of `caseLiveBookings(pool, trialPattern)`.
@@ -720,17 +725,17 @@ export function doubleBookSummary(pairsByTrial: number[]): {
 
 ## 11. Known-bug handling
 
-| Observation                                                           | Label                    | Action                                                                                                                               |
-| --------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG (high)**   | `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8); per-trial counts in the histogram (D16). |
-| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config** | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling.                    |
-| Loser 400 `An error occurred while querying the database.` in a pair  | **TEST BUG**             | Windows were identical (key collision). `P6-OBS-CAL-001` belongs to Task 4; not re-reported here.                                    |
-| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser            | One booking won; fine.                                                                                                               |
-| 5xx / network error                                                   | **PRODUCT BUG**          | Status + body summary with `traceId`.                                                                                                |
-| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**          | Attach window rows.                                                                                                                  |
-| 429                                                                   | **ENV**                  | Limiter on (`UNKEY_ROOT_KEY`).                                                                                                       |
-| Spread ≥ limit                                                        | **TEST BUG**             | Env only; no rerun logic (Task 8).                                                                                                   |
-| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**             | Paste ids/uids only.                                                                                                                 |
+| Observation                                                           | Label                        | Action                                                                                                                                                                       |
+| --------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG (high)**       | `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8); per-trial counts in the histogram (D16).                                         |
+| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config**     | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling.                                                            |
+| Loser 400 `An error occurred while querying the database.` in a pair  | refused leg (not a TEST BUG) | One leg refused by a db error, other leg won: no double booking in that trial. Counted as `loser_refused-db-error`, traceId in `refusedTraceIds`; candidate finding, §13 R8. |
+| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser                | One booking won; fine.                                                                                                                                                       |
+| 5xx / network error                                                   | **PRODUCT BUG**              | Status + body summary with `traceId`.                                                                                                                                        |
+| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**              | Attach window rows.                                                                                                                                                          |
+| 429                                                                   | **ENV**                      | Limiter on (`UNKEY_ROOT_KEY`).                                                                                                                                               |
+| Spread ≥ limit                                                        | **TEST BUG**                 | Env only; no rerun logic (Task 8).                                                                                                                                           |
+| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**                 | Paste ids/uids only.                                                                                                                                                         |
 
 `test.fail()` appears exactly once in this task, in the mapped test, after
 `expect(guardViolations).toEqual([])` and immediately before `expect(overlapPairs).toBe(0)`.
@@ -743,7 +748,7 @@ Add after `Race P6-CAL-RACE-001 (cal-race)` and before the `race-histograms-cal`
 - name: Race P6-CAL-RACE-003 (cal-race)
   if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
   working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-  # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 3 trials ≈ 30–45 s on CI.
+  # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 4 trials ≈ 30–45 s on CI.
   timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
   env:
     # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).
@@ -784,6 +789,16 @@ timeout 60 min, `medusa-smoke`.
   §2.3).
 - **R7 Refactor of `runIdenticalSlotCase` breaks Task 4.** The three helpers are moved verbatim;
   the Task 4 spec runs in the verification gate; unit tests unchanged.
+
+- **R8 Candidate finding: a redacted db 400 on one leg of a pair (no ID yet).** The first CI run
+  (run 39441132613, PR #14) showed trials t1 and t3 (same-start shape) with one 200 and one redacted
+  400 (`trace_b6rlqi9eSw5rKsPNGjTz8`, `trace_HnUqLE88Hj83EBQMegDfG`). It did not reproduce in about
+  225 local pair trials (CI order, CPU load, fresh database, throttled Postgres), so the Prisma
+  code and constraint are unknown: they are only in Cal's server log, which that run did not
+  upload. The `cal-smoke` job now uploads that log (`cal-web-log`, `if: always()`). When a run
+  shows `refusedTraceIds`, grep the log for the traceId, record the Prisma code and target here,
+  and only then decide whether it is a new finding (for example a write conflict or deadlock
+  surfaced as a 400) and give it an ID.
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
@@ -925,7 +940,9 @@ describe("overlap SQL", () => {
 - both 200, both uids in window, 2 DB rows, spread 1 → `checkOverlapPairGuards` `[]` (the race bug
   is not a guard violation).
 - 200 + 409 slot-taken, 1 DB row → `[]`; 200 + 409 `booking_conflict_error` → `[]`.
-- 200 + 400 redacted → one `TEST BUG` containing `idempotency key collided`.
+- 200 + 400 redacted → `[]` (a refused leg); 400 redacted + 400 redacted → `PRODUCT BUG` `no booking accepted`;
+  200 + 400 with another message → `TEST BUG` `unexpected loser`. `classifyOverlapLoser` and `refusedLegs`
+  (traceId from the summary, `unknown` if absent) have their own tests.
 - 200 + 422 → `TEST BUG` `unexpected loser`; 200 + 429 → `ENV`.
 - 500 + 200 → `PRODUCT BUG` and `500`; `null` → `PRODUCT BUG` and `error`.
 - 409 + 409 (no winner), 0 rows → `PRODUCT BUG` `no booking accepted`.
@@ -1026,22 +1043,26 @@ Per trial:
    Sequential mode instead uses `trial % 4`: 1 → `same-start` order [60, 30]; 2 → `inside` [60, 30];
    3 → `same-start` [30, 60]; 0 → `inside` [30, 60].
 3. Throw `TEST BUG: legs do not overlap` unless `windowsOverlap(...)`.
-4. Race mode: `fireTogether(2, (i) => createBooking(bookingBody({ start: legs[i].start, end: legs[i].end, email: attendeeEmail(dataPrefix, \`t${trial}-r${legs[i].role}\`), name: \`p6 r${legs[i].role}\`, eventTypeId: legs[i].eventTypeId, eventTypeSlug: legs[i].eventTypeSlug })), { warm: GET /api/csrf })`.
-Sequential mode: call `createBooking`for the two legs one after the other and build`fired = { requests: [...], dispatchSpreadMs: 0 }`with`summariseBody`for each`bodySummary`(same`RaceRequestResult` fields).
+4. Race mode:
+   ``fireTogether(2, (i) => createBooking(bookingBody({ start: legs[i].start, end: legs[i].end, email: attendeeEmail(dataPrefix, `t${trial}-r${legs[i].role}`), name: `p6 r${legs[i].role}`, eventTypeId: legs[i].eventTypeId, eventTypeSlug: legs[i].eventTypeSlug })), { warm: GET /api/csrf })``.
+   Sequential mode: call `createBooking` for the two legs one after the other and build
+   `fired = { requests: [...], dispatchSpreadMs: 0 }` with `summariseBody` for each `bodySummary`
+   (same `RaceRequestResult` fields).
 5. `responses = parseBookingResponse(...)` per request.
 6. `windowAccepted = await readWindowAccepted(pool, userId, window.start, window.end, trialPattern)`;
    `pairs = await readOverlapPairs(pool, userId, trialPattern)`.
 7. `guards = checkOverlapPairGuards({ responses, windowAccepted, dispatchSpreadMs, spreadLimit })`;
-   sequential mode also pushes `PRODUCT BUG: sequential overlap accepted` when both legs are 2xx.
+   sequential mode also pushes `checkSequentialRefusal(responses)` (`PRODUCT BUG: sequential overlap
+not refused with 409: <summary>` unless leg 2 is exactly 409 slot-taken).
    `product = overlapViolations(pairs)`.
 8. `recordTrial(trial, fired, () => { if (guards.length || product.length) throw new Error([...guards, ...product].join("; ")) })`;
    fill per-trial `oracle` (§8, including `overlapPairs: pairs.length` and
-   `doubleBooked: pairs.length > 0`); push guards prefixed `t${trial}: ` into `guardViolations`;
+   `doubleBooked: pairs.length > 0`); push each guard into `guardViolations` prefixed with `t<trial>:` and a space;
    `pairsByTrial[trial - 1] = pairs.length` (array pre-filled with `0`, length `trials`);
    `overlapPairs += pairs.length`.
 9. `finally`: cancel every 2xx uid and every row of `caseLiveBookings(pool, trialPattern)`.
 
-After the loop: `failedTrialRecords` (also push each failed trial's error, prefixed `t${trial}: `,
+After the loop: `failedTrialRecords` (also push each failed trial's error, prefixed with `t<trial>:` and a space,
 into `guardViolations`, so a trial that died before its oracle can never hide behind
 `test.fail()`), `aggregateDispatchSpread`, `sweepAndLeakCheck`, histogram `oracle` (§8) with
 `...doubleBookSummary(pairsByTrial)` (D16), push cleanup + leak into
@@ -1069,7 +1090,7 @@ import { p6RunPrefix } from "../../../src/races/prefix.ts";
 // Master plan CAL02: trials=30. CI passes RACE_TRIALS 5 (PR) or 50 (full); the case caps at 30.
 const FULL_TRIALS = 30;
 const trials = Math.min(raceTrialsFromEnv(), FULL_TRIALS);
-const extraTrials = Math.min(raceTrialsFromEnv(), 3);
+const extraTrials = Math.min(raceTrialsFromEnv(), 4); // one trial per sequential shape A-D
 const runPrefix = p6RunPrefix();
 const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
 let setup: { userId: number; eventTypeId30: number; eventTypeId60: number };

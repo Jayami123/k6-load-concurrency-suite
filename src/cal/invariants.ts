@@ -1,4 +1,4 @@
-import { rowEvidence } from "./oracle.ts";
+import { pairEvidence, rowEvidence, type OverlapPair, type SlotRow } from "./oracle.ts";
 
 export const LOSER_SLOT_TAKEN = "no_available_users_found_error";
 export const LOSER_BOOKING_CONFLICT = "booking_conflict_error";
@@ -102,4 +102,113 @@ export function nonConflictLosers(responses: ParsedResponse[]): ParsedResponse[]
     const kind = classifyLoser(r.status, r.message);
     return kind !== "slot-taken" && kind !== "booking-conflict";
   });
+}
+
+export type OverlapLoserKind =
+  "slot-taken" | "booking-conflict" | "refused-db-error" | "unexpected";
+
+/**
+ * Overlap pair losers. Windows of a pair never share start and end, so the idempotency key cannot
+ * collide; a redacted db 400 here is some other db error that refused the leg (plan D7, CI run
+ * 39441132613). Its Prisma code is only in Cal's server log, which is why the traceId is kept.
+ */
+export function classifyOverlapLoser(
+  status: number | null,
+  message: string | null,
+): OverlapLoserKind {
+  const kind = classifyLoser(status, message);
+  return kind === "db-unique-redacted" ? "refused-db-error" : kind;
+}
+
+/** Redacted db 400s of a pair with the traceId to grep in Cal's web log ("unknown" if absent). */
+export function refusedLegs(responses: ParsedResponse[]): Array<{ traceId: string }> {
+  return responses
+    .filter((r) => !isWinner(r) && classifyOverlapLoser(r.status, r.message) === "refused-db-error")
+    .map((r) => ({ traceId: /"traceId":"([^"]+)"/.exec(r.summary)?.[1] ?? "unknown" }));
+}
+
+/** Everything except the overlap itself (plan D7). Empty = setup and HTTP contract held. */
+export function checkOverlapPairGuards(input: {
+  responses: ParsedResponse[];
+  windowAccepted: SlotRow[];
+  dispatchSpreadMs: number;
+  spreadLimit: number;
+  expectedResponses?: number; // default 2
+}): string[] {
+  const out: string[] = [];
+  const n = input.expectedResponses ?? 2;
+  if (input.responses.length !== n) {
+    out.push(`TEST BUG: expected ${n} responses, got ${input.responses.length}`);
+  }
+  for (const r of input.responses) {
+    if (r.status === null || r.status >= 500) {
+      out.push(`PRODUCT BUG: HTTP ${r.status ?? "error"} ${r.summary}`);
+    } else if (r.status === 429) {
+      out.push("ENV: HTTP 429 rate limited (UNKEY_ROOT_KEY set?)");
+    } else if (!isWinner(r)) {
+      // A refused leg (redacted db 400) means no double booking in that trial; it is counted
+      // and reported (refusedLegs), never a guard violation.
+      if (classifyOverlapLoser(r.status, r.message) === "unexpected") {
+        out.push(`TEST BUG: unexpected loser ${r.summary}`);
+      }
+    }
+  }
+  const winners = input.responses.filter(isWinner);
+  if (winners.length === 0) out.push("PRODUCT BUG: no booking accepted for a free window");
+  const dbUids = new Set(input.windowAccepted.map((r) => r.uid));
+  for (const w of winners) {
+    if (w.bodyStatus !== "ACCEPTED" || !w.uid || !dbUids.has(w.uid)) {
+      out.push(`PRODUCT BUG: HTTP winner uid ${w.uid} status ${w.bodyStatus} not an ACCEPTED row`);
+    }
+  }
+  if (winners.length !== input.windowAccepted.length) {
+    out.push(
+      `PRODUCT BUG: HTTP 2xx ${winners.length} != DB accepted ${input.windowAccepted.length} in window`,
+    );
+  }
+  if (input.dispatchSpreadMs >= input.spreadLimit) {
+    out.push(`TEST BUG: dispatchSpreadMs ${input.dispatchSpreadMs} >= ${input.spreadLimit}`);
+  }
+  return out;
+}
+
+/**
+ * Sequential overlap control (plan D14): Cal must accept the first booking and refuse the second
+ * with exactly 409 no_available_users_found_error. A redacted db 400 is not a refusal here (it is
+ * only an allowed refused leg in the race). The summary keeps the traceId.
+ */
+export function checkSequentialRefusal(responses: ParsedResponse[]): string[] {
+  const [first, second] = responses;
+  const out: string[] = [];
+  if (!first || !isWinner(first) || first.bodyStatus !== "ACCEPTED") {
+    out.push(`PRODUCT BUG: sequential first booking not accepted: ${first?.summary ?? "missing"}`);
+  }
+  if (!second || second.status !== 409 || classifyLoser(409, second.message) !== "slot-taken") {
+    out.push(
+      `PRODUCT BUG: sequential overlap not refused with 409: ${second?.summary ?? "missing"}`,
+    );
+  }
+  return out;
+}
+
+/** [] or one PRODUCT BUG line with every pair attached (plan D6). */
+export function overlapViolations(pairs: OverlapPair[]): string[] {
+  if (pairs.length === 0) return [];
+  return [`PRODUCT BUG: ${pairs.length} overlapping ACCEPTED pair(s): ${pairEvidence(pairs)}`];
+}
+
+/** D16: per-trial pair counts (index = trial - 1) → histogram oracle fields. */
+export function doubleBookSummary(pairsByTrial: number[]): {
+  trialsDoubleBooked: number;
+  trialsClean: number;
+  overlapPairsTotal: number;
+  doubleBookedByTrial: string;
+} {
+  const trialsDoubleBooked = pairsByTrial.filter((n) => n > 0).length;
+  return {
+    trialsDoubleBooked,
+    trialsClean: pairsByTrial.length - trialsDoubleBooked,
+    overlapPairsTotal: pairsByTrial.reduce((a, b) => a + b, 0),
+    doubleBookedByTrial: pairsByTrial.join(","),
+  };
 }

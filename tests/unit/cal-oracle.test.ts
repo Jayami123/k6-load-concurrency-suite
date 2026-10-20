@@ -4,7 +4,10 @@ import { assertSelectOnly } from "../../src/oracles/pg.ts";
 import {
   CASE_LIVE_BOOKINGS_SQL,
   HOST_SETUP_SQL,
+  OVERLAP_PAIRS_SQL,
   SLOT_ACCEPTED_SQL,
+  WINDOW_ACCEPTED_SQL,
+  pairEvidence,
   rowEvidence,
   toDbTimestamp,
 } from "../../src/cal/oracle.ts";
@@ -53,5 +56,42 @@ describe("rowEvidence", () => {
     ]);
     assert.match(text, /id=7 uid=abc status=accepted/);
     assert.doesNotMatch(text, /email|idempotencyKey|hasKey/);
+  });
+});
+
+describe("overlap SQL", () => {
+  it("is SELECT-only, has no CTE and uses the half-open predicate", () => {
+    assertSelectOnly(OVERLAP_PAIRS_SQL);
+    assertSelectOnly(WINDOW_ACCEPTED_SQL);
+    assert.doesNotMatch(OVERLAP_PAIRS_SQL, /^\s*WITH/i);
+    assert.match(OVERLAP_PAIRS_SQL, /a\.id < b\.id/);
+    assert.match(
+      OVERLAP_PAIRS_SQL,
+      /a\."startTime" < b\."endTime" AND b\."startTime" < a\."endTime"/,
+    );
+    assert.match(OVERLAP_PAIRS_SQL, /a\.status = 'accepted' AND b\.status = 'accepted'/);
+    assert.equal((OVERLAP_PAIRS_SQL.match(/email LIKE \$2/g) ?? []).length, 2);
+  });
+
+  it("pairEvidence shows ids, uids, event types and times only", () => {
+    const text = pairEvidence([
+      {
+        aId: 1261,
+        aUid: "u1",
+        aEventTypeId: 3,
+        aStart: "2026-11-30T09:00:00.000Z",
+        aEnd: "2026-11-30T09:30:00.000Z",
+        bId: 1262,
+        bUid: "u2",
+        bEventTypeId: 4,
+        bStart: "2026-11-30T09:00:00.000Z",
+        bEnd: "2026-11-30T10:00:00.000Z",
+      },
+    ]);
+    assert.equal(
+      text,
+      "1261/u1(et3 2026-11-30T09:00:00.000Z..2026-11-30T09:30:00.000Z) x 1262/u2(et4 2026-11-30T09:00:00.000Z..2026-11-30T10:00:00.000Z)",
+    );
+    assert.doesNotMatch(text, /email|@/);
   });
 });

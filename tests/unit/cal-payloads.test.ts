@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 import {
   attendeeEmail,
   bookingBody,
+  overlapLegs,
+  overlapShapeForTrial,
   parseBookingResponse,
   pickFreeSlot,
   slotEnd,
   timeSpellings,
+  windowsOverlap,
 } from "../../src/cal/payloads.ts";
 import { LOSER_DB_REDACTED } from "../../src/cal/invariants.ts";
 
@@ -117,5 +120,68 @@ describe("parseBookingResponse", () => {
   it("gives nulls for a non-JSON body", () => {
     const r = parseBookingResponse(502, "<html>bad gateway</html>");
     assert.deepEqual([r.uid, r.bodyStatus, r.message], [null, null, null]);
+  });
+});
+
+describe("overlap legs", () => {
+  it("odd trials share the start, even trials use the second half", () => {
+    assert.equal(overlapShapeForTrial(1), "same-start");
+    assert.equal(overlapShapeForTrial(2), "inside");
+    assert.equal(overlapShapeForTrial(29), "same-start");
+  });
+
+  it("same-start legs: 60 [T, T+60) and 30 [T, T+30)", () => {
+    const [l60, l30] = overlapLegs("2026-11-30T09:00:00Z", "same-start", {
+      eventTypeId30: 3,
+      eventTypeId60: 4,
+    });
+    assert.deepEqual(l60, {
+      role: "60",
+      eventTypeId: 4,
+      eventTypeSlug: "60min",
+      start: "2026-11-30T09:00:00.000Z",
+      end: "2026-11-30T10:00:00.000Z",
+    });
+    assert.deepEqual(l30, {
+      role: "30",
+      eventTypeId: 3,
+      eventTypeSlug: "30min",
+      start: "2026-11-30T09:00:00.000Z",
+      end: "2026-11-30T09:30:00.000Z",
+    });
+  });
+
+  it("inside legs put the 30 at T+30", () => {
+    const [, l30] = overlapLegs("2026-11-30T09:00:00.000Z", "inside", {
+      eventTypeId30: 3,
+      eventTypeId60: 4,
+    });
+    assert.equal(l30.start, "2026-11-30T09:30:00.000Z");
+    assert.equal(l30.end, "2026-11-30T10:00:00.000Z");
+  });
+
+  it("both shapes overlap; adjacent windows do not", () => {
+    for (const shape of ["same-start", "inside"] as const) {
+      const [a, b] = overlapLegs("2026-11-30T09:00:00Z", shape, {
+        eventTypeId30: 3,
+        eventTypeId60: 4,
+      });
+      assert.equal(windowsOverlap(a.start, a.end, b.start, b.end), true);
+    }
+    assert.equal(
+      windowsOverlap(
+        "2026-11-30T09:00:00Z",
+        "2026-11-30T09:30:00Z",
+        "2026-11-30T09:30:00Z",
+        "2026-11-30T10:00:00Z",
+      ),
+      false,
+    );
+  });
+
+  it("bookingBody sends the slug it is given, 30min by default", () => {
+    const base = { start: "s", end: "e", email: "x@example.com", name: "n", eventTypeId: 4 };
+    assert.equal(bookingBody(base).eventTypeSlug, "30min");
+    assert.equal(bookingBody({ ...base, eventTypeSlug: "60min" }).eventTypeSlug, "60min");
   });
 });

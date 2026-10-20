@@ -16,6 +16,7 @@ export async function getFreeSlots(
   fromIso: string,
   toIso: string,
   eventTypeId: number,
+  eventTypeSlug: string = CAL_EVENT_SLUG,
 ): Promise<string[]> {
   const input = {
     json: {
@@ -25,7 +26,7 @@ export async function getFreeSlots(
       timeZone: "UTC",
       isTeamEvent: false,
       usernameList: [CAL_HOST_USERNAME],
-      eventTypeSlug: CAL_EVENT_SLUG,
+      eventTypeSlug,
       orgSlug: null,
     },
   };
@@ -80,9 +81,14 @@ export async function cancelBooking(uid: string): Promise<void> {
 }
 
 /** One per spec file. next() = fresh getSchedule (28-day windows from UTC midnight today + 2 d, up to 6). */
-export function createSlotAllocator(eventTypeId: number): {
+export function createSlotAllocator(
+  eventTypeId: number,
+  opts: { slug?: string; minutes?: number } = {},
+): {
   next(): Promise<{ start: string; end: string }>;
 } {
+  const slug = opts.slug ?? CAL_EVENT_SLUG;
+  const minutes = opts.minutes ?? SLOT_MINUTES;
   const used = new Set<string>();
   return {
     async next() {
@@ -95,6 +101,7 @@ export function createSlotAllocator(eventTypeId: number): {
           new Date(from).toISOString(),
           new Date(to).toISOString(),
           eventTypeId,
+          slug,
         );
         let start: string;
         try {
@@ -103,9 +110,9 @@ export function createSlotAllocator(eventTypeId: number): {
           continue;
         }
         used.add(start);
-        return { start, end: slotEnd(start, SLOT_MINUTES) };
+        return { start, end: slotEnd(start, minutes) };
       }
-      throw new Error("TEST BUG: no free 30-min slot");
+      throw new Error(`TEST BUG: no free ${minutes}-min slot`);
     },
   };
 }
