@@ -154,8 +154,11 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
     expect(trialsOk).toBe(true);
   } finally {
     histogram.finishedAt = new Date().toISOString();
-    await writeHistogram(histogram);
-    await closePool(pool);
+    try {
+      await writeHistogram(histogram);
+    } finally {
+      await closePool(pool);
+    }
   }
 
   const raw = JSON.parse(await readFile("results/races/cal-self-test.json", "utf8"));

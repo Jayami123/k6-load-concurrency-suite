@@ -92,7 +92,12 @@ async function upLongRunning(spec) {
   }
   mkdirSync(stateDir, { recursive: true });
   // A second up must not replace the pgid of the group that is still serving.
-  if (existsSync(pgidFile) && (await portOpen(spec.port))) {
+  // A live recorded group counts too, so a second up during startup does not spawn another.
+  const recorded = existsSync(pgidFile)
+    ? Number(readFileSync(pgidFile, "utf8").trim())
+    : Number.NaN;
+  const recordedAlive = Number.isSafeInteger(recorded) && recorded > 1 && groupAlive(recorded);
+  if (existsSync(pgidFile) && (recordedAlive || (await portOpen(spec.port)))) {
     console.log(`${product} already running (pgid ${readFileSync(pgidFile, "utf8").trim()})`);
     return 0;
   }
