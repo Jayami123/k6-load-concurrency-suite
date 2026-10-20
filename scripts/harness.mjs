@@ -97,7 +97,7 @@ async function upLongRunning(spec) {
     ? Number(readFileSync(pgidFile, "utf8").trim())
     : Number.NaN;
   const recordedAlive = Number.isSafeInteger(recorded) && recorded > 1 && groupAlive(recorded);
-  if (existsSync(pgidFile) && (recordedAlive || (await portOpen(spec.port)))) {
+  if (existsSync(pgidFile) && recordedAlive) {
     const pgid = readFileSync(pgidFile, "utf8").trim();
     // A group that is still starting is not ready yet: wait for its port, or fail if it dies.
     const deadline = Date.now() + timeoutMs;
