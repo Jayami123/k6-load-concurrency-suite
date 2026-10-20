@@ -153,3 +153,30 @@ export async function leakCheck(pool: pg.Pool, likePattern: string): Promise<str
   if (rows.length === 0) return [];
   return [`TEST BUG: leak live bookings attendee LIKE ${likePattern}: ${rowEvidence(rows)}`];
 }
+
+export async function readOverlapPairs(
+  pool: pg.Pool,
+  userId: number,
+  likePattern: string,
+): Promise<OverlapPair[]> {
+  return waitForStable(() =>
+    selectRows<OverlapPair>(pool, OVERLAP_PAIRS_SQL, [userId, likePattern]),
+  );
+}
+
+export async function readWindowAccepted(
+  pool: pg.Pool,
+  userId: number,
+  from: string,
+  to: string,
+  likePattern: string,
+): Promise<SlotRow[]> {
+  return waitForStable(() =>
+    selectRows<SlotRow>(pool, WINDOW_ACCEPTED_SQL, [
+      userId,
+      toDbTimestamp(from),
+      toDbTimestamp(to),
+      likePattern,
+    ]),
+  );
+}
