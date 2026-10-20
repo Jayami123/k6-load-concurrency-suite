@@ -104,6 +104,29 @@ export function nonConflictLosers(responses: ParsedResponse[]): ParsedResponse[]
   });
 }
 
+export type OverlapLoserKind =
+  "slot-taken" | "booking-conflict" | "refused-db-error" | "unexpected";
+
+/**
+ * Overlap pair losers. Windows of a pair never share start and end, so the idempotency key cannot
+ * collide; a redacted db 400 here is some other db error that refused the leg (plan D7, CI run
+ * 39441132613). Its Prisma code is only in Cal's server log, which is why the traceId is kept.
+ */
+export function classifyOverlapLoser(
+  status: number | null,
+  message: string | null,
+): OverlapLoserKind {
+  const kind = classifyLoser(status, message);
+  return kind === "db-unique-redacted" ? "refused-db-error" : kind;
+}
+
+/** Redacted db 400s of a pair with the traceId to grep in Cal's web log ("unknown" if absent). */
+export function refusedLegs(responses: ParsedResponse[]): Array<{ traceId: string }> {
+  return responses
+    .filter((r) => !isWinner(r) && classifyOverlapLoser(r.status, r.message) === "refused-db-error")
+    .map((r) => ({ traceId: /"traceId":"([^"]+)"/.exec(r.summary)?.[1] ?? "unknown" }));
+}
+
 /** Everything except the overlap itself (plan D7). Empty = setup and HTTP contract held. */
 export function checkOverlapPairGuards(input: {
   responses: ParsedResponse[];
@@ -123,12 +146,9 @@ export function checkOverlapPairGuards(input: {
     } else if (r.status === 429) {
       out.push("ENV: HTTP 429 rate limited (UNKEY_ROOT_KEY set?)");
     } else if (!isWinner(r)) {
-      const kind = classifyLoser(r.status, r.message);
-      if (kind === "db-unique-redacted") {
-        out.push(
-          `TEST BUG: idempotency key collided in an overlap pair (identical windows?) ${r.summary}`,
-        );
-      } else if (kind === "unexpected") {
+      // A refused leg (redacted db 400) means no double booking in that trial; it is counted
+      // and reported (refusedLegs), never a guard violation.
+      if (classifyOverlapLoser(r.status, r.message) === "unexpected") {
         out.push(`TEST BUG: unexpected loser ${r.summary}`);
       }
     }

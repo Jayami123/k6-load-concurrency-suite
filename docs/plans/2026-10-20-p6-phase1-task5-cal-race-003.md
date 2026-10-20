@@ -307,8 +307,11 @@ Lead with the industry-standard approach, then the rejected alternative and its 
   - 2 responses;
   - no 5xx/network error (PRODUCT BUG);
   - no 429 (ENV);
-  - losers only `slot-taken` or `booking-conflict` 409 — a `db-unique-redacted` 400 in a pair would
-    mean two identical windows were sent (TEST BUG), and anything else is a TEST BUG;
+  - losers only `slot-taken` or `booking-conflict` 409, or a redacted db 400 (`refused-db-error`,
+    a refused leg: no double booking in that trial; counted, with its traceId, never a violation).
+    The idempotency key cannot collide in a pair (the windows differ in start or end), so that 400
+    is some other db error (CI run 39441132613 saw it on 2 of 5 trials, not reproducible locally;
+    see §13 R8). Anything else is a TEST BUG;
   - at least one 2xx (PRODUCT BUG "no booking for a free window");
   - every 2xx body `ACCEPTED` with a uid in the window's accepted rows, and HTTP 2xx count = DB
     accepted rows in the window (PRODUCT BUG on mismatch);
@@ -450,13 +453,14 @@ Reuse `RaceHistogram` unchanged. `caseId: "P6-CAL-RACE-003"`,
 - `statusCounts`: status → count across trials (probe behaviour would give `{"200": 2 × trials}`).
 - Per-trial `oracle`: `windowStart`, `shape` (`same-start` | `inside`), `httpWinners`,
   `windowAccepted`, `overlapPairs` (the trial's double-book count), `doubleBooked` (boolean,
-  `overlapPairs > 0`), `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), and the four `loser_*`
-  counts (Task 4 kinds).
+  `overlapPairs > 0`), `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), the loser counts
+  `loser_slot-taken`, `loser_booking-conflict`, `loser_refused-db-error`, `loser_unexpected`, and
+  `refusedTraceIds` (comma-joined traceIds of refused legs).
 - Histogram `oracle` (D16): `hostUserId`, `eventTypeId30`, `eventTypeId60`, `overlapPairsTotal`,
   `trialsDoubleBooked`, `trialsClean`, `doubleBookedByTrial` (per-trial pair counts in trial order,
   comma-joined, e.g. `"1,1,0,1,1"`; a string because `RaceOracleValue` has no arrays),
-  `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four `loser_*` totals,
-  `leakAccepted`. A slower runner with some clean trials therefore shows up as `trialsClean > 0`
+  `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four `loser_*` totals
+  (same kinds as per trial), `refusedTraceIds` (`t<trial>:<traceId>`, comma-joined), `leakAccepted`. A slower runner with some clean trials therefore shows up as `trialsClean > 0`
   and zeros in `doubleBookedByTrial`, not as a silent pass.
 - Per-trial `invariantViolations` carry `pairEvidence` text (ids, uids, event type ids, times). No
   emails, tokens, cookies or seed credentials.
@@ -649,12 +653,8 @@ export function checkOverlapPairGuards(input: {
     } else if (r.status === 429) {
       out.push("ENV: HTTP 429 rate limited (UNKEY_ROOT_KEY set?)");
     } else if (!isWinner(r)) {
-      const kind = classifyLoser(r.status, r.message);
-      if (kind === "db-unique-redacted") {
-        out.push(
-          `TEST BUG: idempotency key collided in an overlap pair (identical windows?) ${r.summary}`,
-        );
-      } else if (kind === "unexpected") {
+      // A refused leg (redacted db 400) is not a violation (see classifyOverlapLoser).
+      if (classifyOverlapLoser(r.status, r.message) === "unexpected") {
         out.push(`TEST BUG: unexpected loser ${r.summary}`);
       }
     }
@@ -720,17 +720,17 @@ export function doubleBookSummary(pairsByTrial: number[]): {
 
 ## 11. Known-bug handling
 
-| Observation                                                           | Label                    | Action                                                                                                                               |
-| --------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG (high)**   | `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8); per-trial counts in the histogram (D16). |
-| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config** | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling.                    |
-| Loser 400 `An error occurred while querying the database.` in a pair  | **TEST BUG**             | Windows were identical (key collision). `P6-OBS-CAL-001` belongs to Task 4; not re-reported here.                                    |
-| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser            | One booking won; fine.                                                                                                               |
-| 5xx / network error                                                   | **PRODUCT BUG**          | Status + body summary with `traceId`.                                                                                                |
-| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**          | Attach window rows.                                                                                                                  |
-| 429                                                                   | **ENV**                  | Limiter on (`UNKEY_ROOT_KEY`).                                                                                                       |
-| Spread ≥ limit                                                        | **TEST BUG**             | Env only; no rerun logic (Task 8).                                                                                                   |
-| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**             | Paste ids/uids only.                                                                                                                 |
+| Observation                                                           | Label                        | Action                                                                                                                                                                       |
+| --------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG (high)**       | `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8); per-trial counts in the histogram (D16).                                         |
+| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config**     | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling.                                                            |
+| Loser 400 `An error occurred while querying the database.` in a pair  | refused leg (not a TEST BUG) | One leg refused by a db error, other leg won: no double booking in that trial. Counted as `loser_refused-db-error`, traceId in `refusedTraceIds`; candidate finding, §13 R8. |
+| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser                | One booking won; fine.                                                                                                                                                       |
+| 5xx / network error                                                   | **PRODUCT BUG**              | Status + body summary with `traceId`.                                                                                                                                        |
+| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**              | Attach window rows.                                                                                                                                                          |
+| 429                                                                   | **ENV**                      | Limiter on (`UNKEY_ROOT_KEY`).                                                                                                                                               |
+| Spread ≥ limit                                                        | **TEST BUG**                 | Env only; no rerun logic (Task 8).                                                                                                                                           |
+| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**                 | Paste ids/uids only.                                                                                                                                                         |
 
 `test.fail()` appears exactly once in this task, in the mapped test, after
 `expect(guardViolations).toEqual([])` and immediately before `expect(overlapPairs).toBe(0)`.
@@ -784,6 +784,16 @@ timeout 60 min, `medusa-smoke`.
   §2.3).
 - **R7 Refactor of `runIdenticalSlotCase` breaks Task 4.** The three helpers are moved verbatim;
   the Task 4 spec runs in the verification gate; unit tests unchanged.
+
+- **R8 Candidate finding: a redacted db 400 on one leg of a pair (no ID yet).** The first CI run
+  (run 39441132613, PR #14) showed trials t1 and t3 (same-start shape) with one 200 and one redacted
+  400 (`trace_b6rlqi9eSw5rKsPNGjTz8`, `trace_HnUqLE88Hj83EBQMegDfG`). It did not reproduce in about
+  225 local pair trials (CI order, CPU load, fresh database, throttled Postgres), so the Prisma
+  code and constraint are unknown: they are only in Cal's server log, which that run did not
+  upload. The `cal-smoke` job now uploads that log (`cal-web-log`, `if: always()`). When a run
+  shows `refusedTraceIds`, grep the log for the traceId, record the Prisma code and target here,
+  and only then decide whether it is a new finding (for example a write conflict or deadlock
+  surfaced as a 400) and give it an ID.
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
@@ -925,7 +935,9 @@ describe("overlap SQL", () => {
 - both 200, both uids in window, 2 DB rows, spread 1 → `checkOverlapPairGuards` `[]` (the race bug
   is not a guard violation).
 - 200 + 409 slot-taken, 1 DB row → `[]`; 200 + 409 `booking_conflict_error` → `[]`.
-- 200 + 400 redacted → one `TEST BUG` containing `idempotency key collided`.
+- 200 + 400 redacted → `[]` (a refused leg); 400 redacted + 400 redacted → `PRODUCT BUG` `no booking accepted`;
+  200 + 400 with another message → `TEST BUG` `unexpected loser`. `classifyOverlapLoser` and `refusedLegs`
+  (traceId from the summary, `unknown` if absent) have their own tests.
 - 200 + 422 → `TEST BUG` `unexpected loser`; 200 + 429 → `ENV`.
 - 500 + 200 → `PRODUCT BUG` and `500`; `null` → `PRODUCT BUG` and `error`.
 - 409 + 409 (no winner), 0 rows → `PRODUCT BUG` `no booking accepted`.

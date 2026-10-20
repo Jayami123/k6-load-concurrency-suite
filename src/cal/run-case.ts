@@ -21,8 +21,11 @@ import {
   checkIdenticalSlotInvariants,
   checkOverlapPairGuards,
   classifyLoser,
+  classifyOverlapLoser,
   doubleBookSummary,
   overlapViolations,
+  refusedLegs,
+  type OverlapLoserKind,
   type LoserKind,
   type ParsedResponse,
 } from "./invariants.ts";
@@ -331,10 +334,11 @@ export async function runOverlapPairCase(input: {
   const cleanupViolations: string[] = [];
   const guardViolations: string[] = [];
   const pairsByTrial: number[] = Array.from({ length: input.trials }, () => 0);
-  const loserTotals: Record<LoserKind, number> = {
+  const refusedTraceIds: string[] = [];
+  const loserTotals: Record<OverlapLoserKind, number> = {
     "slot-taken": 0,
     "booking-conflict": 0,
-    "db-unique-redacted": 0,
+    "refused-db-error": 0,
     unexpected: 0,
   };
   const outcomes = { both: 0, "60_only": 0, "30_only": 0, none: 0 };
@@ -445,17 +449,19 @@ export async function runOverlapPairCase(input: {
         }
         const product = overlapViolations(pairs);
 
-        const kinds = {
+        const kinds: Record<OverlapLoserKind, number> = {
           "slot-taken": 0,
           "booking-conflict": 0,
-          "db-unique-redacted": 0,
+          "refused-db-error": 0,
           unexpected: 0,
         };
         for (const r of responses) {
           if (r.status === null || (r.status >= 200 && r.status < 300)) continue;
-          kinds[classifyLoser(r.status, r.message)] += 1;
+          kinds[classifyOverlapLoser(r.status, r.message)] += 1;
         }
-        for (const k of LOSER_KINDS) loserTotals[k] += kinds[k];
+        for (const k of Object.keys(kinds) as OverlapLoserKind[]) loserTotals[k] += kinds[k];
+        const refused = refusedLegs(responses).map((l) => l.traceId);
+        refusedTraceIds.push(...refused.map((id) => `t${trial}:${id}`));
 
         const winners = winnerRoles.includes("60")
           ? winnerRoles.includes("30")
@@ -484,8 +490,9 @@ export async function runOverlapPairCase(input: {
           winners,
           "loser_slot-taken": kinds["slot-taken"],
           "loser_booking-conflict": kinds["booking-conflict"],
-          "loser_db-unique-redacted": kinds["db-unique-redacted"],
+          "loser_refused-db-error": kinds["refused-db-error"],
           loser_unexpected: kinds.unexpected,
+          refusedTraceIds: refused.join(","),
         };
 
         guardViolations.push(...guards.map((g) => `t${trial}: ${g}`));
@@ -527,8 +534,9 @@ export async function runOverlapPairCase(input: {
       outcome_none: outcomes.none,
       "loser_slot-taken": loserTotals["slot-taken"],
       "loser_booking-conflict": loserTotals["booking-conflict"],
-      "loser_db-unique-redacted": loserTotals["db-unique-redacted"],
+      "loser_refused-db-error": loserTotals["refused-db-error"],
       loser_unexpected: loserTotals.unexpected,
+      refusedTraceIds: refusedTraceIds.join(","),
       leakAccepted,
     };
     histogram.invariantViolations.push(...cleanupViolations, ...swept.leak);

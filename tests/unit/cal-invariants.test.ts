@@ -7,9 +7,11 @@ import {
   checkIdenticalSlotInvariants,
   checkOverlapPairGuards,
   classifyLoser,
+  classifyOverlapLoser,
   doubleBookSummary,
   nonConflictLosers,
   overlapViolations,
+  refusedLegs,
   type AcceptedRow,
   type ParsedResponse,
 } from "../../src/cal/invariants.ts";
@@ -179,10 +181,19 @@ describe("checkOverlapPairGuards", () => {
     assert.deepEqual(guards([win("u1"), lose(409, LOSER_BOOKING_CONFLICT)], [slotRow("u1")]), []);
   });
 
-  it("a redacted 400 means identical windows (TEST BUG)", () => {
-    const v = guards([win("u1"), redacted()], [slotRow("u1")]);
-    assert.equal(v.length, 1);
-    assert.match(v[0]!, /TEST BUG.*idempotency key collided/);
+  it("a redacted db 400 on one leg is a refused leg, not a guard violation", () => {
+    assert.deepEqual(guards([win("u1"), redacted()], [slotRow("u1")]), []);
+    assert.deepEqual(guards([redacted(), win("u1")], [slotRow("u1")]), []);
+  });
+
+  it("two refused legs still mean no booking was accepted", () => {
+    const v = guards([redacted(), redacted()], []);
+    assert.ok(v.some((x) => /PRODUCT BUG.*no booking accepted/.test(x)));
+  });
+
+  it("a 400 with another message is still an unexpected loser", () => {
+    const v = guards([win("u1"), lose(400, "Bad Request")], [slotRow("u1")]);
+    assert.ok(v.some((x) => /TEST BUG.*unexpected loser/.test(x)));
   });
 
   it("flags a 422 as TEST BUG and a 429 as ENV", () => {
@@ -282,5 +293,38 @@ describe("overlapViolations", () => {
     assert.match(v[0]!, /PRODUCT BUG.*1 overlapping/);
     assert.match(v[0]!, /ua/);
     assert.match(v[0]!, /ub/);
+  });
+});
+
+describe("classifyOverlapLoser", () => {
+  it("keeps the 409 kinds and calls a redacted db 400 a refused leg", () => {
+    assert.equal(classifyOverlapLoser(409, LOSER_SLOT_TAKEN), "slot-taken");
+    assert.equal(classifyOverlapLoser(409, LOSER_BOOKING_CONFLICT), "booking-conflict");
+    assert.equal(classifyOverlapLoser(400, LOSER_DB_REDACTED), "refused-db-error");
+  });
+
+  it("everything else is unexpected", () => {
+    assert.equal(classifyOverlapLoser(400, "other"), "unexpected");
+    assert.equal(classifyOverlapLoser(409, "other"), "unexpected");
+    assert.equal(classifyOverlapLoser(422, LOSER_DB_REDACTED), "unexpected");
+    assert.equal(classifyOverlapLoser(null, null), "unexpected");
+  });
+});
+
+describe("refusedLegs", () => {
+  it("lists redacted db 400s with their traceId and skips winners and 409s", () => {
+    const refused: ParsedResponse = {
+      status: 400,
+      uid: null,
+      bodyStatus: null,
+      message: LOSER_DB_REDACTED,
+      summary: `400: {"message":"${LOSER_DB_REDACTED}","data":{"traceId":"trace_abc-1"}}`,
+    };
+    assert.deepEqual(refusedLegs([win("u1"), refused, taken()]), [{ traceId: "trace_abc-1" }]);
+    assert.deepEqual(refusedLegs([win("u1"), taken()]), []);
+  });
+
+  it("falls back to unknown when the summary has no traceId", () => {
+    assert.deepEqual(refusedLegs([redacted()]), [{ traceId: "unknown" }]);
   });
 });
