@@ -372,6 +372,26 @@ jobs:
           echo "### P6-CAL-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
           npm run race:cal -- tests/cal/races/cal-race-001-identical-slot.spec.ts
 
+      - name: Race P6-CAL-RACE-003 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 4 trials ≈ 30–45 s on CI.
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+        env:
+          # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          RACE_MAX_SPREAD_MS: "20"
+        run: |
+          set -euo pipefail
+          echo "### P6-CAL-RACE-003 trials: $(( RACE_TRIALS < 30 ? RACE_TRIALS : 30 ))" >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts || status=$?
+          # D16: show double-booked vs clean trials even when the step passes through test.fail().
+          if [ -f results/races/P6-CAL-RACE-003.json ]; then
+            node -e 'const o=require("./results/races/P6-CAL-RACE-003.json").oracle;console.log(`P6-OBS-CAL-002 double-booked trials: ${o.trialsDoubleBooked}, clean: ${o.trialsClean}, pairs by trial: ${o.doubleBookedByTrial}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
         with:
@@ -385,6 +405,16 @@ jobs:
         with:
           name: cal-harness-log
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Cal's web server log (the harness writes it under its package dir): it holds the Prisma code
+      # behind every redacted 400, found by the traceId in the response body.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: cal-web-log
+          path: ${{ env.P6_WORKING_DIRECTORY }}/node_modules/qa-portfolio-harness/.harness/cal-web.log
           if-no-files-found: warn
           retention-days: 14
 

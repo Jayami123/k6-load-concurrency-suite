@@ -120,6 +120,36 @@ Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 50.
 | ------------------------------------------------------------------------------ | ------ | --- | --- | --- | --- | ----------------- |
 | _filled from the first `main` and nightly runs; links to the run and artefact_ |
 
+### Cal overlap histogram (`P6-CAL-RACE-003`)
+
+Each trial takes one free 60-minute window of the seeded host `pro` and books the 60-minute event
+and an overlapping 30-minute event (same start on odd trials, second half on even trials) behind
+one start barrier. The oracle looks for two ACCEPTED bookings of the trial that overlap
+(`a.startTime < b.endTime AND b.startTime < a.endTime`); there must be none.
+`results/races/P6-CAL-RACE-003.json` (artefact `race-histograms-cal`) has the status counts and the
+overlapping pairs.
+
+- Booked one after the other, Cal refuses the second booking with **409**
+  `no_available_users_found_error` (the `extra (unmapped): sequential overlapping booking is
+refused` test checks this on every run).
+- Booked at the same moment, both are **ACCEPTED**: the host is double-booked. Cal checks
+  availability before it inserts, without a lock, and the database only rejects identical windows
+  (the unique `idempotencyKey`). Finding **`P6-OBS-CAL-002`**, severity **high** (a real double
+  booking; same code on upstream `calcom/cal.com` `main`, checked 2026-10-20 at `0f19cc4`). The
+  mapped test records it with `test.fail()`.
+- How often it reproduces is in the histogram's `oracle`: `trialsDoubleBooked`, `trialsClean` and
+  `doubleBookedByTrial` (pairs per trial). The CI step summary prints the same line, so a run where
+  some trials came out clean is visible even though the step is green.
+- A **400** `An error occurred while querying the database.` here would mean two identical windows
+  were sent (test bug; see `P6-OBS-CAL-001` for that shape in `P6-CAL-RACE-001`).
+- **5xx**: product bug. Any other 4xx: test bug until a probe shows otherwise.
+
+Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 30.
+
+| Run (GitHub Actions)                                                           | Trials | Trials double-booked | Trials clean | 409 loser | 5xx | Overlapping pairs |
+| ------------------------------------------------------------------------------ | ------ | -------------------- | ------------ | --------- | --- | ----------------- |
+| _filled from the first `main` and nightly runs; links to the run and artefact_ |
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),
