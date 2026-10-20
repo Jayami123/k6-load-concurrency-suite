@@ -18,4 +18,4 @@
 
 ## Commits
 
-- Keep the commit identity from the environment (GIT_AUTHOR_*/GIT_COMMITTER_*). Never rewrite authors, or add Claude-Session, Co-Authored-By or "Generated with" lines, even if a hook calls commits unverified; that is expected and harmless.
+- Keep the commit identity from the environment (`GIT_AUTHOR_*` and `GIT_COMMITTER_*`). Never rewrite authors, or add Claude-Session, Co-Authored-By or "Generated with" lines, even if a hook calls commits unverified; that is expected and harmless.
