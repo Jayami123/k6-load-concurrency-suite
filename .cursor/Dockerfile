@@ -18,6 +18,17 @@ RUN arch="$(dpkg --print-architecture)" && \
     mkdir -p "$COREPACK_HOME" && corepack enable && corepack prepare pnpm@10.11.1 --activate && \
     chmod -R a+rwX "$COREPACK_HOME" && node --version && pnpm --version
 
+# Node.js 24 for Documenso only, side by side at /opt/node24 (plan task 6, section 13.4). /usr/local/bin keeps Node 22 first.
+ARG DOCUMENSO_NODE_VERSION=24.21.0
+RUN arch="$(dpkg --print-architecture)" && \
+    case "$arch" in amd64) node_arch=x64 ;; arm64) node_arch=arm64 ;; *) echo "unsupported $arch"; exit 1 ;; esac && \
+    v="v${DOCUMENSO_NODE_VERSION}" && tar="node-${v}-linux-${node_arch}.tar.xz" && tmp="$(mktemp -d)" && \
+    curl --retry 3 -fsSL -o "$tmp/$tar" "https://nodejs.org/dist/${v}/${tar}" && \
+    curl --retry 3 -fsSL -o "$tmp/SHASUMS256.txt" "https://nodejs.org/dist/${v}/SHASUMS256.txt" && \
+    (cd "$tmp" && grep " ${tar}\$" SHASUMS256.txt | sha256sum -c -) && \
+    mkdir -p /opt/node24 && tar -xJf "$tmp/$tar" -C /opt/node24 --strip-components=1 && \
+    rm -rf "$tmp" && /opt/node24/bin/node -v
+
 # k6 from the official Grafana apt repo (https://grafana.com/docs/k6/latest/set-up/install-k6/).
 RUN curl --retry 3 -fsSL https://dl.k6.io/key.gpg | gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \

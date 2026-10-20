@@ -9,12 +9,14 @@
 - Timings measured on this machine prove a test works. They are never published as performance
   numbers; those come only from GitHub Actions runs (median of at least 3).
 - Run `npm run check` before pushing.
+- Documenso needs Node 24; `npm run up:documenso` and `bootstrap.sh documenso` pick `/opt/node24` themselves. Keep `/usr/local/bin` first.
 - Cursor puts its own Node 22.14 first on PATH. Before any harness command, run
   `export PATH="/usr/local/bin:$PATH"` so Node 22.23 (needed by Medusa) is used.
 
 ## Claude Code cloud specific instructions
 
 - `.claude/hooks/session-start.sh` (cloud sessions only) starts Docker and puts `/usr/local/bin` (Node 22.23) first on PATH via `$CLAUDE_ENV_FILE`; the environment's setup script installs the tools.
+- Documenso needs Node 24; `npm run up:documenso` and `bootstrap.sh documenso` pick `/opt/node24` themselves. Keep `/usr/local/bin` first.
 
 ## Commits
 
