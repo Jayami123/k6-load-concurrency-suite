@@ -30,6 +30,11 @@ Source of truth: [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase1-roadmap.
   `P6-CAL-RACE-004`–`007` (later phases), the "rerun a trial on high spread" logic (Task 8).
 - Known finding reused, not re-reported: **`P6-OBS-CAL-001`** (production `redactError` turns
   the P2002 → 409 `booking_conflict_error` mapping into a generic 400). Task 4 plan §2.4.
+- New finding of this task: **`P6-OBS-CAL-002`**, severity **high** (confirmed by Jayami): two
+  overlapping windows of one host are both ACCEPTED under concurrency — a real double booking, not a
+  wrong status code. Availability is checked outside a transaction, with no lock and no exclusion
+  constraint; byte-identical on upstream `0f19cc4` (§2.5–2.6). Draft upstream issue: Appendix A.
+- Review answers (2026-10-20) applied: §19.
 - PATH before every harness command: `export PATH="/usr/local/bin:$PATH"` (AGENTS.md).
 - Probe status: done once on 2026-10-20 in a Claude Code cloud session (§2). Probe scripts lived only
   in the session scratchpad and imported the merged `src/cal/api.ts`, `src/cal/payloads.ts`,
@@ -202,7 +207,8 @@ The pair count was the same at t=+1 s in every trial (no async compensation).
 
 So the host is double-booked every time two overlapping, non-identical windows are requested at the
 same moment. Sequentially the same requests are refused (§2.3). That is the CAL02 premise ("bypass
-the unique key") confirmed: **PRODUCT BUG**, proposed finding ID **`P6-OBS-CAL-002`** (§19 Q1).
+the unique key") confirmed: **PRODUCT BUG**, finding **`P6-OBS-CAL-002`**, severity **high**
+(the host really is double-booked; compare `P6-OBS-CAL-001`, which is only a wrong status code).
 
 ### 2.6 Root cause (code; recorded, not fixed)
 
@@ -345,6 +351,14 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D15 CI = one new step in `cal-smoke`**, after the `P6-CAL-RACE-001` step, same `if`/env, own
   `timeout-minutes` (5 PR / 10 full); artefact upload unchanged (`results/races/` already uploaded
   as `race-histograms-cal`). `medusa-smoke` untouched.
+- **D16 Per-trial double-book counts are recorded, not only the pass/fail** (answer 3). The mapped
+  assertion stays "0 overlapping ACCEPTED pairs" (the product expectation). Next to it, the run
+  records each trial's pair count (`perTrial[].oracle.overlapPairs`, `doubleBooked`) and a summary
+  from a pure, unit-tested `doubleBookSummary` (`trialsDoubleBooked`, `trialsClean`,
+  `doubleBookedByTrial`). The summary also goes into the CI step summary and a Playwright
+  annotation `P6-OBS-CAL-002`, so a run with some clean trials is visible even though
+  `test.fail()` keeps the step green. Rejected: asserting "every trial double-books" (encodes the
+  bug as expected behaviour); only the boolean verdict (hides partial reproduction).
 
 ## 4. Goal and scope
 
@@ -385,7 +399,7 @@ not the race).
 | `src/cal/payloads.ts`                                   | edit   | `CAL_EVENT_SLUG_60`, `LONG_SLOT_MINUTES`; optional `eventTypeSlug` in `bookingBody`; `OverlapShape`, `OverlapLeg`, `overlapShapeForTrial`, `overlapLegs`, `windowsOverlap` |
 | `src/cal/api.ts`                                        | edit   | optional `eventTypeSlug` in `getFreeSlots`; optional `{ slug, minutes }` in `createSlotAllocator`                                                                          |
 | `src/cal/oracle.ts`                                     | edit   | optional `slug`, `length` in `resolveHostSetup`; `OVERLAP_PAIRS_SQL`, `WINDOW_ACCEPTED_SQL`, `OverlapPair`, `pairEvidence`, `readOverlapPairs`, `readWindowAccepted`       |
-| `src/cal/invariants.ts`                                 | edit   | `checkOverlapPairGuards`, `overlapViolations`                                                                                                                              |
+| `src/cal/invariants.ts`                                 | edit   | `checkOverlapPairGuards`, `overlapViolations`, `doubleBookSummary` (D16)                                                                                                   |
 | `src/cal/run-case.ts`                                   | edit   | private `makeCanceller`, `failedTrialRecords`, `sweepAndLeakCheck` (moved out of `runIdenticalSlotCase`); new `runOverlapPairCase`                                         |
 | `tests/cal/races/cal-race-003-overlap.spec.ts`          | new    | mapped test + extra                                                                                                                                                        |
 | `tests/unit/cal-payloads.test.ts`                       | edit   | new `describe` blocks                                                                                                                                                      |
@@ -435,11 +449,15 @@ Reuse `RaceHistogram` unchanged. `caseId: "P6-CAL-RACE-003"`,
 
 - `statusCounts`: status → count across trials (probe behaviour would give `{"200": 2 × trials}`).
 - Per-trial `oracle`: `windowStart`, `shape` (`same-start` | `inside`), `httpWinners`,
-  `windowAccepted`, `overlapPairs`, `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), and the four
-  `loser_*` counts (Task 4 kinds).
-- Histogram `oracle`: `hostUserId`, `eventTypeId30`, `eventTypeId60`, `overlapPairsTotal`,
-  `trialsWithOverlap`, `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four
-  `loser_*` totals, `leakAccepted`.
+  `windowAccepted`, `overlapPairs` (the trial's double-book count), `doubleBooked` (boolean,
+  `overlapPairs > 0`), `winners` (`"60+30"`, `"60"`, `"30"` or `"none"`), and the four `loser_*`
+  counts (Task 4 kinds).
+- Histogram `oracle` (D16): `hostUserId`, `eventTypeId30`, `eventTypeId60`, `overlapPairsTotal`,
+  `trialsDoubleBooked`, `trialsClean`, `doubleBookedByTrial` (per-trial pair counts in trial order,
+  comma-joined, e.g. `"1,1,0,1,1"`; a string because `RaceOracleValue` has no arrays),
+  `outcome_both`, `outcome_60_only`, `outcome_30_only`, `outcome_none`, the four `loser_*` totals,
+  `leakAccepted`. A slower runner with some clean trials therefore shows up as `trialsClean > 0`
+  and zeros in `doubleBookedByTrial`, not as a silent pass.
 - Per-trial `invariantViolations` carry `pairEvidence` text (ids, uids, event type ids, times). No
   emails, tokens, cookies or seed credentials.
 - `verdict`: `"pass"` only if guards, overlap, cleanup and leak are all clean. While the bug exists
@@ -665,6 +683,22 @@ export function overlapViolations(pairs: OverlapPair[]): string[] {
   if (pairs.length === 0) return [];
   return [`PRODUCT BUG: ${pairs.length} overlapping ACCEPTED pair(s): ${pairEvidence(pairs)}`];
 }
+
+/** D16: per-trial pair counts (index = trial - 1) → histogram oracle fields. */
+export function doubleBookSummary(pairsByTrial: number[]): {
+  trialsDoubleBooked: number;
+  trialsClean: number;
+  overlapPairsTotal: number;
+  doubleBookedByTrial: string;
+} {
+  const trialsDoubleBooked = pairsByTrial.filter((n) => n > 0).length;
+  return {
+    trialsDoubleBooked,
+    trialsClean: pairsByTrial.length - trialsDoubleBooked,
+    overlapPairsTotal: pairsByTrial.reduce((a, b) => a + b, 0),
+    doubleBookedByTrial: pairsByTrial.join(","),
+  };
+}
 ```
 
 (`isWinner` and `classifyLoser` already exist in this file.)
@@ -686,17 +720,17 @@ export function overlapViolations(pairs: OverlapPair[]): string[] {
 
 ## 11. Known-bug handling
 
-| Observation                                                           | Label                    | Action                                                                                                            |
-| --------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG**          | Proposed `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8).              |
-| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config** | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling. |
-| Loser 400 `An error occurred while querying the database.` in a pair  | **TEST BUG**             | Windows were identical (key collision). `P6-OBS-CAL-001` belongs to Task 4; not re-reported here.                 |
-| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser            | One booking won; fine.                                                                                            |
-| 5xx / network error                                                   | **PRODUCT BUG**          | Status + body summary with `traceId`.                                                                             |
-| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**          | Attach window rows.                                                                                               |
-| 429                                                                   | **ENV**                  | Limiter on (`UNKEY_ROOT_KEY`).                                                                                    |
-| Spread ≥ limit                                                        | **TEST BUG**             | Env only; no rerun logic (Task 8).                                                                                |
-| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**             | Paste ids/uids only.                                                                                              |
+| Observation                                                           | Label                    | Action                                                                                                                               |
+| --------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Both legs 200 ACCEPTED, 1 overlapping pair per trial                  | **PRODUCT BUG (high)**   | `P6-OBS-CAL-002`. 50/50 in the probe. Mapped test asserts 0 pairs after `test.fail()` (D8); per-trial counts in the histogram (D16). |
+| Sequential overlap ACCEPTED (extra fails)                             | **PRODUCT BUG / config** | Stop: the guard itself changed. Paste both responses and `pairEvidence`; review `test.fail()` before relabelling.                    |
+| Loser 400 `An error occurred while querying the database.` in a pair  | **TEST BUG**             | Windows were identical (key collision). `P6-OBS-CAL-001` belongs to Task 4; not re-reported here.                                    |
+| Loser 409 `no_available_users_found_error` / `booking_conflict_error` | allowed loser            | One booking won; fine.                                                                                                               |
+| 5xx / network error                                                   | **PRODUCT BUG**          | Status + body summary with `traceId`.                                                                                                |
+| 0 winners, or HTTP 2xx ≠ DB accepted                                  | **PRODUCT BUG**          | Attach window rows.                                                                                                                  |
+| 429                                                                   | **ENV**                  | Limiter on (`UNKEY_ROOT_KEY`).                                                                                                       |
+| Spread ≥ limit                                                        | **TEST BUG**             | Env only; no rerun logic (Task 8).                                                                                                   |
+| Seed check / allocator fails, leak ≠ 0, cancel fails                  | **TEST BUG**             | Paste ids/uids only.                                                                                                                 |
 
 `test.fail()` appears exactly once in this task, in the mapped test, after
 `expect(guardViolations).toEqual([])` and immediately before `expect(overlapPairs).toBe(0)`.
@@ -718,7 +752,13 @@ Add after `Race P6-CAL-RACE-001 (cal-race)` and before the `race-histograms-cal`
   run: |
     set -euo pipefail
     echo "### P6-CAL-RACE-003 trials: $(( RACE_TRIALS < 30 ? RACE_TRIALS : 30 ))" >> "$GITHUB_STEP_SUMMARY"
-    npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts
+    status=0
+    npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts || status=$?
+    # D16: show double-booked vs clean trials even when the step passes through test.fail().
+    if [ -f results/races/P6-CAL-RACE-003.json ]; then
+      node -e 'const o=require("./results/races/P6-CAL-RACE-003.json").oracle;console.log(`P6-OBS-CAL-002 double-booked trials: ${o.trialsDoubleBooked}, clean: ${o.trialsClean}, pairs by trial: ${o.doubleBookedByTrial}`)' >> "$GITHUB_STEP_SUMMARY"
+    fi
+    exit "$status"
 ```
 
 Nothing else changes: triggers, nightly schedule, concurrency group, artefact upload
@@ -729,8 +769,10 @@ timeout 60 min, `medusa-smoke`.
 
 - **R1 CI timing differs.** A slower runner may let the availability check of one leg see the other
   leg's insert → one 409 loser and 0 pairs in some trials. Then the mapped test still fails on the
-  trials that double-book (`test.fail()` holds). If **every** trial is clean on CI, the test turns red
-  ("expected to fail but passed"): report the rates; do not remove `test.fail()` on one run.
+  trials that double-book (`test.fail()` holds), and the clean trials are visible in
+  `trialsClean`, `doubleBookedByTrial`, the step summary and the test annotation (D16). If
+  **every** trial is clean on CI, the test turns red ("expected to fail but passed"): report the
+  rates; do not remove `test.fail()` on one run.
 - **R2 Product fix upstream.** Same as R1's all-clean case: remove `test.fail()` after two clean
   full runs and update README.
 - **R3 Seed drift.** `resolveHostSetup` for both slugs fails fast (D11).
@@ -891,6 +933,10 @@ describe("overlap SQL", () => {
 - winner uid not in rows → `PRODUCT BUG` `not an ACCEPTED row`.
 - spread 20 with limit 20 → `TEST BUG` `dispatchSpreadMs`.
 - 1 response with default 2 → `TEST BUG` `expected 2 responses`.
+- `doubleBookSummary([1, 1, 0, 1, 1])` →
+  `{ trialsDoubleBooked: 4, trialsClean: 1, overlapPairsTotal: 4, doubleBookedByTrial: "1,1,0,1,1" }`;
+  `doubleBookSummary([])` → `{ 0, 0, 0, "" }`; `doubleBookSummary([2, 0])` → 1 double-booked,
+  1 clean, 2 pairs, `"2,0"`.
 - `overlapViolations([])` → `[]`; one pair → one line with `PRODUCT BUG`, `1 overlapping` and both
   uids.
 
@@ -965,7 +1011,12 @@ export async function runOverlapPairCase(input: {
   title: string;
   mode: OverlapRunMode;
   trials: number;
-}): Promise<{ histogram: RaceHistogram; guardViolations: string[]; overlapPairs: number }>;
+}): Promise<{
+  histogram: RaceHistogram;
+  guardViolations: string[];
+  overlapPairs: number;
+  doubleBook: ReturnType<typeof doubleBookSummary>; // D16
+}>;
 ```
 
 Per trial:
@@ -984,13 +1035,19 @@ Sequential mode: call `createBooking`for the two legs one after the other and bu
    sequential mode also pushes `PRODUCT BUG: sequential overlap accepted` when both legs are 2xx.
    `product = overlapViolations(pairs)`.
 8. `recordTrial(trial, fired, () => { if (guards.length || product.length) throw new Error([...guards, ...product].join("; ")) })`;
-   fill per-trial `oracle` (§8); push guards prefixed `t${trial}: ` into `guardViolations`;
+   fill per-trial `oracle` (§8, including `overlapPairs: pairs.length` and
+   `doubleBooked: pairs.length > 0`); push guards prefixed `t${trial}: ` into `guardViolations`;
+   `pairsByTrial[trial - 1] = pairs.length` (array pre-filled with `0`, length `trials`);
    `overlapPairs += pairs.length`.
 9. `finally`: cancel every 2xx uid and every row of `caseLiveBookings(pool, trialPattern)`.
 
-After the loop: `failedTrialRecords`, `aggregateDispatchSpread`, `sweepAndLeakCheck`, histogram
-`oracle` (§8), push cleanup + leak into `histogram.invariantViolations` **and** `guardViolations`,
-`verdict = all trials ok && no violations ? "pass" : "fail"`.
+After the loop: `failedTrialRecords` (also push each failed trial's error, prefixed `t${trial}: `,
+into `guardViolations`, so a trial that died before its oracle can never hide behind
+`test.fail()`), `aggregateDispatchSpread`, `sweepAndLeakCheck`, histogram `oracle` (§8) with
+`...doubleBookSummary(pairsByTrial)` (D16), push cleanup + leak into
+`histogram.invariantViolations` **and** `guardViolations`,
+`verdict = all trials ok && no violations ? "pass" : "fail"`; return
+`{ histogram, guardViolations, overlapPairs, doubleBook: doubleBookSummary(pairsByTrial) }`.
 
 `npm run typecheck` exit 0; `npm run test:unit` unchanged count from Step 1. Commit 2.
 
@@ -1037,7 +1094,7 @@ test.describe("P6-CAL-RACE-003 Cal overlapping windows", () => {
   test.describe.configure({ timeout: 60_000 + trials * 10_000 });
 
   test(`P6-CAL-RACE-003 ${MAPPED_TITLE}`, async () => {
-    const { histogram, guardViolations, overlapPairs } = await runOverlapPairCase({
+    const { histogram, guardViolations, overlapPairs, doubleBook } = await runOverlapPairCase({
       pool,
       setup,
       windows,
@@ -1047,12 +1104,17 @@ test.describe("P6-CAL-RACE-003 Cal overlapping windows", () => {
       mode: "race",
       trials,
     });
+    // D16: partial reproduction stays visible in the report even when test.fail() keeps it green.
+    test.info().annotations.push({
+      type: "P6-OBS-CAL-002",
+      description: `double-booked ${doubleBook.trialsDoubleBooked}/${trials} trials, clean ${doubleBook.trialsClean}, pairs by trial ${doubleBook.doubleBookedByTrial}`,
+    });
     // Setup, HTTP contract, spread, cleanup and leak must hold before the product assertion.
     expect(guardViolations, guardViolations.join("; ")).toEqual([]);
     const raw = JSON.parse(await readFile("results/races/P6-CAL-RACE-003.json", "utf8"));
     expect(raw.trials).toBe(trials);
     expect(raw.concurrency).toBe(2);
-    // PRODUCT BUG (plan §2.5–2.6, P6-OBS-CAL-002): Cal checks availability outside the insert
+    // PRODUCT BUG, severity high (plan §2.5–2.6, P6-OBS-CAL-002): Cal checks availability outside the insert
     // transaction and only the idempotencyKey unique guards the DB, so a 60-min and an overlapping
     // 30-min booking sent together are both ACCEPTED. Reproduced 50/50 pairs on 2026-10-20.
     // Remove this line when Cal serialises overlapping bookings.
@@ -1095,14 +1157,14 @@ npx playwright test --list --project=cal-race   # 8 tests in 3 files (6 existing
 npm run typecheck                               # exit 0
 npm run up:cal                                  # exit 0
 RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts
-node -e 'const h=require("./results/races/P6-CAL-RACE-003.json");console.log(h.verdict,h.trials,h.statusCounts,h.oracle.overlapPairsTotal,h.oracle.trialsWithOverlap,h.oracle.leakAccepted)'
+node -e 'const h=require("./results/races/P6-CAL-RACE-003.json");console.log(h.verdict,h.trials,h.statusCounts,h.oracle.overlapPairsTotal,h.oracle.trialsDoubleBooked,h.oracle.trialsClean,h.oracle.doubleBookedByTrial,h.oracle.leakAccepted)'
 RACE_TRIALS=50 RACE_MAX_SPREAD_MS=20 npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts
 RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal   # whole project: Task 3 + 4 + 5 together
 npm run down:cal
 ```
 
 Expected: `2 passed` (the mapped test passes as an expected failure); histogram
-`fail 5 { '200': 10 } 5 5 0` (probe behaviour), then `fail 30 { '200': 60 } 30 30 0` with
+`fail 5 { '200': 10 } 5 5 0 1,1,1,1,1 0` (probe behaviour), then `fail 30 { '200': 60 } 30 30 0 1,…,1 0` with
 `RACE_TRIALS=50`; the whole project `8 passed`. If the mapped test reports
 "expected to fail but passed" in both runs, stop: the bug did not reproduce; report the histogram
 and do not commit the `test.fail()`. Commit 3.
@@ -1124,17 +1186,17 @@ Add §17 after "Cal identical-slot histogram". Commit 5. Push the branch; Jayami
 
 ## 15. Verification gate (paste real output)
 
-| Check                                                               | Must show                                                                                                    |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `npm run check`                                                     | Prettier OK, typecheck 0, `3 script(s) ok.`, `# fail 0`, tests = 98 + new                                    |
-| `npm run up:cal` (twice)                                            | exit 0; second `cal already running` or reused build                                                         |
-| `RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal -- …003…` × 2 | `2 passed`; `P6-CAL-RACE-003.json` `trials: 5`, `overlapPairsTotal` > 0, `leakAccepted: 0`                   |
-| `RACE_TRIALS=50 … -- …003…`                                         | `trials: 30` (cap), `2 passed`                                                                               |
-| `RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal`              | `8 passed` (Task 4 unaffected by the refactor)                                                               |
-| leak query `p6-qa-%`                                                | no `accepted`/`pending`                                                                                      |
-| `npm run down:cal`                                                  | exit 0; no listener on :3000; no `results/harness/cal.pgid`                                                  |
-| CI on the PR                                                        | `cal-smoke` green; new step 5 trials; `race-histograms-cal` has `P6-CAL-RACE-003.json`; `medusa-smoke` green |
-| CI on `main` / nightly                                              | new step 30 trials; job time recorded in the step summary                                                    |
+| Check                                                               | Must show                                                                                                                                                                                                            |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run check`                                                     | Prettier OK, typecheck 0, `3 script(s) ok.`, `# fail 0`, tests = 98 + new                                                                                                                                            |
+| `npm run up:cal` (twice)                                            | exit 0; second `cal already running` or reused build                                                                                                                                                                 |
+| `RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal -- …003…` × 2 | `2 passed`; `P6-CAL-RACE-003.json` `trials: 5`, `trialsDoubleBooked` + `trialsClean` = 5, `doubleBookedByTrial` has 5 entries, `overlapPairsTotal` > 0, `leakAccepted: 0`; annotation `P6-OBS-CAL-002` in the report |
+| `RACE_TRIALS=50 … -- …003…`                                         | `trials: 30` (cap), `2 passed`                                                                                                                                                                                       |
+| `RACE_TRIALS=5 RACE_MAX_SPREAD_MS=20 npm run race:cal`              | `8 passed` (Task 4 unaffected by the refactor)                                                                                                                                                                       |
+| leak query `p6-qa-%`                                                | no `accepted`/`pending`                                                                                                                                                                                              |
+| `npm run down:cal`                                                  | exit 0; no listener on :3000; no `results/harness/cal.pgid`                                                                                                                                                          |
+| CI on the PR                                                        | `cal-smoke` green; new step 5 trials; `race-histograms-cal` has `P6-CAL-RACE-003.json`; `medusa-smoke` green                                                                                                         |
+| CI on `main` / nightly                                              | new step 30 trials; job time recorded in the step summary                                                                                                                                                            |
 
 ## 16. Commit plan (Conventional, lowercase subjects, explicit paths, never `git add -A`)
 
@@ -1166,16 +1228,20 @@ overlapping pairs.
 refused` test checks this on every run).
 - Booked at the same moment, both are **ACCEPTED**: the host is double-booked. Cal checks
   availability before it inserts, without a lock, and the database only rejects identical windows
-  (the unique `idempotencyKey`). Finding **`P6-OBS-CAL-002`**; the mapped test records it with
-  `test.fail()`.
+  (the unique `idempotencyKey`). Finding **`P6-OBS-CAL-002`**, severity **high** (a real double
+  booking; same code on upstream `calcom/cal.com` `main`, checked 2026-10-20 at `0f19cc4`). The
+  mapped test records it with `test.fail()`.
+- How often it reproduces is in the histogram's `oracle`: `trialsDoubleBooked`, `trialsClean` and
+  `doubleBookedByTrial` (pairs per trial). The CI step summary prints the same line, so a run where
+  some trials came out clean is visible even though the step is green.
 - A **400** `An error occurred while querying the database.` here would mean two identical windows
   were sent (test bug; see `P6-OBS-CAL-001` for that shape in `P6-CAL-RACE-001`).
 - **5xx**: product bug. Any other 4xx: test bug until a probe shows otherwise.
 
 Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 30.
 
-| Run (GitHub Actions)                                                           | Trials | Both ACCEPTED | 409 loser | 5xx | Overlapping pairs |
-| ------------------------------------------------------------------------------ | ------ | ------------- | --------- | --- | ----------------- |
+| Run (GitHub Actions)                                                           | Trials | Trials double-booked | Trials clean | 409 loser | 5xx | Overlapping pairs |
+| ------------------------------------------------------------------------------ | ------ | -------------------- | ------------ | --------- | --- | ----------------- |
 | _filled from the first `main` and nightly runs; links to the run and artefact_ |
 ```
 
@@ -1193,16 +1259,94 @@ Only `main`/nightly GitHub Actions numbers go into that table, never this plan's
 - No published probe timings or counts in README
 - No `test.fail()` outside the mapped test; no retries, `workers` > 1, browsers or page objects
 
-## 19. Open questions for Jayami
+## 19. Answers from Jayami (2026-10-20)
 
-1. **Finding ID.** Use **`P6-OBS-CAL-002`** for the overlap double booking (next after
-   `P6-OBS-CAL-001`)?
-2. **Upstream issue.** The code path is identical on upstream `main` `0f19cc4` (§2.6). Want a draft
-   issue in the appendix, as Task 4 did, for you to file? (Not written yet; this is a concurrency
-   bug with no error-message angle, so the draft would be short.)
-3. **`test.fail()` scope.** The mapped test asserts 0 pairs across all trials. On a slower runner
-   some trials may come out clean (R1); `test.fail()` still holds while any trial double-books. OK, or
-   do you want a stricter "every trial double-books" expectation? (Recommended: keep 0 pairs, the
-   product expectation; a stricter one would encode the bug.)
+1. **Finding ID: `P6-OBS-CAL-002`, severity high.** Overlapping windows both ACCEPTED under
+   concurrency; availability checked outside a transaction, no lock, no exclusion constraint;
+   byte-identical on upstream `0f19cc4`. A real double booking, not a wrong status code. Applied in
+   Context, §2.5, §11, the spec comment (§14 Step 3) and README text (§17).
+2. **Upstream issue draft: yes**, Appendix A, same style as Task 4. Jayami files it; P6 does not.
+3. **Mapped assertion stays "0 overlapping ACCEPTED pairs"**, and per-trial double-book counts are
+   recorded (D16): `perTrial[].oracle.overlapPairs` / `doubleBooked`, histogram `trialsDoubleBooked`,
+   `trialsClean`, `doubleBookedByTrial`, the CI step summary line and a Playwright annotation.
 
-Probe is done. Building waits on approval of this plan.
+No open questions remain. Building waits on approval of this plan; the build branch is
+`feat/<build-date>-p6-cal-race-003` from `main` (§14 Step 0).
+
+## Appendix A. Draft upstream issue for `P6-OBS-CAL-002` (for Jayami to file; not filed by P6)
+
+Search `calcom/cal.com` issues for "double booking", "overlapping" and "race condition" first; if
+one exists, add this repro there instead.
+
+**Title:** Concurrent bookings of overlapping (non-identical) slots for the same host are both
+ACCEPTED (double booking)
+
+**Body:**
+
+> **Summary**
+>
+> When two bookings for the same host overlap but are not identical — for example a 60-minute event
+> at 09:00–10:00 and a 30-minute event at 09:00–09:30 or 09:30–10:00 — and both requests arrive at
+> the same time, Cal accepts both. The host ends up with two ACCEPTED bookings in the same time.
+> Sent one after the other, the second request is correctly refused with
+> `409 no_available_users_found_error`.
+>
+> **Version**
+>
+> - `calcom/cal.com` `main` at `0f19cc46ef6b6426ee398c670575b3c96be7af9e`. The files below are
+>   identical there and at `c2b7ac44c66f24ffef1662b276f0653988a609a3`, where it was reproduced.
+> - Production build (`next build` + `next start`), Postgres 18, rate limiting off
+>   (`UNKEY_ROOT_KEY` unset), default dev seed (`yarn db-seed`).
+>
+> **Steps to reproduce**
+>
+> 1. Seed the dev database. Use the seeded user `pro` and its event types `60min` (60 minutes) and
+>    `30min` (30 minutes); both have no buffers, no seats and no confirmation.
+> 2. Pick a free 60-minute slot from `GET /api/trpc/slots/getSchedule` for `60min`
+>    (e.g. `2026-11-30T09:00:00Z`).
+> 3. Send two requests to `POST /api/book/event` at the same instant (e.g. `Promise.all`), each with
+>    a different attendee email. Both use this body:
+>    `{"responses":{"name":"x","email":"<unique>@example.com","guests":[],"location":{"value":"integrations:daily","optionValue":""}},"user":"pro","timeZone":"UTC","language":"en","metadata":{},"hasHashedBookingLink":false}`
+>    plus these fields:
+>    - `60min`: `"start":"2026-11-30T09:00:00Z","end":"2026-11-30T10:00:00Z","eventTypeId":<60min id>,"eventTypeSlug":"60min"`
+>    - `30min`: `"start":"2026-11-30T09:00:00Z","end":"2026-11-30T09:30:00Z","eventTypeId":<30min id>,"eventTypeSlug":"30min"`
+> 4. Query the host's bookings:
+>    `SELECT a.id, b.id FROM "Booking" a JOIN "Booking" b ON b."userId" = a."userId" AND a.id < b.id AND a."startTime" < b."endTime" AND b."startTime" < a."endTime" WHERE a."userId" = <pro id> AND a.status = 'accepted' AND b.status = 'accepted';`
+>
+> **Expected**: one request returns 200 ACCEPTED; the other is refused
+> (`409 no_available_users_found_error`, as in the sequential case). The query returns no rows.
+>
+> **Actual** (50 of 50 attempts, both shapes — 30-minute at the same start and in the second half):
+> both requests return `200` with `"status":"ACCEPTED"`, and the query returns one overlapping
+> pair per attempt. The pair is still there after a second (no later compensation).
+>
+> **Cause**
+>
+> 1. `packages/features/bookings/lib/service/RegularBookingService.ts` checks availability through
+>    `ensureAvailableUsers` (`packages/features/bookings/lib/handleNewBooking/ensureAvailableUsers.ts`),
+>    a read of busy times outside any write transaction.
+> 2. `packages/features/bookings/lib/handleNewBooking/createBooking.ts` then inserts in
+>    `prisma.$transaction(async (tx) => tx.booking.create(…))` at the default isolation level, with
+>    no row lock and no advisory lock.
+> 3. The only database guard is the unique `idempotencyKey`
+>    (`packages/prisma/extensions/booking-idempotency-key.ts`,
+>    `uuidv5("<start>.<end>.<userId>")`). It stops two bookings with exactly the same start, end and
+>    user, but overlapping windows have different keys, so both inserts succeed.
+>
+> This is a check-then-act race: both requests see the host as free, then both insert.
+>
+> **Possible fixes** (any one closes it; the first is enforced by the database itself)
+>
+> 1. A Postgres exclusion constraint for ACCEPTED bookings of one host, e.g. with `btree_gist`:
+>    `ALTER TABLE "Booking" ADD CONSTRAINT booking_no_overlap EXCLUDE USING gist ("userId" WITH =, tsrange("startTime", "endTime", '[)') WITH &&) WHERE (status = 'accepted');`
+>    (seated events, buffers and multi-host/team events need their own handling), and map the
+>    resulting `23P01` exclusion violation to `409 booking_conflict_error`.
+> 2. Serialise bookings per host inside the booking transaction: take
+>    `pg_advisory_xact_lock(<host user id>)` (or `SELECT … FROM users WHERE id = $1 FOR UPDATE`),
+>    then re-check overlapping ACCEPTED bookings for that host in the same transaction before
+>    `booking.create`.
+>
+> Related: the same flow also returns a generic `400` instead of `409 booking_conflict_error` when
+> the `idempotencyKey` unique fires in production (`redactError`); that is a separate report.
+
+No secrets, tokens, seed credentials or `.env` values are in this draft.
