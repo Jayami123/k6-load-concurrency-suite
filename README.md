@@ -95,6 +95,31 @@ CI runs the same self-test (`RACE_TRIALS=3`) in the `cal-smoke` job and uploads
 `race-histograms-cal`. `scripts/harness.mjs` starts Cal in its own process group and stops that
 group on `down` (a temporary bridge until the harness does this itself).
 
+### Cal identical-slot histogram (`P6-CAL-RACE-001`)
+
+Each trial takes one free 30-minute slot of the seeded host `pro` and sends 20 identical
+`POST /api/book/event` requests behind one start barrier. The database must then hold exactly one
+`accepted` booking for that slot, and the single 2xx response's `uid` must be that booking.
+`results/races/P6-CAL-RACE-001.json` (artefact `race-histograms-cal`) counts every HTTP status
+across all trials (`P6-CAL-RACE-002`).
+
+- **409** `no_available_users_found_error`: the loser's availability check already saw the winner.
+- **400** `An error occurred while querying the database.`: the loser passed the availability check
+  and its insert hit the unique `idempotencyKey` (Postgres 23505, Prisma P2002). Cal means to
+  answer 409 `booking_conflict_error` here, but in production it redacts the Prisma error first, so
+  the conflict comes back as a generic 400. This is a product bug in the error contract; it does
+  not double-book. Finding **`P6-OBS-CAL-001`**: same code on upstream `calcom/cal.com` `main`
+  (checked 2026-10-20 at `0f19cc4`). The `extra (unmapped): concurrent losers get 409` test records
+  it with `test.fail()`.
+- **5xx** or a second accepted booking: **PRODUCT BUG**, never an allowed loser.
+- Any other 4xx: **TEST BUG** until a probe shows otherwise.
+
+Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 50.
+
+| Run (GitHub Actions)                                                           | Trials | 200 | 400 | 409 | 5xx | Accepted per slot |
+| ------------------------------------------------------------------------------ | ------ | --- | --- | --- | --- | ----------------- |
+| _filled from the first `main` and nightly runs; links to the run and artefact_ |
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),

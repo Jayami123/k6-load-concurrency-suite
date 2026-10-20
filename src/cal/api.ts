@@ -1,0 +1,111 @@
+import { calBaseUrlFromEnv } from "../races/env.ts";
+import {
+  CAL_EVENT_SLUG,
+  CAL_HOST_USERNAME,
+  SLOT_MINUTES,
+  pickFreeSlot,
+  slotEnd,
+} from "./payloads.ts";
+
+const DAY_MS = 86_400_000;
+const WINDOW_DAYS = 28;
+const MAX_WINDOWS = 6;
+const CSRF_COOKIE = "calcom.csrf_token";
+
+export async function getFreeSlots(
+  fromIso: string,
+  toIso: string,
+  eventTypeId: number,
+): Promise<string[]> {
+  const input = {
+    json: {
+      eventTypeId,
+      startTime: fromIso,
+      endTime: toIso,
+      timeZone: "UTC",
+      isTeamEvent: false,
+      usernameList: [CAL_HOST_USERNAME],
+      eventTypeSlug: CAL_EVENT_SLUG,
+      orgSlug: null,
+    },
+  };
+  const res = await fetch(
+    `${calBaseUrlFromEnv()}/api/trpc/slots/getSchedule?input=${encodeURIComponent(JSON.stringify(input))}`,
+  );
+  const text = await res.text();
+  if (res.status !== 200) {
+    throw new Error(`TEST BUG: getSchedule HTTP ${res.status} ${text.slice(0, 200)}`);
+  }
+  const slots = JSON.parse(text).result.data.json.slots as Record<string, Array<{ time: string }>>;
+  return Object.values(slots)
+    .flat()
+    .map((s) => s.time);
+}
+
+/** Never throws on an HTTP status; a network error propagates so fireTogether records null. */
+export async function createBooking(body: unknown): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${calBaseUrlFromEnv()}/api/book/event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.text() };
+}
+
+/** csrf cookie + token, then cancel. Throws `cancel <uid> HTTP <status>` unless 200. Never logs the token. */
+export async function cancelBooking(uid: string): Promise<void> {
+  const base = calBaseUrlFromEnv();
+  const csrfRes = await fetch(`${base}/api/csrf`);
+  const csrfText = await csrfRes.text();
+  if (csrfRes.status !== 200) throw new Error(`cancel ${uid} csrf HTTP ${csrfRes.status}`);
+  const csrfToken = (JSON.parse(csrfText) as { csrfToken?: string }).csrfToken;
+  const cookie = csrfRes.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0] ?? "")
+    .find((c) => c.startsWith(`${CSRF_COOKIE}=`));
+  if (!csrfToken || !cookie) throw new Error(`cancel ${uid} csrf cookie or token missing`);
+
+  const res = await fetch(`${base}/api/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({
+      uid,
+      cancellationReason: "p6 cleanup",
+      cancelledBy: "p6-qa@example.com",
+      csrfToken,
+    }),
+  });
+  await res.text();
+  if (res.status !== 200) throw new Error(`cancel ${uid} HTTP ${res.status}`);
+}
+
+/** One per spec file. next() = fresh getSchedule (28-day windows from UTC midnight today + 2 d, up to 6). */
+export function createSlotAllocator(eventTypeId: number): {
+  next(): Promise<{ start: string; end: string }>;
+} {
+  const used = new Set<string>();
+  return {
+    async next() {
+      const now = Date.now();
+      const firstFrom = Math.floor(now / DAY_MS) * DAY_MS + 2 * DAY_MS;
+      for (let w = 0; w < MAX_WINDOWS; w++) {
+        const from = firstFrom + w * WINDOW_DAYS * DAY_MS;
+        const to = from + WINDOW_DAYS * DAY_MS;
+        const slots = await getFreeSlots(
+          new Date(from).toISOString(),
+          new Date(to).toISOString(),
+          eventTypeId,
+        );
+        let start: string;
+        try {
+          start = pickFreeSlot(slots, used, from);
+        } catch {
+          continue;
+        }
+        used.add(start);
+        return { start, end: slotEnd(start, SLOT_MINUTES) };
+      }
+      throw new Error("TEST BUG: no free 30-min slot");
+    },
+  };
+}
