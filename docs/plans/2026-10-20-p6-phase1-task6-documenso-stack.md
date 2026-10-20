@@ -33,6 +33,8 @@ section "Task 6: Documenso stack in P6".
   only in the session scratchpad and imported the real `src/oracles/pg.ts`,
   `src/races/fire-together.ts` and `src/races/prefix.ts`. Nothing was written to the repo, harness
   or fork. Documenso was stopped with `harness.mjs down documenso` (twice, idempotent).
+- Review answers (2026-10-20) are applied; §20 lists them. Harness changes the answers defer are
+  collected in §21 (harness v0.3.0 follow-ups).
 
 ## 1. Header
 
@@ -247,14 +249,25 @@ request paths/procedure names. The plan still adds a guard step before upload (D
 
 ### 2.11 Findings to record (not fixed here)
 
-- **PRODUCT BUG candidate (low):** `POST /api/auth/email-password/authorize` answers a wrong
-  password (and a wrong CSRF token) with **500**. `AppError(InvalidCredentials)` is thrown without a
-  `statusCode`, and `auth.onError` uses `err.statusCode || 500` (`packages/auth/server/index.ts`).
-  Expected 401 (credentials) / 400 or 403 (CSRF). Not part of this task's self-test; proposed ID in
-  §20.
+- **`P6-OBS-DOC-001` — PRODUCT BUG, severity low (README only, no test in this task).**
+  `POST /api/auth/email-password/authorize` answers a wrong password (and a wrong CSRF token) with
+  **HTTP 500** `{"code":"INVALID_CREDENTIALS",…}` / `{"code":"INVALID_REQUEST",…}` instead of 401
+  (credentials) / 400 or 403 (CSRF). Reproduced sequentially and 20/20 in parallel (§2.4).
+  - Cause: in the `/authorize` handler (`packages/auth/server/routes/email-password.ts`) every error
+    is an `AppError` without `statusCode` — line 94 `InvalidRequest` (CSRF), lines 115 and 132
+    `InvalidCredentials`, line 156 `InvalidTwoFactorCode` — and `auth.onError`
+    (`packages/auth/server/index.ts`) returns `err.statusCode || 500`.
+  - **Cross-reference P1:** the same handler and the same root cause are already recorded in P1 as
+    [`P7-OBS-DOC-2FA-003`](https://github.com/Jayami123/playwright-e2e-ci-framework/blob/main/docs/observations/documenso-2fa-known-issues.md) (test `P1-DOC-2FA-004`: wrong TOTP on the same `/authorize` →
+    500 `INVALID_TWO_FACTOR_CODE`), at the same fork pin `f4105e47` (P1 `e2e.yml` `DOCUMENSO_REF`).
+    P1's `P7-OBS-DOC-2FA-004` (disable 2FA with a wrong code → 500) is the same `onError` default on
+    another route. `P6-OBS-DOC-001` adds the password and CSRF branches of that handler, which P1
+    does not cover; one upstream fix (give these `AppError`s a 4xx `statusCode`, or map
+    `AuthenticationErrorCode` to 4xx in `onError`) closes all three.
 - **Harness notes (record; do not fix here):** H1 the Inbucket image is unpinned (`latest`); H2
   Documenso needs Node 24 while Medusa/Cal run on 22.23 in the same VM; H3 `authenticate()` still
-  asks for a pasted `DOCUMENSO_API_TOKEN` — §2.3 is the scripted alternative the harness could adopt.
+  asks for a pasted `DOCUMENSO_API_TOKEN` — §2.3 is the scripted alternative. H1 and H3 are harness
+  v0.3.0 follow-ups (§21); H2 is handled in P6 by D1.
 
 ## 3. Resolved decisions
 
@@ -265,8 +278,9 @@ Lead with the industry-standard approach, then the alternative and its tradeoff.
   runs Documenso under Node 24: if the current Node is ≥ 24 it runs as today; else, if
   `${DOCUMENSO_NODE_HOME:-/opt/node24}/bin/node` exists, it spawns `up.mjs`/`down.mjs` with that
   binary and that `bin` dir first on the child's `PATH`; else it exits 1 with an `ENV:` line.
-  `bootstrap.sh documenso` uses the same rule for `npm ci`. CI's `documenso-smoke` job simply uses
-  `setup-node` 24.21.0. Standard: a pinned toolchain per product, like `nvm use` in a monorepo.
+  `bootstrap.sh documenso` uses the same rule for `npm ci`. In CI, only the `documenso-smoke` job
+  runs `actions/setup-node` with `node-version: "24.21.0"`; `medusa-smoke` and `cal-smoke` keep
+  `node-version-file: .nvmrc` (22) unchanged (confirmed, answer 2). Standard: a pinned toolchain per product, like `nvm use` in a monorepo.
   Rejected: Node 24 for everything (Medusa/Cal are proven on 22.23 only); asking the operator to
   `export PATH` (easy to forget, and AGENTS.md says the opposite).
 - **D2 Test-environment switches through env, not the fork.** `DANGEROUS_BYPASS_RATE_LIMITS=true`
@@ -286,6 +300,7 @@ Lead with the industry-standard approach, then the alternative and its tradeoff.
   hostname for a local service plus an explicit SSRF allowlist entry, instead of turning SSRF
   protection off. Rejected: `lvh.me`/`nip.io` (third-party DNS; does not resolve here); a public
   tunnel (network dependency, exposes the runner); a Docker-network receiver (more moving parts).
+  Confirmed (answer 3): the allowlist holds exactly one host, `p6-webhook.test`.
 - **D5 Email capture = Inbucket HTTP API** at `INBUCKET_BASE_URL` (default
   `http://127.0.0.1:9003`). Count by unique recipient address (mailbox) and, for document emails, by
   `X-Documenso-Envelope-Id`. Purge each used mailbox in cleanup. Rejected: subject matching
@@ -302,7 +317,8 @@ Lead with the industry-standard approach, then the alternative and its tradeoff.
   PDF per run); `/signin` as the burst URL (215 ms vs 16 ms, no extra signal).
 - **D8 Reusable account module.** `src/documenso/account.ts` imports only `node:crypto`,
   `src/documenso/inbucket.ts` and `fetch`, so P2 Task 4 can copy it unchanged (or import it if P6 is
-  published as a dependency later). Long term the harness should adopt it in `authenticate()` (H3).
+  published as a dependency later). Decided (answer 6): P2 Task 4 **copies** `account.ts` and
+  `inbucket.ts`; moving the flow into the harness `authenticate()` is a v0.3.0 follow-up (§21).
 - **D9 Env getters in `src/documenso/env.ts`** (roadmap names it), not in `src/races/env.ts`. Defaults
   are the harness defaults (`127.0.0.1` only). The DB URL resolves `P6_DOCUMENSO_DATABASE_URL` →
   `DOCUMENSO_DB_URL` → `postgres://documenso:password@127.0.0.1:5451/documenso` (the harness
@@ -319,6 +335,13 @@ Lead with the industry-standard approach, then the alternative and its tradeoff.
   `h0.2.11`, saved on `main` pushes only.
 - **D13 No `test.fail()`.** The self-test must be green; a red result is labelled PRODUCT / TEST / ENV
   with evidence (§11).
+- **D14 Inbucket `latest` is accepted; API drift is ENV** (answer 7). The client validates the
+  shapes recorded in §2.5 (`assertInbucketList`, `assertInbucketMessage`) and throws
+  `ENV: Inbucket API drift: …` when a field is missing or has another type, so a changed image never
+  reads as a missing email (PRODUCT BUG). Pinning the image by digest is a harness v0.3.0 follow-up
+  (§21).
+- **D15 Documenso is installed on demand** (answer 4): `bash scripts/bootstrap.sh documenso` once per
+  machine or session. Cursor's `install` stays Medusa-only.
 
 ## 4. Goal and scope
 
@@ -487,9 +510,10 @@ selects `token`, `password` or `secret` (unit-tested, D10).
 | Spread ≥ `RACE_MAX_SPREAD_MS`                                                 | **TEST BUG**                                                                | `dispatchSpreadMs`                                                      |
 | INSERT not 25006; leak ≠ 0; cleanup step failed                               | **TEST BUG**                                                                | SQLSTATE / counts / step                                                |
 | `up` exit 1, Node < 24, OOM, blocked host, Docker/disk                        | **ENV**                                                                     | last 40 lines of `documenso-web.log` and the step log                   |
+| `ENV: Inbucket API drift: …` (list/message shape differs from §2.5)           | **ENV**                                                                     | the drift message (field name + type), Inbucket image digest            |
 
-The 500-on-wrong-password finding (§2.11) is recorded in README and §20; the self-test does not log
-in with a password, so it does not hit it.
+`P6-OBS-DOC-001` (500 on a wrong password, §2.11) is recorded in README only; the self-test does not
+log in with a password, so it does not hit it.
 
 ## 12. CI (`.github/workflows/perf.yml`)
 
@@ -522,7 +546,7 @@ documenso-smoke:
     # 3 "Verify Documenso fork HEAD" (same shell as the Cal step, DOCUMENSO_* names)
     # 4 "Verify DOCUMENSO_REF matches bootstrap.sh":
     #   grep -q "^DOCUMENSO_REF=\"${DOCUMENSO_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"
-    # 5 actions/setup-node: node-version "24.21.0", cache npm,
+    # 5 actions/setup-node: node-version "24.21.0" (this job only; the other jobs keep .nvmrc), cache npm,
     #   cache-dependency-path: |
     #     p6/package-lock.json
     #     products/documenso/package-lock.json
@@ -633,8 +657,8 @@ grep -qE '^127\.0\.0\.1[[:space:]]+p6-webhook\.test$' /etc/hosts || echo '127.0.
   The hosts entry goes in `start`, not in the Dockerfile, because a container's `/etc/hosts` is
   rewritten at container start.
 - `.cursor/environment.json` `install`: unchanged (`npm ci && bash scripts/bootstrap.sh medusa`).
-  Documenso is installed on demand with `bash scripts/bootstrap.sh documenso` (2.2 GB, ~70 s); see
-  §20 Q4 to add it to `install`.
+  Documenso is installed on demand with `bash scripts/bootstrap.sh documenso` (2.2 GB, ~70 s;
+  decided, answer 4).
 - `AGENTS.md` (Cursor section): "Documenso needs Node 24; `npm run up:documenso` and
   `bootstrap.sh documenso` pick `/opt/node24` themselves. Keep `/usr/local/bin` first."
 
@@ -659,16 +683,44 @@ restricts network access, allow the §13.2 domains there.
 
 **Pasted into the environment settings** (cloud environment menu in the session title bar → Edit):
 
-1. **Setup script**: append the Node 24 snippet from §13.3 (it runs when each new session starts;
-   it is idempotent). Do not add `bootstrap.sh documenso` there unless §20 Q4 says so.
+1. **Setup script**: append this snippet **verbatim** (decided, answer 5). It runs when each new
+   session starts, is idempotent, verifies the tarball against `SHASUMS256.txt`, works as root or with
+   `sudo`, and never changes `PATH` (Node 22.23 stays first). On a failed download it prints one
+   `P6:` line and lets the rest of the setup continue; the Documenso commands then report `ENV:`.
+   Do not add `bootstrap.sh documenso` there (on demand, answer 4).
+
+   ```bash
+   # --- P6 Task 6: Node 24 for Documenso (side by side; /usr/local/bin keeps Node 22.23 first) ---
+   P6_NODE24_VERSION=v24.21.0
+   if [ "$(/opt/node24/bin/node -v 2>/dev/null)" != "$P6_NODE24_VERSION" ]; then
+     P6_SUDO=""; [ "$(id -u)" -eq 0 ] || P6_SUDO="sudo"
+     p6_tmp="$(mktemp -d)"
+     p6_tar="node-$P6_NODE24_VERSION-linux-x64.tar.xz"
+     curl -fsSL --retry 3 -o "$p6_tmp/$p6_tar" "https://nodejs.org/dist/$P6_NODE24_VERSION/$p6_tar" &&
+       curl -fsSL --retry 3 -o "$p6_tmp/SHASUMS256.txt" "https://nodejs.org/dist/$P6_NODE24_VERSION/SHASUMS256.txt" &&
+       (cd "$p6_tmp" && grep " $p6_tar\$" SHASUMS256.txt | sha256sum -c -) &&
+       $P6_SUDO rm -rf /opt/node24 &&
+       $P6_SUDO mkdir -p /opt/node24 &&
+       $P6_SUDO tar -xJf "$p6_tmp/$p6_tar" -C /opt/node24 --strip-components=1 ||
+       echo "P6: Node 24 install failed; Documenso commands will report ENV until it is fixed" >&2
+     rm -rf "$p6_tmp"
+   fi
+   /opt/node24/bin/node -v 2>/dev/null || echo "P6: /opt/node24/bin/node missing" >&2
+   ```
+
+   Tested in the probe session (2026-10-20), as root with no `/opt/node24`: first run
+   `node-v24.21.0-linux-x64.tar.xz: OK`, `v24.21.0`, 4.6 s; second run `v24.21.0`, 0.01 s (no
+   download); `/usr/local/bin/node -v` still `v22.23.3` and first on `PATH`.
+
 2. **Network access**: if the level is "Limited", add the §13.2 domains under Allowed domains, with
    "Allow package managers" left ticked. (This session reached all of them.)
 3. **Environment variables / secrets**: none.
 
 ## 14. Risks and unknowns
 
-- **R1 Unpinned Inbucket image** (H1): a new `latest` could change the API. The client checks list
-  shape in unit tests; a change shows up as ENV in the self-test. Harness backlog: pin by digest.
+- **R1 Unpinned Inbucket image** (H1): a new `latest` could change the API. Accepted (answer 7):
+  `assertInbucketList`/`assertInbucketMessage` turn a shape change into `ENV: Inbucket API drift`
+  (D14). Pin by digest in harness v0.3.0 (§21).
 - **R2 Node 24 drift**: Cursor/Claude images could ship a different Node 24; the pin is explicit
   (`v24.21.0` + SHA256).
 - **R3 Hosts entry missing** (fresh container, hook not run): self-test `beforeAll` fails as ENV with
@@ -929,6 +981,32 @@ export function verifyEmailToken(msg: Pick<InbucketMessage, "body">): string | n
   );
 }
 
+const drift = (what: string): never => {
+  throw new Error(`ENV: Inbucket API drift: ${what} (image is unpinned latest; plan D14)`);
+};
+
+/** Validates the list shape recorded in plan §2.5; anything else is ENV, never a missing email. */
+export function assertInbucketList(value: unknown): InbucketSummary[] {
+  if (!Array.isArray(value)) drift("list is not an array");
+  for (const item of value as Array<Record<string, unknown>>) {
+    if (typeof item?.id !== "string") drift("list item id is not a string");
+    if (typeof item.subject !== "string") drift("list item subject is not a string");
+    if (!Array.isArray(item.to)) drift("list item to is not an array");
+  }
+  return value as InbucketSummary[];
+}
+
+export function assertInbucketMessage(value: unknown): InbucketMessage {
+  const m = value as Record<string, unknown> | null;
+  if (typeof m?.id !== "string") drift("message id is not a string");
+  if (typeof m!.header !== "object" || m!.header === null) drift("message header is not an object");
+  const body = m!.body as Record<string, unknown> | undefined;
+  if (typeof body?.text !== "string" || typeof body.html !== "string") {
+    drift("message body.text/html is not a string");
+  }
+  return value as InbucketMessage;
+}
+
 export function createInbucketClient(baseUrl: string) {
   const url = (mailbox: string, id?: string) =>
     `${baseUrl}/api/v1/mailbox/${encodeURIComponent(mailbox)}${id ? `/${encodeURIComponent(id)}` : ""}`;
@@ -938,9 +1016,10 @@ export function createInbucketClient(baseUrl: string) {
     return JSON.parse(text) as T;
   };
   return {
-    list: async (mailbox: string) => json<InbucketSummary[]>(await fetch(url(mailbox)), "list"),
+    list: async (mailbox: string) =>
+      assertInbucketList(await json<unknown>(await fetch(url(mailbox)), "list")),
     get: async (mailbox: string, id: string) =>
-      json<InbucketMessage>(await fetch(url(mailbox, id)), "get"),
+      assertInbucketMessage(await json<unknown>(await fetch(url(mailbox, id)), "get")),
     purge: async (mailbox: string) => {
       const res = await fetch(url(mailbox), { method: "DELETE" });
       await res.text();
@@ -1054,7 +1133,10 @@ export async function startWebhookReceiver(opts: {
 `countForEnvelope` over three messages (two with `envelope_a`, one without) → 2;
 `verifyEmailToken` finds `abc_DEF-1` in text or html, `null` otherwise; the client against a
 `node:http` fake on `127.0.0.1:0` (`GET` list → array, `GET` message, `DELETE` → 200, `waitFor`
-returns after the 2nd poll when the fake adds a message; a 500 → `ENV:`).
+returns after the 2nd poll when the fake adds a message; a 500 → `ENV:`);
+`assertInbucketList` accepts the §2.5 sample and throws `ENV: Inbucket API drift` for `{}`, for an
+item without `id`, and for `to: "x"`; `assertInbucketMessage` throws the same for a missing
+`body.html` and accepts the §2.5 sample.
 
 `tests/unit/webhook-receiver.test.ts`: `parseDelivery` with matching / wrong / missing secret,
 non-JSON body (`body null`, `event null`); `startWebhookReceiver` with `publicHost`
@@ -1369,7 +1451,11 @@ before each commit lists only that commit's paths; nothing under `products/`; `.
   webhook; everything is deleted at the end.
 - Test environment: `DANGEROUS_BYPASS_RATE_LIMITS=true` and
   `NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS=p6-webhook.test` are set by `scripts/harness.mjs`.
-- Label table (§11), and the 500-on-wrong-password finding (§2.11) with its ID once Jayami confirms.
+- Label table (§11).
+- Known product finding **`P6-OBS-DOC-001`** (low): a wrong password or CSRF token on
+  `POST /api/auth/email-password/authorize` returns HTTP 500 instead of 4xx; same handler and root
+  cause as P1 `P7-OBS-DOC-2FA-003` (wrong TOTP → 500), linked to P1's
+  `docs/observations/documenso-2fa-known-issues.md`. README only, no test.
 - No timings.
 
 ## 19. Will NOT do
@@ -1383,26 +1469,33 @@ before each commit lists only that commit's paths; nothing under `products/`; `.
 - No committed secrets, `.env`, certs or anything under `products/`
 - No published timings; no `test.fail()`, retries, `workers` > 1, browsers or page objects
 
-## 20. Open questions for Jayami (each with a recommended answer)
+## 20. Answers from Jayami (2026-10-20)
 
-1. **Finding ID for "wrong password → HTTP 500".** Recommended: record it as **`P6-OBS-DOC-001`**
-   (severity low: wrong status class, no data impact), README only; no test in this task. Task 7
-   can add a contract check if you want one.
-2. **Node 24 selection.** Recommended: D1 as written (side-by-side `/opt/node24`, picked by
-   `harness.mjs`/`bootstrap.sh`, `DOCUMENSO_NODE_HOME` override). Alternative: switch the whole VM
-   to Node 24 after proving Medusa and Cal on it (more work, more risk).
-3. **Webhook host.** Recommended: `p6-webhook.test` via `/etc/hosts` + the single-host SSRF
-   allowlist (D4). Alternative: a public wildcard DNS name (does not resolve in Claude cloud).
-4. **Install Documenso in Cursor's `install` (snapshot)?** Recommended: **no** — keep `install` to
-   Medusa and run `bootstrap.sh documenso` on demand (2.2 GB, ~70 s, only Task 6/7 sessions need it).
-   Say yes if most Cursor sessions will work on Documenso.
-5. **Where Node 24 is installed in Claude cloud.** Recommended: the environment **setup script**
-   (pasted, §13.5), plus the repo hook's hint when it is missing. Alternative: the repo hook
-   installs it itself (automatic, but downloads ~30 MB at every session start).
-6. **P2 Task 4 reuse of the token flow.** Recommended: P2 copies `src/documenso/account.ts` +
-   `inbucket.ts` (no P6 imports beyond those) for now, and a later harness release moves the flow
-   into `authenticate()` (H3) so both repos depend on the harness instead.
-7. **Pin Inbucket.** Recommended: ask for a harness release that pins `inbucket/inbucket` by digest
-   (H1); until then P6 accepts `latest` and the self-test reports API drift as ENV.
+1. **Finding:** record **`P6-OBS-DOC-001`**, severity low, README only, no test. P1 checked first:
+   the same `/authorize` handler and root cause are P1 `P7-OBS-DOC-2FA-003` (wrong TOTP → 500);
+   cross-referenced in §2.11 and §18.
+2. **Node 24:** side by side at `/opt/node24` with the `DOCUMENSO_NODE_HOME` override (D1). In CI,
+   `actions/setup-node` with Node 24.21.0 is scoped to `documenso-smoke` only (§12 step 5).
+3. **Webhook host:** `p6-webhook.test` via `/etc/hosts` plus the single-host
+   `NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS=p6-webhook.test` (D2, D4).
+4. **Documenso install:** on demand with `bash scripts/bootstrap.sh documenso` (D15, §13.4).
+5. **Node 24 in Claude cloud:** from the environment setup script (snippet verbatim in §13.5,
+   tested); the session-start hook prints a hint when `/opt/node24/bin/node` is missing.
+6. **P2 Task 4:** copies `src/documenso/account.ts` and `src/documenso/inbucket.ts` (D8); the
+   harness `authenticate()` move is a v0.3.0 follow-up (§21).
+7. **Inbucket:** accept `latest`; the self-test labels API drift as ENV (D14, §11); digest pin is a
+   v0.3.0 follow-up (§21).
 
-Probe is done. Building waits on approval of this plan.
+No open questions remain. Building waits on approval of this plan; the build branch is
+`feat/2026-10-21-p6-documenso-stack` from `origin/main` (§15 Step 0).
+
+## 21. Follow-ups for qa-portfolio-harness v0.3.0 (not this task)
+
+1. **Move the per-run account and API-token flow into the Documenso adapter's `authenticate()`**
+   (replaces the `DOCUMENSO_API_TOKEN` TODO; §2.3 is the tested sequence). After the release, P6 and
+   P2 import it from the harness and delete their copies of `account.ts`/`inbucket.ts`.
+2. **Pin `inbucket/inbucket` by digest** in `docker/documenso.compose.yml` (probe digest
+   `sha256:48063d73…`, created 2026-10-10). After the release, `assertInbucketList` stays as a cheap
+   guard.
+3. (From Task 3, still open) Cal `up` returns when healthy, `down` stops the web, seed check uses
+   `users`, no seed credentials in logs.
