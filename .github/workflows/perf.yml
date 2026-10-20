@@ -160,6 +160,7 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           RACE_TRIALS: "3"
+          RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
           npm run race:medusa
@@ -348,6 +349,7 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           RACE_TRIALS: "3"
+          RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
           npm run race:cal
