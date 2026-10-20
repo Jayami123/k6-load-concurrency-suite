@@ -21,12 +21,15 @@ export type WebhookCallRow = {
   requestBody: unknown;
 };
 
+/** Waits for at least one row, then for a stable read. On timeout returns what was read (possibly []). */
 export async function readWebhookCalls(
   pool: pg.Pool,
   webhookId: string,
 ): Promise<WebhookCallRow[]> {
   return waitForStable(() => selectRows<WebhookCallRow>(pool, WEBHOOK_CALLS_SQL, [webhookId]), {
     timeoutMs: 15_000,
+    accept: (rows) => rows.length > 0,
+    returnOnTimeout: true,
   });
 }
 
