@@ -6,6 +6,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chooseDocumensoNode } from "./lib/documenso-node.mjs";
+import { ssrfBypassHostsDefault } from "./lib/documenso-test-env.mjs";
 
 const ACTIONS = ["up", "down"];
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,7 +31,7 @@ if (!process.env.MEDUSA_SKIP_STOREFRONT) {
 if (product === "documenso") {
   // Test environment (plan D2): limiters off, SSRF allowlist for the P6 webhook receiver.
   process.env.DANGEROUS_BYPASS_RATE_LIMITS ||= "true";
-  process.env.NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS ||= "p6-webhook.test";
+  process.env.NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS ||= ssrfBypassHostsDefault(process.env);
 }
 
 const script = path.join(
