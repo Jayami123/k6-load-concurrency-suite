@@ -707,7 +707,8 @@ export function doubleBookSummary(pairsByTrial: number[]): {
 
 - Run prefix `p6RunPrefix()` once per spec file. Case prefix `casePrefix(runPrefix, caseId)`
   (`src/medusa/payloads.ts`, reused as in Task 4). Trial pattern
-  `likeLiteralPrefix(\`${casePrefix}-t${trial}-\`)`— the trailing`-`keeps`t1-`from matching`t10-`. Attendees `attendeeEmail(casePrefix, \`t${trial}-r60\`)`and`…-r30`.
+  ``likeLiteralPrefix(`${casePrefix}-t${trial}-`)``. The trailing `-` keeps `t1-` from matching
+  `t10-`. Attendees ``attendeeEmail(casePrefix, `t${trial}-r60`)`` and `…-r30`.
 - One `createSlotAllocator(eventTypeId60, { slug: "60min", minutes: 60 })` per spec file, shared by
   both tests.
 - Per-trial `finally`: cancel every 2xx uid, then every row of `caseLiveBookings(pool, trialPattern)`.
@@ -1038,8 +1039,11 @@ Per trial:
    Sequential mode instead uses `trial % 4`: 1 → `same-start` order [60, 30]; 2 → `inside` [60, 30];
    3 → `same-start` [30, 60]; 0 → `inside` [30, 60].
 3. Throw `TEST BUG: legs do not overlap` unless `windowsOverlap(...)`.
-4. Race mode: `fireTogether(2, (i) => createBooking(bookingBody({ start: legs[i].start, end: legs[i].end, email: attendeeEmail(dataPrefix, \`t${trial}-r${legs[i].role}\`), name: \`p6 r${legs[i].role}\`, eventTypeId: legs[i].eventTypeId, eventTypeSlug: legs[i].eventTypeSlug })), { warm: GET /api/csrf })`.
-Sequential mode: call `createBooking`for the two legs one after the other and build`fired = { requests: [...], dispatchSpreadMs: 0 }`with`summariseBody`for each`bodySummary`(same`RaceRequestResult` fields).
+4. Race mode:
+   ``fireTogether(2, (i) => createBooking(bookingBody({ start: legs[i].start, end: legs[i].end, email: attendeeEmail(dataPrefix, `t${trial}-r${legs[i].role}`), name: `p6 r${legs[i].role}`, eventTypeId: legs[i].eventTypeId, eventTypeSlug: legs[i].eventTypeSlug })), { warm: GET /api/csrf })``.
+   Sequential mode: call `createBooking` for the two legs one after the other and build
+   `fired = { requests: [...], dispatchSpreadMs: 0 }` with `summariseBody` for each `bodySummary`
+   (same `RaceRequestResult` fields).
 5. `responses = parseBookingResponse(...)` per request.
 6. `windowAccepted = await readWindowAccepted(pool, userId, window.start, window.end, trialPattern)`;
    `pairs = await readOverlapPairs(pool, userId, trialPattern)`.
@@ -1048,12 +1052,12 @@ Sequential mode: call `createBooking`for the two legs one after the other and bu
    `product = overlapViolations(pairs)`.
 8. `recordTrial(trial, fired, () => { if (guards.length || product.length) throw new Error([...guards, ...product].join("; ")) })`;
    fill per-trial `oracle` (§8, including `overlapPairs: pairs.length` and
-   `doubleBooked: pairs.length > 0`); push guards prefixed `t${trial}: ` into `guardViolations`;
+   `doubleBooked: pairs.length > 0`); push each guard into `guardViolations` prefixed with `t<trial>:` and a space;
    `pairsByTrial[trial - 1] = pairs.length` (array pre-filled with `0`, length `trials`);
    `overlapPairs += pairs.length`.
 9. `finally`: cancel every 2xx uid and every row of `caseLiveBookings(pool, trialPattern)`.
 
-After the loop: `failedTrialRecords` (also push each failed trial's error, prefixed `t${trial}: `,
+After the loop: `failedTrialRecords` (also push each failed trial's error, prefixed with `t<trial>:` and a space,
 into `guardViolations`, so a trial that died before its oracle can never hide behind
 `test.fail()`), `aggregateDispatchSpread`, `sweepAndLeakCheck`, histogram `oracle` (§8) with
 `...doubleBookSummary(pairsByTrial)` (D16), push cleanup + leak into
