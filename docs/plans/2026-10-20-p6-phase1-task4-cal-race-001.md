@@ -34,6 +34,9 @@ P1–P9).
   `src/oracles/pg.ts` and `src/races/prefix.ts`. Nothing was written to the repo, harness or fork.
   Every probe booking was cancelled (leak query in §2.9 shows 0 accepted probe rows). Cal was
   stopped with `npm run down:cal` at the end.
+- Review answers (2026-10-20) are applied: §19 lists them. The 400-instead-of-409 finding has the
+  ID **`P6-OBS-CAL-001`** (an observation ID, not a test case ID); a draft upstream issue for
+  Jayami to file is in Appendix A.
 
 Master-plan names used as-is (roadmap "Remaining Phase 1 cases"):
 
@@ -181,7 +184,23 @@ So the **double-booking guard holds** (exactly one ACCEPTED row), but the **lose
 broken**: the product's own intended response is 409 `booking_conflict_error`; it returns a generic
 400 that hides the conflict. That is a PRODUCT BUG (wrong status for a client-retriable conflict),
 reproducible 1162/1162, production mode only. It is **not** a 5xx. It is recorded by the extra in
-§6.3 with `test.fail()`; it does not fail `P6-CAL-RACE-001`.
+§6.3 with `test.fail()`; it does not fail `P6-CAL-RACE-001`. Finding ID: **`P6-OBS-CAL-001`**.
+
+**Upstream check (2026-10-20).** `calcom/cal.com` `main` at
+**`0f19cc46ef6b6426ee398c670575b3c96be7af9e`** (from `git ls-remote`; files fetched from
+`raw.githubusercontent.com` at that SHA) was compared with the fork pin `c2b7ac4`. These five
+files are **byte-identical** (`diff -q`):
+
+| File                                                              | Role in the bug                                            |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| `packages/lib/redactError.ts`                                     | Replaces Prisma errors in production                       |
+| `packages/lib/server/getServerErrorFromUnknown.ts`                | Prisma error → `getHttpError(400)` → `redactError`         |
+| `packages/features/bookings/lib/service/RegularBookingService.ts` | `err.cause.code === "P2002"` → 409 check (lines 1821–1826) |
+| `packages/prisma/extensions/booking-idempotency-key.ts`           | Sets the unique `idempotencyKey`                           |
+| `packages/lib/constants.ts`                                       | `IS_PRODUCTION = CALCOM_ENV === "production"`              |
+
+So the bug is not fork-specific and is still present upstream. Appendix A holds a draft issue for
+Jayami to file; P6 does not file it and does not patch the fork.
 
 ### 2.5 Slot supply
 
@@ -237,6 +256,21 @@ Cancelled rows cannot be deleted through the API; they stay, isolated by attende
 | **trial total**                              | 1214 ms | 1938 ms |
 | 50 trials, back to back (without probe wait) | ≈ 61 s  |         |
 | `up:cal` cold (build + seed)                 | 343 s   |         |
+
+Client dispatch spread (`dispatchSpreadMs`, Node start times) against the helper default
+(`RACE_MAX_SPREAD_MS` unset = 5) and the CI value (`RACE_MAX_SPREAD_MS=20`, set on both race jobs
+since base commit `09d04fe`):
+
+| Run                    | Rounds | min ms | p50 ms | p90 ms | max ms | ≥ 5 ms (default) | ≥ 20 ms (CI) |
+| ---------------------- | ------ | ------ | ------ | ------ | ------ | ---------------- | ------------ |
+| distinct, first 5      | 5      | 1.73   | 2.57   | 2.96   | 7.59   | 1                | 0            |
+| distinct, 50 trials    | 50     | 0.96   | 1.47   | 2.74   | 5.87   | 3                | 0            |
+| same attendee          | 3      | 1.57   | 4.29   | 4.29   | 4.70   | 0                | 0            |
+| three spellings (N=21) | 3      | 3.33   | 4.15   | 4.15   | 4.49   | 0                | 0            |
+| **All**                | **61** | 0.96   | 1.60   | 4.29   | 7.59   | **4 (6.6 %)**    | **0**        |
+
+At the CI limit no round would have failed as `TEST BUG: dispatchSpreadMs`; at the default 5 ms,
+4 of 61 would. That is why local verification also sets `RACE_MAX_SPREAD_MS=20` (D8).
 
 ### 2.8 Rate limit and async effects
 
@@ -313,9 +347,10 @@ Lead with the industry-standard approach, then the rejected alternative.
   `runTrials` are unchanged. Rejected: a new `CAL_RACE_TRIALS` variable (one name is enough);
   running the self-test at 50 (it would not add evidence and its test timeout is 120 s).
 - **D8 Spread limit stays an env value.** CI already sets `RACE_MAX_SPREAD_MS: "20"` on the Cal
-  self-test (base commit `09d04fe`); the new step uses the same. The probe saw 3/50 trials ≥ 5 ms
-  and max 7.59 ms, never ≥ 20. Local verification also runs with `RACE_MAX_SPREAD_MS=20`. Rejected:
-  changing the helper default (Task 1 D5).
+  self-test (base commit `09d04fe`); the new step uses the same (**confirmed by Jayami, answer 4**).
+  The probe saw 4/61 rounds ≥ 5 ms, 0/61 ≥ 20 ms, max 7.59 ms (§2.7). Local verification also runs
+  with `RACE_MAX_SPREAD_MS=20`. Rejected: changing the helper default (Task 1 D5); tightening to
+  10 ms (Jayami kept 20).
 - **D9 Playwright timeout per describe = `60_000 + trials × 10_000` ms** (50 trials → 560 s).
   Probe max trial 1.94 s; 10 s per trial leaves room for a slower runner and cleanup. Rejected:
   raising the global 60 s timeout.
@@ -326,14 +361,15 @@ Lead with the industry-standard approach, then the rejected alternative.
   own pass/fail).
 - **D11 Setup asserted before the race.** `beforeAll` resolves host and event type from the DB
   (`users.username = 'pro'`, `"EventType".slug = '30min'` for that user) and asserts
-  `length = 30`, `seatsPerTimeSlot IS NULL`, `requiresConfirmation = false`, `periodType =
-'unlimited'`; any mismatch is `TEST BUG: seed changed`. Each trial asserts the chosen slot was in
+  `length = 30`, `seatsPerTimeSlot IS NULL`, `requiresConfirmation = false`,
+  `periodType = 'unlimited'`; any mismatch is `TEST BUG: seed changed`. Each trial asserts the chosen slot was in
   getSchedule (free) before firing.
 - **D12 Known product bug handling.** Only the loser-contract extra (§6.3) uses `test.fail()`,
   placed right after `expect(histogram.verdict).toBe("pass")` (setup and the main invariant pass
   first) and right before the strict 409 assertion. Evidence: 1162/1162 losers, three modes, log +
-  code path §2.4. If Cal fixes the mapping, that test turns red ("expected to fail but passed") and
-  the `test.fail()` line is removed. `P6-CAL-RACE-001` has no `test.fail()`.
+  code path §2.4 (finding `P6-OBS-CAL-001`; **kept as planned, answer 1**). If Cal fixes the
+  mapping, that test turns red ("expected to fail but passed") and the `test.fail()` line is
+  removed. `P6-CAL-RACE-001` has no `test.fail()`.
 - **D13 CI: nightly `schedule`, own concurrency group.** `schedule: cron "17 2 * * *"` (02:17 UTC,
   off the top of the hour). Concurrency group becomes
   `perf-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}`, so a nightly run never
@@ -647,17 +683,17 @@ export function nonConflictLosers(responses: ParsedResponse[]): ParsedResponse[]
 
 ## 11. Known-bug handling
 
-| Observation                                                                  | Label           | Action                                                                                       |
-| ---------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------- |
-| Losers 400 `An error occurred while querying the database.` (P2002 redacted) | **PRODUCT BUG** | Allowed loser in 001 (guard holds). Recorded by §6.3 with `test.fail()`. README explains it. |
-| ≥ 2 ACCEPTED rows for one slot                                               | **PRODUCT BUG** | Fail hard; rows attached via `rowEvidence`. Repeat ≥ 2 runs before any `test.fail()`.        |
-| Any 5xx or network error on the booking POST                                 | **PRODUCT BUG** | Fail hard; status + body summary with `traceId`; grep the web log for that trace id.         |
-| 0 ACCEPTED rows, or 2xx count ≠ 1, or uid mismatch                           | **PRODUCT BUG** | Fail hard with the rows and summaries.                                                       |
-| Unexpected 4xx (validation etc.)                                             | **TEST BUG**    | Fix payload/contract after reading the body; do not widen D4 without a probe.                |
-| 429                                                                          | **ENV**         | `UNKEY_ROOT_KEY` set or limiter on; fix the environment.                                     |
-| Spread ≥ limit                                                               | **TEST BUG**    | Barrier/runner noise; raise `RACE_MAX_SPREAD_MS` in env only.                                |
-| Seed check or getSchedule fails                                              | **TEST BUG**    | `seed changed` / no slot; report the rows.                                                   |
-| Leak check non-zero                                                          | **TEST BUG**    | Cleanup failed; paste the rows (ids/uids only).                                              |
+| Observation                                                                  | Label           | Action                                                                                                                                           |
+| ---------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Losers 400 `An error occurred while querying the database.` (P2002 redacted) | **PRODUCT BUG** | `P6-OBS-CAL-001`. Allowed loser in 001 (guard holds). Recorded by §6.3 with `test.fail()`. README explains it. Draft upstream issue: Appendix A. |
+| ≥ 2 ACCEPTED rows for one slot                                               | **PRODUCT BUG** | Fail hard; rows attached via `rowEvidence`. Repeat ≥ 2 runs before any `test.fail()`.                                                            |
+| Any 5xx or network error on the booking POST                                 | **PRODUCT BUG** | Fail hard; status + body summary with `traceId`; grep the web log for that trace id.                                                             |
+| 0 ACCEPTED rows, or 2xx count ≠ 1, or uid mismatch                           | **PRODUCT BUG** | Fail hard with the rows and summaries.                                                                                                           |
+| Unexpected 4xx (validation etc.)                                             | **TEST BUG**    | Fix payload/contract after reading the body; do not widen D4 without a probe.                                                                    |
+| 429                                                                          | **ENV**         | `UNKEY_ROOT_KEY` set or limiter on; fix the environment.                                                                                         |
+| Spread ≥ limit                                                               | **TEST BUG**    | Barrier/runner noise; raise `RACE_MAX_SPREAD_MS` in env only.                                                                                    |
+| Seed check or getSchedule fails                                              | **TEST BUG**    | `seed changed` / no slot; report the rows.                                                                                                       |
+| Leak check non-zero                                                          | **TEST BUG**    | Cleanup failed; paste the rows (ids/uids only).                                                                                                  |
 
 `test.fail()` appears exactly once, in the §6.3 extra, after the setup and invariant assertions,
 immediately before the strict loser assertion.
@@ -735,16 +771,34 @@ immediately before the strict loser assertion.
 Do not start until Jayami approves this plan and PR #12 is merged. Never `git add -A`. Never print
 secrets. Always finish with `npm run down:cal`.
 
-### Step 0. Branch
+### Step 0. Branch, products, baseline
+
+Build branch: **this branch, `feat/2026-10-20-p6-cal-race-001`** (recommended): plan and build land
+in one PR, the roadmap rule "one PR per task" that Task 2 followed (PR #8). Only the plan commits are
+replayed onto `main`, so the PR diff is just Task 4. If Jayami prefers a separate build branch, run
+the same rebase, then `git switch -c feat/<date>-p6-cal-race-001-build` and build there.
 
 ```bash
 export PATH="/usr/local/bin:$PATH"
 git fetch origin main feat/2026-10-20-p6-cal-race-001
 git switch feat/2026-10-20-p6-cal-race-001
-git rebase origin/main          # PR #12 merged; only this plan commit is replayed
+# PR #12 merged (any merge style): replay only the commits after the Task 3 base 09d04fe.
+git rebase --onto origin/main 09d04fed33cf88b6b0374f3f87ee293c1bb63aff
+git log --oneline origin/main..HEAD   # only the docs(plans) commits of this task
+git push --force-with-lease origin feat/2026-10-20-p6-cal-race-001   # own branch, plan-only history
 npm ci
-npm run check                   # # tests 67, # fail 0
+npm run check                         # # tests 67, # fail 0
+
+# Cal checkout: bootstrap ONCE per session, and only if the fork is not cloned yet.
+test -d "${PRODUCTS_ROOT:-/home/user/products}/cal/.git" || bash scripts/bootstrap.sh cal
+git status --short                    # empty: nothing under products/ ever enters this repo
 ```
+
+Rules for every later step: never rerun `bootstrap.sh cal` in the same session (it re-runs
+`yarn install`, about 3.5 min, and nothing changes); never `git add` anything under `products/`
+(the fork lives outside the repo at `PRODUCTS_ROOT`; if a path under `products/` ever shows in
+`git status`, stop and report). Before each commit, `git status --short` must list only the paths
+of that commit (§16).
 
 ### Step 1. Pure helpers + unit tests (no product)
 
@@ -1107,8 +1161,9 @@ across all trials (`P6-CAL-RACE-002`).
   and its insert hit the unique `idempotencyKey` (Postgres 23505, Prisma P2002). Cal means to
   answer 409 `booking_conflict_error` here, but in production it redacts the Prisma error first, so
   the conflict comes back as a generic 400. This is a product bug in the error contract; it does
-  not double-book. The `extra (unmapped): concurrent losers get 409` test records it with
-  `test.fail()`.
+  not double-book. Finding **`P6-OBS-CAL-001`**: same code on upstream `calcom/cal.com` `main`
+  (checked 2026-10-20 at `0f19cc4`). The `extra (unmapped): concurrent losers get 409` test records
+  it with `test.fail()`.
 - **5xx** or a second accepted booking: **PRODUCT BUG**, never an allowed loser.
 - Any other 4xx: **TEST BUG** until a probe shows otherwise.
 
@@ -1133,18 +1188,78 @@ plan's probe counts.
 - No published timings or probe counts in README
 - No `test.fail()` outside §6.3; no retries, `workers` > 1, browsers or page objects
 
-## 19. Open questions for Jayami
+## 19. Answers from Jayami (2026-10-20)
 
-1. **Loser contract extra with `test.fail()`.** The probe proves the 400-instead-of-409 bug
-   (1162/1162, code path traced). Keep §6.3 as an expected failure (recommended), or only
-   document it in README without a test?
-2. **Report upstream?** The redaction bug is in Cal itself (`redactError` +
-   `RegularBookingService` P2002 check). Should P6 file an issue on the fork or upstream, or only
-   record it here?
-3. **Nightly time.** `17 2 * * *` UTC runs both jobs nightly (≈ 15 runner-minutes). Fine, or
-   should the schedule run only `cal-smoke` (needs an `if` on `medusa-smoke`, which this plan
-   avoids)?
-4. **Spread limit.** CI uses 20 ms (base commit `09d04fe`). Keep 20 for the race step too, or use
-   10 now that the probe max is 7.59 ms?
+1. **Loser-contract extra: keep it with `test.fail()`** as planned (§6.3, D12).
+2. **Upstream: check, then draft.** Checked: `redactError`, `getServerErrorFromUnknown` and the
+   P2002 → 409 branch in `RegularBookingService.ts` are byte-identical on upstream `main`
+   `0f19cc4` (§2.4). A draft issue is in Appendix A for Jayami to file; P6 files nothing.
+   The finding is **`P6-OBS-CAL-001`** in the README section (§17).
+3. **Nightly runs both jobs**; `medusa-smoke` stays untouched (D13).
+4. **`RACE_MAX_SPREAD_MS=20`** for the new race step (D8); spread against 20 ms is in §2.7.
 
-Probe is done. Building waits on approval of this plan and the merge of PR #12.
+Also applied: §2.7 spread against both limits; §14 Step 0 bootstraps Cal once per session and
+never commits anything under `products/`.
+
+Building starts only after PR #12 merges: rebase this branch onto `main` (§14 Step 0), then build
+on it.
+
+## Appendix A. Draft upstream issue (for Jayami to file; not filed by P6)
+
+Search `calcom/cal.com` issues for `booking_conflict_error` and `redactError` first; if one exists,
+add the repro there instead.
+
+**Title:** Concurrent bookings of the same slot return 400 "An error occurred while querying the
+database." instead of 409 `booking_conflict_error` in production
+
+**Body:**
+
+> **Summary**
+>
+> When several clients book the same slot at the same time, exactly one booking is created (good:
+> the unique `Booking_idempotencyKey_key` prevents a double booking). The losers whose insert hits
+> that constraint should get `409 booking_conflict_error`, which `RegularBookingService` maps from
+> Prisma `P2002`. In production they get `400 {"message":"An error occurred while querying the
+database."}` instead, so clients cannot tell a slot conflict from a database failure.
+>
+> **Version**
+>
+> - `calcom/cal.com` `main` at `0f19cc46ef6b6426ee398c670575b3c96be7af9e` (the files below are
+>   identical there and at `c2b7ac44c66f24ffef1662b276f0653988a609a3`, where it was reproduced).
+> - Production build: `next build` + `next start` (`NODE_ENV=production`). Rate limiting off
+>   (`UNKEY_ROOT_KEY` unset). Postgres 18.
+>
+> **Steps to reproduce**
+>
+> 1. Seed the dev database (`yarn db-seed`); use user `pro`, event type `30min` (id 3).
+> 2. Pick a free slot from `GET /api/trpc/slots/getSchedule` (e.g. `2026-11-03T09:00:00Z`).
+> 3. Send 20 `POST /api/book/event` requests for that slot at the same instant, each with a
+>    different attendee email, body:
+>    `{"responses":{"name":"x","email":"<unique>@example.com","guests":[],"location":{"value":"integrations:daily","optionValue":""}},"user":"pro","start":"2026-11-03T09:00:00Z","end":"2026-11-03T09:30:00Z","eventTypeId":3,"eventTypeSlug":"30min","timeZone":"UTC","language":"en","metadata":{},"hasHashedBookingLink":false}`
+>
+> **Observed** (61 rounds, 1223 requests): every round 1 × `200` (`status: "ACCEPTED"`) and the rest
+> `400 {"message":"An error occurred while querying the database.","data":{"traceId":"…"}}`. The
+> server log shows `P2002` / `23505 duplicate key value violates unique constraint
+"Booking_idempotencyKey_key"` for each loser. Exactly one `accepted` row per slot.
+>
+> **Expected**: losers get `409 {"message":"booking_conflict_error"}` (or
+> `no_available_users_found_error`), as a sequential second booking already does.
+>
+> **Cause**
+>
+> 1. `packages/features/bookings/lib/service/RegularBookingService.ts` (around line 1819) calls
+>    `getServerErrorFromUnknown(_err)` and then checks `err.cause.code === "P2002"` to throw
+>    `HttpError(409, ErrorCode.BookingConflict)`.
+> 2. `packages/lib/server/getServerErrorFromUnknown.ts` → `getServerErrorFromPrismaError` →
+>    `getHttpError({ statusCode: 400, cause })`, which calls `redactError(cause)`.
+> 3. `packages/lib/redactError.ts` replaces any Prisma error with
+>    `new Error("An error occurred while querying the database.")` when `IS_PRODUCTION`, so
+>    `err.cause.code` is gone and the 409 branch never runs.
+>
+> Without redaction (non-production) the 409 branch should be reachable; this was not tested. In production it is never reached.
+>
+> **Possible fix**: check the original error's `code` (e.g. `isPrismaError(_err) && _err.code ===
+"P2002"`) before calling `getServerErrorFromUnknown`, or keep the Prisma `code` on the redacted
+> error.
+
+No secrets, tokens, seed credentials or `.env` values are in this draft.
