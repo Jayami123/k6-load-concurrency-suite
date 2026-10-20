@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { selectRows, waitForStable } from "../oracles/pg.ts";
+import { CAL_HOST_USERNAME } from "./payloads.ts";
 
 export const HOST_SETUP_SQL = `
 SELECT u.id AS "userId", e.id AS "eventTypeId", e.length, e."seatsPerTimeSlot",
@@ -48,8 +49,62 @@ export function rowEvidence(rows: SlotRow[]): string {
     .join(" | ");
 }
 
+export const OVERLAP_PAIRS_SQL = `
+SELECT a.id AS "aId", a.uid AS "aUid", a."eventTypeId" AS "aEventTypeId",
+  to_char(a."startTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "aStart",
+  to_char(a."endTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "aEnd",
+  b.id AS "bId", b.uid AS "bUid", b."eventTypeId" AS "bEventTypeId",
+  to_char(b."startTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "bStart",
+  to_char(b."endTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "bEnd"
+FROM "Booking" a
+JOIN "Booking" b ON b."userId" = a."userId" AND a.id < b.id
+  AND a."startTime" < b."endTime" AND b."startTime" < a."endTime"
+WHERE a."userId" = $1 AND a.status = 'accepted' AND b.status = 'accepted'
+  AND EXISTS (SELECT 1 FROM "Attendee" x WHERE x."bookingId" = a.id AND x.email LIKE $2)
+  AND EXISTS (SELECT 1 FROM "Attendee" y WHERE y."bookingId" = b.id AND y.email LIKE $2)
+ORDER BY a.id, b.id
+`;
+
+// Accepted bookings of a trial pattern that touch [from, to).
+export const WINDOW_ACCEPTED_SQL = `
+SELECT b.id, b.uid, b.status::text AS status,
+  to_char(b."startTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS start,
+  to_char(b."endTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "end"
+FROM "Booking" b
+WHERE b."userId" = $1 AND b.status = 'accepted'
+  AND b."startTime" < $3::timestamp AND b."endTime" > $2::timestamp
+  AND EXISTS (SELECT 1 FROM "Attendee" x WHERE x."bookingId" = b.id AND x.email LIKE $4)
+ORDER BY b.id
+`;
+
+export type OverlapPair = {
+  aId: number;
+  aUid: string;
+  aEventTypeId: number | null;
+  aStart: string;
+  aEnd: string;
+  bId: number;
+  bUid: string;
+  bEventTypeId: number | null;
+  bStart: string;
+  bEnd: string;
+};
+
+/** "1261/uid(et3 s..e) x 1262/uid(et4 s..e) | …" — ids, uids, event types and times only. */
+export function pairEvidence(pairs: OverlapPair[]): string {
+  return pairs
+    .map(
+      (p) =>
+        `${p.aId}/${p.aUid}(et${p.aEventTypeId} ${p.aStart}..${p.aEnd}) x ` +
+        `${p.bId}/${p.bUid}(et${p.bEventTypeId} ${p.bStart}..${p.bEnd})`,
+    )
+    .join(" | ");
+}
+
 export async function resolveHostSetup(
   pool: pg.Pool,
+  slug = "30min",
+  length = 30,
 ): Promise<{ userId: number; eventTypeId: number }> {
   const rows = await selectRows<{
     userId: number;
@@ -58,17 +113,17 @@ export async function resolveHostSetup(
     seatsPerTimeSlot: number | null;
     requiresConfirmation: boolean;
     periodType: string;
-  }>(pool, HOST_SETUP_SQL, ["pro", "30min"]);
+  }>(pool, HOST_SETUP_SQL, [CAL_HOST_USERNAME, slug]);
   const r = rows[0];
   if (
     rows.length !== 1 ||
     !r ||
-    r.length !== 30 ||
+    r.length !== length ||
     r.seatsPerTimeSlot !== null ||
     r.requiresConfirmation ||
     r.periodType !== "unlimited"
   ) {
-    throw new Error(`TEST BUG: seed changed: pro/30min ${JSON.stringify(rows)}`);
+    throw new Error(`TEST BUG: seed changed: pro/${slug} ${JSON.stringify(rows)}`);
   }
   return { userId: r.userId, eventTypeId: r.eventTypeId };
 }

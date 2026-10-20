@@ -1,4 +1,4 @@
-import { rowEvidence } from "./oracle.ts";
+import { pairEvidence, rowEvidence, type OverlapPair, type SlotRow } from "./oracle.ts";
 
 export const LOSER_SLOT_TAKEN = "no_available_users_found_error";
 export const LOSER_BOOKING_CONFLICT = "booking_conflict_error";
@@ -102,4 +102,74 @@ export function nonConflictLosers(responses: ParsedResponse[]): ParsedResponse[]
     const kind = classifyLoser(r.status, r.message);
     return kind !== "slot-taken" && kind !== "booking-conflict";
   });
+}
+
+/** Everything except the overlap itself (plan D7). Empty = setup and HTTP contract held. */
+export function checkOverlapPairGuards(input: {
+  responses: ParsedResponse[];
+  windowAccepted: SlotRow[];
+  dispatchSpreadMs: number;
+  spreadLimit: number;
+  expectedResponses?: number; // default 2
+}): string[] {
+  const out: string[] = [];
+  const n = input.expectedResponses ?? 2;
+  if (input.responses.length !== n) {
+    out.push(`TEST BUG: expected ${n} responses, got ${input.responses.length}`);
+  }
+  for (const r of input.responses) {
+    if (r.status === null || r.status >= 500) {
+      out.push(`PRODUCT BUG: HTTP ${r.status ?? "error"} ${r.summary}`);
+    } else if (r.status === 429) {
+      out.push("ENV: HTTP 429 rate limited (UNKEY_ROOT_KEY set?)");
+    } else if (!isWinner(r)) {
+      const kind = classifyLoser(r.status, r.message);
+      if (kind === "db-unique-redacted") {
+        out.push(
+          `TEST BUG: idempotency key collided in an overlap pair (identical windows?) ${r.summary}`,
+        );
+      } else if (kind === "unexpected") {
+        out.push(`TEST BUG: unexpected loser ${r.summary}`);
+      }
+    }
+  }
+  const winners = input.responses.filter(isWinner);
+  if (winners.length === 0) out.push("PRODUCT BUG: no booking accepted for a free window");
+  const dbUids = new Set(input.windowAccepted.map((r) => r.uid));
+  for (const w of winners) {
+    if (w.bodyStatus !== "ACCEPTED" || !w.uid || !dbUids.has(w.uid)) {
+      out.push(`PRODUCT BUG: HTTP winner uid ${w.uid} status ${w.bodyStatus} not an ACCEPTED row`);
+    }
+  }
+  if (winners.length !== input.windowAccepted.length) {
+    out.push(
+      `PRODUCT BUG: HTTP 2xx ${winners.length} != DB accepted ${input.windowAccepted.length} in window`,
+    );
+  }
+  if (input.dispatchSpreadMs >= input.spreadLimit) {
+    out.push(`TEST BUG: dispatchSpreadMs ${input.dispatchSpreadMs} >= ${input.spreadLimit}`);
+  }
+  return out;
+}
+
+/** [] or one PRODUCT BUG line with every pair attached (plan D6). */
+export function overlapViolations(pairs: OverlapPair[]): string[] {
+  if (pairs.length === 0) return [];
+  return [`PRODUCT BUG: ${pairs.length} overlapping ACCEPTED pair(s): ${pairEvidence(pairs)}`];
+}
+
+/** D16: per-trial pair counts (index = trial - 1) → histogram oracle fields. */
+export function doubleBookSummary(pairsByTrial: number[]): {
+  trialsDoubleBooked: number;
+  trialsClean: number;
+  overlapPairsTotal: number;
+  doubleBookedByTrial: string;
+} {
+  const trialsDoubleBooked = pairsByTrial.filter((n) => n > 0).length;
+  return {
+    trialsDoubleBooked,
+    trialsClean: pairsByTrial.length - trialsDoubleBooked,
+    overlapPairsTotal: pairsByTrial.reduce((a, b) => a + b, 0),
+    doubleBookedByTrial: pairsByTrial.join(","),
+  };
 }

@@ -5,11 +5,15 @@ import {
   LOSER_DB_REDACTED,
   LOSER_SLOT_TAKEN,
   checkIdenticalSlotInvariants,
+  checkOverlapPairGuards,
   classifyLoser,
+  doubleBookSummary,
   nonConflictLosers,
+  overlapViolations,
   type AcceptedRow,
   type ParsedResponse,
 } from "../../src/cal/invariants.ts";
+import type { SlotRow } from "../../src/cal/oracle.ts";
 
 const win = (uid = "u1"): ParsedResponse => ({
   status: 200,
@@ -141,5 +145,142 @@ describe("nonConflictLosers", () => {
   it("counts redacted losers, not 409s and not the winner", () => {
     const all = [win(), taken(), lose(409, LOSER_BOOKING_CONFLICT), redacted(), redacted()];
     assert.equal(nonConflictLosers(all).length, 2);
+  });
+});
+
+const slotRow = (uid: string): SlotRow => ({
+  id: 1,
+  uid,
+  status: "accepted",
+  start: "2026-11-30T09:00:00.000Z",
+  end: "2026-11-30T10:00:00.000Z",
+});
+
+function guards(
+  responses: ParsedResponse[],
+  rows: SlotRow[],
+  extra: { spread?: number; limit?: number } = {},
+): string[] {
+  return checkOverlapPairGuards({
+    responses,
+    windowAccepted: rows,
+    dispatchSpreadMs: extra.spread ?? 1,
+    spreadLimit: extra.limit ?? 20,
+  });
+}
+
+describe("checkOverlapPairGuards", () => {
+  it("accepts two winners that are both in the window (the race bug is not a guard)", () => {
+    assert.deepEqual(guards([win("u1"), win("u2")], [slotRow("u1"), slotRow("u2")]), []);
+  });
+
+  it("accepts one winner and an allowed 409 loser", () => {
+    assert.deepEqual(guards([win("u1"), taken()], [slotRow("u1")]), []);
+    assert.deepEqual(guards([win("u1"), lose(409, LOSER_BOOKING_CONFLICT)], [slotRow("u1")]), []);
+  });
+
+  it("a redacted 400 means identical windows (TEST BUG)", () => {
+    const v = guards([win("u1"), redacted()], [slotRow("u1")]);
+    assert.equal(v.length, 1);
+    assert.match(v[0]!, /TEST BUG.*idempotency key collided/);
+  });
+
+  it("flags a 422 as TEST BUG and a 429 as ENV", () => {
+    assert.ok(
+      guards([win("u1"), lose(422, "bad")], [slotRow("u1")]).some((x) =>
+        /TEST BUG.*unexpected loser/.test(x),
+      ),
+    );
+    assert.ok(
+      guards([win("u1"), lose(429, "slow")], [slotRow("u1")]).some((x) => x.startsWith("ENV")),
+    );
+  });
+
+  it("flags a 500 and a network error", () => {
+    const five = { ...lose(500, "boom"), summary: "500: boom" };
+    assert.ok(guards([five, win("u1")], [slotRow("u1")]).some((x) => /PRODUCT BUG.*500/.test(x)));
+    const net: ParsedResponse = {
+      status: null,
+      uid: null,
+      bodyStatus: null,
+      message: null,
+      summary: "error: x",
+    };
+    assert.ok(guards([net, win("u1")], [slotRow("u1")]).some((x) => /PRODUCT BUG.*error/.test(x)));
+  });
+
+  it("flags no winner", () => {
+    const v = guards([taken(), taken()], []);
+    assert.ok(v.some((x) => /PRODUCT BUG.*no booking accepted/.test(x)));
+  });
+
+  it("flags HTTP 2xx count != DB rows", () => {
+    const v = guards([win("u1"), win("u2")], [slotRow("u1")]);
+    assert.ok(v.some((x) => /PRODUCT BUG.*HTTP 2xx 2 != DB accepted 1/.test(x)));
+  });
+
+  it("flags a winner uid that is not in the rows", () => {
+    const v = guards([win("u9"), taken()], [slotRow("u1")]);
+    assert.ok(v.some((x) => /PRODUCT BUG.*not an ACCEPTED row/.test(x)));
+  });
+
+  it("flags spread at the limit", () => {
+    const v = guards([win("u1"), taken()], [slotRow("u1")], { spread: 20, limit: 20 });
+    assert.ok(v.some((x) => /TEST BUG.*dispatchSpreadMs/.test(x)));
+  });
+
+  it("flags a wrong response count", () => {
+    const v = guards([win("u1")], [slotRow("u1")]);
+    assert.ok(v.some((x) => /TEST BUG.*expected 2 responses/.test(x)));
+  });
+});
+
+describe("doubleBookSummary", () => {
+  it("counts double-booked and clean trials in trial order", () => {
+    assert.deepEqual(doubleBookSummary([1, 1, 0, 1, 1]), {
+      trialsDoubleBooked: 4,
+      trialsClean: 1,
+      overlapPairsTotal: 4,
+      doubleBookedByTrial: "1,1,0,1,1",
+    });
+  });
+
+  it("handles empty and multi-pair input", () => {
+    assert.deepEqual(doubleBookSummary([]), {
+      trialsDoubleBooked: 0,
+      trialsClean: 0,
+      overlapPairsTotal: 0,
+      doubleBookedByTrial: "",
+    });
+    assert.deepEqual(doubleBookSummary([2, 0]), {
+      trialsDoubleBooked: 1,
+      trialsClean: 1,
+      overlapPairsTotal: 2,
+      doubleBookedByTrial: "2,0",
+    });
+  });
+});
+
+describe("overlapViolations", () => {
+  it("is empty without pairs and one PRODUCT BUG line with both uids otherwise", () => {
+    assert.deepEqual(overlapViolations([]), []);
+    const v = overlapViolations([
+      {
+        aId: 1,
+        aUid: "ua",
+        aEventTypeId: 3,
+        aStart: "2026-11-30T09:00:00.000Z",
+        aEnd: "2026-11-30T09:30:00.000Z",
+        bId: 2,
+        bUid: "ub",
+        bEventTypeId: 4,
+        bStart: "2026-11-30T09:00:00.000Z",
+        bEnd: "2026-11-30T10:00:00.000Z",
+      },
+    ]);
+    assert.equal(v.length, 1);
+    assert.match(v[0]!, /PRODUCT BUG.*1 overlapping/);
+    assert.match(v[0]!, /ua/);
+    assert.match(v[0]!, /ub/);
   });
 });

@@ -4,6 +4,8 @@ import type { ParsedResponse } from "./invariants.ts";
 export const CAL_HOST_USERNAME = "pro";
 export const CAL_EVENT_SLUG = "30min";
 export const SLOT_MINUTES = 30;
+export const CAL_EVENT_SLUG_60 = "60min";
+export const LONG_SLOT_MINUTES = 60;
 
 export function attendeeEmail(prefix: string, leaf: string): string {
   return `${prefix.toLowerCase()}-${leaf}@example.com`;
@@ -26,6 +28,7 @@ export function bookingBody(input: {
   email: string;
   name: string;
   eventTypeId: number;
+  eventTypeSlug?: string;
 }): Record<string, unknown> {
   return {
     responses: {
@@ -38,7 +41,7 @@ export function bookingBody(input: {
     start: input.start,
     end: input.end,
     eventTypeId: input.eventTypeId,
-    eventTypeSlug: CAL_EVENT_SLUG,
+    eventTypeSlug: input.eventTypeSlug ?? CAL_EVENT_SLUG,
     timeZone: "UTC",
     language: "en",
     metadata: {},
@@ -72,4 +75,55 @@ export function parseBookingResponse(status: number | null, body: string): Parse
   } catch {
     return { status, uid: null, bodyStatus: null, message: null, summary };
   }
+}
+
+export type OverlapShape = "same-start" | "inside";
+
+export type OverlapLeg = {
+  role: "60" | "30";
+  eventTypeId: number;
+  eventTypeSlug: string;
+  start: string;
+  end: string;
+};
+
+/** Odd trials share the start, even trials put the 30 in the second half (plan D3). */
+export function overlapShapeForTrial(trial: number): OverlapShape {
+  return trial % 2 === 1 ? "same-start" : "inside";
+}
+
+/** Leg 0 is always the 60 [T, T+60); leg 1 the 30 at T or T+30. T must be a UTC ISO instant. */
+export function overlapLegs(
+  windowStart: string,
+  shape: OverlapShape,
+  ids: { eventTypeId30: number; eventTypeId60: number },
+): [OverlapLeg, OverlapLeg] {
+  const t = new Date(Date.parse(windowStart)).toISOString();
+  const start30 = shape === "same-start" ? t : slotEnd(t, SLOT_MINUTES);
+  return [
+    {
+      role: "60",
+      eventTypeId: ids.eventTypeId60,
+      eventTypeSlug: CAL_EVENT_SLUG_60,
+      start: t,
+      end: slotEnd(t, LONG_SLOT_MINUTES),
+    },
+    {
+      role: "30",
+      eventTypeId: ids.eventTypeId30,
+      eventTypeSlug: CAL_EVENT_SLUG,
+      start: start30,
+      end: slotEnd(start30, SLOT_MINUTES),
+    },
+  ];
+}
+
+/** Half-open overlap, the same predicate as OVERLAP_PAIRS_SQL. */
+export function windowsOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): boolean {
+  return Date.parse(aStart) < Date.parse(bEnd) && Date.parse(bStart) < Date.parse(aEnd);
 }
