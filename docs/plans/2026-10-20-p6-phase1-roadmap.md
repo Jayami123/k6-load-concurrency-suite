@@ -120,23 +120,7 @@ The proposed order 3 → 8 is kept. Three refinements:
    and `P6-CAL-RACE-003` 30 trials in the case itself, so each case task sets its own count in its
    own CI job. Raising `P6-MED-RACE-001` from the current CI `RACE_TRIALS=3` to the master plan's
    N≥50 is a closeout item (Task 8), because it is a Medusa-job change that no new case needs.
-   Every race job follows the PR / full-run split in D2 below.
-
-## Resolved decisions (2026-10-20)
-
-- **D1 Cal build: production build, cached on `CAL_REF`.** Keep the harness default (production
-  `next build` + `next start`). Cache the Cal `.next` build in CI keyed on `CAL_REF` + harness
-  version, so it rebuilds only when the pin changes; this is the standard approach. Dev mode
-  compiles pages on demand, which would distort race timing. If even one cold build runs out of
-  memory on a standard runner, add swap on the runner first (free). A larger runner (paid) is the
-  next step. `CAL_WEB_MODE=dev` is the last resort and, if used, the README labels it as such.
-- **D2 Trial split: small on PRs, full count on `main`, nightly and manual runs.** PRs run about 5
-  trials per mapped case (Medusa keeps its existing 3). Pushes to `main`, a nightly `schedule`
-  and `workflow_dispatch` run the full count: 50 for `P6-CAL-RACE-001`, 30 for
-  `P6-CAL-RACE-003`, 50 for `P6-MED-RACE-001` (from Task 8), and the Task 7 count for Documenso.
-  The README cites only `main` and nightly runs as evidence; PR runs prove the test works. Each
-  case task's plan decides how a case's full count is selected (for example a full-run env flag
-  with per-case defaults), without changing `fireTogether` or `runTrials`.
+   Every race job follows the PR / full-run split in D2 under "Decisions (2026-10-20)".
 
 ## Task 3: Cal stack in P6
 
@@ -401,7 +385,21 @@ The proposed order 3 → 8 is kept. Three refinements:
 - Moving P1 Medusa X04/X05 into P6 (backlog).
 - All k6 LOAD cases (`P6-*-LOAD-*`), baselines and dashboards (Phase 3+).
 
-## Open questions for Jayami
+## Decisions (2026-10-20)
 
-None. Both questions were answered on 2026-10-20 and are recorded as D1 (Cal build) and D2 (trial
-split) under "Resolved decisions".
+- **D1 Cal build on CI: production build, cached on `CAL_REF` + harness version.** Keep the
+  harness default (production `next build` + `next start`). Cache the Cal `.next` build in CI keyed
+  on `CAL_REF` + harness version (for example `h0.2.11`), so it rebuilds only when the pin or the
+  harness changes. If a cold build runs out of memory, add swap on the runner first (free). A
+  larger runner (paid) is second. `CAL_WEB_MODE=dev` is the last resort and must be labelled in
+  the README, because dev mode compiles pages on demand and distorts race timing.
+- **D2 Trial counts: small on PRs, full count on `main`, nightly and manual runs.** PRs run a small
+  count (about 5 trials) as a smoke; Medusa keeps its existing 3. Pushes to `main`, a nightly
+  `schedule` and `workflow_dispatch` run the full count: 50 for `P6-CAL-RACE-001`, 30 for
+  `P6-CAL-RACE-003`, 50 for `P6-MED-RACE-001` (from Task 8) and the Task 7 count for Documenso.
+  The README cites only `main` and nightly GitHub Actions runs as evidence. Each case task's plan
+  decides how a case's full count is selected, without changing `fireTogether` or `runTrials`.
+
+Task 3 probe (2026-10-20) applied D1: the cold production build peaked at 6.9 GB of 16 GB on a
+4 vCPU cloud VM, so no swap step is planned. See
+[2026-10-20-p6-phase1-task3-cal-stack.md](2026-10-20-p6-phase1-task3-cal-stack.md).
