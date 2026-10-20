@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } 
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chooseDocumensoNode } from "./lib/documenso-node.mjs";
 
 const ACTIONS = ["up", "down"];
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,6 +26,11 @@ if (!process.env.PRODUCTS_ROOT) {
 }
 if (!process.env.MEDUSA_SKIP_STOREFRONT) {
   process.env.MEDUSA_SKIP_STOREFRONT = "1";
+}
+if (product === "documenso") {
+  // Test environment (plan D2): limiters off, SSRF allowlist for the P6 webhook receiver.
+  process.env.DANGEROUS_BYPASS_RATE_LIMITS ||= "true";
+  process.env.NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS ||= "p6-webhook.test";
 }
 
 const script = path.join(
@@ -181,7 +187,31 @@ const spec = LONG_RUNNING[productName];
 if (spec && action === "up") {
   process.exit(await upLongRunning(spec));
 }
-const result = spawnSync(process.execPath, [script, product], { cwd: repoRoot, stdio: "inherit" });
+let nodeBin = process.execPath;
+let childEnv = process.env;
+if (product === "documenso") {
+  const choice = chooseDocumensoNode({
+    currentVersion: process.versions.node,
+    home: process.env.DOCUMENSO_NODE_HOME || "/opt/node24",
+    exists: existsSync,
+  });
+  if (choice.kind === "missing") {
+    console.error(choice.message);
+    process.exit(1);
+  }
+  if (choice.kind === "home") {
+    nodeBin = choice.node;
+    childEnv = {
+      ...process.env,
+      PATH: `${choice.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    };
+  }
+}
+const result = spawnSync(nodeBin, [script, product], {
+  cwd: repoRoot,
+  stdio: "inherit",
+  env: childEnv,
+});
 if (result.error) {
   console.error(result.error.message);
 }
