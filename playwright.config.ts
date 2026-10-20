@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { medusaBaseUrlFromEnv } from "./src/races/env.ts";
+import { calBaseUrlFromEnv, medusaBaseUrlFromEnv } from "./src/races/env.ts";
 
 export default defineConfig({
   fullyParallel: false,
@@ -14,6 +14,12 @@ export default defineConfig({
       testDir: "tests/medusa/races",
       retries: 0,
       use: { baseURL: medusaBaseUrlFromEnv() },
+    },
+    {
+      name: "cal-race",
+      testDir: "tests/cal/races",
+      retries: 0,
+      use: { baseURL: calBaseUrlFromEnv() },
     },
   ],
 });

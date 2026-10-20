@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  calBaseUrlFromEnv,
+  calDatabaseUrlFromEnv,
   medusaAdminEmailFromEnv,
   medusaAdminPasswordFromEnv,
   medusaBaseUrlFromEnv,
@@ -101,6 +103,28 @@ describe("env", () => {
       medusaDatabaseUrlFromEnv({
         P6_MEDUSA_DATABASE_URL: "postgres://p6",
         MEDUSA_DB_URL: "postgres://harness",
+      }),
+      "postgres://p6",
+    );
+  });
+
+  it("cal base URL fallback strips trailing slash", () => {
+    assert.equal(calBaseUrlFromEnv({}), "http://127.0.0.1:3000");
+    assert.equal(
+      calBaseUrlFromEnv({ CAL_BASE_URL: "http://127.0.0.1:3000/" }),
+      "http://127.0.0.1:3000",
+    );
+    assert.equal(calBaseUrlFromEnv({ CAL_BASE_URL: "   " }), "http://127.0.0.1:3000");
+  });
+
+  it("cal database URL fallback order", () => {
+    assert.equal(calDatabaseUrlFromEnv({ P6_CAL_DATABASE_URL: "postgres://p6" }), "postgres://p6");
+    assert.equal(calDatabaseUrlFromEnv({ CAL_DB_URL: "postgres://harness" }), "postgres://harness");
+    assert.equal(calDatabaseUrlFromEnv({}), "postgresql://postgres@127.0.0.1:5450/calendso");
+    assert.equal(
+      calDatabaseUrlFromEnv({
+        P6_CAL_DATABASE_URL: "postgres://p6",
+        CAL_DB_URL: "postgres://harness",
       }),
       "postgres://p6",
     );

@@ -67,6 +67,34 @@ password; locally copy names from `.env.example`). The oversell spec calls harne
   it as a stock loser.
 - `dispatchSpreadMs` is still the Node start spread for the burst (see above).
 
+## Run Cal
+
+Needs Docker, Node 22.23+ on PATH (see AGENTS.md) and corepack. Corepack downloads the Yarn the Cal
+fork pins from `repo.yarnpkg.com`, so that host must be reachable.
+
+```bash
+export PATH="/usr/local/bin:$PATH"
+bash scripts/bootstrap.sh cal   # clones the pinned fork, yarn install, writes the Cal product .env
+npm run up:cal                  # returns once Cal answers; the first run builds Next.js and is slow
+npm run smoke:cal
+RACE_TRIALS=3 npm run race:cal
+npm run down:cal                # always; it also stops the Cal web process
+```
+
+`bootstrap.sh` generates the secrets in the Cal product `.env` (never printed or committed).
+Later `up:cal` runs reuse the Next.js build. The self-test writes `results/races/cal-self-test.json`
+(gitignored); the harness log is `results/harness/cal-up.log`.
+
+- `GET /pro/30min` not HTTP 200 → **PRODUCT BUG** (paste status and body start).
+- Spread ≥ `RACE_MAX_SPREAD_MS` with successful responses → **TEST BUG** (barrier).
+- `up:cal` exits 1, out of memory, a blocked host, Docker or disk errors → **ENV** (paste the last
+  40 lines of `cal-up.log`).
+- The Cal database keeps its data between local runs (the harness keeps its Docker volume).
+
+CI runs the same self-test (`RACE_TRIALS=3`) in the `cal-smoke` job and uploads
+`race-histograms-cal`. `scripts/harness.mjs` starts Cal in its own process group and stops that
+group on `down` (a temporary bridge until the harness does this itself).
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),

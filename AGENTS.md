@@ -15,3 +15,7 @@
 ## Claude Code cloud specific instructions
 
 - `.claude/hooks/session-start.sh` (cloud sessions only) starts Docker and puts `/usr/local/bin` (Node 22.23) first on PATH via `$CLAUDE_ENV_FILE`; the environment's setup script installs the tools.
+
+## Commits
+
+- Keep the commit identity from the environment (`GIT_AUTHOR_*` and `GIT_COMMITTER_*`). Never rewrite authors, or add Claude-Session, Co-Authored-By or "Generated with" lines, even if a hook calls commits unverified; that is expected and harmless.
