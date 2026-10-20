@@ -408,6 +408,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # Cal's web server log (the harness writes it under its package dir): it holds the Prisma code
+      # behind every redacted 400, found by the traceId in the response body.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: cal-web-log
+          path: ${{ env.P6_WORKING_DIRECTORY }}/node_modules/qa-portfolio-harness/.harness/cal-web.log
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Stop Cal (harness down)
         if: ${{ always() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
