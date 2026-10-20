@@ -11,3 +11,7 @@
 - Run `npm run check` before pushing.
 - Cursor puts its own Node 22.14 first on PATH. Before any harness command, run
   `export PATH="/usr/local/bin:$PATH"` so Node 22.23 (needed by Medusa) is used.
+
+## Claude Code cloud specific instructions
+
+- `.claude/hooks/session-start.sh` (cloud sessions only) starts Docker and puts `/usr/local/bin` (Node 22.23) first on PATH via `$CLAUDE_ENV_FILE`; the environment's setup script installs the tools.
