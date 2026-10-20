@@ -383,6 +383,8 @@ The proposed order 3 → 8 is kept. Three refinements:
   (Phase 2).
 - Twenty races including `P6-TW-RACE-001` (Phase 2).
 - Moving P1 Medusa X04/X05 into P6 (backlog).
+- Harness release: Cal `up` returns when healthy, `down` stops the web, seed check uses `users`,
+  no seed credentials in logs; then bump P6 and delete the Task 3 bridge (backlog).
 - All k6 LOAD cases (`P6-*-LOAD-*`), baselines and dashboards (Phase 3+).
 
 ## Decisions (2026-10-20)

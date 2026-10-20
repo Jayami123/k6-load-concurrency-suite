@@ -141,8 +141,9 @@ exist`), so every `up:cal` re-runs `yarn db-seed` (≈ 33 s warm). Harmless; cos
 - **H4** `down` keeps the `qa-harness-cal_db_data` volume, so local DB state (bookings) survives a
   restart. CI is always fresh.
 
-H2 and H3 are handled in P6's own `scripts/harness.mjs` (D4). H1 and H4 are reported to Jayami as
-harness follow-ups (section 19), not worked around.
+H2 and H3 are bridged in P6's own `scripts/harness.mjs` (D4) until the harness release in
+section 19 fixes them. H1 is fixed in that release, not worked around in P6. H4 is harness
+behaviour (local data survives `down`) and stays.
 
 ## 3. Resolved decisions
 
@@ -168,12 +169,18 @@ Lead with the industry-standard approach, then the rejected alternative.
   Medusa keeps today's path unchanged. Rejected: `npm run up:cal &` in CI (no readiness, no stop
   handle); `pkill -f "next start"` (matches unrelated shells, proven to kill the caller during the
   probe); editing the harness (forbidden).
-- **D5 `bootstrap.sh` prepares Cal.** It pins `CAL_REF`, installs deps
-  (`COREPACK_NPM_REGISTRY=https://registry.npmjs.org corepack install`, then
-  `corepack yarn install --immutable`), and creates `<cal>/.env` exactly as P1 CI does, with
+  **Temporary bridge** (answer 2, section 19): a test repo should not own product start/stop. A
+  harness release will make `up` return once Cal is healthy and `down` stop the web server; then
+  P6 bumps the harness and deletes the bridge (`LONG_RUNNING`, `upLongRunning`, `stopGroup`,
+  `HARNESS_UP_TIMEOUT_MS`). Keep the bridge small and marked with a `TEMPORARY BRIDGE` comment.
+- **D5 `bootstrap.sh` prepares Cal.** It pins `CAL_REF`, installs deps the normal way
+  (`corepack yarn install --immutable`; corepack fetches the fork's Yarn 4.12.0 from
+  `repo.yarnpkg.com`, which is allowed in the environment per answer 1), and creates `<cal>/.env` exactly as P1 CI does, with
   generated secrets, only when `.env` is missing. Values are never printed or committed. CI calls
   the same script with `BOOTSTRAP_SKIP_INSTALL=1` for the `.env`, so there is one source of truth.
-  Rejected: committing a Cal `.env` (secrets), editing the fork's `.env.example` (fork edit).
+  Rejected: committing a Cal `.env` (secrets), editing the fork's `.env.example` (fork edit),
+  fetching Yarn from the npm registry via `COREPACK_NPM_REGISTRY` (the probe's workaround while
+  `repo.yarnpkg.com` was blocked; it could break later).
 - **D6 Env getters with 127.0.0.1 defaults.** `CAL_BASE_URL` (default `http://127.0.0.1:3000`) and
   a database URL resolved `P6_CAL_DATABASE_URL` → `CAL_DB_URL` (harness name) →
   `postgresql://postgres@127.0.0.1:5450/calendso`. That default is the fork's trust-auth local DB,
@@ -193,7 +200,8 @@ Lead with the industry-standard approach, then the rejected alternative.
   (≈ 5 on PRs, full count on `main`/nightly/dispatch) applies to mapped cases from Task 4; the
   nightly `schedule` trigger is added in Task 4, not here.
 - **D10 `cal-smoke` is a new, independent job.** It does not depend on or edit `medusa-smoke`. It is
-  not made a required check in this task.
+  not made a required check in this task. It becomes a required check after two green runs on
+  `main`, the same rule as `medusa-smoke` (answer 3).
 
 ## 4. Goal and scope
 
@@ -311,11 +319,14 @@ install + ≈ 6–7 min `up:cal`; warm (caches hit) ≈ 1–2 min `up:cal`.
   "JavaScript heap out of memory" in `cal-up.log`): ENV; add a swap step (D7), rerun once.
 - **R2 Build time vs job timeout.** Harness build limit is 45 min (`DEFAULT_NEXT_BUILD_TIMEOUT_MS`);
   job timeout 60 min. If a cold run exceeds it, ENV; report the phase times from the log.
-- **R3 Corepack and blocked hosts.** `repo.yarnpkg.com` is blocked in Claude cloud sessions (P9);
-  `corepack install` via `COREPACK_NPM_REGISTRY` works there and on Actions. If Jayami allows
-  `repo.yarnpkg.com`, the workaround stays harmless.
-- **R4 Turbo strips env.** `turbo run post-install` did not pass `COREPACK_ENABLE_PROJECT_SPEC` to
-  child processes (probe). That is why D5 installs Yarn into the corepack cache first.
+- **R3 Yarn host.** Corepack downloads Yarn 4.12.0 from `repo.yarnpkg.com`. It was blocked in the
+  Claude cloud environment during the probe (P9); answer 1 adds it to the allowed domains (Claude
+  environment, and Cursor if its cloud environment restricts network access). If `yarn install`
+  fails with `ENOTFOUND repo.yarnpkg.com` or a proxy 403, that is **ENV**: stop and report; do not
+  switch to the npm-registry workaround.
+- **R4 Turbo strips env.** `turbo run post-install` runs `yarn` in child processes without most
+  env vars (probe), so any corepack env setting does not reach them. With the host allowed this
+  needs no workaround.
 - **R5 Process-group stop.** Only `results/harness/cal.pgid` is used to stop. Never `pkill -f`.
 - **R6 Stale `.next` restore.** The harness compares `.next/harness-build.json` `gitSha` with HEAD;
   a restored cache for another SHA rebuilds (correct, slower).
@@ -352,10 +363,7 @@ install_cal_deps() {
     log "BOOTSTRAP_SKIP_INSTALL=1; skipping Cal yarn install."
     return
   fi
-  # Put the fork's Yarn (packageManager yarn@4.12.0) into the corepack cache from the npm
-  # registry: repo.yarnpkg.com can be blocked, and turbo does not pass corepack env to children.
-  log "corepack install (Yarn from the fork's packageManager) in $dest"
-  (cd "$dest" && COREPACK_NPM_REGISTRY=https://registry.npmjs.org corepack install)
+  # Corepack fetches the fork's packageManager Yarn (4.12.0) from repo.yarnpkg.com.
   log "yarn install --immutable in $dest"
   (cd "$dest" && TURBO_TELEMETRY_DISABLED=1 COREPACK_ENABLE_STRICT=0 corepack yarn install --immutable)
 }
@@ -403,8 +411,8 @@ bash scripts/bootstrap.sh cal
 ```
 
 Expected: `syntax-ok`; `[bootstrap] … already cloned (c2b7ac44c66f24ffef1662b276f0653988a609a3)`
-(or `cloned c2b7ac4…` on a fresh machine); `corepack install` prints `Adding yarn@4.12.0 to the
-cache...` the first time; `yarn install` ends `Done` (warnings allowed); then either
+(or `cloned c2b7ac4…` on a fresh machine); `yarn install` ends `Done` (warnings allowed; the
+first run may print `Corepack is about to download …yarn.js`); then either
 `.env exists. Left as is.` or `wrote …/.env (generated secrets, not printed)`; `[bootstrap] done`.
 
 ### Step 2 (b). Env getters + unit tests (no product)
@@ -808,9 +816,8 @@ Steps, in order (names exactly):
 5. `actions/setup-node` with `node-version-file: p6/.nvmrc`, npm cache on `p6/package-lock.json`.
 6. `Install P6 dependencies`: `npm ci` in `p6`.
 7. `grafana/setup-k6-action` with `K6_VERSION`.
-8. `Enable corepack`: `corepack enable`, then in the Cal checkout
-   `COREPACK_NPM_REGISTRY=https://registry.npmjs.org corepack install` and assert
-   `yarn --version` is `4.12.0`.
+8. `Enable corepack`: `corepack enable`, then in the Cal checkout assert `yarn --version` is
+   `4.12.0` (corepack downloads it from `repo.yarnpkg.com`).
 9. `Restore Cal Yarn cache` (`products/cal/.yarn/cache`, key `cal-yarn-${{ hashFiles('products/cal/yarn.lock') }}`).
 10. `Restore Cal node_modules cache` (`products/cal/node_modules`, key
     `${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles('products/cal/yarn.lock') }}`), id `cal_nm`.
@@ -908,13 +915,17 @@ This plan; README "Run Cal"; `.env.example` names. No master-plan edits.
 - No published timings; README cites none
 - No `test.fail()`, retries, `workers` > 1, browsers or page objects
 
-## 19. Open questions for Jayami
+## 19. Answers from Jayami (2026-10-20)
 
-1. Network: allow `repo.yarnpkg.com` for Claude cloud sessions? Not required (D5 installs Yarn from
-   the npm registry), but it would make plain `yarn` work without `corepack install`.
-2. Harness follow-ups (not P6 work): H1 seed presence check uses `"User"` instead of `users`; H2/H3
-   `up` stays in the foreground and `down` leaves `next start` running; seed output prints demo
-   credentials into CI logs. File them on `qa-portfolio-harness`?
-3. Should `cal-smoke` become a required check once it has been green on `main` twice?
+1. **Yarn host: allowed.** `repo.yarnpkg.com` is added to the allowed domains of the
+   k6-load-concurrency-suite environment in Claude, and in Cursor if its cloud environment
+   restricts network access. Nothing in the repo changes for that. D5 uses the normal corepack path.
+2. **Harness bugs: fixed in the harness; P6's process-group stop is a temporary bridge.** Task 3
+   ships with the bridge (D4). A separate small `qa-portfolio-harness` release makes `up` return
+   once Cal is healthy, makes `down` stop the web server, fixes the seed presence check to use the
+   `users` table, and stops printing seed credentials. Then P6 bumps the harness and deletes the
+   bridge. Jayami tracks this in the backlog (P1 likely has the same problems).
+3. **`cal-smoke` becomes a required check after two green runs on `main`**, the same rule as
+   `medusa-smoke`.
 
 Probe is done. Building waits on approval of this plan.
