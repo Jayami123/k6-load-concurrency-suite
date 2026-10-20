@@ -5,12 +5,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Nightly full-count races (roadmap D2). 02:17 UTC, off the top of the hour.
+  schedule:
+    - cron: "17 2 * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: perf-${{ github.ref }}
+  # Scheduled runs get their own group so a nightly run and a push to main never cancel each other.
+  group: perf-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -352,7 +356,21 @@ jobs:
           RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
-          npm run race:cal
+          npm run race:cal -- tests/cal/races/cal-self-test.spec.ts
+
+      - name: Race P6-CAL-RACE-001 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        # Probe: ~1.2 s per trial (max 1.9 s) on a 4 vCPU VM; 50 trials + 6 extra trials ≈ 70 s.
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 15 }}
+        env:
+          # Roadmap D2: about 5 on PRs, the full 50 on main, nightly and manual runs.
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          RACE_MAX_SPREAD_MS: "20"
+        run: |
+          set -euo pipefail
+          echo "### P6-CAL-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
+          npm run race:cal -- tests/cal/races/cal-race-001-identical-slot.spec.ts
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
