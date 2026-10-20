@@ -423,17 +423,17 @@ reschedule/cancel races (`P6-CAL-RACE-004/005`, later phases).
 
 New:
 
-| Path                                                  | Responsibility                                                                                                                  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `src/cal/payloads.ts`                                 | Pure: `bookingBody`, `attendeeEmail`, `slotEnd`, `timeSpellings`, `pickFreeSlot`, `parseBookingResponse`. No I/O.               |
-| `src/cal/api.ts`                                      | HTTP: `getFreeSlots`, `createBooking`, `cancelBooking`, `createSlotAllocator`.                                                  |
-| `src/cal/oracle.ts`                                   | SQL constants, `toDbTimestamp`, `rowEvidence` (pure); `resolveHostSetup`, `readSlotAccepted`, `sweepCaseBookings`, `leakCheck`. |
-| `src/cal/invariants.ts`                               | Pure: `classifyLoser`, `checkIdenticalSlotInvariants`, `nonConflictLosers`.                                                     |
-| `src/cal/run-case.ts`                                 | `runIdenticalSlotCase`: trial loop; histogram created before `try`, written in `finally`; sweep + leak check.                   |
-| `tests/cal/races/cal-race-001-identical-slot.spec.ts` | Live tests (§5).                                                                                                                |
-| `tests/unit/cal-payloads.test.ts`                     | Payload builders, slot picker, response parser.                                                                                 |
-| `tests/unit/cal-invariants.test.ts`                   | Loser classifier and invariant matrix.                                                                                          |
-| `tests/unit/cal-oracle.test.ts`                       | SQL constants SELECT-only and shape; `toDbTimestamp`; `rowEvidence`.                                                            |
+| Path                                                  | Responsibility                                                                                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `src/cal/payloads.ts`                                 | Pure: `bookingBody`, `attendeeEmail`, `slotEnd`, `timeSpellings`, `pickFreeSlot`, `parseBookingResponse`. No I/O.              |
+| `src/cal/api.ts`                                      | HTTP: `getFreeSlots`, `createBooking`, `cancelBooking`, `createSlotAllocator`.                                                 |
+| `src/cal/oracle.ts`                                   | SQL constants, `toDbTimestamp`, `rowEvidence` (pure); `resolveHostSetup`, `readSlotAccepted`, `caseLiveBookings`, `leakCheck`. |
+| `src/cal/invariants.ts`                               | Pure: `classifyLoser`, `checkIdenticalSlotInvariants`, `nonConflictLosers`.                                                    |
+| `src/cal/run-case.ts`                                 | `runIdenticalSlotCase`: trial loop; histogram created before `try`, written in `finally`; sweep + leak check.                  |
+| `tests/cal/races/cal-race-001-identical-slot.spec.ts` | Live tests (§5).                                                                                                               |
+| `tests/unit/cal-payloads.test.ts`                     | Payload builders, slot picker, response parser.                                                                                |
+| `tests/unit/cal-invariants.test.ts`                   | Loser classifier and invariant matrix.                                                                                         |
+| `tests/unit/cal-oracle.test.ts`                       | SQL constants SELECT-only and shape; `toDbTimestamp`; `rowEvidence`.                                                           |
 
 Modified:
 
@@ -471,7 +471,7 @@ sequenceDiagram
     Spec->>Spec: checkIdenticalSlotInvariants
     Spec->>Cancel: cancel winner and any extra accepted row
   end
-  Spec->>Cancel: sweepCaseBookings by prefix
+  Spec->>Cancel: caseLiveBookings by prefix
   Spec->>Oracle: leakCheck = 0
   Spec->>Hist: writeHistogram always
 ```
@@ -871,7 +871,7 @@ export function parseBookingResponse(status: number | null, body: string): Parse
 Unit tests (`node --test`, `assert/strict`):
 
 - `tests/unit/cal-payloads.test.ts`
-  - `bookingBody` has exactly the 12 top-level keys of §2.2, `user: "pro"`,
+  - `bookingBody` has exactly the 10 top-level keys of §2.2, `user: "pro"`,
     `eventTypeSlug: "30min"`, `timeZone: "UTC"`, `responses.location.value: "integrations:daily"`.
   - `attendeeEmail("P6-QA-20261020T120912Z-E0CCF836", "t1-c00")` →
     `p6-qa-20261020t120912z-e0ccf836-t1-c00@example.com`.
