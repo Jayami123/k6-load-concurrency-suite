@@ -20,6 +20,7 @@ import { cancelBooking, createBooking, type createSlotAllocator } from "./api.ts
 import {
   checkIdenticalSlotInvariants,
   checkOverlapPairGuards,
+  checkSequentialRefusal,
   classifyLoser,
   classifyOverlapLoser,
   doubleBookSummary,
@@ -444,9 +445,7 @@ export async function runOverlapPairCase(input: {
           dispatchSpreadMs: fired.dispatchSpreadMs,
           spreadLimit,
         });
-        if (input.mode === "sequential" && winnerRoles.length === 2) {
-          guards.push("PRODUCT BUG: sequential overlap accepted");
-        }
+        if (input.mode === "sequential") guards.push(...checkSequentialRefusal(responses));
         const product = overlapViolations(pairs);
 
         const kinds: Record<OverlapLoserKind, number> = {

@@ -172,6 +172,25 @@ export function checkOverlapPairGuards(input: {
   return out;
 }
 
+/**
+ * Sequential overlap control (plan D14): Cal must accept the first booking and refuse the second
+ * with exactly 409 no_available_users_found_error. A redacted db 400 is not a refusal here (it is
+ * only an allowed refused leg in the race). The summary keeps the traceId.
+ */
+export function checkSequentialRefusal(responses: ParsedResponse[]): string[] {
+  const [first, second] = responses;
+  const out: string[] = [];
+  if (!first || !isWinner(first) || first.bodyStatus !== "ACCEPTED") {
+    out.push(`PRODUCT BUG: sequential first booking not accepted: ${first?.summary ?? "missing"}`);
+  }
+  if (!second || second.status !== 409 || classifyLoser(409, second.message) !== "slot-taken") {
+    out.push(
+      `PRODUCT BUG: sequential overlap not refused with 409: ${second?.summary ?? "missing"}`,
+    );
+  }
+  return out;
+}
+
 /** [] or one PRODUCT BUG line with every pair attached (plan D6). */
 export function overlapViolations(pairs: OverlapPair[]): string[] {
   if (pairs.length === 0) return [];

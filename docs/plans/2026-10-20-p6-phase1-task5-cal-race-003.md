@@ -265,6 +265,7 @@ Task 5 adds one step: 30 mapped pair trials + 4 sequential-control trials. VM: 0
 (max 0.7 s) vs 1.2 s for a Task 4 trial; CI ran Task 4 at ~1.05 s per trial (62 s / 59), so
 assume ≤ 1 s per pair trial on CI: **≈ 30–45 s**, plus ~5 s Playwright start. New job estimate
 **≈ 5–5.5 min** of the 60-min job timeout. Fits with large headroom; PR runs (5 trials) add ~10 s.
+The sequential control's four trials also have to see exactly 409 on every second leg.
 
 ### 2.10 Cleanup and leak (live)
 
@@ -318,7 +319,9 @@ Lead with the industry-standard approach, then the rejected alternative and its 
   - spread < `RACE_MAX_SPREAD_MS` (TEST BUG).
 
   The overlap pairs are reported separately (`overlapViolations`). Rejected: one combined list (a
-  setup failure would then be hidden by `test.fail()`).
+  setup failure would then be hidden by `test.fail()`). In sequential mode `checkSequentialRefusal`
+  additionally requires a 2xx ACCEPTED first leg and exactly 409 `no_available_users_found_error`
+  on the second, so a refused-leg 400 never passes the control.
 
 - **D8 Known bug → `test.fail()` in the mapped test, placed after the guard assertion and right
   before the overlap assertion.** Evidence: 50/50 pairs, three separate runs, both shapes, code path
@@ -330,7 +333,8 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D10 Trial count in the case itself: `Math.min(raceTrialsFromEnv(), 30)`.** CI already sets
   `RACE_TRIALS` 5 on `pull_request` and 50 on `main`/nightly/dispatch for `cal-smoke`; the case caps
   at 30, so PRs run 5 and full runs 30 (roadmap D2, master plan trials=30). The extra uses
-  `min(RACE_TRIALS, 4)` (one trial per sequential shape A–D; a cap of 3 never ran shape D). Rejected: a second env variable (one name is enough; the cap documents the
+  `min(RACE_TRIALS, 4)` (one trial per sequential shape A–D; a cap of 3 never ran shape D). The four trials of the control are a hard check that Cal refuses the second booking with 409.
+  Rejected: a second env variable (one name is enough; the cap documents the
   case's count where the case is defined); a separate `RACE_TRIALS: 30` step env (count would live
   in YAML, not in the case).
 - **D11 Setup asserted.** `resolveHostSetup(pool, "30min", 30)` and `resolveHostSetup(pool, "60min", 60)`
@@ -1048,7 +1052,8 @@ Per trial:
 6. `windowAccepted = await readWindowAccepted(pool, userId, window.start, window.end, trialPattern)`;
    `pairs = await readOverlapPairs(pool, userId, trialPattern)`.
 7. `guards = checkOverlapPairGuards({ responses, windowAccepted, dispatchSpreadMs, spreadLimit })`;
-   sequential mode also pushes `PRODUCT BUG: sequential overlap accepted` when both legs are 2xx.
+   sequential mode also pushes `checkSequentialRefusal(responses)` (`PRODUCT BUG: sequential overlap
+not refused with 409: <summary>` unless leg 2 is exactly 409 slot-taken).
    `product = overlapViolations(pairs)`.
 8. `recordTrial(trial, fired, () => { if (guards.length || product.length) throw new Error([...guards, ...product].join("; ")) })`;
    fill per-trial `oracle` (§8, including `overlapPairs: pairs.length` and

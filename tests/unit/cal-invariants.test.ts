@@ -6,6 +6,7 @@ import {
   LOSER_SLOT_TAKEN,
   checkIdenticalSlotInvariants,
   checkOverlapPairGuards,
+  checkSequentialRefusal,
   classifyLoser,
   classifyOverlapLoser,
   doubleBookSummary,
@@ -326,5 +327,48 @@ describe("refusedLegs", () => {
 
   it("falls back to unknown when the summary has no traceId", () => {
     assert.deepEqual(refusedLegs([redacted()]), [{ traceId: "unknown" }]);
+  });
+});
+
+describe("checkSequentialRefusal", () => {
+  it("passes a 2xx ACCEPTED first leg and a 409 slot-taken second leg", () => {
+    assert.deepEqual(checkSequentialRefusal([win("u1"), taken()]), []);
+  });
+
+  it("fails a redacted db 400 on the second leg and keeps the summary", () => {
+    const refused: ParsedResponse = {
+      ...redacted(),
+      summary: `400: {"message":"${LOSER_DB_REDACTED}","data":{"traceId":"trace_keep-1"}}`,
+    };
+    const v = checkSequentialRefusal([win("u1"), refused]);
+    assert.equal(v.length, 1);
+    assert.match(v[0]!, /^PRODUCT BUG: sequential overlap not refused with 409: 400:/);
+    assert.match(v[0]!, /trace_keep-1/);
+  });
+
+  it("fails any other 400 on the second leg", () => {
+    const v = checkSequentialRefusal([win("u1"), lose(400, "Bad Request")]);
+    assert.equal(v.length, 1);
+    assert.match(v[0]!, /sequential overlap not refused with 409/);
+  });
+
+  it("fails a 409 with another message and a second 2xx", () => {
+    assert.equal(checkSequentialRefusal([win("u1"), lose(409, LOSER_BOOKING_CONFLICT)]).length, 1);
+    const v = checkSequentialRefusal([win("u1"), win("u2")]);
+    assert.ok(v.some((x) => /not refused with 409: 200:/.test(x)));
+  });
+
+  it("fails a 409 first and a 200 second", () => {
+    const v = checkSequentialRefusal([taken(), win("u1")]);
+    assert.ok(v.some((x) => /sequential overlap not refused with 409: 200:/.test(x)));
+    assert.ok(v.some((x) => /sequential first booking not accepted: 409:/.test(x)));
+  });
+
+  it("fails a missing second leg", () => {
+    assert.ok(checkSequentialRefusal([win("u1")]).length >= 1);
+  });
+
+  it("leaves race mode alone: 200 + redacted 400 is still a refused leg", () => {
+    assert.deepEqual(guards([win("u1"), redacted()], [slotRow("u1")]), []);
   });
 });
