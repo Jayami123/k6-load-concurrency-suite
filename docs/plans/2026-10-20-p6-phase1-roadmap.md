@@ -120,6 +120,23 @@ The proposed order 3 → 8 is kept. Three refinements:
    and `P6-CAL-RACE-003` 30 trials in the case itself, so each case task sets its own count in its
    own CI job. Raising `P6-MED-RACE-001` from the current CI `RACE_TRIALS=3` to the master plan's
    N≥50 is a closeout item (Task 8), because it is a Medusa-job change that no new case needs.
+   Every race job follows the PR / full-run split in D2 below.
+
+## Resolved decisions (2026-10-20)
+
+- **D1 Cal build: production build, cached on `CAL_REF`.** Keep the harness default (production
+  `next build` + `next start`). Cache the Cal `.next` build in CI keyed on `CAL_REF` + harness
+  version, so it rebuilds only when the pin changes; this is the standard approach. Dev mode
+  compiles pages on demand, which would distort race timing. If even one cold build runs out of
+  memory on a standard runner, add swap on the runner first (free). A larger runner (paid) is the
+  next step. `CAL_WEB_MODE=dev` is the last resort and, if used, the README labels it as such.
+- **D2 Trial split: small on PRs, full count on `main`, nightly and manual runs.** PRs run about 5
+  trials per mapped case (Medusa keeps its existing 3). Pushes to `main`, a nightly `schedule`
+  and `workflow_dispatch` run the full count: 50 for `P6-CAL-RACE-001`, 30 for
+  `P6-CAL-RACE-003`, 50 for `P6-MED-RACE-001` (from Task 8), and the Task 7 count for Documenso.
+  The README cites only `main` and nightly runs as evidence; PR runs prove the test works. Each
+  case task's plan decides how a case's full count is selected (for example a full-run env flag
+  with per-case defaults), without changing `fireTogether` or `runTrials`.
 
 ## Task 3: Cal stack in P6
 
@@ -150,12 +167,14 @@ The proposed order 3 → 8 is kept. Three refinements:
   exceed the memory of a standard GitHub-hosted runner and of a Cursor Cloud / Claude cloud VM, and
   the cold build may take tens of minutes. The adapter skips the build when the `.next` marker
   matches HEAD, so CI must cache `.next` keyed on `CAL_REF` + harness version (like the Medusa
-  build cache). If a cold build does not fit, the fallback options (`CAL_WEB_MODE=dev`, a larger
-  runner, cache-only builds on `main`) are a decision for the Task 3 plan, not this roadmap.
+  build cache). Decided (D1): keep the production build and cache it on `CAL_REF`; if one cold
+  build runs out of memory, add swap on the runner first, then a larger runner; `CAL_WEB_MODE=dev`
+  only as a last resort, labelled as such in the README.
 - **The live probe must confirm (before the plan is written).**
   1. Cold and warm `up:cal` wall time and peak memory on the cloud VM (proof only, not published),
      and whether the build completes at all with the VM's RAM; then the same on one GitHub Actions
-     run of a probe branch.
+     run of a probe branch, cold and with the `.next` cache restored, and whether swap is needed
+     for the cold build (D1).
   2. Which booking API the booker actually uses: master plan §4 says
      "`POST /api/book/event` or `POST /v2/bookings` (pick one; document)". The harness health check
      hits the API v2 base (`CAL_API_BASE_URL`, default `:5555`, `/health`) and says "this fork has
@@ -174,8 +193,10 @@ The proposed order 3 → 8 is kept. Three refinements:
 - **New files (names only).** `k6/smoke/cal-health.js`, `src/cal/env.ts` (or getters added to
   `src/races/env.ts`, plan decides), `tests/cal/races/cal-self-test.spec.ts`,
   `tests/unit/cal-env.test.ts`, `docs/plans/<date>-p6-phase1-task3-cal-stack.md`.
-- **CI change.** New job `cal-smoke` (own timeout, own caches). `Stub harness product roots` in the
-  Medusa job stays.
+- **CI change.** New job `cal-smoke` (own timeout, own caches, including the `.next` build cache
+  keyed on `CAL_REF` + harness version, saved on `main` like the Medusa build cache; a swap step
+  only if the probe shows the cold build needs it). `Stub harness product roots` in the Medusa job
+  stays.
 - **Done when.** `CAL_REF` is a commit SHA; `up:cal` / `smoke:cal` / `race:cal` / `down:cal` work on
   a cloud VM; `cal-smoke` is green on the PR and once on `main`; the self-test histogram is uploaded;
   `npm run check` green; README has a "Run Cal" section with no timing claims.
@@ -208,14 +229,17 @@ The proposed order 3 → 8 is kept. Three refinements:
   `src/cal/run-case.ts`, `src/cal/api.ts`, `tests/cal/races/cal-race-001-identical-slot.spec.ts`,
   `tests/unit/cal-payloads.test.ts`, `tests/unit/cal-invariants.test.ts`,
   `tests/unit/cal-oracle.test.ts`, `docs/plans/<date>-p6-phase1-task4-cal-race-001.md`.
-- **CI change.** `cal-smoke` runs `race:cal` with the case's 50 trials and uploads
-  `results/races/P6-CAL-RACE-001.json` in `race-histograms-cal`. If the probe shows 50 trials do not
-  fit a PR job, the plan picks between "50 on `main` + `workflow_dispatch`, fewer on PRs" and a
-  larger timeout, and says which run is the evidence.
-- **Done when.** 50 trials in one CI run with ACCEPTED = 1 in every trial and no 5xx (or a proven
-  product bug recorded with `test.fail()` and evidence from repeated runs); histogram artefact on
-  the run; README section explains 409 vs 500 for Cal and cites only Actions rates; leak check by
-  prefix passes; `npm run check` green.
+- **CI change.** Add the nightly `schedule` trigger to `perf.yml` (first task that needs it).
+  `cal-smoke` runs `race:cal` at about 5 trials on PRs and 50 on `main`, nightly and
+  `workflow_dispatch` (D2), and uploads `results/races/P6-CAL-RACE-001.json` in
+  `race-histograms-cal`. The workflow's `concurrency` group is `perf-${{ github.ref }}` with
+  `cancel-in-progress: true`, so a nightly run and a push to `main` can cancel each other; the plan
+  gives scheduled runs their own group.
+- **Done when.** The PR run passes at about 5 trials, and one `main` (or nightly) run passes all 50
+  trials with ACCEPTED = 1 in every trial and no 5xx (or a proven product bug recorded with
+  `test.fail()` and evidence from repeated runs); histogram artefact on the run; README section
+  explains 409 vs 500 for Cal and cites only `main`/nightly rates; leak check by prefix passes;
+  `npm run check` green.
 - **Main risks.** Slot supply for 50 trials (availability window, minimum notice, booking limits
   on the event type); rate limiting on the booking route; async side effects (emails/webhooks)
   slowing trials; client spread on noisy runners (raise `RACE_MAX_SPREAD_MS` in env, not the
@@ -242,10 +266,11 @@ The proposed order 3 → 8 is kept. Three refinements:
 - **New files (names only).** `tests/cal/races/cal-race-003-overlap.spec.ts`, overlap SQL in
   `src/cal/oracle.ts`, `tests/unit/cal-overlap.test.ts`,
   `docs/plans/<date>-p6-phase1-task5-cal-race-003.md`.
-- **CI change.** Same `cal-smoke` race step; 30 trials for this case; artefact
-  `P6-CAL-RACE-003.json` in `race-histograms-cal`.
-- **Done when.** 30 trials in one CI run with zero overlapping ACCEPTED pairs (or a proven, recorded
-  product bug); histogram uploaded; `npm run check` green.
+- **CI change.** Same `cal-smoke` race step; about 5 trials on PRs, 30 on `main`, nightly and
+  `workflow_dispatch` (D2); artefact `P6-CAL-RACE-003.json` in `race-histograms-cal`.
+- **Done when.** The PR run passes at about 5 trials, and one `main` (or nightly) run passes all 30
+  trials with zero overlapping ACCEPTED pairs (or a proven, recorded product bug); histogram
+  uploaded; `npm run check` green.
 - **Main risks.** Seeded event types may not share a host or schedule; buffer times or
   "seats" settings change what counts as overlap; job time with Task 4's 50 trials in the same job.
 
@@ -310,8 +335,8 @@ The proposed order 3 → 8 is kept. Three refinements:
     seal jobs = 1 in `BackgroundJob`. All counts read with `waitForStable` (sealing is async).
   - `P6-DOC-RACE-002`: per trial, one pending recipient completes N=10 times in parallel. Oracle:
     one 2xx, the other nine 4xx (any 5xx is a PRODUCT BUG), one seal.
-  - Trial count: the master plan sets none for DOC05; the plan proposes one from probe timing, with
-    master plan §1's N≥50 as the target.
+  - Trial count: the master plan sets none for DOC05; the plan proposes the full count from probe
+    timing, with master plan §1's N≥50 as the target. PRs run about 5 trials (D2).
 - **The live probe must confirm.** The API sequence to create a document, add two recipients,
   place signature fields and send (v1 or v2 API on this commit); the exact "complete" endpoint the
   signing page calls and its auth (recipient token); what "sealed PDF" is in the DB (document data
@@ -325,9 +350,10 @@ The proposed order 3 → 8 is kept. Three refinements:
   `tests/documenso/races/doc-race-001-last-recipients.spec.ts`,
   `tests/documenso/races/doc-race-002-double-submit.spec.ts`, matching `tests/unit/*.test.ts`,
   `docs/plans/<date>-p6-phase1-task7-doc-races.md`.
-- **CI change.** `documenso-smoke` runs `race:documenso` at the chosen trial counts and uploads the
-  two histograms.
-- **Done when.** Both cases pass at their trial counts in one CI run (or a proven product bug is
+- **CI change.** `documenso-smoke` runs `race:documenso` at about 5 trials on PRs and the full
+  count on `main`, nightly and `workflow_dispatch` (D2), and uploads the two histograms.
+- **Done when.** Both cases pass at about 5 trials on the PR and at their full count in one `main`
+  (or nightly) run (or a proven product bug is
   recorded with `test.fail()` and evidence from repeated runs); histograms uploaded; leak check by
   prefix; `npm run check` green.
 - **Main risks.** Trial time (PDF seal per trial); flaky async counts if `waitForStable` limits are
@@ -340,9 +366,11 @@ The proposed order 3 → 8 is kept. Three refinements:
 - **Cases.** All Phase 1 cases: `P6-MED-RACE-001`, `P6-CAL-RACE-001`, `P6-CAL-RACE-002`,
   `P6-CAL-RACE-003`, `P6-DOC-RACE-001`, `P6-DOC-RACE-002`. No new cases.
 - **Depends on.** Tasks 4, 5, 7.
-- **Scope.** Raise `P6-MED-RACE-001` in CI from `RACE_TRIALS=3` to the master plan's N≥50 (extras
-  stay capped at 3, Task 2 D15). All three product jobs green on `main` twice (two separate runs).
-  README: one table per product with the measured rates from GitHub Actions (median of ≥ 3 runs
+- **Scope.** Run `P6-MED-RACE-001` at the master plan's N≥50 on `main`, nightly and
+  `workflow_dispatch`; PRs keep `RACE_TRIALS=3` (D2; extras stay capped at 3, Task 2 D15). All three
+  product jobs green on `main` twice (two separate full-count runs, `main` or nightly).
+  README: one table per product with the measured rates from `main` and nightly GitHub Actions
+  runs only (median of ≥ 3 runs
   for any timing), links to the run and histogram artefacts; no number from a cloud VM. Mark
   master-plan Phase 1 done in README (the master-plan HTML is not edited).
 - **The live probe must confirm.** Nothing new on products; it collects the CI run ids and
@@ -351,7 +379,8 @@ The proposed order 3 → 8 is kept. Three refinements:
 - **Reused.** Everything; no new helpers.
 - **New files (names only).** `docs/plans/<date>-p6-phase1-task8-closeout.md`; README and
   `perf.yml` edits only.
-- **CI change.** Medusa race step trial count; nothing else unless a run proves a timeout.
+- **CI change.** Medusa race step trial count by event (PR vs full run); nothing else unless a run
+  proves a timeout.
 - **Done when.** Two green `main` runs with all histograms attached; README cites only those runs;
   every open product bug has its evidence linked; `npm run check` green.
 - **Main risks.** Total CI minutes across three heavy jobs; a flaky-looking failure that must be
@@ -374,7 +403,5 @@ The proposed order 3 → 8 is kept. Three refinements:
 
 ## Open questions for Jayami
 
-1. If a cold Cal production build does not fit a standard GitHub-hosted runner, which fallback is
-   acceptable: `CAL_WEB_MODE=dev`, a larger runner, or build only on `main` with a cache?
-2. Should 50-trial runs gate every PR, or run on `main` + `workflow_dispatch` with a smaller count
-   on PRs? (Task 4 proposes from probe timing; this is the default question.)
+None. Both questions were answered on 2026-10-20 and are recorded as D1 (Cal build) and D2 (trial
+split) under "Resolved decisions".
