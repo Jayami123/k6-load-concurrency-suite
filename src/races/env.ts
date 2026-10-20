@@ -46,3 +46,16 @@ export function medusaDatabaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): 
   if (harness) return harness;
   return "postgres://medusa:medusa@127.0.0.1:5433/medusa";
 }
+
+export function calBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.CAL_BASE_URL?.trim();
+  return (raw && raw.length > 0 ? raw : "http://127.0.0.1:3000").replace(/\/$/, "");
+}
+
+export function calDatabaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const p6 = env.P6_CAL_DATABASE_URL?.trim();
+  if (p6) return p6;
+  const harness = env.CAL_DB_URL?.trim();
+  if (harness) return harness;
+  return "postgresql://postgres@127.0.0.1:5450/calendso";
+}
