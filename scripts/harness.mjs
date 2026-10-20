@@ -98,7 +98,21 @@ async function upLongRunning(spec) {
     : Number.NaN;
   const recordedAlive = Number.isSafeInteger(recorded) && recorded > 1 && groupAlive(recorded);
   if (existsSync(pgidFile) && (recordedAlive || (await portOpen(spec.port)))) {
-    console.log(`${product} already running (pgid ${readFileSync(pgidFile, "utf8").trim()})`);
+    const pgid = readFileSync(pgidFile, "utf8").trim();
+    // A group that is still starting is not ready yet: wait for its port, or fail if it dies.
+    const deadline = Date.now() + timeoutMs;
+    while (!(await portOpen(spec.port))) {
+      if (!groupAlive(recorded)) {
+        console.error(`ENV: ${product} group ${pgid} exited before ready (log ${logFile})`);
+        return 1;
+      }
+      if (Date.now() > deadline) {
+        console.error(`ENV: ${product} group ${pgid} not ready after ${timeoutMs} ms`);
+        return 1;
+      }
+      await sleep(2000);
+    }
+    console.log(`${product} already running (pgid ${pgid})`);
     return 0;
   }
   const out = openSync(logFile, "w");
