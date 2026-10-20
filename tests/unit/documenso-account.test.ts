@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CookieJar, generatePassword, parseTrpc, trpcUrl } from "../../src/documenso/account.ts";
+import {
+  checkVerifyEmail,
+  CookieJar,
+  generatePassword,
+  parseTrpc,
+  trpcUrl,
+} from "../../src/documenso/account.ts";
 
 describe("generatePassword", () => {
   it("is long and has every character class", () => {
@@ -79,5 +85,42 @@ describe("CookieJar", () => {
     assert.equal(jar.header(), "csrfToken=second; sessionId=s1");
     assert.equal(jar.has("sessionId"), true);
     assert.equal(jar.has("missing"), false);
+  });
+});
+
+describe("checkVerifyEmail", () => {
+  it("accepts 200 with state VERIFIED", () => {
+    assert.doesNotThrow(() => checkVerifyEmail(200, '{"state":"VERIFIED"}'));
+  });
+
+  it("labels an HTML error page with its status and never echoes the body", () => {
+    assert.throws(
+      () => checkVerifyEmail(502, "<html><body>secret-page-bytes</body></html>"),
+      (err: Error) => {
+        assert.equal(err.message, "PRODUCT BUG: verify-email HTTP 502 state none");
+        return true;
+      },
+    );
+  });
+
+  it("labels an HTML body with 200 as state none", () => {
+    assert.throws(
+      () => checkVerifyEmail(200, "<html>not json</html>"),
+      (err: Error) => err.message === "PRODUCT BUG: verify-email HTTP 200 state none",
+    );
+  });
+
+  it("labels a JSON null body as state none instead of throwing a TypeError", () => {
+    assert.throws(
+      () => checkVerifyEmail(200, "null"),
+      (err: Error) => err.message === "PRODUCT BUG: verify-email HTTP 200 state none",
+    );
+  });
+
+  it("reports a non-VERIFIED state from valid JSON", () => {
+    assert.throws(
+      () => checkVerifyEmail(200, '{"state":"EXPIRED"}'),
+      (err: Error) => err.message === "PRODUCT BUG: verify-email HTTP 200 state EXPIRED",
+    );
   });
 });

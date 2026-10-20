@@ -84,6 +84,27 @@ async function mutate<T>(baseUrl: string, s: Session, proc: string, input?: unkn
   return parseTrpc<T>(proc, res.status, await res.text());
 }
 
+/**
+ * Throws `PRODUCT BUG: verify-email HTTP <status> state <state>` unless the reply is 200 with state
+ * VERIFIED. A non-JSON or non-object body counts as state "none"; the body itself is never echoed.
+ */
+export function checkVerifyEmail(status: number, text: string): void {
+  let state: unknown;
+  try {
+    const parsed: unknown = JSON.parse(text || "{}");
+    state =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { state?: unknown }).state
+        : undefined;
+  } catch {
+    state = undefined;
+  }
+  if (status !== 200 || state !== "VERIFIED") {
+    const label = typeof state === "string" ? state.slice(0, 40) : "none";
+    throw new Error(`PRODUCT BUG: verify-email HTTP ${status} state ${label}`);
+  }
+}
+
 /** csrf → signup (201) → confirmation email → verify-email (VERIFIED) → organisation → team. */
 export async function signUpVerifiedUser(opts: {
   baseUrl: string;
@@ -96,9 +117,9 @@ export async function signUpVerifiedUser(opts: {
 
   const csrf = await fetch(`${opts.baseUrl}/api/auth/csrf`);
   jar.absorb(csrf);
-  const csrfText = await csrf.text();
+  await csrf.text();
   if (csrf.status !== 200) {
-    throw new Error(`PRODUCT BUG: csrf HTTP ${csrf.status} ${csrfText.slice(0, 120)}`);
+    throw new Error(`PRODUCT BUG: csrf HTTP ${csrf.status}`);
   }
 
   const signupStarted = Date.now();
@@ -108,9 +129,9 @@ export async function signUpVerifiedUser(opts: {
     body: JSON.stringify({ name: opts.name, email: opts.email, password: generatePassword() }),
   });
   jar.absorb(signup);
-  const signupText = await signup.text();
+  await signup.text();
   if (signup.status !== 201) {
-    throw new Error(`PRODUCT BUG: signup HTTP ${signup.status} ${signupText.slice(0, 120)}`);
+    throw new Error(`PRODUCT BUG: signup HTTP ${signup.status}`);
   }
   const signupMs = Date.now() - signupStarted;
 
@@ -134,13 +155,7 @@ export async function signUpVerifiedUser(opts: {
     body: JSON.stringify({ token }),
   });
   jar.absorb(verify);
-  const verifyText = await verify.text();
-  const state = (JSON.parse(verifyText || "{}") as { state?: unknown }).state;
-  if (verify.status !== 200 || state !== "VERIFIED") {
-    throw new Error(
-      `PRODUCT BUG: verify-email HTTP ${verify.status} state ${typeof state === "string" ? state : "none"}`,
-    );
-  }
+  checkVerifyEmail(verify.status, await verify.text());
 
   const session: Session = { jar };
   const orgs = await query<Array<{ id: string }>>(opts.baseUrl, session, "organisation.getMany");
