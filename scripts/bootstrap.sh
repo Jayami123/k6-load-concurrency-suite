@@ -166,6 +166,26 @@ prepare_cal_env() {
   log "wrote $dest/.env (generated secrets, not printed)"
 }
 
+install_documenso_deps() {
+  local dest="$1"
+  if [ "${BOOTSTRAP_SKIP_INSTALL:-0}" = "1" ]; then
+    log "BOOTSTRAP_SKIP_INSTALL=1; skipping Documenso npm ci."
+    return
+  fi
+  local node_home="${DOCUMENSO_NODE_HOME:-/opt/node24}" path_prefix=""
+  local major
+  major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+  if [ "$major" -lt 24 ]; then
+    if [ ! -x "$node_home/bin/node" ]; then
+      log "ERROR Documenso needs Node 24; install it at /opt/node24 (plan §13.3) or set DOCUMENSO_NODE_HOME."
+      exit 1
+    fi
+    path_prefix="$node_home/bin:"
+  fi
+  log "npm ci in $dest (Node $(PATH="${path_prefix}$PATH" node -v))"
+  (cd "$dest" && PATH="${path_prefix}$PATH" npm ci --no-audit --no-fund)
+}
+
 main() {
   local products=("$@")
   [ "${#products[@]}" -gt 0 ] || products=(medusa)
@@ -191,6 +211,7 @@ main() {
         install_cal_deps "$dest"
         prepare_cal_env "$dest"
         ;;
+      documenso) install_documenso_deps "$dest" ;;
       *) log "$p: dependency install is not automated yet; see the product README." ;;
     esac
   done

@@ -85,4 +85,38 @@ describe("waitForStable", () => {
       /TEST BUG: waitForStable timed out/,
     );
   });
+
+  it("does not accept an empty stable read when accept requires rows", async () => {
+    const reads: Array<Array<number>> = [[], [7], [7]];
+    let n = 0;
+    const value = await waitForStable(async () => reads[Math.min(n++, reads.length - 1)] ?? [], {
+      intervalMs: 1,
+      timeoutMs: 500,
+      accept: (rows) => rows.length > 0,
+    });
+    assert.deepEqual(value, [7]);
+    assert.equal(n, 3);
+  });
+
+  it("returns the last read after a timeout when returnOnTimeout is set", async () => {
+    const value = await waitForStable(async () => [] as number[], {
+      intervalMs: 1,
+      timeoutMs: 30,
+      accept: (rows) => rows.length > 0,
+      returnOnTimeout: true,
+    });
+    assert.deepEqual(value, []);
+  });
+
+  it("still throws on timeout when returnOnTimeout is not set and accept rejects", async () => {
+    await assert.rejects(
+      () =>
+        waitForStable(async () => [] as number[], {
+          intervalMs: 1,
+          timeoutMs: 30,
+          accept: (rows) => rows.length > 0,
+        }),
+      /TEST BUG: waitForStable timed out/,
+    );
+  });
 });

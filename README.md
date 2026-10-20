@@ -150,6 +150,52 @@ Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 30.
 | ------------------------------------------------------------------------------ | ------ | -------------------- | ------------ | --------- | --- | ----------------- |
 | _filled from the first `main` and nightly runs; links to the run and artefact_ |
 
+## Run Documenso
+
+Needs Docker, Node 24 at `/opt/node24` (the commands find it by themselves; `/usr/local/bin` stays
+first, so Medusa and Cal keep Node 22.23) and the hosts entry `127.0.0.1 p6-webhook.test`.
+
+```bash
+export PATH="/usr/local/bin:$PATH"
+bash scripts/bootstrap.sh documenso    # clones the pinned fork and runs npm ci under Node 24 (once)
+npm run up:documenso                   # the first run builds the web app; later runs reuse the build
+npm run smoke:documenso
+RACE_TRIALS=3 npm run race:documenso
+npm run down:documenso                 # always; it also stops the Documenso web process
+```
+
+The self-test signs up a throwaway user per run (the password is generated in memory), mints an API
+token through Documenso's own API, reads the confirmation email from Inbucket and receives one
+webhook. Everything it created is deleted at the end, and a leak check counts what is left.
+`results/races/documenso-self-test.json` (gitignored) holds the histogram; the web log is
+`node_modules/qa-portfolio-harness/.harness/documenso-web.log`.
+
+Test environment: `scripts/harness.mjs` sets `DANGEROUS_BYPASS_RATE_LIMITS=true` (so the parallel
+burst is not limited to 429) and `NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS=p6-webhook.test` (the one
+host the webhook receiver is allowed on). SSRF protection stays on for every other host.
+
+| Label       | When                                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PRODUCT** | Health burst not 200; signup not 201; verify not `VERIFIED`; token or API v1 not 200; no confirmation email; webhook delivered not once, secret differs, `WebhookCall` not one `SUCCESS` 200, or body differs |
+| **TEST**    | Spread at or over `RACE_MAX_SPREAD_MS`; SQLSTATE not 25006; leak or cleanup failure                                                                                                                           |
+| **ENV**     | `up` exits 1, Node below 24, out of memory, Docker or disk errors, a missing hosts entry or bypass host (webhook `FAILED` with `responseCode` 0), a 429, or Inbucket API drift                                |
+
+The first two labels need the evidence pasted (HTTP status, body start, counts, SQLSTATE). For ENV,
+paste the last 40 lines of the harness log or the web log.
+
+Known product finding **`P6-OBS-DOC-001`** (severity low, recorded here only; no test in this task):
+a wrong password or a wrong CSRF token on `POST /api/auth/email-password/authorize` returns HTTP 500
+(`INVALID_CREDENTIALS` / `INVALID_REQUEST`) instead of a 4xx. The cause is that the handler's errors
+have no `statusCode`, so `auth.onError` falls back to 500. P1 already records the same handler and
+root cause as `P7-OBS-DOC-2FA-003` (a wrong TOTP returns 500) in
+[documenso-2fa-known-issues.md](https://github.com/Jayami123/playwright-e2e-ci-framework/blob/main/docs/observations/documenso-2fa-known-issues.md).
+The self-test does not log in with a password, so it never reaches this path.
+
+CI runs the self-test (`RACE_TRIALS=3`) in the `documenso-smoke` job and uploads
+`race-histograms-documenso` and `documenso-web-log`. The web log is scanned for token patterns before
+upload, and a log that contains one fails the job and is not uploaded. No timings are published here;
+numbers come only from GitHub Actions runs (median of at least 3).
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),

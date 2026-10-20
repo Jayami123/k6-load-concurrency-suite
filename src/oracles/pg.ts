@@ -61,19 +61,36 @@ export async function selectRows<T extends pg.QueryResultRow>(
 
 export async function waitForStable<T>(
   queryFn: () => Promise<T>,
-  opts?: { intervalMs?: number; stableReads?: number; timeoutMs?: number },
+  opts?: {
+    intervalMs?: number;
+    stableReads?: number;
+    timeoutMs?: number;
+    /** Reads that fail this predicate never count as stable (e.g. "at least one row"). */
+    accept?: (value: T) => boolean;
+    /** On timeout return the last read instead of throwing; the caller's assertion reports it. */
+    returnOnTimeout?: boolean;
+  },
 ): Promise<T> {
   const intervalMs = opts?.intervalMs ?? 50;
   const stableReads = opts?.stableReads ?? 2;
   const timeoutMs = opts?.timeoutMs ?? 10_000;
+  const accept = opts?.accept ?? (() => true);
 
   const deadline = Date.now() + timeoutMs;
   let lastJson = "";
   let stable = 0;
   let lastValue: T | undefined;
+  let lastRead: T | undefined;
 
   while (Date.now() < deadline) {
     const value = await queryFn();
+    lastRead = value;
+    if (!accept(value)) {
+      lastJson = "";
+      stable = 0;
+      await new Promise((r) => setTimeout(r, intervalMs));
+      continue;
+    }
     const json = JSON.stringify(value);
     if (json === lastJson) {
       stable += 1;
@@ -88,6 +105,9 @@ export async function waitForStable<T>(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 
+  if (opts?.returnOnTimeout && lastRead !== undefined) {
+    return lastRead;
+  }
   throw new Error(
     `TEST BUG: waitForStable timed out after ${timeoutMs}ms; last value ${JSON.stringify(lastValue)}`,
   );
