@@ -60,21 +60,32 @@ export type DocumensoAccount = {
   timings: { signupMs: number; confirmMailMs: number; totalMs: number };
 };
 
-type Session = { jar: CookieJar; teamId?: number };
+/** A signed-in session; `teamId` is set once the team lookup has succeeded. */
+export type DocumensoSession = { jar: CookieJar; teamId?: number };
 
-function headersFor(s: Session): Record<string, string> {
+function headersFor(s: DocumensoSession): Record<string, string> {
   const headers: Record<string, string> = { cookie: s.jar.header() };
   if (s.teamId !== undefined) headers["x-team-id"] = String(s.teamId);
   return headers;
 }
 
-async function query<T>(baseUrl: string, s: Session, proc: string, input?: unknown): Promise<T> {
+async function query<T>(
+  baseUrl: string,
+  s: DocumensoSession,
+  proc: string,
+  input?: unknown,
+): Promise<T> {
   const res = await fetch(trpcUrl(baseUrl, proc, input), { headers: headersFor(s) });
   s.jar.absorb(res);
   return parseTrpc<T>(proc, res.status, await res.text());
 }
 
-async function mutate<T>(baseUrl: string, s: Session, proc: string, input?: unknown): Promise<T> {
+async function mutate<T>(
+  baseUrl: string,
+  s: DocumensoSession,
+  proc: string,
+  input?: unknown,
+): Promise<T> {
   const res = await fetch(`${baseUrl}/api/trpc/${proc}`, {
     method: "POST",
     headers: { ...headersFor(s), "content-type": "application/json" },
@@ -111,6 +122,8 @@ export async function signUpVerifiedUser(opts: {
   inbucketBaseUrl: string;
   email: string;
   name: string;
+  /** Called as soon as verify-email answers VERIFIED, before the org and team lookups can fail. */
+  onVerified?: (session: DocumensoSession) => void;
 }): Promise<DocumensoAccount> {
   const started = Date.now();
   const jar = new CookieJar();
@@ -157,7 +170,8 @@ export async function signUpVerifiedUser(opts: {
   jar.absorb(verify);
   checkVerifyEmail(verify.status, await verify.text());
 
-  const session: Session = { jar };
+  const session: DocumensoSession = { jar };
+  opts.onVerified?.(session);
   const orgs = await query<Array<{ id: string }>>(opts.baseUrl, session, "organisation.getMany");
   const orgId = orgs[0]?.id;
   if (!orgId) throw new Error("PRODUCT BUG: organisation.getMany returned no organisation");
@@ -226,6 +240,6 @@ export async function deleteWebhook(baseUrl: string, a: DocumensoAccount, id: st
   await mutate(baseUrl, a, "webhook.deleteWebhook", { id });
 }
 
-export async function deleteAccount(baseUrl: string, a: DocumensoAccount) {
+export async function deleteAccount(baseUrl: string, a: DocumensoSession) {
   await mutate(baseUrl, a, "profile.deleteAccount");
 }

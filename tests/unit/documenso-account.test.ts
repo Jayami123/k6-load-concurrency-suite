@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { DocumensoSession } from "../../src/documenso/account.ts";
 import {
   checkVerifyEmail,
+  signUpVerifiedUser,
   CookieJar,
   generatePassword,
   parseTrpc,
@@ -122,5 +124,137 @@ describe("checkVerifyEmail", () => {
       () => checkVerifyEmail(200, '{"state":"EXPIRED"}'),
       (err: Error) => err.message === "PRODUCT BUG: verify-email HTTP 200 state EXPIRED",
     );
+  });
+});
+
+type Route = (url: string, init?: RequestInit) => Response;
+
+/** Replaces fetch for one test; every URL must match a route, otherwise the test fails loudly. */
+async function withFetch(route: Route, fn: () => Promise<void>): Promise<void> {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
+    route(String(input), init)) as typeof fetch;
+  try {
+    await fn();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+const json = (body: unknown, status = 200, setCookie?: string) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: setCookie ? [["set-cookie", setCookie]] : undefined,
+  });
+
+const inbucketBase = "http://inbucket.test";
+const signupEmail = "p6-x-owner@example.com";
+
+/** Happy path up to verify-email; `after` decides the organisation and team lookups. */
+function signupRoute(verifyStatus: number, after: Route): Route {
+  return (url, init) => {
+    if (url.endsWith("/api/auth/csrf")) return json({ csrfToken: "t" }, 200, "csrfToken=t; Path=/");
+    if (url.endsWith("/api/auth/email-password/signup")) return new Response("OK", { status: 201 });
+    if (url.endsWith("/api/v1/mailbox/p6-x-owner")) {
+      return json([
+        {
+          mailbox: "p6-x-owner",
+          id: "m1",
+          from: "",
+          to: [],
+          subject: "Please confirm",
+          date: "",
+          size: 1,
+          seen: false,
+        },
+      ]);
+    }
+    if (url.endsWith("/api/v1/mailbox/p6-x-owner/m1")) {
+      return json({
+        mailbox: "p6-x-owner",
+        id: "m1",
+        from: "",
+        to: [],
+        subject: "Please confirm",
+        date: "",
+        size: 1,
+        seen: false,
+        header: {},
+        body: { text: "/verify-email/tok_1", html: "" },
+      });
+    }
+    if (url.endsWith("/api/auth/email-password/verify-email")) {
+      return verifyStatus === 200
+        ? json({ state: "VERIFIED" }, 200, "sessionId=s1; Path=/; HttpOnly")
+        : new Response("<html>gateway</html>", { status: verifyStatus });
+    }
+    return after(url, init);
+  };
+}
+
+const trpcError = (code: string, message: string) =>
+  json({ error: { json: { message, data: { code } } } }, 500);
+
+const signUp = (onVerified: (s: DocumensoSession) => void) =>
+  signUpVerifiedUser({
+    baseUrl: "http://127.0.0.1:3001",
+    inbucketBaseUrl: inbucketBase,
+    email: signupEmail,
+    name: "P6 Owner",
+    onVerified,
+  });
+
+describe("signUpVerifiedUser cleanup handle", () => {
+  it("exposes the verified session when the organisation lookup fails", async () => {
+    const seen: DocumensoSession[] = [];
+    await withFetch(
+      signupRoute(200, (url) =>
+        url.includes("organisation.getMany")
+          ? trpcError("INTERNAL_SERVER_ERROR", "boom")
+          : new Response(null, { status: 404 }),
+      ),
+      async () => {
+        await assert.rejects(
+          signUp((s) => seen.push(s)),
+          /organisation\.getMany HTTP 500/,
+        );
+      },
+    );
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]?.jar.has("sessionId"), true);
+  });
+
+  it("exposes the verified session when the team lookup fails", async () => {
+    const seen: DocumensoSession[] = [];
+    await withFetch(
+      signupRoute(200, (url) => {
+        if (url.includes("organisation.getMany"))
+          return json({ result: { data: { json: [{ id: "org_1" }] } } });
+        if (url.includes("team.find")) return trpcError("NOT_FOUND", "no team");
+        return new Response(null, { status: 404 });
+      }),
+      async () => {
+        await assert.rejects(
+          signUp((s) => seen.push(s)),
+          /team\.find HTTP 500 NOT_FOUND/,
+        );
+      },
+    );
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]?.jar.has("sessionId"), true);
+  });
+
+  it("does not expose a session when verify-email fails", async () => {
+    const seen: DocumensoSession[] = [];
+    await withFetch(
+      signupRoute(500, () => new Response(null, { status: 404 })),
+      async () => {
+        await assert.rejects(
+          signUp((s) => seen.push(s)),
+          /PRODUCT BUG: verify-email HTTP 500 state none/,
+        );
+      },
+    );
+    assert.equal(seen.length, 0);
   });
 });

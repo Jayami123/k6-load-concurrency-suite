@@ -36,6 +36,7 @@ import {
   signUpVerifiedUser,
   testWebhook,
   type DocumensoAccount,
+  type DocumensoSession,
 } from "../../../src/documenso/account.ts";
 import { leakCheck, readWebhookCalls } from "../../../src/documenso/oracle.ts";
 import { casePrefix, likeLiteralPrefix } from "../../../src/medusa/payloads.ts";
@@ -100,6 +101,9 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
   });
 
   let account: DocumensoAccount | null = null;
+  // Holds the session as soon as verify-email succeeds, so cleanup can delete the user even if a
+  // later organisation or team lookup fails (the account object is only built after both).
+  const verified: { session?: DocumensoSession } = {};
   let tokenId: number | null = null;
   let webhookId: string | null = null;
   let receiver: Awaited<ReturnType<typeof startWebhookReceiver>> | null = null;
@@ -186,6 +190,9 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
       baseUrl: base,
       inbucketBaseUrl: inbucketBaseUrlFromEnv(),
       email,
+      onVerified: (session) => {
+        verified.session = session;
+      },
       name: "P6 Owner",
     });
     const confirmations = await inbucket.list(mailbox);
@@ -269,9 +276,9 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
       const id = tokenId;
       await step("deleteApiToken", () => deleteApiToken(base, acc, id));
     }
-    if (account) {
-      const acc = account;
-      await step("deleteAccount", () => deleteAccount(base, acc));
+    const owner = account ?? verified.session;
+    if (owner) {
+      await step("deleteAccount", () => deleteAccount(base, owner));
     }
     await step("purgeMailbox", () => inbucket.purge(mailbox));
     const mailboxCount = await inbucket.list(mailbox).then(
