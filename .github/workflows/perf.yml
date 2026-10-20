@@ -287,8 +287,9 @@ jobs:
           path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
           key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
 
+      # Always run: the node_modules cache holds only the root folder, not workspace-local
+      # node_modules (e.g. a nested React copy). With both caches warm this is a quick link check.
       - name: Install Cal dependencies
-        if: ${{ steps.cal_nm.outputs.cache-hit != 'true' }}
         working-directory: ${{ env.CAL_CHECKOUT_PATH }}
         run: |
           set -euo pipefail
@@ -318,6 +319,9 @@ jobs:
       - name: Start Cal (harness up)
         id: cal_up
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          # 40 min, below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
+          HARNESS_UP_TIMEOUT_MS: "2400000"
         run: |
           set -euo pipefail
           SECONDS=0

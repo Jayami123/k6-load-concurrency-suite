@@ -65,8 +65,31 @@ function portOpen(port) {
   });
 }
 
+/**
+ * True while any process in group pgid exists (EPERM: exists but owned by someone else).
+ * @param {number} pgid
+ */
+function groupAlive(pgid) {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return /** @type {NodeJS.ErrnoException} */ (err).code === "EPERM";
+  }
+}
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /** @param {LongRunning} spec */
 async function upLongRunning(spec) {
+  // Unset or blank uses the default; anything else must be a whole number of ms >= 1.
+  const rawTimeout = process.env.HARNESS_UP_TIMEOUT_MS?.trim() || "3600000";
+  const timeoutMs = /^[1-9]\d*$/.test(rawTimeout) ? Number(rawTimeout) : Number.NaN;
+  if (!Number.isSafeInteger(timeoutMs)) {
+    console.error(`ENV: invalid HARNESS_UP_TIMEOUT_MS=${process.env.HARNESS_UP_TIMEOUT_MS}`);
+    return 1;
+  }
   mkdirSync(stateDir, { recursive: true });
   // A second up must not replace the pgid of the group that is still serving.
   if (existsSync(pgidFile) && (await portOpen(spec.port))) {
@@ -83,7 +106,6 @@ async function upLongRunning(spec) {
   let exited = null;
   child.on("exit", (code) => (exited = code ?? 1));
   child.unref();
-  const timeoutMs = Number(process.env.HARNESS_UP_TIMEOUT_MS || 3_600_000);
   const deadline = Date.now() + timeoutMs;
   let printed = 0;
   for (;;) {
@@ -92,7 +114,8 @@ async function upLongRunning(spec) {
     printed = text.length;
     if (spec.ready.test(text)) return 0;
     if (exited !== null) {
-      rmSync(pgidFile, { force: true });
+      // The leader is gone but children it started (e.g. next start) may still be running.
+      await stopGroup(spec);
       console.error(`ENV: harness up ${product} exited ${exited} before ready (log ${logFile})`);
       return 1;
     }
@@ -101,7 +124,7 @@ async function upLongRunning(spec) {
       await stopGroup(spec);
       return 1;
     }
-    await new Promise((r) => setTimeout(r, 2000));
+    await sleep(2000);
   }
 }
 
@@ -109,6 +132,12 @@ async function upLongRunning(spec) {
 async function stopGroup(spec) {
   if (!existsSync(pgidFile)) return;
   const pgid = Number(readFileSync(pgidFile, "utf8").trim());
+  // kill(-0) or kill(-1) would signal our own group or every process we may signal.
+  if (!Number.isSafeInteger(pgid) || pgid <= 1) {
+    console.error(`ENV: ignoring invalid pgid in ${pgidFile}; removing it`);
+    rmSync(pgidFile, { force: true });
+    return;
+  }
   /** @param {NodeJS.Signals} sig */
   const signal = (sig) => {
     try {
@@ -117,11 +146,14 @@ async function stopGroup(spec) {
       if (/** @type {NodeJS.ErrnoException} */ (err).code !== "ESRCH") throw err;
     }
   };
+  const busy = async () => groupAlive(pgid) || (await portOpen(spec.port));
   signal("SIGTERM");
-  for (let i = 0; i < 30 && (await portOpen(spec.port)); i++) {
-    await new Promise((r) => setTimeout(r, 1000));
+  for (let i = 0; i < 30 && (await busy()); i++) await sleep(1000);
+  if (await busy()) {
+    console.error(`ENV: ${product} group ${pgid} still running after SIGTERM; sending SIGKILL`);
+    signal("SIGKILL");
+    for (let i = 0; i < 10 && groupAlive(pgid); i++) await sleep(500);
   }
-  if (await portOpen(spec.port)) signal("SIGKILL");
   rmSync(pgidFile, { force: true });
 }
 

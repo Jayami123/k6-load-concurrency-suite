@@ -122,22 +122,47 @@ install_cal_deps() {
   (cd "$dest" && TURBO_TELEMETRY_DISABLED=1 COREPACK_ENABLE_STRICT=0 corepack yarn install --immutable)
 }
 
+# Writes the Cal .env content to $1 from the example at $2. Runs in a subshell so umask 077
+# (file created owner-only) does not leak. Returns non-zero on any failure; never prints secrets.
+write_cal_env() (
+  umask 077
+  local out="$1" example="$2" nextauth_secret encryption_key
+  if [ ! -f "$example" ]; then
+    log "ERROR $example missing"
+    return 1
+  fi
+  sed 's|http://localhost:3000|http://127.0.0.1:3000|g' "$example" \
+    | { grep -vE '^(NEXTAUTH_SECRET|CALENDSO_ENCRYPTION_KEY)=' || true; } > "$out" || return 1
+  if ! nextauth_secret="$(openssl rand -base64 32)" || [ -z "$nextauth_secret" ]; then
+    log "ERROR could not generate NEXTAUTH_SECRET"
+    return 1
+  fi
+  if ! encryption_key="$(openssl rand -base64 24)" || [ -z "$encryption_key" ]; then
+    log "ERROR could not generate CALENDSO_ENCRYPTION_KEY"
+    return 1
+  fi
+  printf 'NEXTAUTH_SECRET=%s\nCALENDSO_ENCRYPTION_KEY=%s\n' "$nextauth_secret" "$encryption_key" >> "$out" || return 1
+  if ! grep -qE '^NEXTAUTH_SECRET=.+' "$out" || ! grep -qE '^CALENDSO_ENCRYPTION_KEY=.+' "$out"; then
+    log "ERROR generated .env is missing NEXTAUTH_SECRET or CALENDSO_ENCRYPTION_KEY"
+    return 1
+  fi
+  chmod 600 "$out"
+)
+
 # Same steps as P1 CI "Prepare Cal product .env". Never prints the generated values.
+# Built in a temp file and moved into place, so a failed run never leaves a partial .env.
 prepare_cal_env() {
   local dest="$1"
   if [ -f "$dest/.env" ]; then
     log "$dest/.env exists. Left as is."
     return
   fi
-  cp "$dest/.env.example" "$dest/.env"
-  sed -i 's|http://localhost:3000|http://127.0.0.1:3000|g' "$dest/.env"
-  grep -v '^NEXTAUTH_SECRET=' "$dest/.env" | grep -v '^CALENDSO_ENCRYPTION_KEY=' > "$dest/.env.tmp"
-  mv "$dest/.env.tmp" "$dest/.env"
-  printf 'NEXTAUTH_SECRET=%s\n' "$(openssl rand -base64 32)" >> "$dest/.env"
-  printf 'CALENDSO_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 24)" >> "$dest/.env"
-  chmod 600 "$dest/.env"
-  grep -qE '^NEXTAUTH_SECRET=.+' "$dest/.env" || { log "ERROR NEXTAUTH_SECRET empty"; exit 1; }
-  grep -qE '^CALENDSO_ENCRYPTION_KEY=.+' "$dest/.env" || { log "ERROR CALENDSO_ENCRYPTION_KEY empty"; exit 1; }
+  local tmp="$dest/.env.tmp.$$"
+  if ! write_cal_env "$tmp" "$dest/.env.example" || ! mv "$tmp" "$dest/.env"; then
+    rm -f "$tmp"
+    log "ERROR could not write $dest/.env; nothing was created"
+    exit 1
+  fi
   log "wrote $dest/.env (generated secrets, not printed)"
 }
 
