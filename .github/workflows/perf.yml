@@ -375,7 +375,7 @@ jobs:
       - name: Race P6-CAL-RACE-003 (cal-race)
         if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 3 trials ≈ 30–45 s on CI.
+        # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 4 trials ≈ 30–45 s on CI.
         timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
         env:
           # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).

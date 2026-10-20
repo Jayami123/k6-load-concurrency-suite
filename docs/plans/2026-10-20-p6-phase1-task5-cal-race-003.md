@@ -261,7 +261,7 @@ GitHub Actions `main` run [39434721131](https://github.com/Jayami123/k6-load-con
 Steps: `Start Cal (harness up)` 78 s, `Race self-test` 9 s, `Race P6-CAL-RACE-001` **62 s**
 (50 mapped + 3 × 3 extra trials of N=20/21).
 
-Task 5 adds one step: 30 mapped pair trials + 3 sequential-control trials. VM: 0.4 s per pair trial
+Task 5 adds one step: 30 mapped pair trials + 4 sequential-control trials. VM: 0.4 s per pair trial
 (max 0.7 s) vs 1.2 s for a Task 4 trial; CI ran Task 4 at ~1.05 s per trial (62 s / 59), so
 assume ≤ 1 s per pair trial on CI: **≈ 30–45 s**, plus ~5 s Playwright start. New job estimate
 **≈ 5–5.5 min** of the 60-min job timeout. Fits with large headroom; PR runs (5 trials) add ~10 s.
@@ -330,7 +330,7 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D10 Trial count in the case itself: `Math.min(raceTrialsFromEnv(), 30)`.** CI already sets
   `RACE_TRIALS` 5 on `pull_request` and 50 on `main`/nightly/dispatch for `cal-smoke`; the case caps
   at 30, so PRs run 5 and full runs 30 (roadmap D2, master plan trials=30). The extra uses
-  `min(RACE_TRIALS, 3)`. Rejected: a second env variable (one name is enough; the cap documents the
+  `min(RACE_TRIALS, 4)` (one trial per sequential shape A–D; a cap of 3 never ran shape D). Rejected: a second env variable (one name is enough; the cap documents the
   case's count where the case is defined); a separate `RACE_TRIALS: 30` step env (count would live
   in YAML, not in the case).
 - **D11 Setup asserted.** `resolveHostSetup(pool, "30min", 30)` and `resolveHostSetup(pool, "60min", 60)`
@@ -346,7 +346,7 @@ Lead with the industry-standard approach, then the rejected alternative and its 
 - **D13 Extend, do not duplicate.** Additions per file in §7; the only refactor is moving three
   private blocks of `runIdenticalSlotCase` into private helpers used by both run-cases. Task 4's
   spec and 98 unit tests must stay green unchanged.
-- **D14 One extra: sequential overlap control** (`min(RACE_TRIALS, 3)` trials, shapes A/B/C/D by
+- **D14 One extra: sequential overlap control** (`min(RACE_TRIALS, 4)` trials, so every shape A/B/C/D runs once on a PR; shapes by
   `trial % 4`, first request then second, no barrier). Expected: second 409 `slot-taken`, 0 pairs.
   It proves on every CI run that the guard works sequentially, so the mapped failure stays a race
   finding and not a configuration change. No `test.fail()`. Rejected: no control (a seed change
@@ -744,7 +744,7 @@ Add after `Race P6-CAL-RACE-001 (cal-race)` and before the `race-histograms-cal`
 - name: Race P6-CAL-RACE-003 (cal-race)
   if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
   working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-  # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 3 trials ≈ 30–45 s on CI.
+  # Probe: ~0.4 s per pair trial (max 0.7 s) on a 4 vCPU VM; 30 + 4 trials ≈ 30–45 s on CI.
   timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
   env:
     # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).
@@ -1085,7 +1085,7 @@ import { p6RunPrefix } from "../../../src/races/prefix.ts";
 // Master plan CAL02: trials=30. CI passes RACE_TRIALS 5 (PR) or 50 (full); the case caps at 30.
 const FULL_TRIALS = 30;
 const trials = Math.min(raceTrialsFromEnv(), FULL_TRIALS);
-const extraTrials = Math.min(raceTrialsFromEnv(), 3);
+const extraTrials = Math.min(raceTrialsFromEnv(), 4); // one trial per sequential shape A-D
 const runPrefix = p6RunPrefix();
 const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
 let setup: { userId: number; eventTypeId30: number; eventTypeId60: number };

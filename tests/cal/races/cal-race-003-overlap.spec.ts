@@ -11,7 +11,7 @@ import { p6RunPrefix } from "../../../src/races/prefix.ts";
 // Master plan CAL02: trials=30. CI passes RACE_TRIALS 5 (PR) or 50 (full); the case caps at 30.
 const FULL_TRIALS = 30;
 const trials = Math.min(raceTrialsFromEnv(), FULL_TRIALS);
-const extraTrials = Math.min(raceTrialsFromEnv(), 3);
+const extraTrials = Math.min(raceTrialsFromEnv(), 4); // one trial per sequential shape A-D
 const runPrefix = p6RunPrefix();
 const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
 let setup: { userId: number; eventTypeId30: number; eventTypeId60: number };
