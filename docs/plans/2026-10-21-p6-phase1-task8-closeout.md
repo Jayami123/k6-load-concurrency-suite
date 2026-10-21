@@ -163,8 +163,12 @@ Task 2 estimated about 10 minutes for 50 trials. The step timings say a little m
 pin in `perf.yml` and `bootstrap.sh`). Read-only, shallow fetch of that one commit. The file is
 `packages/features/bookings/lib/service/RegularBookingService.ts`:
 
-- line 1267: `const seed = \`${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}\`;`
-- line 1268: `const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));`
+- lines 1267–1268, in a fenced block:
+
+```ts
+const seed = `${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}`;
+const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));
+```
 
 Supporting facts from the same commit:
 
