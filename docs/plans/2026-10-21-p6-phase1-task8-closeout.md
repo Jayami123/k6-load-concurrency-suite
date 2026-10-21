@@ -1058,3 +1058,358 @@ redacted 400
 **Notes for Jayami (not part of the issue):** the reproduction counts come from our CI runs
 (`P6-CAL-RACE-003`, runs 39449102426, 39484324139, 39561220290, 39563393657). Attach the redacted log lines and the
 trace ids from `refusedTraceIds`, with no tokens.
+
+## Addendum: evidence release via workflow
+
+**Status: plan only, for Jayami's review.** This addendum makes no code, workflow, release or run. The build starts only
+after Jayami approves it. Written 21 Oct 2026 (UTC).
+
+It replaces **§9 step 9** (the `gh release create` from a local zip). It is **deviation 1** of Task 8: the release was not
+created, and this session cannot create releases.
+
+### 1. Why a workflow makes the release
+
+- This session cannot create a release. The zips were meant to sit in the build scratchpad, but none exists now.
+- The evidence still exists as Actions artefacts on GitHub. They expire after 14 days (3 Nov 2026 for runs before 22 Oct).
+- A workflow run on GitHub can download those artefacts, scan them, zip them and create the release. Nothing is built by
+  hand. It runs only when Jayami dispatches it. It uses `github.token`, so there is no PAT and no new secret.
+- The release is still the evidence store (D37): public, does not expire, one zip per run.
+
+### 2. Read-only check (done 21 Oct; nothing was changed or committed)
+
+Source: the `race-histograms-documenso` artefact of each run. Each one holds `P6-DOC-RACE-001.json`. The four artefacts were
+downloaded into the scratchpad. Each run has its own directory. The check ran with `python3 -I` over a script in its own
+directory. Each message is grouped with every digit run replaced by `N`.
+
+Result. **The same 7 messages, with the same counts, in all four runs:**
+
+| Message (per-trial numbers removed)                              | 39561220290 | 39563393657 | 39577832657 (run A) | 39580025937 (run B) |
+| ---------------------------------------------------------------- | ----------- | ----------- | ------------------- | ------------------- |
+| `PRODUCT BUG: Signing Complete! for recipient N xN, expected N`  | 100         | 100         | 100                 | 100                 |
+| `PRODUCT BUG: seal jobs N, expected N`                           | 50          | 50          | 50                  | 50                  |
+| `PRODUCT BUG: DOCUMENT_COMPLETED rows N, expected N`             | 50          | 50          | 50                  | 50                  |
+| `PRODUCT BUG: DocumentData delta N, expected N (original + one sealed)` | 50   | 50          | 50                  | 50                  |
+| `PRODUCT BUG: completed-email jobs N, expected N`                | 50          | 50          | 50                  | 50                  |
+| `PRODUCT BUG: DOCUMENT_COMPLETED deliveries N, expected N`       | 50          | 50          | 50                  | 50                  |
+| `PRODUCT BUG: WebhookCall rows N, expected N`                    | 50          | 50          | 50                  | 50                  |
+| **Total**                                                        | **400**     | **400**     | **400**             | **400**             |
+| Lines not starting with `PRODUCT BUG`                            | 0           | 0           | 0                   | 0                   |
+
+**50 trials × 8 = 400.** Every line starts with `PRODUCT BUG`. The verdict is `fail`, which is the planned `test.fail()`
+for `P6-OBS-DOC-002`. The `Signing Complete!` line appears twice per trial, so it is 100 per run.
+
+Runs `39561220290` and `39563393657` were checked from their artefacts. They are the earlier runs the brief named.
+
+### 3. Files (all new, one CI PR)
+
+| Path                                       | What it is                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `.github/workflows/evidence-release.yml`   | the workflow (§4). `workflow_dispatch` only                            |
+| `scripts/evidence-token-scan.mjs`          | the token scan (§5). Prints file and line only                         |
+| `tests/unit/evidence-token-scan.test.ts`   | unit tests for the scan (§5)                                           |
+| `docs/releases/p6-phase1.md`               | the release notes (§6). It must be on `main` before the dispatch       |
+
+- Branch: `ci/2026-10-21-p6-evidence-release`, cut from `main` at **`4aecc2d`**.
+- PR title: `ci: add workflow to publish run evidence as a release`. One PR. Jayami merges it.
+- Before the push, run `npm run check` (AGENTS.md). If `npm run typecheck` rejects the `.mjs` import in the test, add
+  `scripts/evidence-token-scan.d.mts` with the three exported declarations. Do not loosen `tsconfig`.
+- The commit identity is the environment's. No `Co-Authored-By`, `Generated with` or `Claude-Session` trailers.
+
+### 4. The workflow, exactly
+
+Create `.github/workflows/evidence-release.yml`. Action pins are the ones `perf.yml` already uses. The `checkout` pin is
+`3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`).
+
+```yaml
+name: evidence-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example p6-phase1"
+        required: true
+        type: string
+      target_sha:
+        description: "Full 40-character commit SHA the release points at"
+        required: true
+        type: string
+      run_ids:
+        description: "Space-separated perf.yml run ids on main"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      RUN_IDS: ${{ inputs.run_ids }}
+      PERF_WORKFLOW_ID: "376454455"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^p6-[a-z0-9-]+$ ]] || { echo "::error::tag must match ^p6-[a-z0-9-]+$"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be 40 lowercase hex characters"; exit 1; }
+          [[ -n "$RUN_IDS" ]] || { echo "::error::run_ids is empty"; exit 1; }
+          for id in $RUN_IDS; do
+            [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::every run id must be digits only"; exit 1; }
+          done
+          [[ -f "docs/releases/$TAG.md" ]] || { echo "::error::docs/releases/$TAG.md is missing on this commit"; exit 1; }
+
+      - name: Stop if the release already exists
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then
+            echo "::error::release $TAG already exists. Stopping. A release is never overwritten."
+            exit 1
+          fi
+          grep -qi 'not found' "$RUNNER_TEMP/release-view.err" \
+            || { echo "::error::gh release view failed for a reason other than not-found"; exit 1; }
+
+      - name: Check each run and download its artefacts
+        run: |
+          set -euo pipefail
+          for id in $RUN_IDS; do
+            gh run view "$id" --json workflowDatabaseId,headBranch,conclusion,event,headSha > "$RUNNER_TEMP/run.json"
+            jq -e --argjson wf "$PERF_WORKFLOW_ID" \
+              '.workflowDatabaseId == $wf and .headBranch == "main" and .conclusion == "success"' \
+              "$RUNNER_TEMP/run.json" > /dev/null \
+              || { echo "::error::run $id is not a successful perf.yml run on main"; exit 1; }
+            gh run download "$id" --dir "$RUNNER_TEMP/evidence/$id"
+            find "$RUNNER_TEMP/evidence/$id" -type f ! -name '*.json' ! -name '*.log' -delete
+          done
+
+      - name: Scan every file for tokens (any hit stops the job before upload)
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs "$RUNNER_TEMP/evidence"
+
+      - name: Build one zip per run and the checksum file
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          for id in $RUN_IDS; do
+            (cd "$RUNNER_TEMP/evidence/$id" && zip -rq "$out/p6-$id-evidence.zip" .)
+          done
+          (cd "$out" && sha256sum -- *.zip > SHA256SUMS.txt)
+          ls -l "$out"
+
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$TARGET_SHA" \
+            --title "P6 Phase 1 evidence (CI)" \
+            --notes-file "docs/releases/$TAG.md" \
+            "$RUNNER_TEMP"/release/*.zip "$RUNNER_TEMP/release/SHA256SUMS.txt"
+```
+
+Why it is shaped this way:
+
+- Inputs reach the scripts only through `env:`. No `${{ inputs.* }}` appears inside a `run:` block (script injection).
+- Node and `zip` come with the runner image. The scan uses only built-in Node modules, so no `setup-node` step is needed.
+- The guard runs before any download. If the release exists, the job stops. Nothing is deleted or overwritten.
+- The release is created in one call, last. A failure before it leaves no release behind.
+
+### 5. The token scan (committed, with unit tests)
+
+Patterns: the same three as the step 8 grep (`api_[A-Za-z0-9]{8,}`, `Bearer `, `sessionId`). The scan prints the file
+and line number. It never prints the matched text.
+
+`scripts/evidence-token-scan.mjs`:
+
+```js
+// Scans evidence files for tokens before they go into a release.
+// Prints file and line only. The matched text is never printed.
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The same patterns as the Task 8 step 8 grep.
+export const PATTERNS = [/api_[A-Za-z0-9]{8,}/, /Bearer /, /sessionId/];
+
+export function findHits(text) {
+  const lines = [];
+  text.split("\n").forEach((line, index) => {
+    if (PATTERNS.some((pattern) => pattern.test(line))) lines.push(index + 1);
+  });
+  return lines;
+}
+
+function listFiles(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? listFiles(path) : [path];
+  });
+}
+
+export function scanTree(root) {
+  return listFiles(root)
+    .map((file) => ({ file: relative(root, file), lines: findHits(readFileSync(file, "utf8")) }))
+    .filter((hit) => hit.lines.length > 0);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const [root] = process.argv.slice(2);
+  if (!root) {
+    console.error("usage: node scripts/evidence-token-scan.mjs <dir>");
+    process.exit(2);
+  }
+  const hits = scanTree(root);
+  for (const { file, lines } of hits) console.error(`TOKEN PATTERN: ${file} line ${lines.join(", ")}`);
+  if (hits.length > 0) {
+    console.error("stop: nothing was uploaded");
+    process.exit(1);
+  }
+  console.log("token scan: clean");
+}
+```
+
+`tests/unit/evidence-token-scan.test.ts`:
+
+```ts
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { findHits } from "../../scripts/evidence-token-scan.mjs";
+
+test("clean text has no hits", () => {
+  assert.deepEqual(findHits('{"ok":true}\n{"n":2}'), []);
+});
+
+test("reports the line number of each hit", () => {
+  assert.deepEqual(findHits("ok\napi_TESTONLY1\nok"), [2]);
+});
+
+test("Bearer and sessionId are hits", () => {
+  assert.deepEqual(findHits('Authorization: Bearer x\n{"sessionId":1}'), [1, 2]);
+});
+
+test("a short api_ word is not a hit", () => {
+  assert.deepEqual(findHits("api_short"), []);
+});
+```
+
+Expected: `npm run test:unit` passes all four. `npm run check` is green. The `api_TESTONLY1` string is a fake used only in the
+test.
+
+### 6. Release notes: `docs/releases/p6-phase1.md`
+
+This file is committed on `main` in the CI PR, so the dispatch can read it. It lists every run in the release. Use only what
+§2.1 and §2.2 show, plus runs A and B.
+
+```markdown
+# P6 Phase 1 evidence (CI)
+
+One zip per CI run. Each zip holds the `*.json` and `*.log` files of that run's artefacts. `SHA256SUMS.txt` lists the
+checksums. The release does not expire; the Actions artefacts do (14 days).
+
+| Run                                                                                | Event    | Head SHA  | What it proves                                                    |
+| ---------------------------------------------------------------------------------- | -------- | --------- | ----------------------------------------------------------------- |
+| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | push     | `98b1c82` | Cal self-test only                                                |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push     | `c3183d2` | `P6-CAL-RACE-001` (50)                                            |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | `6d73fd3` | `P6-CAL-RACE-001` (50), `P6-CAL-RACE-003` (30)                    |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | `3c6b7c6` | `P6-CAL-RACE-001` (50), `P6-CAL-RACE-003` (30), Documenso self-test (3) |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | `0f8bf23` | Medusa (50), Cal 001 (50) and 003 (30), Documenso 001, 002 (50), control (5) |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | `0f8bf23` | the same cases as `39561220290` (nightly)                         |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | `4aecc2d` | **Run A.** The same cases, at full count, after PR #18            |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | `4aecc2d` | **Run B.** The same cases, at full count                          |
+
+**Run A replaces `39569437056`.** That run is a failed push on `main` (PR #17, `ef8696b`). Its `cal-smoke` job failed in
+the `P6-CAL-RACE-003` extra. Run A is the green run that the closeout cites instead.
+```
+
+Replace the bold "what it proves" wording only if Jayami changes it at review. The table row for `39429276298` uses the
+§2.1 "Cal cases" column. The row text for `39577832657` and `39580025937` says "the same cases" because the artefact list
+(§2 above) shows the full Medusa, Cal and Documenso set.
+
+### 7. Dispatch: click by click (Jayami)
+
+1. Open the repository on GitHub and click the **Actions** tab.
+2. In the left list, click **evidence-release**. If it is not there, the CI PR is not merged yet.
+3. Click **Run workflow** (right side of the page).
+4. In **Use workflow from**, choose **Branch: main**.
+5. Fill the three boxes:
+   - `tag`: `p6-phase1`
+   - `target_sha`: `4aecc2d3cb69fffcde3b2282e23ff489d90a6090`
+   - `run_ids`: `39429276298 39434721131 39449102426 39484324139 39561220290 39563393657 39577832657 39580025937`
+6. Click the green **Run workflow** button.
+7. Click the new run in the list. Wait for the **publish** job to turn green.
+8. The last step prints the release URL. Send that link to Claude.
+
+If the run turns red, do not dispatch again. Send the link to Claude. A red run before "Create the release" creates nothing.
+
+### 8. Verification after the release (done by Claude, with read-only checks)
+
+1. The release `p6-phase1` exists. Its target is `4aecc2d…`. It has 9 assets: 8 zips and `SHA256SUMS.txt`.
+2. Each zip's file list matches the artefact file list of its run. For each run, `gh release download p6-phase1 -p "p6-<id>-evidence.zip"`,
+   then `unzip -Z1` on that zip. Compare the result with the `*.json` and `*.log` file list of that run's artefacts (fetched the
+   same way as §2). Expected: identical lists, one per run.
+3. `sha256sum -c SHA256SUMS.txt` in the download directory prints `OK` for every zip.
+
+**Reference for step 2.** The brief asks to compare against the scratchpad zips. None exists, so the artefact file lists are
+the reference. The zips are built from the same files, so the lists must match. Jayami confirms this change at review (open
+item Q2).
+
+### 9. Environments: Cursor and Claude cloud
+
+- **No change is needed in either environment.** The workflow runs on GitHub-hosted runners. It needs no new secret, env var,
+  domain, network host or setup step.
+- The Cal stack is not running in this session (`docker ps -a` lists no containers). So `npm run down:cal` was not needed.
+
+### 10. Order of work (replaces §9 steps 8 and 9 for the release)
+
+1. Jayami approves this addendum.
+2. Branch `ci/2026-10-21-p6-evidence-release` from `4aecc2d`. Add the four files (§3). Run `npm run check`. Push.
+3. Open the CI PR. Jayami merges it.
+4. Jayami dispatches the workflow (§7). Claude verifies (§8).
+5. Only then does **PR 2 (the README)** start. The README links the release.
+
+Step 8 of the closeout still does its R8 read-only check. The token scan of the old step 8 is now inside the workflow.
+
+### 11. Risks
+
+1. **Artefact expiry.** The runs before 22 Oct (`39429276298`–`39484324139`) expire on **3 Nov 2026**. The dispatch must happen before then.
+2. **A `gh` JSON field name.** The check step uses `workflowDatabaseId`. If `gh run view --json` rejects a name, the step fails before
+   any upload. Fix only the field name and say so.
+3. **Permissions.** If the repository or organization caps `GITHUB_TOKEN` at read, the create step fails with a 403. Stop and
+   report it. Do not add a PAT. The fix is a repository setting, and it is Jayami's call.
+4. **The "not found" wording.** The guard greps for `not found`. Check the exact text on the first dispatch. If it differs,
+   change only that grep, and say so.
+5. **No retries.** A failed run is reported, not re-dispatched. Only Jayami dispatches again, and only after the cause is known.
+
+### 12. Deviations from the brief, and open items
+
+Deviations (stated so they can be checked):
+
+- **D-a.** The brief asked for a read-only check on the existing scratchpad zips. None existed. Part A (§2) downloaded the
+  `race-histograms-documenso` artefact of each run from GitHub into fresh directories instead. The files are the same artefacts.
+- **D-b.** §8 step 2 compares against artefact file lists, not scratchpad zips, for the reason in §8.
+- **D-c.** The brief says run `39569437056` failed as a TEST BUG in `cal-smoke` (a seeded Yoga booking overlapped the 09:00Z
+  window). I read its failed-job log. It fails in the `P6-CAL-RACE-003` extra, on "sequential first booking not accepted:
+  409 … `no_available_users_found_error`", labelled `PRODUCT BUG`. The log has no Yoga or 09:00Z text. The release notes in §6
+  say only what the log shows.
+- **D-d.** The brief says PR #18 "also skips pending seed bookings". I found no change about pending bookings in PR #18's
+  commits (`4d8e447`, `4deefba`). The notes do not say it.
+
+Open items for Jayami:
+
+- **Q1.** Is the failure cause for `39569437056` what the brief says (a TEST BUG), or what the log shows? The release notes wait for this answer.
+- **Q2.** Accept the artefact file lists as the verification reference (D-b), or do you want the scratchpad zips rebuilt first?
+- **Q3.** Is there a PR #18 change about pending seed bookings that I did not find? If yes, point at it, and the notes will cite it.
