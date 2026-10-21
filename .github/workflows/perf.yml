@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           SECONDS=0
           npm run up:medusa
-          echo "### Medusa harness up: ${SECONDS} s" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
 
       - name: k6 smoke (GET /health)
         if: ${{ steps.medusa_up.outcome == 'success' }}
@@ -169,10 +169,17 @@ jobs:
         env:
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '3' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
+          P6_PLAYWRIGHT_JSON: results/playwright/medusa-race.json
         run: |
           set -euo pipefail
-          echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" | tee -a "$GITHUB_STEP_SUMMARY"
           npm run race:medusa
+
+      - name: Job summary (Playwright results, race table)
+        if: ${{ !cancelled() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/write-ci-job-summary.ts
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
@@ -336,7 +343,7 @@ jobs:
           set -euo pipefail
           SECONDS=0
           npm run up:cal
-          echo "### Cal harness up: ${SECONDS} s" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
 
       - name: k6 smoke (GET /pro/30min)
         if: ${{ steps.cal_up.outcome == 'success' }}
@@ -359,6 +366,7 @@ jobs:
         env:
           RACE_TRIALS: "3"
           RACE_MAX_SPREAD_MS: "20"
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-self-test.json
         run: |
           set -euo pipefail
           npm run race:cal -- tests/cal/races/cal-self-test.spec.ts
@@ -372,9 +380,9 @@ jobs:
           # Roadmap D2: about 5 on PRs, the full 50 on main, nightly and manual runs.
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-001.json
         run: |
           set -euo pipefail
-          echo "### P6-CAL-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
           npm run race:cal -- tests/cal/races/cal-race-001-identical-slot.spec.ts
 
       - name: Race P6-CAL-RACE-003 (cal-race)
@@ -386,16 +394,19 @@ jobs:
           # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-003.json
         run: |
           set -euo pipefail
-          echo "### P6-CAL-RACE-003 trials: $(( RACE_TRIALS < 30 ? RACE_TRIALS : 30 ))" >> "$GITHUB_STEP_SUMMARY"
           status=0
           npm run race:cal -- tests/cal/races/cal-race-003-overlap.spec.ts || status=$?
-          # D16: show double-booked vs clean trials even when the step passes through test.fail().
-          if [ -f results/races/P6-CAL-RACE-003.json ]; then
-            node -e 'const o=require("./results/races/P6-CAL-RACE-003.json").oracle;console.log(`P6-OBS-CAL-002 double-booked trials: ${o.trialsDoubleBooked}, clean: ${o.trialsClean}, pairs by trial: ${o.doubleBookedByTrial}`)' >> "$GITHUB_STEP_SUMMARY"
-          fi
           exit "$status"
+
+      - name: Job summary (Playwright results, race table)
+        if: ${{ !cancelled() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/write-ci-job-summary.ts
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
@@ -560,7 +571,7 @@ jobs:
           set -euo pipefail
           SECONDS=0
           npm run up:documenso
-          echo "### Documenso harness up: ${SECONDS} s" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
 
       - name: k6 smoke (GET /signin, /api/auth/csrf)
         if: ${{ steps.documenso_up.outcome == 'success' }}
@@ -586,16 +597,11 @@ jobs:
           # Plan D22: about 5 trials on PRs, the full count (50) on main, nightly and workflow_dispatch.
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
+          P6_PLAYWRIGHT_JSON: results/playwright/documenso-race.json
         run: |
           set -euo pipefail
-          echo "### Documenso race trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
           status=0
           npm run race:documenso || status=$?
-          for f in results/races/P6-DOC-RACE-001.json results/races/P6-DOC-RACE-002.json results/races/extra-doc-sequential-control.json; do
-            if [ -f "$f" ]; then
-              node -e 'const h=require(process.argv[1]);console.log(`- ${h.caseId}: verdict ${h.verdict}, trials ${h.trials}, violations ${h.invariantViolations.length}, double-seal trials ${h.oracle.trialsDoubleSeal ?? "n/a"}`)' "$PWD/$f" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
           exit "$status"
 
       # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
@@ -615,6 +621,13 @@ jobs:
             echo "::error::race histograms contain a token pattern; not uploading"
             exit 1
           fi
+
+      - name: Job summary (Playwright results, race table)
+        if: ${{ !cancelled() && steps.web_log_check.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/write-ci-job-summary.ts
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && steps.web_log_check.outcome == 'success' }}
