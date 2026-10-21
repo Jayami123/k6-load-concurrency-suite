@@ -1,5 +1,6 @@
 // Ported from Jayami123/playwright-e2e-ci-framework, path scripts/actionlint.mts, commit 2d714c7.
-// Runs with plain node (type stripping); the only change is this header.
+// Change from the source: on Windows, zip extraction uses the built-in bsdtar at %SystemRoot%\System32\tar.exe.
+// Runs with plain node (type stripping).
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -128,14 +129,26 @@ async function fetchVerifiedChecksumsText(): Promise<string> {
   return buffer.toString("utf8");
 }
 
+function tarExecutable(): string {
+  if (process.platform !== "win32") {
+    return "tar";
+  }
+  const systemRoot = process.env.SystemRoot;
+  if (systemRoot === undefined || systemRoot === "") {
+    throw new Error("SystemRoot is not set, so the Windows tar.exe cannot be located");
+  }
+  return path.join(systemRoot, "System32", "tar.exe");
+}
+
 async function extractArchive(
   archivePath: string,
   asset: PlatformAsset,
   destDir: string,
 ): Promise<void> {
   await mkdir(destDir, { recursive: true });
+  const tar = tarExecutable();
   if (asset.ext === "zip") {
-    const result = spawnSync("tar", ["-xf", archivePath, "-C", destDir, asset.archiveMember], {
+    const result = spawnSync(tar, ["-xf", archivePath, "-C", destDir, asset.archiveMember], {
       cwd: repoRoot,
       stdio: "inherit",
     });
@@ -144,7 +157,7 @@ async function extractArchive(
     }
     return;
   }
-  const result = spawnSync("tar", ["-xzf", archivePath, "-C", destDir, asset.archiveMember], {
+  const result = spawnSync(tar, ["-xzf", archivePath, "-C", destDir, asset.archiveMember], {
     cwd: repoRoot,
     stdio: "inherit",
   });
