@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { documensoBaseUrlFromEnv } from "./src/documenso/env.ts";
 import { calBaseUrlFromEnv, medusaBaseUrlFromEnv } from "./src/races/env.ts";
 
 export default defineConfig({
@@ -20,6 +21,12 @@ export default defineConfig({
       testDir: "tests/cal/races",
       retries: 0,
       use: { baseURL: calBaseUrlFromEnv() },
+    },
+    {
+      name: "documenso-race",
+      testDir: "tests/documenso/races",
+      retries: 0,
+      use: { baseURL: documensoBaseUrlFromEnv() },
     },
   ],
 });
