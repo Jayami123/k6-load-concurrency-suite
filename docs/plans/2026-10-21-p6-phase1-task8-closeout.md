@@ -1119,13 +1119,13 @@ session scratchpad, and nothing was committed from them.
 | ------------------------------------------ | ---------------------------------------------------------------------- |
 | `.github/workflows/evidence-release.yml`   | the workflow (§5). `workflow_dispatch` only                            |
 | `scripts/evidence-token-scan.mjs`          | the project token scan (§7). Prints file and line only                 |
+| `scripts/evidence-token-scan.d.mts`        | declarations, so the TypeScript test can import the scanner (§7)       |
 | `tests/unit/evidence-token-scan.test.ts`   | unit tests for the scan (§7)                                           |
 | `docs/releases/p6-phase1.md`               | the release notes (§8). It must be on `main` before the dispatch       |
 
 - Branch: `ci/2026-10-21-p6-evidence-release`, cut from `main` at **`4aecc2d`**.
 - PR title: `ci: add workflow to publish run evidence as a release`. One PR. Jayami merges it.
-- Before the push, run `npm run check` (AGENTS.md). If `npm run typecheck` rejects the `.mjs` import in the test, add
-  `scripts/evidence-token-scan.d.mts` with the exported declarations. Do not loosen `tsconfig`.
+- Before the push, run `npm run check` (AGENTS.md). `scripts/evidence-token-scan.d.mts` is needed: `tsconfig.races.json` type-checks the test, and it imports the `.mjs`. Do not loosen `tsconfig`.
 - The commit identity is the environment's. No `Co-Authored-By`, `Generated with` or `Claude-Session` trailers.
 
 ### 5. The workflow, exactly
@@ -1325,6 +1325,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The three patterns of the Task 8 step 8 grep, then the additions.
+/** @type {RegExp[]} */
 export const PATTERNS = [
   /api_[A-Za-z0-9]{8,}/,
   /Bearer /,
@@ -1336,7 +1337,9 @@ export const PATTERNS = [
   /\b(?:password|secret|token)=\S+/i,
 ];
 
+/** @param {string} text @returns {number[]} */
 export function findHits(text) {
+  /** @type {number[]} */
   const lines = [];
   text.split("\n").forEach((line, index) => {
     if (PATTERNS.some((pattern) => pattern.test(line))) lines.push(index + 1);
@@ -1344,6 +1347,7 @@ export function findHits(text) {
   return lines;
 }
 
+/** @param {string} dir @returns {string[]} */
 function listFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -1351,6 +1355,7 @@ function listFiles(dir) {
   });
 }
 
+/** @param {string} root @returns {{ file: string, lines: number[] }[]} */
 export function scanTree(root) {
   return listFiles(root)
     .map((file) => ({ file: relative(root, file), lines: findHits(readFileSync(file, "utf8")) }))
@@ -1364,7 +1369,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(2);
   }
   const hits = scanTree(root);
-  for (const { file, lines } of hits) console.error(`TOKEN PATTERN: ${file} line ${lines.join(", ")}`);
+  for (const { file, lines } of hits)
+    console.error(`TOKEN PATTERN: ${file} line ${lines.join(", ")}`);
   if (hits.length > 0) {
     console.error("stop: nothing was uploaded");
     process.exit(1);
