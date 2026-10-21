@@ -196,7 +196,7 @@ Two guards in the fork:
 One document through the HTTP API (API token from §2.3, v2 `POST /api/v2/envelope/create`
 multipart with `assets/example.pdf` 39 842 bytes and one SIGNER + SIGNATURE field;
 `POST /api/v2/envelope/distribute`; recipient token from `GET /api/v2/envelope/<id>`, never SQL;
-tRPC `envelope.field.sign` then `recipient.completeDocumentWithToken`):
+tRPC `field.signFieldWithToken` then `recipient.completeDocumentWithToken`; the procedure is on the `field` router, not `envelope.field`, plan 2026-10-21 Task 7 §2.12):
 
 | Step                                       | Observed                                                                      |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
