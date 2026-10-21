@@ -1,6 +1,6 @@
 # P6 Phase 1 Task 8: Phase 1 closeout (plan only)
 
-This is the implementation plan a weaker model will build from. Do not write code until Jayami
+This is the implementation plan a weaker model will build from. Do not write code until the maintainer
 approves this document. Plan only: no build, no PR, and no run is started by this document.
 
 Structure follows [2026-10-21-p6-phase1-task7-doc-races.md](2026-10-21-p6-phase1-task7-doc-races.md)
@@ -237,12 +237,12 @@ same day with a read-only shallow clone of upstream.
 | `cal-smoke`       | the same 6 runs                                                              | 6     | yes           |
 | `documenso-smoke` | 39484324139, 39561220290, 39563393657                                        | 3     | yes           |
 
-- All three have at least two green `main` runs, so Jayami adds them **now** (§5.3, D33).
+- All three have at least two green `main` runs, so the maintainer adds them **now** (§5.3, D33).
 
 ### 2.8 Upstream issue drafts
 
-Drafts for Jayami to file (P6 files nothing upstream). The filing status is unknown here, because the upstream
-repos are not in this session's scope. Jayami tells the build which ones are filed (Open question 7).
+Drafts for the maintainer to file (P6 files nothing upstream). The filing status is unknown here, because the upstream
+repos are not in this session's scope. The maintainer tells the build which ones are filed (Open question 7).
 
 | Finding                                        | Draft                             | Location                                                        |
 | ---------------------------------------------- | --------------------------------- | --------------------------------------------------------------- |
@@ -320,7 +320,7 @@ estimate in §2.4.
 | schedule, after PR 1 (estimate)            | 13.2 (worst 15.7)         | 3.7       | 4.8             | 21.7 (worst 24.2)     | 13.2               |
 | `workflow_dispatch`, after PR 1 (estimate) | 13.2 (worst 15.7)         | 4.4       | 5.5             | 23.1 (worst 25.6)     | 13.2               |
 
-- This repo is public, so these runs use GitHub's standard hosted runners at no cost (Jayami, Q8). The table is
+- This repo is public, so these runs use GitHub's standard hosted runners at no cost (maintainer, Q8). The table is
   kept for **time**, not for money: the closeout's full-count runs take about 13 minutes of Medusa wall clock.
 - PR runs do not change (Medusa stays at 3).
 
@@ -353,13 +353,13 @@ estimate in §2.4.
   double-booking defect is `P6-OBS-CAL-002`, which is high.
 - Why a new ID, not a sub-bullet of `-001`: the constraint (`uid`, not the idempotency key) and the code cause
   differ.
-- **Test: none, and no `test.fail()` for now** (Jayami, Q2). The count stays visible in `P6-CAL-RACE-003` as
+- **Test: none, and no `test.fail()` for now** (maintainer, Q2). The count stays visible in `P6-CAL-RACE-003` as
   `loser_refused-db-error`, and the README describes it.
-- **Upstream draft:** Appendix B. The code read in §2.5 confirms the cause at `CAL_REF`. Jayami files it.
+- **Upstream draft:** Appendix B. The code read in §2.5 confirms the cause at `CAL_REF`. The maintainer files it.
 
 ### 5.3 Required checks: add all three now, by hand
 
-Each check has at least two green `main` runs (§2.7), so Jayami adds them now, before PR 1 is opened. The steps:
+Each check has at least two green `main` runs (§2.7), so the maintainer adds them now, before PR 1 is opened. The steps:
 
 1. GitHub, repository `Jayami123/k6-load-concurrency-suite` → **Settings** → **Rules** → **Rulesets** → **Main** →
    **Edit**.
@@ -369,7 +369,7 @@ Each check has at least two green `main` runs (§2.7), so Jayami adds them now, 
 4. Search for and add each of these three checks, exactly: `medusa-smoke`, `cal-smoke`, `documenso-smoke`.
 5. **Save changes**.
 
-The same rule as JSON (the API equivalent, if Jayami prefers `gh api`):
+The same rule as JSON (the API equivalent, if the maintainer prefers `gh api`):
 
 ```json
 {
@@ -406,9 +406,9 @@ satisfy the rule.
 
 ### 5.4 Upstream drafts and the new ID
 
-- The three drafts (§2.8) and the new draft in Appendix B are for Jayami to file. The build does not check
+- The three drafts (§2.8) and the new draft in Appendix B are for the maintainer to file. The build does not check
   filing status.
-- Jayami sends the build the URLs of any that are filed (Open question 7). The README then links them.
+- The maintainer sends the build the URLs of any that are filed (Open question 7). The README then links them.
 
 ### 5.5 Phase 2 backlog carried from Task 8
 
@@ -419,7 +419,7 @@ Recorded here so it is not lost. Not built in Task 8.
    finding into CI evidence, the same way the other bugs are recorded. (New test: Phase 2, not Task 8.)
 2. **Rerun-on-high-spread.** Closed as carried (§5.1). Reopens if the 50-trial Medusa spread exceeds about 10 ms.
 3. **`P6-OBS-CAL-003` test.** Only after the upstream `uid` fix ships: a same-start, same-millisecond pair that
-   expects one 2xx and one 409, with `test.fail()` while the 400 persists. Not before (Jayami, Q2).
+   expects one 2xx and one 409, with `test.fail()` while the 400 persists. Not before (maintainer, Q2).
 
 ## 6. Known product bugs (the table the README carries)
 
@@ -427,7 +427,7 @@ Recorded here so it is not lost. Not built in Task 8.
 | ---------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `P6-OBS-CAL-001` | low (agreed)         | Concurrent identical-slot losers get a 400 "An error occurred while querying the database." (Prisma `P2002` on `Booking_idempotencyKey_key`, redacted) instead of 409 | `tests/cal/races/cal-race-001-identical-slot.spec.ts`: `test.fail()` on the loser-contract extra          | 39561220290 `race-histograms-cal`: `P6-CAL-RACE-001.json` (950 redacted 400 per 1000) and **`extra-loser-contract.json`** (the `test.fail()` test's own evidence: 57 redacted 400 per 60)   |
 | `P6-OBS-CAL-002` | **high** (confirmed) | Two overlapping bookings on one host are both ACCEPTED                                                                                                                | `tests/cal/races/cal-race-003-overlap.spec.ts`: `test.fail()`                                             | 39561220290 and 39563393657 `race-histograms-cal`: `P6-CAL-RACE-003.json` (29 of 30, and 24 of 30, double-booked)                                                                           |
-| `P6-OBS-CAL-003` | low                  | A same-start, same-millisecond pair collides on `Booking_uid_key`; the loser gets the redacted 400 instead of 409                                                     | none (no `test.fail()`, Jayami Q2); counted as `loser_refused-db-error` in `P6-CAL-RACE-003`              | 39449102426, 39484324139, 39561220290, 39563393657: `cal-web-log` (the `P2002` line) and `P6-CAL-RACE-003.json` (`refusedTraceIds`); code at `CAL_REF` `RegularBookingService.ts:1267–1268` |
+| `P6-OBS-CAL-003` | low                  | A same-start, same-millisecond pair collides on `Booking_uid_key`; the loser gets the redacted 400 instead of 409                                                     | none (no `test.fail()`, maintainer Q2); counted as `loser_refused-db-error` in `P6-CAL-RACE-003`          | 39449102426, 39484324139, 39561220290, 39563393657: `cal-web-log` (the `P2002` line) and `P6-CAL-RACE-003.json` (`refusedTraceIds`); code at `CAL_REF` `RegularBookingService.ts:1267–1268` |
 | `P6-OBS-DOC-001` | low                  | A wrong password or CSRF token on sign-in returns 500                                                                                                                 | none in CI. README states the evidence as "probe + code path" (Task 6 §2.11). Phase 2 backlog §5.5 item 1 | Probe + code path. **No CI artefact** (stated plainly)                                                                                                                                      |
 | `P6-OBS-DOC-002` | medium (approved)    | Two last recipients complete in parallel: double seal                                                                                                                 | `tests/documenso/races/doc-race-001-last-recipients.spec.ts`: `test.fail()`                               | 39561220290 and 39563393657 `race-histograms-documenso`: `P6-DOC-RACE-001.json` (50 of 50 double-sealed in each)                                                                            |
 
@@ -612,7 +612,7 @@ The Cal and Documenso sections already state their trial counts, so they need no
   `gh` read succeeded. If a later `gh` call fails, report it and check the GitHub access settings. Do not paste a
   token into the chat.
 
-Neither environment needs a secret for this task. The ruleset change (§5.3) is done in the GitHub UI by Jayami.
+Neither environment needs a secret for this task. The ruleset change (§5.3) is done in the GitHub UI by the maintainer.
 
 ## 9. Build steps (for the weaker model; in order)
 
@@ -672,7 +672,7 @@ If the repo has a PR template (`.github/pull_request_template.md`), follow its h
 step changed (§3), the trial counts per event, and that run A and run B are the closeout runs. Expected: the three
 jobs (`medusa-smoke`, `cal-smoke`, `documenso-smoke`) all run on the PR and go green (they are required, §5.3).
 
-**Step 5. Jayami merges PR 1.** The build waits here. Merging creates run A on `main` automatically. Run A's count is
+**Step 5. The maintainer merges PR 1.** The build waits here. Merging creates run A on `main` automatically. Run A's count is
 checked against its log and its histogram in step 6, once run A has finished.
 
 ### Closeout runs A and B
@@ -788,7 +788,7 @@ gh release create p6-phase1 -R Jayami123/k6-load-concurrency-suite --target {{SH
 Expected: the release URL on stdout. The `-i` filter keeps only `*.json` and `*.log` files. The k6 summary JSON
 (`k6-summary-*`) matches `*.json`, so it is kept too; that is intended. Every file kept is one the step 8 scan read.
 
-The release is public and is created on purpose, because it is the evidence store (Jayami, Q4). Create it once.
+The release is public and is created on purpose, because it is the evidence store (maintainer, Q4). Create it once.
 
 **Step 10. Timings and summaries.** Run the summary script (Appendix A, `summ.cjs`) on the histograms of runs A and B,
 and compute the medians named in §7 (the Cal 001 and 003 medians over all runs at that count, the Medusa 3-trial
@@ -826,7 +826,7 @@ git push -u origin docs/2026-10-2x-p6-phase1-results
 
 Open PR 2 into `main` (title: `docs(readme): add phase 1 results from main runs and mark phase 1 done`).
 
-**Step 14. Jayami merges PR 2.** Then check the Done-when list (§10) and report run ids, conclusions, the Medusa
+**Step 14. The maintainer merges PR 2.** Then check the Done-when list (§10) and report run ids, conclusions, the Medusa
 trial line, the medians, the R8 output, and the release URL.
 
 ## 10. Done when, and what the build waits for
@@ -842,15 +842,15 @@ trial line, the medians, the R8 output, and the release URL.
 4. Every open product bug has its evidence linked (§7 "Known product bugs"). `P6-OBS-DOC-001` is stated as "probe +
    code path", with its Phase 2 test in the backlog (§5.5).
 5. `npm run check` is green on PR 2's branch.
-6. The three required checks are in the `Main` ruleset (§5.3), set by Jayami.
+6. The three required checks are in the `Main` ruleset (§5.3), set by the maintainer.
 
 **The build waits for:**
 
-- Jayami to add the three required checks (§5.3), before PR 1 is opened.
-- Jayami to merge PR 1. Run A starts automatically from that merge.
+- The maintainer to add the three required checks (§5.3), before PR 1 is opened.
+- The maintainer to merge PR 1. Run A starts automatically from that merge.
 - Run A to finish green. Only then the build dispatches run B.
-- Jayami to merge PR 2 (the README). Then the Phase 1 status is done.
-- Jayami's answer on which upstream issues are filed (Q7), so the README can link them. Until then the README
+- The maintainer to merge PR 2 (the README). Then the Phase 1 status is done.
+- The maintainer's answer on which upstream issues are filed (Q7), so the README can link them. Until then the README
   says the issues are drafted, not filed.
 
 **How the build fills the placeholders:** run A's id and SHA go into `{{RUN_A}}` and `{{SHA_A}}`, and run B's into
@@ -914,14 +914,14 @@ is still missing, leave the placeholder and stop. Do not write a guess.
   nightly ran late (§2.6), so the closeout does not wait on it. The nightly
   `39563393657` is cited as `main` evidence, labelled "schedule".
 - **D37 Evidence lives in a GitHub Release (`p6-phase1`), one zip per cited run.** It does not expire. The README
-  links the release and the run pages. No `docs/evidence/` commit. (Jayami, Q4.)
+  links the release and the run pages. No `docs/evidence/` commit. (maintainer, Q4.)
 - **D38 No job-timeout change for Medusa.** The expected 13–16 min fits the 45-min job timeout. The limit that applies
   is the per-test Playwright timeout, scaled by D42.
 - **D39 Timings are not pooled across trial counts.** The Medusa 3-trial series (n = 6) is one median, labelled "3
   trials". The Medusa 50-trial values are shown per run, labelled "50 trials", with no median until n ≥ 3. Cal and
   Documenso have one trial count each, so their medians are valid.
 - **D40 `P6-OBS-DOC-001` is "probe + code path" in the README,** with a Phase 2 CI test (401 instead of 500, marked
-  `test.fail()`) in the backlog (§5.5). It is not left README-only for good. (Jayami, Q5.)
+  `test.fail()`) in the backlog (§5.5). It is not left README-only for good. (maintainer, Q5.)
 - **D41 Two PRs.** PR 1 is the CI change (`ci(medusa): …`) on the feat branch. Merging it triggers run A. The build
   then dispatches run B. PR 2 (`docs/2026-10-2x-p6-phase1-results`) is cut fresh from the new `main` and carries the
   README. The evidence goes in the release, so PR 2 has no evidence files.
@@ -932,7 +932,7 @@ is still missing, leave the placeholder and stop. Do not write a guess.
   per trial, so 50 trials take about 3.5 s. Assertions, titles, case IDs and `src/races/*` do not change. (The
   number is D42, not D41: D41 already records the two PRs.)
 
-## 14. Open questions for Jayami
+## 14. Open questions for the maintainer
 
 1. **Nightly timing.** The first slot (21 Oct 02:17 UTC) ran late, at 07:38 UTC (run `39563393657`, green). Please check
    after tonight's slot (22 Oct 02:17 UTC): does it start on time? Nothing else depends on it. Run B is a dispatch.
@@ -1018,7 +1018,7 @@ Note: the log escapes the constraint name (`\\\"Booking_uid_key\\\"`), so the re
 backslashes. A `?` in the output means the escape differs: stop, do not read it as a pass. The window is 1 ms (±1 ms
 is the observed range, §2.5); a line outside it prints `none`.
 
-## Appendix B. Upstream draft: `P6-OBS-CAL-003` (for Jayami to file; not filed by P6)
+## Appendix B. Upstream draft: `P6-OBS-CAL-003` (for the maintainer to file; not filed by P6)
 
 **Title:** Booking `uid` is not collision-safe: same-host, same-start bookings in the same millisecond fail with a
 redacted 400
@@ -1055,6 +1055,6 @@ redacted 400
 >
 > Also present on upstream `calcom/cal.com` `main` as of 2026-10-21 (`RegularBookingService.ts` lines 1267–1268).
 
-**Notes for Jayami (not part of the issue):** the reproduction counts come from our CI runs
+**Notes for the maintainer (not part of the issue):** the reproduction counts come from our CI runs
 (`P6-CAL-RACE-003`, runs 39449102426, 39484324139, 39561220290, 39563393657). Attach the redacted log lines and the
 trace ids from `refusedTraceIds`, with no tokens.

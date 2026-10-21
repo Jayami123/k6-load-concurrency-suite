@@ -1,7 +1,7 @@
 # P6 Phase 1 Task 5: Cal overlap race P6-CAL-RACE-003 (plan only)
 
 This is the implementation plan a weaker model will build from. Do not write test or helper code
-until Jayami approves this document.
+until the maintainer approves this document.
 
 Structure and depth follow
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md) and
@@ -30,7 +30,7 @@ Source of truth: [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase1-roadmap.
   `P6-CAL-RACE-004`–`007` (later phases), the "rerun a trial on high spread" logic (Task 8).
 - Known finding reused, not re-reported: **`P6-OBS-CAL-001`** (production `redactError` turns
   the P2002 → 409 `booking_conflict_error` mapping into a generic 400). Task 4 plan §2.4.
-- New finding of this task: **`P6-OBS-CAL-002`**, severity **high** (confirmed by Jayami): two
+- New finding of this task: **`P6-OBS-CAL-002`**, severity **high** (confirmed by the maintainer): two
   overlapping windows of one host are both ACCEPTED under concurrency — a real double booking, not a
   wrong status code. Availability is checked outside a transaction, with no lock and no exclusion
   constraint; byte-identical on upstream `0f19cc4` (§2.5–2.6). Draft upstream issue: Appendix A.
@@ -329,7 +329,7 @@ Lead with the industry-standard approach, then the rejected alternative and its 
   fixes it, the test turns red ("expected to fail but passed") and the line is removed. Rejected:
   `test.skip` (hides the race); asserting "≥ 1 pair" (encodes the bug as the expected behaviour).
 - **D9 Spread limit = env `RACE_MAX_SPREAD_MS=20`** in CI and local verification (Task 4 D8,
-  confirmed by Jayami). Pairs never exceeded 2.41 ms. No rerun logic (Task 8).
+  confirmed by the maintainer). Pairs never exceeded 2.41 ms. No rerun logic (Task 8).
 - **D10 Trial count in the case itself: `Math.min(raceTrialsFromEnv(), 30)`.** CI already sets
   `RACE_TRIALS` 5 on `pull_request` and 50 on `main`/nightly/dispatch for `cal-smoke`; the case caps
   at 30, so PRs run 5 and full runs 30 (roadmap D2, master plan trials=30). The extra uses
@@ -802,7 +802,7 @@ timeout 60 min, `medusa-smoke`.
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
-Do not start until Jayami approves this plan. Never `git add -A`. Never print secrets. Always finish
+Do not start until the maintainer approves this plan. Never `git add -A`. Never print secrets. Always finish
 with `npm run down:cal`.
 
 ### Step 0. Branch, plan doc, products, baseline
@@ -1203,7 +1203,7 @@ Commit 4.
 
 ### Step 5. README
 
-Add §17 after "Cal identical-slot histogram". Commit 5. Push the branch; Jayami opens the PR.
+Add §17 after "Cal identical-slot histogram". Commit 5. Push the branch; the maintainer opens the PR.
 
 ## 15. Verification gate (paste real output)
 
@@ -1280,13 +1280,13 @@ Only `main`/nightly GitHub Actions numbers go into that table, never this plan's
 - No published probe timings or counts in README
 - No `test.fail()` outside the mapped test; no retries, `workers` > 1, browsers or page objects
 
-## 19. Answers from Jayami (2026-10-20)
+## 19. Answers from the maintainer (2026-10-20)
 
 1. **Finding ID: `P6-OBS-CAL-002`, severity high.** Overlapping windows both ACCEPTED under
    concurrency; availability checked outside a transaction, no lock, no exclusion constraint;
    byte-identical on upstream `0f19cc4`. A real double booking, not a wrong status code. Applied in
    Context, §2.5, §11, the spec comment (§14 Step 3) and README text (§17).
-2. **Upstream issue draft: yes**, Appendix A, same style as Task 4. Jayami files it; P6 does not.
+2. **Upstream issue draft: yes**, Appendix A, same style as Task 4. The maintainer files it; P6 does not.
 3. **Mapped assertion stays "0 overlapping ACCEPTED pairs"**, and per-trial double-book counts are
    recorded (D16): `perTrial[].oracle.overlapPairs` / `doubleBooked`, histogram `trialsDoubleBooked`,
    `trialsClean`, `doubleBookedByTrial`, the CI step summary line and a Playwright annotation.
@@ -1294,7 +1294,7 @@ Only `main`/nightly GitHub Actions numbers go into that table, never this plan's
 No open questions remain. Building waits on approval of this plan; the build branch is
 `feat/<build-date>-p6-cal-race-003` from `main` (§14 Step 0).
 
-## Appendix A. Draft upstream issue for `P6-OBS-CAL-002` (for Jayami to file; not filed by P6)
+## Appendix A. Draft upstream issue for `P6-OBS-CAL-002` (for the maintainer to file; not filed by P6)
 
 Search `calcom/cal.com` issues for "double booking", "overlapping" and "race condition" first; if
 one exists, add this repro there instead.

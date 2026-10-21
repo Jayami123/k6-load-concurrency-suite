@@ -1,7 +1,7 @@
 # P6 Phase 1 Task 2: Medusa oversell P6-MED-RACE-001 (plan only)
 
 This is the implementation plan a weaker model will build from. Do not write test or helper
-code until Jayami approves this document.
+code until the maintainer approves this document.
 
 Structure and depth follow
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md)
@@ -747,7 +747,7 @@ Measured: current race step 1.35 s. After this task, about **60 s** at 3 trials 
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report)
 
-Do not start these until Jayami approves this plan. Never `git add -A`. Never print secrets.
+Do not start these until the maintainer approves this plan. Never `git add -A`. Never print secrets.
 
 ### Step 0. Branch
 
@@ -1104,7 +1104,7 @@ Plan-only commits on `feat/2026-10-18-p6-med-race-001`:
    `docs/plans/2026-10-18-p6-phase1-task2-med-race-001.md` only
 2. `docs: revise p6 task 2 plan after review` — same file (this revision)
 
-After Jayami approves (implementation, later commits on this branch, still **no pull request**):
+After the maintainer approves (implementation, later commits on this branch, still **no pull request**):
 
 3. `feat(races): add medusa admin env, payloads and oversell invariants`
    (`src/races/env.ts`, `src/medusa/payloads.ts`, `src/medusa/invariants.ts`, unit tests)
@@ -1115,7 +1115,7 @@ After Jayami approves (implementation, later commits on this branch, still **no 
 6. `docs: explain medusa oversell histogram and refusals` (`README.md`)
 
 No merge, tag, force-push, or pull request. No Co-Authored-By. No `Generated with` / attribution
-lines. No CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
+lines. No CodeRabbit from the builder (the maintainer runs review). Never the Bridge-bss account.
 
 ## 17. Docs
 
@@ -1142,7 +1142,7 @@ lines. No CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss
   commits: commit and push only)
 - Co-Authored-By / Generated-with / force-push / merge
 
-## 19. Open questions for Jayami
+## 19. Open questions for the maintainer
 
 None remaining. OQ1–OQ2 were answered 2026-10-18 and are recorded as:
 

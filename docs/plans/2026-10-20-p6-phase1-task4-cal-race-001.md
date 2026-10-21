@@ -1,7 +1,7 @@
 # P6 Phase 1 Task 4: Cal identical-slot race P6-CAL-RACE-001 + P6-CAL-RACE-002 (plan only)
 
 This is the implementation plan a weaker model will build from. Do not write test or helper code
-until Jayami approves this document.
+until the maintainer approves this document.
 
 Structure and depth follow
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md) and
@@ -36,7 +36,7 @@ P1–P9).
   stopped with `npm run down:cal` at the end.
 - Review answers (2026-10-20) are applied: §19 lists them. The 400-instead-of-409 finding has the
   ID **`P6-OBS-CAL-001`** (an observation ID, not a test case ID); a draft upstream issue for
-  Jayami to file is in Appendix A.
+  the maintainer to file is in Appendix A.
 
 Master-plan names used as-is (roadmap "Remaining Phase 1 cases"):
 
@@ -200,7 +200,7 @@ files are **byte-identical** (`diff -q`):
 | `packages/lib/constants.ts`                                       | `IS_PRODUCTION = CALCOM_ENV === "production"`              |
 
 So the bug is not fork-specific and is still present upstream. Appendix A holds a draft issue for
-Jayami to file; P6 does not file it and does not patch the fork.
+the maintainer to file; P6 does not file it and does not patch the fork.
 
 ### 2.5 Slot supply
 
@@ -347,10 +347,10 @@ Lead with the industry-standard approach, then the rejected alternative.
   `runTrials` are unchanged. Rejected: a new `CAL_RACE_TRIALS` variable (one name is enough);
   running the self-test at 50 (it would not add evidence and its test timeout is 120 s).
 - **D8 Spread limit stays an env value.** CI already sets `RACE_MAX_SPREAD_MS: "20"` on the Cal
-  self-test (base commit `09d04fe`); the new step uses the same (**confirmed by Jayami, answer 4**).
+  self-test (base commit `09d04fe`); the new step uses the same (**confirmed by the maintainer, answer 4**).
   The probe saw 4/61 rounds ≥ 5 ms, 0/61 ≥ 20 ms, max 7.59 ms (§2.7). Local verification also runs
   with `RACE_MAX_SPREAD_MS=20`. Rejected: changing the helper default (Task 1 D5); tightening to
-  10 ms (Jayami kept 20).
+  10 ms (the maintainer kept 20).
 - **D9 Playwright timeout per describe = `60_000 + trials × 10_000` ms** (50 trials → 560 s).
   Probe max trial 1.94 s; 10 s per trial leaves room for a slower runner and cleanup. Rejected:
   raising the global 60 s timeout.
@@ -768,14 +768,14 @@ immediately before the strict loser assertion.
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
-Do not start until Jayami approves this plan and PR #12 is merged. Never `git add -A`. Never print
+Do not start until the maintainer approves this plan and PR #12 is merged. Never `git add -A`. Never print
 secrets. Always finish with `npm run down:cal`.
 
 ### Step 0. Branch, products, baseline
 
 Build branch: **this branch, `feat/2026-10-20-p6-cal-race-001`** (recommended): plan and build land
 in one PR, the roadmap rule "one PR per task" that Task 2 followed (PR #8). Only the plan commits are
-replayed onto `main`, so the PR diff is just Task 4. If Jayami prefers a separate build branch, run
+replayed onto `main`, so the PR diff is just Task 4. If the maintainer prefers a separate build branch, run
 the same rebase, then `git switch -c feat/<date>-p6-cal-race-001-build` and build there.
 
 ```bash
@@ -1143,7 +1143,7 @@ Add after "Run Cal" (§17). Commit 5.
 5. `docs(cal): explain the identical-slot histogram` — `README.md`
 
 Keep the environment's commit identity. No Co-Authored-By, "Generated with" or session lines.
-Push the branch; Jayami opens the PR.
+Push the branch; the maintainer opens the PR.
 
 ## 17. Docs (README section text)
 
@@ -1188,12 +1188,12 @@ plan's probe counts.
 - No published timings or probe counts in README
 - No `test.fail()` outside §6.3; no retries, `workers` > 1, browsers or page objects
 
-## 19. Answers from Jayami (2026-10-20)
+## 19. Answers from the maintainer (2026-10-20)
 
 1. **Loser-contract extra: keep it with `test.fail()`** as planned (§6.3, D12).
 2. **Upstream: check, then draft.** Checked: `redactError`, `getServerErrorFromUnknown` and the
    P2002 → 409 branch in `RegularBookingService.ts` are byte-identical on upstream `main`
-   `0f19cc4` (§2.4). A draft issue is in Appendix A for Jayami to file; P6 files nothing.
+   `0f19cc4` (§2.4). A draft issue is in Appendix A for the maintainer to file; P6 files nothing.
    The finding is **`P6-OBS-CAL-001`** in the README section (§17).
 3. **Nightly runs both jobs**; `medusa-smoke` stays untouched (D13).
 4. **`RACE_MAX_SPREAD_MS=20`** for the new race step (D8); spread against 20 ms is in §2.7.
@@ -1204,7 +1204,7 @@ never commits anything under `products/`.
 Building starts only after PR #12 merges: rebase this branch onto `main` (§14 Step 0), then build
 on it.
 
-## Appendix A. Draft upstream issue (for Jayami to file; not filed by P6)
+## Appendix A. Draft upstream issue (for the maintainer to file; not filed by P6)
 
 Search `calcom/cal.com` issues for `booking_conflict_error` and `redactError` first; if one exists,
 add the repro there instead.
