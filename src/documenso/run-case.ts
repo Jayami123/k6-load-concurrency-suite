@@ -27,6 +27,7 @@ import {
   deleteWebhook,
   signUpVerifiedUser,
   type DocumensoAccount,
+  type DocumensoSession,
 } from "./account.ts";
 import {
   completeWithToken,
@@ -101,30 +102,62 @@ export async function readFixturePdf(env: NodeJS.ProcessEnv = process.env): Prom
   }
 }
 
-/** Per-run account, API token, DOCUMENT_COMPLETED webhook and receiver. Throws in setup; nothing is left open. */
-export async function startRun(input: {
-  baseUrl: string;
-  inbucketUrl: string;
-  runPrefix: string;
-  pool: pg.Pool;
-  webhookHost: string;
-}): Promise<RunContext> {
+/** The network calls startRun makes. Production uses the real helpers; the unit test replaces them. */
+export type StartRunDeps = {
+  startReceiver: typeof startWebhookReceiver;
+  signUp: typeof signUpVerifiedUser;
+  createToken: typeof createApiToken;
+  createHook: typeof createWebhook;
+  removeAccount: typeof deleteAccount;
+  purgeMailbox: (inbucketUrl: string, mailbox: string) => Promise<unknown>;
+};
+
+const REAL_START_RUN_DEPS: StartRunDeps = {
+  startReceiver: startWebhookReceiver,
+  signUp: signUpVerifiedUser,
+  createToken: createApiToken,
+  createHook: createWebhook,
+  removeAccount: deleteAccount,
+  purgeMailbox: (inbucketUrl, mailbox) => createInbucketClient(inbucketUrl).purge(mailbox),
+};
+
+/**
+ * Per-run account, API token, DOCUMENT_COMPLETED webhook and receiver. Throws in setup. On a setup failure
+ * after the owner is verified, the owner is deleted and its mailbox purged, best effort; the original error
+ * is rethrown whatever the cleanup does.
+ */
+export async function startRun(
+  input: {
+    baseUrl: string;
+    inbucketUrl: string;
+    runPrefix: string;
+    pool: pg.Pool;
+    webhookHost: string;
+  },
+  deps: StartRunDeps = REAL_START_RUN_DEPS,
+): Promise<RunContext> {
   const runPrefix = input.runPrefix.toLowerCase();
+  const ownerEmail = `${runPrefix}-owner@example.com`;
   const secret = randomBytes(16).toString("hex");
-  const receiver = await startWebhookReceiver({
+  const receiver = await deps.startReceiver({
     publicHost: input.webhookHost,
     expectedSecret: secret,
   });
   const inbucket = createInbucketClient(input.inbucketUrl);
+  // Filled by signUp's onVerified hook, so a later setup failure can still delete the verified owner.
+  const owner: { session?: DocumensoSession } = {};
   try {
-    const account = await signUpVerifiedUser({
+    const account = await deps.signUp({
       baseUrl: input.baseUrl,
       inbucketBaseUrl: input.inbucketUrl,
-      email: `${runPrefix}-owner@example.com`,
+      email: ownerEmail,
       name: "P6 Race Owner",
+      onVerified: (session) => {
+        owner.session = session;
+      },
     });
-    const token = await createApiToken(input.baseUrl, account, `${runPrefix}-token`);
-    const hook = await createWebhook(input.baseUrl, account, {
+    const token = await deps.createToken(input.baseUrl, account, `${runPrefix}-token`);
+    const hook = await deps.createHook(input.baseUrl, account, {
       webhookUrl: receiver.url,
       eventTriggers: ["DOCUMENT_COMPLETED"],
       secret,
@@ -143,7 +176,12 @@ export async function startRun(input: {
       envelopeIds: [],
     };
   } catch (err) {
-    await receiver.close();
+    // Best effort, in this order. A cleanup failure must not hide the setup error rethrown below.
+    if (owner.session) {
+      await deps.removeAccount(input.baseUrl, owner.session).catch(() => undefined);
+    }
+    await deps.purgeMailbox(input.inbucketUrl, mailboxName(ownerEmail)).catch(() => undefined);
+    await receiver.close().catch(() => undefined);
     throw err;
   }
 }
