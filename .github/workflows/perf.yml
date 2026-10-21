@@ -574,36 +574,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Race self-test (documenso-race, 3 trials)
+      - name: Documenso races (documenso-race)
+        id: documenso_races
         if: ${{ steps.documenso_up.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 15 || 30 }}
         env:
-          RACE_TRIALS: "3"
+          # Plan D22: about 5 trials on PRs, the full count (50) on main, nightly and workflow_dispatch.
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
-          npm run race:documenso
+          echo "### Documenso race trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          npm run race:documenso || status=$?
+          for f in results/races/P6-DOC-RACE-001.json results/races/P6-DOC-RACE-002.json results/races/extra-doc-sequential-control.json; do
+            if [ -f "$f" ]; then
+              node -e 'const h=require(process.argv[1]);console.log(`- ${h.caseId}: verdict ${h.verdict}, trials ${h.trials}, violations ${h.invariantViolations.length}, double-seal trials ${h.oracle.trialsDoubleSeal ?? "n/a"}`)' "$PWD/$f" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          exit "$status"
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
-        with:
-          name: race-histograms-documenso
-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
-          if-no-files-found: warn
-          retention-days: 14
-
-      # The web log is the harness's; a token pattern in it blocks the upload (plan D12, risk R7).
-      - name: Check Documenso web log for tokens
+      # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
+      - name: Check Documenso artefacts for tokens
         id: web_log_check
         if: ${{ always() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
+          pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
           log=node_modules/qa-portfolio-harness/.harness/documenso-web.log
-          if [ -f "$log" ] && grep -qE 'api_[A-Za-z0-9]{8,}' "$log"; then
-            echo "::error::documenso-web.log contains an API token pattern; not uploading"
+          if [ -f "$log" ] && grep -qE "$pattern" "$log"; then
+            echo "::error::documenso-web.log contains a token pattern; not uploading"
             exit 1
           fi
+          if [ -d results/races ] && grep -rqE "$pattern" results/races; then
+            echo "::error::race histograms contain a token pattern; not uploading"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && steps.web_log_check.outcome == 'success' }}
+        with:
+          name: race-histograms-documenso
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
+          if-no-files-found: warn
+          retention-days: 14
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && steps.web_log_check.outcome == 'success' }}
