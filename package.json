@@ -19,12 +19,14 @@
     "race:documenso": "playwright test --project=documenso-race",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prelint:actions": "node scripts/actionlint.mts --install-only",
+    "lint:actions": "actionlint",
     "clean:results": "node scripts/clean-results.mjs",
     "test:unit": "node --test tests/unit/*.test.ts",
     "race:medusa": "playwright test --project=medusa-race",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.races.json",
     "k6:inspect": "node scripts/k6-inspect.mjs",
-    "check": "npm run format:check && npm run typecheck && npm run k6:inspect && npm run test:unit"
+    "check": "npm run format:check && npm run lint:actions && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },
   "dependencies": {
     "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.11"

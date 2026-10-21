@@ -21,7 +21,7 @@ npm run down:medusa
 ```
 
 `npm run check` runs Prettier, the TypeScript check, `k6 inspect` (skipped when k6 is missing),
-and unit tests (`npm run test:unit`).
+and unit tests (`npm run test:unit`). It also runs actionlint 1.7.12 on `.github/workflows`; the binary is downloaded and checksum-verified on first use. actionlint also runs shellcheck when it is installed, and CI has it, so install shellcheck locally for the same result.
 
 ## Run a race locally
 

@@ -5,7 +5,7 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git gnupg openssl sudo xz-utils \
+    ca-certificates curl git gnupg openssl shellcheck sudo xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 22 (the harness needs >= 22.22.0 for Medusa) and pnpm 10.11.1 (the Medusa fork's pin).

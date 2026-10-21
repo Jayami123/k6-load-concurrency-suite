@@ -17,4 +17,7 @@ grep -qE '^127\.0\.0\.1[[:space:]]+p6-webhook\.test$' /etc/hosts || echo '127.0.
 if [ ! -x /opt/node24/bin/node ]; then
   echo "P6: Node 24 missing at /opt/node24; add the Node 24 snippet to the environment's setup script (docs/plans/2026-10-20-p6-phase1-task6-documenso-stack.md §13.5)" >&2
 fi
+if ! command -v shellcheck >/dev/null 2>&1; then
+  echo 'P6: shellcheck missing; add `sudo apt-get install -y shellcheck` to the environment'"'"'s setup script so actionlint matches CI' >&2
+fi
 exit 0

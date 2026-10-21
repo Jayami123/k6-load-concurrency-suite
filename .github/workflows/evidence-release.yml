@@ -73,7 +73,9 @@ jobs:
       - name: Check that the notes list exactly the selected runs
         run: |
           set -euo pipefail
-          printf '%s\n' $RUN_IDS | sort > "$RUNNER_TEMP/input-ids.txt"
+          # -d '' reads the whole value so spaces, tabs and newlines all split ids, like the loops; read returns 1 at end of input.
+          read -r -d '' -a run_ids <<< "$RUN_IDS" || true
+          printf '%s\n' "${run_ids[@]}" | sort > "$RUNNER_TEMP/input-ids.txt"
           if [[ -n "$(uniq -d "$RUNNER_TEMP/input-ids.txt")" ]]; then
             echo "::error::run_ids contains a duplicate id:"
             uniq -d "$RUNNER_TEMP/input-ids.txt"
