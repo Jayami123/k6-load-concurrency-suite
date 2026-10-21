@@ -24,6 +24,8 @@ test.beforeAll(async () => {
     throw new Error("TEST BUG: seed changed: 30min and 60min hosts differ");
   setup = { userId: s30.userId, eventTypeId30: s30.eventTypeId, eventTypeId60: s60.eventTypeId };
   windows = createSlotAllocator(setup.eventTypeId60, {
+    pool,
+    userId: setup.userId,
     slug: CAL_EVENT_SLUG_60,
     minutes: LONG_SLOT_MINUTES,
   });

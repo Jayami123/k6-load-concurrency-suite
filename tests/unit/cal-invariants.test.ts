@@ -372,3 +372,50 @@ describe("checkSequentialRefusal", () => {
     assert.deepEqual(guards([win("u1"), redacted()], [slotRow("u1")]), []);
   });
 });
+
+describe("setup violation labelling", () => {
+  const SETUP =
+    "window 2026-11-03T09:00:00.000Z..2026-11-03T09:30:00.000Z overlaps id=7 uid=seed status=accepted 2026-11-03T08:30:54.000Z..2026-11-03T09:00:54.000Z";
+  const base = {
+    responses: [taken(), taken()],
+    windowAccepted: [],
+    dispatchSpreadMs: 1,
+    spreadLimit: 20,
+  };
+
+  it("a refusal on a window the oracle proved free stays a PRODUCT BUG", () => {
+    assert.deepEqual(checkOverlapPairGuards(base), [
+      "PRODUCT BUG: no booking accepted for a free window",
+    ]);
+  });
+
+  it("a refusal where the oracle shows a host overlap is a TEST BUG setup violation with that evidence", () => {
+    assert.deepEqual(checkOverlapPairGuards({ ...base, setupEvidence: SETUP }), [
+      `TEST BUG: setup violation: ${SETUP}`,
+    ]);
+  });
+
+  it("sequential: a refused first leg is a PRODUCT BUG when free, and only the setup line on a violation", () => {
+    assert.deepEqual(checkSequentialRefusal([taken(), taken()]), [
+      "PRODUCT BUG: sequential first booking not accepted: 409: no_available_users_found_error",
+    ]);
+    assert.deepEqual(checkSequentialRefusal([taken(), taken()], SETUP), []);
+  });
+
+  it("identical slot: a refused slot is a PRODUCT BUG when free, and only the setup line on a violation", () => {
+    const slot = {
+      n: 2,
+      responses: [taken(), taken()],
+      accepted: [],
+      dispatchSpreadMs: 1,
+      spreadLimit: 20,
+    };
+    assert.deepEqual(checkIdenticalSlotInvariants(slot), [
+      "PRODUCT BUG: no ACCEPTED booking for a free slot",
+      "PRODUCT BUG: 0 HTTP 2xx for one slot",
+    ]);
+    assert.deepEqual(checkIdenticalSlotInvariants({ ...slot, setupEvidence: SETUP }), [
+      `TEST BUG: setup violation: ${SETUP}`,
+    ]);
+  });
+});

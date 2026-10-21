@@ -17,7 +17,7 @@ let slots: ReturnType<typeof createSlotAllocator>;
 
 test.beforeAll(async () => {
   setup = await resolveHostSetup(pool); // TEST BUG if the seed changed (D11)
-  slots = createSlotAllocator(setup.eventTypeId);
+  slots = createSlotAllocator(setup.eventTypeId, { pool, userId: setup.userId });
 });
 test.afterAll(async () => closePool(pool));
 
