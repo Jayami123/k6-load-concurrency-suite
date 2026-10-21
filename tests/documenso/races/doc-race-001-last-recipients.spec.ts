@@ -39,8 +39,8 @@ test.describe("P6-DOC-RACE-001 two last recipients", () => {
     try {
       const result = await runCompletionCase(input);
       test.info().annotations.push({
-        type: "P6-OBS-DOC-002",
-        description: `double seal in ${result.doubleSealTrials}/${trials} trials`,
+        type: "issue",
+        description: `P6-OBS-DOC-002: double seal in ${result.doubleSealTrials}/${trials} trials`,
       });
       // Setup, contract, spread, cleanup and leak come first. They are not expected to fail (plan §10).
       expect(result.testViolations, result.testViolations.join("; ")).toEqual([]);

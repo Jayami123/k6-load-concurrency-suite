@@ -7,7 +7,11 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   workers: 1,
-  reporter: "list",
+  // "list" stays on stdout. The JSON file feeds the CI job summary (scripts/write-ci-job-summary.ts).
+  reporter: [
+    ["list"],
+    ["json", { outputFile: process.env.P6_PLAYWRIGHT_JSON ?? "results/playwright/local.json" }],
+  ],
   timeout: 60_000,
   projects: [
     {

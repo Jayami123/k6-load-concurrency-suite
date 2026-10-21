@@ -111,6 +111,10 @@ test.describe("Cal identical slot extras (unmapped)", () => {
     // production redactError strips the code, so concurrent losers get 400 "An error occurred
     // while querying the database." Reproduced 1162/1162 on 2026-10-20. Remove this line when
     // Cal returns 409.
+    test.info().annotations.push({
+      type: "issue",
+      description: "P6-OBS-CAL-001: concurrent losers get 400 instead of 409 (redacted P2002)",
+    });
     test.fail();
     const bad = nonConflictLosers(responses);
     expect(

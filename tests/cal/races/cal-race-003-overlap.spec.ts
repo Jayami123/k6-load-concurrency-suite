@@ -50,8 +50,8 @@ test.describe("P6-CAL-RACE-003 Cal overlapping windows", () => {
     });
     // D16: partial reproduction stays visible in the report even when test.fail() keeps it green.
     test.info().annotations.push({
-      type: "P6-OBS-CAL-002",
-      description: `double-booked ${doubleBook.trialsDoubleBooked}/${trials} trials, clean ${doubleBook.trialsClean}, pairs by trial ${doubleBook.doubleBookedByTrial}`,
+      type: "issue",
+      description: `P6-OBS-CAL-002: double-booked ${doubleBook.trialsDoubleBooked}/${trials} trials, clean ${doubleBook.trialsClean}, pairs by trial ${doubleBook.doubleBookedByTrial}`,
     });
     // Setup, HTTP contract, spread, cleanup and leak must hold before the product assertion.
     expect(guardViolations, guardViolations.join("; ")).toEqual([]);
