@@ -7,7 +7,7 @@ Structure and depth follow
 [2026-10-20-p6-phase1-task5-cal-race-003.md](2026-10-20-p6-phase1-task5-cal-race-003.md) and
 [2026-10-20-p6-phase1-task6-documenso-stack.md](2026-10-20-p6-phase1-task6-documenso-stack.md). Section
 numbers follow them, with one change requested by Jayami: **Risks (§18), Decisions (§19) and numbered
-Open questions (§20) close the document.** P1 UI-assertion and page-object rules do **not** apply. P6
+and the recorded answers to the questions (§20) close the document; no open questions remain.** P1 UI-assertion and page-object rules do **not** apply. P6
 asserts through HTTP and a read-only database oracle.
 
 The source of this task is [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase1-roadmap.md), section
@@ -29,7 +29,7 @@ The source of this task is [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase
 - Cases in this task: **`P6-DOC-RACE-001`** (P0) and **`P6-DOC-RACE-002`** (P0), plus one unmapped extra
   (`extra (unmapped): sequential control for P6-DOC-RACE-001`, §4). **Not taken:** `P6-DOC-RACE-003`
   (later), and no ID is invented or renumbered. The observation ID `P6-OBS-DOC-002` (§2.13) is a finding
-  label, not a case ID, and it is proposed for Jayami's approval (Open question 2).
+  label, not a case ID, and it is proposed for Jayami's approval (approved in §20, Q2).
 - Probe status: **done once on 2026-10-21** (§2) in a Claude Code cloud session. The probe scripts lived
   only in the session scratchpad and imported the real `src/documenso/*`, `src/races/*` and
   `src/oracles/pg.ts`. Nothing was written to the repo, the harness or the fork. The stack was stopped
@@ -211,9 +211,11 @@ two independent 20-trial runs. The sequential control is clean, so the duplicati
   trial p50 2737 ms.
 - Result: **no product bug.** The roadmap's oracle, "one 2xx and nine 4xx", does not match this product:
   duplicates are 200 by design (`ALREADY_SIGNED` is the documented "resolve idempotently" branch). The plan
-  therefore changes the oracle to the observed contract (D16, Open question 1).
-- Caveat: the probe stored the unique body summaries per trial, not per-body counts. The one-`SIGNED`
-  claim rests on the DB guard and on the single seal. The new run-case stores per-body counts (§8.5).
+  therefore changes the oracle to the observed contract (D16, answered in §20: yes).
+- **Per-body counts are first proven by the build's run.** The probe stored unique body summaries per trial,
+  not per-body counts, so the exact 'one `SIGNED`, nine `ALREADY_SIGNED`' claim rests on the DB guard and the
+  single seal until the build's 50-trial run records the counts per body (§8.5 `signedResponses` and
+  `alreadySignedResponses`). Q1 makes those exact counts the assertion.
 
 ### 2.10 Root cause (code; recorded, not fixed)
 
@@ -248,23 +250,23 @@ Consequence for the oracle: a leak count keyed on `teamId` or `userId` **misses*
 and on live rows (`"deletedAt" IS NULL`). Soft-deleted completed envelopes and `DocumentData` residue are
 product behaviour: the plan records them as residue, not as a leak (D24).
 
-### 2.12 Corrections to Task 6 (recorded here; the Task 6 file is not edited by this plan)
+### 2.12 Corrections to Task 6 (the Task 6 fix is a separate docs commit on this branch, Q8)
 
-- Task 6 §2.7 names `envelope.field.sign` for filling a field. **No such procedure exists** in this fork.
+- Task 6 §2.7 names `envelope.field.sign` for filling a field. **No such procedure exists** in this fork (corrected in the Task 6 file by a separate docs commit on this branch).
   The signing page calls `field.signFieldWithToken` (router `field`), with `fieldId` = `Field.id`. Task 6's
   own `recipient.completeDocumentWithToken` step is correct; the body takes the legacy `documentId`.
 - Task 6 §2.7 reads the recipient token from `GET /api/v2/envelope/<id>`. That also works, and the GET does
   return a `token` on each recipient. This task takes the token from `distribute` (`signingUrl`), which is
   the one the signing page is opened with.
-- A one-line fix to Task 6 §2.7 can ride with this build (Open question 8).
+- The Task 6 §2.7 fix is a separate docs commit on this branch (Q8, §20).
 
 ### 2.13 Findings to record (not fixed here)
 
-- **`P6-OBS-DOC-002`, PRODUCT BUG, severity medium (proposed; Open question 2).** Two last recipients completing
+- **`P6-OBS-DOC-002`, PRODUCT BUG, severity medium (approved, Q2 in §20).** Two last recipients completing
   in parallel seal the same document twice: 2 seal jobs (one retried after P2025), 2 `DOCUMENT_COMPLETED`
   audit rows, 2 completed emails per recipient, 2 `DOCUMENT_COMPLETED` webhook deliveries, and 4
   `DocumentData` rows. The envelope stays COMPLETED with one sealed item. Reproduced 40/40 across two runs;
-  the sequential control is clean. Cause: §2.10. Test: `P6-DOC-RACE-001` with `test.fail()` (§10). A fix is
+  the sequential control is clean. Cause: §2.10. Test: `P6-DOC-RACE-001` with `test.fail()` (§10). Upstream issue draft: Appendix A (Q5). A fix is
   out of scope; a likely shape is one winner only (for example a conditional envelope update PENDING →
   COMPLETED that gates the seal trigger) plus an "already COMPLETED" guard at the top of the seal handler.
 - **Not a finding:** duplicate completion returns 200 `ALREADY_SIGNED` by design (§2.9). The roadmap's "nine
@@ -294,7 +296,7 @@ rerun-on-spread logic; k6 load; `P6-OBS-DOC-001`; reject, cancel and delete race
 | Name                                           | File                                                         | Project          | Histogram `caseId`             | Concurrency | Product-correct expectation                                                                                                   | Status in this task                                                  |
 | ---------------------------------------------- | ------------------------------------------------------------ | ---------------- | ------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `P6-DOC-RACE-001` two last recipients          | `tests/documenso/races/doc-race-001-last-recipients.spec.ts` | `documenso-race` | `P6-DOC-RACE-001`              | 2           | both 200 `SIGNED`; 1 seal job; 1 `DOCUMENT_COMPLETED` row; 1 completed email per recipient; 1 webhook; `DocumentData` delta 2 | `test.fail()` with `P6-OBS-DOC-002`; passes while the bug reproduces |
-| `P6-DOC-RACE-002` same recipient ×10           | `tests/documenso/races/doc-race-002-double-submit.spec.ts`   | `documenso-race` | `P6-DOC-RACE-002`              | 10          | every 200; exactly one `SIGNED`; nine `ALREADY_SIGNED`; no 4xx, no 5xx; 1 seal job; 1 audit row; 1 email; 1 webhook; delta 2  | plain assertions (no `test.fail()`); passes                          |
+| `P6-DOC-RACE-002` same recipient ×10           | `tests/documenso/races/doc-race-002-double-submit.spec.ts`   | `documenso-race` | `P6-DOC-RACE-002`              | 10          | every 200; exactly one `SIGNED`; nine `ALREADY_SIGNED`; no 4xx, no 5xx; 1 seal job; 1 audit row; 1 email; 1 webhook; delta 2  | exact per-body counts (§8.6, Q1); passes                             |
 | `extra (unmapped)`: sequential control for 001 | same file as `P6-DOC-RACE-001` (second `describe`)           | `documenso-race` | `extra-doc-sequential-control` | 2           | same as 001, one completion after another; control must be clean                                                              | plain assertions; passes; failure is a TEST BUG (§10)                |
 | documenso self-test (Task 6)                   | `tests/documenso/races/documenso-self-test.spec.ts`          | `documenso-race` | `documenso-self-test`          | 20          | unchanged                                                                                                                     | unchanged                                                            |
 
@@ -375,6 +377,7 @@ Histogram `oracle` (aggregates):
 | `leakUsers`, `leakWebhooks`, `leakApiTokens`, `leakMails`                                   | Task 6 `leakCheck` counts, plus the mailboxes list length (must be 0) |
 
 `statusCounts` (HTTP status of every completion request) is filled with `mergeStatusCounts`, as in Task 6.
+`envelopeCompletedTrials` (001 setup: equals the trial count) and `documentDataResidue` (`DocumentData` rows this run added, Q4) are added by Q1, Q2 and Q4 (§19, D30–D31). `softDeletedEnvelopes` is reported, not asserted.
 `verdict`: `pass` only when every trial is `ok` and `invariantViolations` is empty. For 001, `verdict` is
 `fail` while the bug reproduces, and the Playwright test is green because of `test.fail()` (§10); the README
 says so.
@@ -754,6 +757,15 @@ FROM "Envelope"
 WHERE title LIKE $1 AND "deletedAt" IS NOT NULL
 `;
 
+/** Envelope status after the seal (Q2 setup: COMPLETED in every trial). */
+export async function readEnvelopeStatus(
+  pool: pg.Pool,
+  envelopeId: string,
+): Promise<string | null> {
+  const rows = await selectRows<{ status: string }>(pool, ENVELOPE_SQL, [envelopeId]);
+  return rows[0]?.status ?? null;
+}
+
 export type JobRow = { id: string; status: string; retried?: number };
 
 const TERMINAL_JOB_STATUSES = new Set(["COMPLETED", "FAILED"]);
@@ -916,6 +928,7 @@ export type TrialSnapshot = {
   completedEmails: number[]; // one count per recipient mailbox
   webhookDeliveries: number; // receiver deliveries whose payload.envelopeId is this envelope
   webhookCallRows: Array<{ status: string; responseCode: number | null }>; // this envelope only
+  envelopeStatus: string | null; // Q2 setup: must be COMPLETED after the seal
   webhookHost: string;
 };
 
@@ -961,6 +974,9 @@ export function checkCompletionTrial(input: TrialInput): string[] {
   const s = input.snapshot;
   const counts = countClasses(input.classes);
   const exp = expectedResponses(input.mode, input.burst);
+  if (s.envelopeStatus !== "COMPLETED") {
+    v.push(`${label}: envelope status ${s.envelopeStatus}, expected COMPLETED`);
+  }
 
   if (input.spreadMs >= input.spreadLimitMs) {
     v.push(`TEST BUG: dispatchSpreadMs ${input.spreadMs} >= ${input.spreadLimitMs}`);
@@ -1013,7 +1029,7 @@ export const checkSequentialControl = (input: TrialInput) =>
 ```
 
 Note on the 002 expectation: a 4xx is a PRODUCT BUG by the contract change (D16). If Jayami keeps the
-roadmap wording ("one 2xx and nine 4xx"), this function changes in one place (Open question 1).
+roadmap wording ("one 2xx and nine 4xx"), this function changes in one place (answered in §20: Q1 yes).
 
 `tests/unit/documenso-invariants.test.ts` (node:test). A helper `passing(overrides)` returns a snapshot
 that passes for 001 (two seal-free fields, one seal job COMPLETED, one audit row, delta 2, one email job,
@@ -1041,6 +1057,7 @@ emails `[1, 1]`, one delivery, one `SUCCESS` 200 call row). Each branch gets one
 - `checkDoc002Trial` with two SIGNED and eight ALREADY_SIGNED → contains `PRODUCT BUG: SIGNED responses 2, expected 1`.
 - `checkDoc002Trial` with one 4xx → contains `PRODUCT BUG: completion HTTP 4xx x1`.
 - `checkSequentialControl` with a double seal → every violation starts with `TEST BUG (control):`, and none starts with `PRODUCT BUG`.
+- Envelope status `PENDING` → contains `PRODUCT BUG: envelope status PENDING, expected COMPLETED`.
 - `trialDoubleSealed`: true for two seal jobs, true for two audit rows, false for `passing()`.
 - `countClasses`: the totals equal the input length, for a mixed list.
 
@@ -1114,6 +1131,7 @@ import {
   readCompletedAudit,
   readCompletedEmailCount,
   readEmailJobs,
+  readEnvelopeStatus,
   readItemSealed,
   readSealJobs,
   readWebhookCalls,
@@ -1325,6 +1343,7 @@ export async function readSnapshot(
   const webhookJobs = await readWebhookJobs(ctx.pool, doc.documentId);
   const completedAuditRows = await readCompletedAudit(ctx.pool, doc.envelopeId);
   const items = await readItemSealed(ctx.pool, doc.envelopeId);
+  const envelopeStatus = await readEnvelopeStatus(ctx.pool, doc.envelopeId);
   const docDataDelta = (await docDataCount(ctx.pool)) - docDataBefore;
   const completedEmails: number[] = [];
   for (const mb of doc.mailboxes)
@@ -1350,6 +1369,7 @@ export async function readSnapshot(
     completedEmails,
     webhookDeliveries: deliveries.length,
     webhookCallRows,
+    envelopeStatus,
     webhookHost: ctx.webhookHost,
   };
 }
@@ -1394,6 +1414,7 @@ function oracleOf(
     clientErrorResponses: c["client-error"],
     serverErrorResponses: c["server-error"],
     doubleSealed: trialDoubleSealed(s),
+    envelopeCompletedTrials: s.envelopeStatus === "COMPLETED" ? 1 : 0,
   };
 }
 
@@ -1425,6 +1446,7 @@ export async function runCompletionCase(input: {
   const spreadLimit = raceMaxSpreadMsFromEnv();
   const casePfx = casePrefix(input.runPrefix, input.caseId);
   const pdf = await readFixturePdf();
+  const docDataAtStart = await docDataCount(input.pool); // residue baseline (Q4)
   const ctx = await startRun(input);
   const histogram = createHistogram({
     caseId: input.caseId,
@@ -1530,6 +1552,10 @@ export async function runCompletionCase(input: {
         (n, t) => n + Number(t.oracle.clientErrorResponses ?? 0),
         0,
       ),
+      envelopeCompletedTrials: perTrial.reduce(
+        (n, t) => n + Number(t.oracle.envelopeCompletedTrials ?? 0),
+        0,
+      ),
       serverErrorResponses: perTrial.reduce(
         (n, t) => n + Number(t.oracle.serverErrorResponses ?? 0),
         0,
@@ -1539,12 +1565,12 @@ export async function runCompletionCase(input: {
       ...violations,
       ...perTrial.flatMap((t) => t.invariantViolations),
     ];
-    return await finish(ctx, histogram, recipientMailboxes, true, doubleSealTrials);
+    return await finish(ctx, histogram, recipientMailboxes, true, doubleSealTrials, docDataAtStart);
   } catch (err) {
     histogram.invariantViolations.push(
       `TEST BUG: case aborted: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
     );
-    return await finish(ctx, histogram, recipientMailboxes, false, 0);
+    return await finish(ctx, histogram, recipientMailboxes, false, 0, docDataAtStart);
   }
 }
 
@@ -1555,10 +1581,13 @@ async function finish(
   recipientMailboxes: string[],
   ran: boolean,
   doubleSealTrials: number,
+  docDataAtStart: number,
 ): Promise<CaseResult> {
   const cleanup = await endRun(ctx, recipientMailboxes);
   const leak = await leakCounts(ctx, recipientMailboxes);
-  histogram.oracle = { ...histogram.oracle, ...leak.values };
+  // Residue is reported, never asserted and never cleaned via SQL (Q4).
+  const documentDataResidue = (await docDataCount(ctx.pool)) - docDataAtStart;
+  histogram.oracle = { ...histogram.oracle, ...leak.values, documentDataResidue };
   histogram.invariantViolations.push(...cleanup, ...leak.violations);
   histogram.verdict = ran && histogram.invariantViolations.length === 0 ? "pass" : "fail";
   histogram.finishedAt = new Date().toISOString();
@@ -1623,6 +1652,17 @@ test.describe("P6-DOC-RACE-001 two last recipients", () => {
       const raw = JSON.parse(await readFile(`results/races/${CASE_ID}.json`, "utf8"));
       expect(raw.trials).toBe(trials);
       expect(raw.concurrency).toBe(2);
+      // Setup for the product assertion (Q2): both legs answered 200 SIGNED and the envelope is COMPLETED.
+      expect(
+        result.histogram.oracle.signedResponses,
+        "setup: both legs must answer 200 SIGNED",
+      ).toBe(2 * trials);
+      expect(result.histogram.oracle.clientErrorResponses).toBe(0);
+      expect(result.histogram.oracle.serverErrorResponses).toBe(0);
+      expect(
+        result.histogram.oracle.envelopeCompletedTrials,
+        "setup: envelope must be COMPLETED in every trial",
+      ).toBe(trials);
       // PRODUCT BUG P6-OBS-DOC-002 (plan §2.8, §2.10). Remove test.fail() and the expectation below in the
       // same PR that fixes the seal race; a passing run then fails on purpose.
       test.fail();
@@ -1704,6 +1744,13 @@ test.describe("P6-DOC-RACE-002 same recipient double submit", () => {
       const raw = JSON.parse(await readFile(`results/races/${CASE_ID}.json`, "utf8"));
       expect(raw.trials).toBe(trials);
       expect(raw.concurrency).toBe(10);
+      // Q1: exactly one SIGNED and nine ALREADY_SIGNED per trial, all HTTP 200; any 4xx or 5xx fails.
+      expect(result.histogram.statusCounts).toEqual({ "200": 10 * trials });
+      expect(result.histogram.oracle.signedResponses).toBe(trials);
+      expect(result.histogram.oracle.alreadySignedResponses).toBe(9 * trials);
+      expect(result.histogram.oracle.clientErrorResponses).toBe(0);
+      expect(result.histogram.oracle.serverErrorResponses).toBe(0);
+      expect(result.histogram.oracle.trialsSingleSeal).toBe(trials);
       expect(result.productViolations, result.productViolations.join(" | ")).toEqual([]);
       expect(result.histogram.verdict).toBe("pass");
     } finally {
@@ -1753,6 +1800,7 @@ Notes on the specs:
 - **Serial database.** `DocumentData` counts are per-trial deltas. They are valid only when nothing else writes to
   the Documenso database during the run (D25). CI runs one job with `workers: 1` and a fresh database. Locally,
   run no other Documenso work while the race runs.
+- **Residue (reported, never asserted, never cleaned via SQL; Q4).** `documentDataResidue` in the histogram is the number of `DocumentData` rows this run added (the count at run end minus the count at run start). `softDeletedEnvelopes` is the number of completed envelopes this run soft-deleted. Neither is asserted. No SQL writes remove them: the API cannot, and the read-only oracle does not write.
 - **Volume.** Each completed document leaves about 300 KB per `DocumentData` row (2 rows sequential, 4 for a double
   seal). That is an estimate from the probe's 306 892-character sealed data. A full local run (50 + 50 + 5 trials)
   adds on the order of 100 MB to the Documenso Postgres volume. `down:documenso` keeps the volume (Task 6 §2.9),
@@ -1760,35 +1808,40 @@ Notes on the specs:
 
 ## 10. Known-bug handling and labels (`test.fail()` only for `P6-OBS-DOC-002`)
 
-| Observation                                                                                                                    | Label                                              | Evidence to paste                                                |
-| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | ---------------------------------------------------------------- |
-| Completion response 5xx                                                                                                        | **PRODUCT BUG**                                    | status, body summary (no token)                                  |
-| Completion response 4xx (in 002 this would break D16)                                                                          | **PRODUCT BUG**                                    | status, body summary                                             |
-| Completion response not `SIGNED` / `ALREADY_SIGNED` on a 200                                                                   | **PRODUCT BUG**                                    | body summary                                                     |
-| Seal jobs ≠ 1, a seal job not COMPLETED, DOCUMENT_COMPLETED rows ≠ 1 (001 and 002)                                             | **PRODUCT BUG** (001: this is `P6-OBS-DOC-002`)    | counts, job statuses, `retried`                                  |
-| `DocumentData` delta ≠ 2                                                                                                       | **PRODUCT BUG**                                    | delta, seal job count                                            |
-| Completed-email count per recipient ≠ 1, or completed-email jobs ≠ 1                                                           | **PRODUCT BUG**                                    | counts per mailbox                                               |
-| Webhook deliveries ≠ 1, `WebhookCall` rows ≠ 1, row not SUCCESS 200                                                            | **PRODUCT BUG**                                    | counts, row status and code, `isDeepStrictEqual` result if added |
-| Zero deliveries and `FAILED` with `responseCode` 0                                                                             | **ENV**                                            | `NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS` or the hosts entry      |
-| 429 anywhere                                                                                                                   | **ENV**                                            | `DANGEROUS_BYPASS_RATE_LIMITS` not reaching the app              |
-| Setup call not 200 (`envelope/create`, `recipient/create-many`, `field/create-many`, `distribute`, `field.signFieldWithToken`) | **TEST BUG** (5xx on any of them: **PRODUCT BUG**) | call name, status                                                |
-| Fixture PDF missing                                                                                                            | **ENV**                                            | the path from `fixturePdfPath()`                                 |
-| Spread ≥ `RACE_MAX_SPREAD_MS`                                                                                                  | **TEST BUG**                                       | `dispatchSpreadMs`                                               |
-| Cleanup step failed, leak ≠ 0, histogram not written                                                                           | **TEST BUG**                                       | step name, count                                                 |
-| Sequential control (extra) violated                                                                                            | **TEST BUG (control)**                             | the violation line; a repro is needed before any product label   |
-| Stack down, Node < 24, OOM, Docker or disk                                                                                     | **ENV**                                            | last 40 lines of `documenso-web.log` and the step log            |
-| Inbucket list or message shape differs (Task 6 D14)                                                                            | **ENV**                                            | the `ENV: Inbucket API drift` message                            |
+| Observation                                                                                                                    | Label                                              | Evidence to paste                                              |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | -------------------------------------------------------------- |
+| Completion response 5xx                                                                                                        | **PRODUCT BUG**                                    | status, body summary (no token)                                |
+| Completion response 4xx (in 002 this breaks D16)                                                                               | **PRODUCT BUG**                                    | status, body summary                                           |
+| Completion response not `SIGNED` / `ALREADY_SIGNED` on a 200                                                                   | **PRODUCT BUG**                                    | body summary                                                   |
+| Seal jobs ≠ 1, a seal job not COMPLETED, DOCUMENT_COMPLETED rows ≠ 1 (001 and 002)                                             | **PRODUCT BUG** (001: this is `P6-OBS-DOC-002`)    | counts, job statuses, `retried`                                |
+| Envelope not COMPLETED after the seal                                                                                          | **PRODUCT BUG**                                    | envelope status                                                |
+| `DocumentData` delta ≠ 2                                                                                                       | **PRODUCT BUG**                                    | delta, seal job count                                          |
+| Completed-email count per recipient ≠ 1, or completed-email jobs ≠ 1                                                           | **PRODUCT BUG**                                    | counts per mailbox                                             |
+| Webhook deliveries ≠ 1, `WebhookCall` rows ≠ 1, row not SUCCESS 200                                                            | **PRODUCT BUG**                                    | counts, row status and code                                    |
+| Zero deliveries and `FAILED` with `responseCode` 0                                                                             | **ENV**                                            | `NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS` or the hosts entry    |
+| 429 anywhere                                                                                                                   | **ENV**                                            | `DANGEROUS_BYPASS_RATE_LIMITS` not reaching the app            |
+| Setup call not 200 (`envelope/create`, `recipient/create-many`, `field/create-many`, `distribute`, `field.signFieldWithToken`) | **TEST BUG** (5xx on any of them: **PRODUCT BUG**) | call name, status                                              |
+| Fixture PDF missing                                                                                                            | **ENV**                                            | the path from `fixturePdfPath()`                               |
+| Spread ≥ `RACE_MAX_SPREAD_MS`                                                                                                  | **TEST BUG**                                       | `dispatchSpreadMs`                                             |
+| Cleanup step failed, leak ≠ 0, histogram not written                                                                           | **TEST BUG**                                       | step name, count                                               |
+| Sequential control (extra) violated                                                                                            | **TEST BUG (control)**                             | the violation line; a repro is needed before any product label |
+| Stack down, Node < 24, OOM, Docker or disk                                                                                     | **ENV**                                            | last 40 lines of `documenso-web.log` and the step log          |
+| Inbucket list or message shape differs (Task 6 D14)                                                                            | **ENV**                                            | the `ENV: Inbucket API drift` message                          |
 
-**The `test.fail()` rules (001 only, D17).**
+Residue (`softDeletedEnvelopes`, `documentDataResidue`) is reported in the histogram and never asserted (Q4).
 
-- The product assertion (`expect(result.doubleSealTrials).toBe(0)`) comes right after `test.fail()`. Everything
-  above it is setup and must hold: the trial count matches the environment, the testViolations list is empty
-  (spread, cleanup, leak, ENV, TEST BUG), and the raw histogram file has the expected `trials` and `concurrency`.
-- The product assertion fails while the bug reproduces. With 5 trials on a PR the chance of zero reproductions
-  is effectively zero (40/40 in the probe), so the PR run stays green.
-- If the bug stops reproducing, the assertion passes, `test.fail()` turns that into a red test, and the PR that
-  fixes the seal race must remove `test.fail()` and the expectation in the same change. That is the intended signal.
-- 002 has no `test.fail()`. Its product violations are plain assertions.
+**The `test.fail()` rules (001 only; D17, Q2).** Setup is asserted first, in this order:
+
+1. Both legs answered 200 `SIGNED` in every trial: `signedResponses` = 2 × trials, `clientErrorResponses` and `serverErrorResponses` 0.
+2. The envelope is COMPLETED in every trial: `envelopeCompletedTrials` = trials.
+3. The testViolations list is empty (spread, cleanup, leak, ENV, TEST BUG).
+4. The raw histogram file has the expected `trials` and `concurrency`.
+
+Then `test.fail()` goes **right before the product assertion** (`expect(doubleSealTrials).toBe(0)`), which fails while the bug reproduces.
+
+- A PR run with 5 trials stays green: the probe reproduced the bug 40/40, so zero reproductions is effectively impossible.
+- When the bug stops reproducing, the product assertion passes, `test.fail()` makes the test red, and the PR that fixes the seal race removes `test.fail()` and the assertion in the same change.
+- 002 has no `test.fail()`. Its exact per-body counts (Q1) are plain assertions (§8.6).
 
 ## 11. CI (`.github/workflows/perf.yml`, job `documenso-smoke` only)
 
@@ -1992,14 +2045,16 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 
 ## 16. Docs (README "Documenso completion races")
 
-- What the two cases prove, in one sentence each, and the expected outcome of `P6-DOC-RACE-001` (it fails
-  with `test.fail()` while `P6-OBS-DOC-002` reproduces).
-- The histogram verdict versus the Playwright result for 001: `fail` in the JSON and green in the test run.
-- Trial counts: 5 on PRs, 50 on `main`, nightly and manual runs (D22). Nothing else is set by hand.
-- The serial-database requirement (§9) and the volume note (§9).
-- The label table (§10), summarised to the four labels.
-- Known product findings: `P6-OBS-DOC-001` (Task 6) and `P6-OBS-DOC-002` (this task, proposed), with
-  links to §2.8 and §2.10 of this plan.
+- What each case proves, one sentence each. For `P6-DOC-RACE-001`: the expected outcome is a failure under `test.fail()` while `P6-OBS-DOC-002` reproduces.
+- **Known product bug text (Q2), in the README:**
+
+  > **P6-OBS-DOC-002 (medium, known bug).** When the last two recipients of a document complete at the same moment, Documenso seals the document twice. Effects: integrators that receive `DOCUMENT_COMPLETED` webhooks get **two deliveries** for that document, so a consumer that does not de-duplicate may process the event twice; each recipient receives the **completed e-mail twice**; the audit trail holds **two `DOCUMENT_COMPLETED` rows**. The **final PDF is correct** and the envelope ends COMPLETED once. Sequential completion is not affected. Evidence and cause: plan `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2.8 and §2.10; the reproduction is `P6-DOC-RACE-001` (expected failure).
+
+- The histogram verdict versus the Playwright result for 001: `fail` in the JSON, green in the test run (expected failure).
+- Trial counts: 5 on PRs, 50 on `main`, nightly and `workflow_dispatch` (D22).
+- The serial-database requirement and the residue notes (§9; Q4): residue is reported in the histogram, never asserted, never cleaned via SQL.
+- The label table (§10), summarised to four labels: PRODUCT BUG, TEST BUG, ENV, and TEST BUG (control).
+- Known product findings: `P6-OBS-DOC-001` (Task 6) and `P6-OBS-DOC-002` (this task), with the links above.
 - No timings. Published numbers come only from GitHub Actions runs.
 
 ## 17. Will NOT do
@@ -2010,7 +2065,7 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 - No change to `runTrials`, `fireTogether`, `src/races/*`, `src/oracles/pg.ts`, `medusa-smoke` or `cal-smoke`.
 - No retries, no `workers` above 1, no browser, no page objects, no UI.
 - No published timings; no `test.fail()` outside `P6-DOC-RACE-001`.
-- No "one 2xx and nine 4xx" oracle unless Open question 1 is answered that way.
+- No "one 2xx and nine 4xx" oracle (Q1 answered: exact per-body counts, D16).
 
 ## 18. Risks and unknowns
 
@@ -2029,8 +2084,7 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 - **R7 The web log and the histograms could one day hold a token.** The guard blocks the upload (§11).
 - **R8 Trial time at 50.** About 6 min of races on this VM; a slower runner may take twice that. The timeouts
   in §11 allow it.
-- **R9 The roadmap's "one 2xx, nine 4xx" is wrong for this product.** Changed in D16; Open question 1 asks for
-  approval.
+- **R9 The roadmap's "one 2xx, nine 4xx" is wrong for this product.** Changed in D16 (approved, Q1).
 - **R10 A label mistake.** A product bug reported as a test bug (or the reverse) hides a finding. Mitigation: the
   labels in §10 are enforced by the `PRODUCT BUG` prefix, and every test-side label carries its own prefix.
 - **R11 Seal retries add time.** The retry path is about 250 ms slower at p50 (648 ms against 393 ms). The 20 s
@@ -2040,71 +2094,79 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 
 ## 19. Decisions (2026-10-21; numbering continues from Task 6's D15)
 
-- **D16 DOC-RACE-002 oracle follows the observed contract.** Every completion answers 200. Exactly one response
-  is `SIGNED` and the other nine are `ALREADY_SIGNED`; no 4xx is expected; any 5xx, 4xx or other body is a
-  PRODUCT BUG. Standard: assert what the product promises (idempotent completion returns 200), not an assumed
-  error shape. Rejected: "one 2xx and nine 4xx" from the roadmap (the product never returns a 4xx here; the
-  probe shows 200 in every trial).
-- **D17 `P6-DOC-RACE-001` uses `test.fail()` with `P6-OBS-DOC-002`.** The product assertion is "no trial
-  double-seals", placed after the setup assertions. Standard: a proven product bug is recorded as an expected
-  failure with evidence from repeated runs (roadmap, master plan §1). Rejected: a red test on `main` (it would
-  block every PR); skipping the case (it would hide the finding).
-- **D18 Seal count and sealed-PDF count.** Seal jobs are counted by `jobId` and the legacy document id.
-  DOCUMENT_COMPLETED audit rows per envelope count committed seal runs. The sealed-PDF count is the per-trial
-  `DocumentData` delta, expected 2 (original + one sealed). Rejected: counting sealed rows through the item (always
-  one, which hides the double seal); counting by e-mail subject (the roadmap's own warning).
-- **D19 Completed e-mails are counted per recipient mailbox.** Each trial's recipient mailboxes are unique, so a
-  count per mailbox is a count per document. The roadmap's "exactly 1 completed email for this document" means
-  one per recipient (2 for two recipients). Rejected: a global count by subject.
-- **D20 Webhooks are counted by `payload.envelopeId`.** `payload.id` is the legacy number, and matching it would
-  mix documents with the same legacy id across runs.
-- **D21 Completion through the signing page's own procedures.** `field.signFieldWithToken` and
-  `recipient.completeDocumentWithToken`, anonymous, with the recipient token from `distribute` (`signingUrl`).
-  The fixture PDF is read from the fork checkout, found through `PRODUCTS_ROOT` as the harness does. Standard: test
-  the same surface the product's own UI uses, with no UI and no SQL writes. Rejected: a P6-owned PDF copy (a binary
-  in the repo, and the fork is the source of truth); `envelope.field.sign` (does not exist, §2.12).
-- **D22 Trial counts.** The DOC cases take `RACE_TRIALS` as given, with no cap: 5 on PRs, 50 on `main`, nightly
-  and `workflow_dispatch` (roadmap D2; master plan §1). The control runs `min(RACE_TRIALS, 5)`. Rejected: keeping 3
-  on `main` (below master plan N≥50).
-- **D23 `waitForStable` limits.** Seal and email jobs: wait up to 20 s until at least one job exists and every job
-  is COMPLETED or FAILED. Audit, item and `DocumentData` reads come only after that. Completed e-mails: up to 10 s,
-  stable for 3 reads 300 ms apart. Webhook calls: Task 6's `readWebhookCalls` (15 s). Rationale: the probe's worst
-  seal was 937 ms, its worst e-mail job 410 ms, its worst webhook job 42 ms, so the limits are more than 10× the
-  worst case. Rejected: counting at the first row (a second seal can land after the first is counted).
-- **D24 Cleanup order and leak keys.** Envelope delete first, the account last. Leak counts use title prefix and
-  live rows. Soft-deleted envelopes and `DocumentData` residue are reported, not asserted, because the API cannot
-  remove them. Rejected: team or user keys (completed envelopes are re-owned at account deletion).
-- **D25 Serial database for the `DocumentData` delta.** One Documenso job per run, `workers: 1`. Documented in the
-  README.
-- **D26 The sequential control is an extra in this task.** It shows that the duplication needs concurrency, and it
-  catches a harness false positive. A failing control is a `TEST BUG (control)`. Rejected: leaving it out (then the
-  double seal could be a harness artefact and nothing would show it).
-- **D27 Guard before upload, for histograms too.** The token-shape guard scans the web log and `results/races/`,
-  and both uploads wait for it. The uploads run `always()` after the guard, so a failed race still uploads its
-  evidence.
-- **D28 Finding label.** `P6-OBS-DOC-002`, PRODUCT BUG, medium, proposed. It follows the `P6-OBS-*` finding pattern
-  of Tasks 5 and 6; it is not a case ID, and no case ID is invented (Open question 2).
-- **D29 Task 6 wording corrected here, not edited.** `envelope.field.sign` becomes `field.signFieldWithToken`
-  (§2.12). The Task 6 file is not changed in this plan (Open question 8).
+- **D16 DOC-RACE-002 asserts exact per-body counts (Q1 yes).** Every completion answers HTTP 200. Exactly one body is `SIGNED` and nine are `ALREADY_SIGNED`. Any 4xx or 5xx fails. Each trial also checks 1 seal job, 1 `DOCUMENT_COMPLETED` row, 1 completed e-mail per recipient, and 1 webhook (receiver deliveries and `WebhookCall` rows). The per-body counts are first proven by the build's first run, as §2.9 says. Standard: assert what the product promises, not an assumed error shape. Rejected: the roadmap's "one 2xx and nine 4xx" (the product never returns a 4xx here).
+- **D17 `P6-DOC-RACE-001` uses `test.fail()` with `P6-OBS-DOC-002` (Q2 yes).** The product assertion is "no trial double-seals", placed right after `test.fail()`. Setup is asserted before it: both legs 200 `SIGNED` and the envelope COMPLETED in every trial (§10). Standard: a proven product bug is recorded as an expected failure with evidence from repeated runs. Rejected: a red test on `main` (it would block every PR); skipping the case (it would hide the finding).
+- **D18 Seal count and sealed-PDF count.** Seal jobs are counted by `jobId` and the legacy document id. `DOCUMENT_COMPLETED` audit rows per envelope count committed seal runs. The sealed-PDF count is the per-trial `DocumentData` delta, expected 2 (original + one sealed). Rejected: counting sealed rows through the item (always one, which hides the double seal); counting by e-mail subject.
+- **D19 Completed e-mails are counted per recipient (Q7 yes).** Each trial's recipient mailboxes are unique, so a count per mailbox is a count per document. "Exactly 1 completed email for this document" means one per recipient (2 for two recipients). Rejected: a global count by subject.
+- **D20 Webhooks are counted by `payload.envelopeId`.** `payload.id` is the legacy number, and matching it would mix documents with the same legacy id across runs.
+- **D21 Completion through the signing page's own procedures.** `field.signFieldWithToken` and `recipient.completeDocumentWithToken`, anonymous, with the recipient token from `distribute` (`signingUrl`). The fixture PDF is read from the fork checkout through `PRODUCTS_ROOT`, as the harness does. Rejected: a P6-owned PDF copy (a binary in the repo; the fork is the source of truth); `envelope.field.sign` (does not exist, §2.12).
+- **D22 Trial counts (Q3 yes).** The DOC cases take `RACE_TRIALS` as given, with no cap: **5 on PRs, 50 on `main`, nightly and `workflow_dispatch`** (roadmap D2; master plan §1). The control runs `min(RACE_TRIALS, 5)`. Rejected: keeping 3 on `main` (below master plan N≥50).
+- **D23 `waitForStable` limits.** Seal and email jobs: up to 20 s until at least one job exists and every job is COMPLETED or FAILED. Audit, item and `DocumentData` reads come only after that. Completed e-mails: up to 10 s, stable for 3 reads 300 ms apart. Webhook calls: Task 6's `readWebhookCalls` (15 s). Rationale: the probe's worst seal was 937 ms, its worst e-mail job 410 ms, its worst webhook job 42 ms. Rejected: counting at the first row (a second seal can land after the first is counted).
+- **D24 Cleanup order and leak keys.** Envelope delete first, the account last. Leak counts use the title prefix and live rows. Soft-deleted envelopes and `DocumentData` residue are reported (D30), not asserted. Rejected: team or user keys (completed envelopes are re-owned at account deletion).
+- **D25 Serial database for the `DocumentData` delta.** One Documenso job per run, `workers: 1`. Documented in the README.
+- **D26 The sequential control is a passing test (Q6 yes).** Same completions, one after another. It shows that the duplication needs concurrency and catches a harness false positive. A failing control is a `TEST BUG (control)`. Rejected: leaving it out (the double seal could then be a harness artefact with nothing to show it).
+- **D27 Guard before upload, for histograms too.** The token-shape guard scans the web log and `results/races/`, and both uploads wait for it. The uploads run `always()` after the guard, so a failed race still uploads its evidence.
+- **D28 Finding label (Q2 yes).** `P6-OBS-DOC-002`, PRODUCT BUG, **medium**. It follows the `P6-OBS-*` pattern of Tasks 5 and 6; it is not a case ID, and no case ID is invented. The README text is in §16.
+- **D29 Task 6 wording corrected in its own commit (Q8 yes).** `envelope.field.sign` becomes `field.signFieldWithToken` (§2.12) in `docs/plans/2026-10-20-p6-phase1-task6-documenso-stack.md`, as a separate docs commit on the plan branch (`fa4aa43`).
+- **D30 Residue is reported, never asserted, never cleaned via SQL (Q4 yes).** The histogram carries `softDeletedEnvelopes` and `documentDataResidue` (§8.5). Neither is asserted. No SQL writes or deletes remove them.
+- **D31 Upstream issue draft (Q5 yes).** Appendix A is a draft for Jayami to file herself. It contains no secrets and no tokens. P6 files nothing upstream.
 
-## 20. Open questions for Jayami
+## 20. Answers from Jayami (2026-10-21)
 
-1. **Approve D16?** The roadmap says "one 2xx and nine 4xx". The product returns 200 for all ten (one `SIGNED`,
-   nine `ALREADY_SIGNED`) in all 20 probe trials, and that is its documented idempotent behaviour. Recommendation:
-   yes. The case then asserts the real contract and still catches any 4xx or 5xx.
-2. **Approve the finding `P6-OBS-DOC-002`, severity medium, and `test.fail()` on `P6-DOC-RACE-001` (D17)?**
-   Medium because the envelope ends COMPLETED with one sealed PDF, and the damage is duplicate e-mails, duplicate
-   webhooks and duplicate seal work. Say if you would rate it high: that changes only the label text.
-3. **Trial counts (D22):** 5 on PRs and 50 on `main`, nightly and manual runs, as the roadmap says. Or do you want
-   the master plan's N≥50 on PRs too (about 3 more minutes per PR run)? Recommendation: keep 5 on PRs.
-4. **Residue (D24, R5):** accept soft-deleted envelopes and `DocumentData` rows as product residue that is reported,
-   not asserted? The API cannot remove them, so the only alternative is a direct database clean-up, which the
-   read-only oracle rule forbids. Recommendation: yes.
-5. **Upstream issue draft for the double seal**, in the style of Task 5's Appendix A (you file it; P6 does not)?
-   Recommendation: yes, after this plan is approved.
-6. **The sequential control (D26) as an extra in this task?** Recommendation: yes; it is five trials on PRs and
-   costs about 20 s.
-7. **Per-recipient reading of "exactly 1 completed email" (D19)?** The roadmap's wording could also mean one per
-   document. Recommendation: per recipient, as the probe shows every recipient receives the completed mail.
-8. **Fix the Task 6 wording (`envelope.field.sign`, §2.12) in this build's first commit, or leave it to the Task 8
-   closeout?** Recommendation: fix it now, as a one-line change to Task 6 §2.7 on the plan branch.
+1. **Q1, DOC-RACE-002 oracle: yes (D16).** Exact per-body counts: exactly 1 `SIGNED` and 9 `ALREADY_SIGNED`, all HTTP 200, any 4xx or 5xx fails, plus 1 seal job, 1 `DOCUMENT_COMPLETED` row, 1 completed e-mail per recipient, and 1 webhook (receiver and `WebhookCall`). Per-body counts are first proven by the build's run (§2.9). Applied in §2.9, §8.6 and D16.
+2. **Q2, finding and test: yes.** `P6-OBS-DOC-002`, **medium**. The README impact text names the duplicate `DOCUMENT_COMPLETED` webhooks (integrators may double-process), the duplicate completed e-mails and the doubled audit rows, and states that the final PDF is correct (§16). `test.fail()` goes right before the product assertion, with setup (both legs 200 `SIGNED`, envelope COMPLETED) asserted first (§8.6, §10).
+3. **Q3, trial counts: yes.** 5 on PRs; 50 on `main`, nightly and `workflow_dispatch` (D22).
+4. **Q4, residue: yes.** Reported in the histogram (`softDeletedEnvelopes`, `documentDataResidue`), never asserted, never cleaned via SQL (D30).
+5. **Q5, upstream draft: yes.** Appendix A, in the style of Task 5's: repro steps, 40/40 vs 0/10 control, root-cause file and line references at `f4105e47`, suggested fix shape. Jayami files it herself, with no secrets and no tokens (D31).
+6. **Q6, sequential control: yes.** It is a passing test (D26).
+7. **Q7, completed e-mails: per recipient** (D19).
+8. **Q8, Task 6 wording: yes.** Fixed now in a separate docs commit on this branch, `fa4aa43` (D29).
+
+**No open questions remain.** Building waits on the plan's approval. The build branch is `feat/2026-10-22-p6-doc-races` from `origin/main` (§13 Step 0).
+
+## Appendix A. Draft upstream issue for `P6-OBS-DOC-002` (for Jayami to file; not filed by P6)
+
+Search the upstream issues first (for example "seal", "double", "DOCUMENT_COMPLETED", "webhook twice", "completed email twice"). If an issue exists, add this repro there instead. Before filing, check that upstream `main` still has the same three files as the fork pin (the `diff -q` check Task 5 used).
+
+**Title:** Parallel completion of the last two recipients seals the document twice (duplicate DOCUMENT_COMPLETED webhook, completed e-mail and audit row)
+
+**Summary.** When the last two recipients of a pending document complete at the same moment, `internal.seal-document` is enqueued twice. Both seal runs commit. Consequences: `DOCUMENT_COMPLETED` is delivered twice to webhooks, each recipient receives "Signing Complete!" twice, the audit log has two `DOCUMENT_COMPLETED` rows, and two sealed copies of the document are written. One seal run fails with Prisma `P2025` on `envelopeItem.update` and is retried. The final PDF is correct and the envelope ends `COMPLETED`.
+
+**Environment.** Fork commit `f4105e47eba56f5d8d7e70dd516a8fcc0c870d7c` (`@documenso/root@2.19.0`), Node v24.21.0, PostgreSQL 15, local job provider (`NEXT_PRIVATE_JOBS_PROVIDER=local`), default test signing setup.
+
+**Repro (one document per trial).**
+
+1. `POST /api/v2/envelope/create`: multipart, `payload` = `{"title":"…","type":"DOCUMENT"}`, one PDF in `files`. Authenticate with an API token.
+2. `POST /api/v2/envelope/recipient/create-many`: two `SIGNER` recipients with real addresses (default `PARALLEL` order).
+3. `POST /api/v2/envelope/field/create-many`: one `SIGNATURE` field per recipient on page 1 (positions are percentages, at most 100).
+4. `POST /api/v2/envelope/distribute`. Each recipient's token is the last path segment of its `signingUrl`.
+5. For each recipient, `POST /api/trpc/field.signFieldWithToken` with `{"json":{"token","fieldId","value","isBase64":false}}` (`fieldId` is the numeric `Field.id`).
+6. Fire both completions at the same moment: `POST /api/trpc/recipient.completeDocumentWithToken` with `{"json":{"token","documentId"}}`. `documentId` is the legacy number in `secondaryId` (`document_1018` gives 1018). Both answer 200 `{"result":{"data":{"json":{"status":"SIGNED"}}}}`.
+7. Wait until the `BackgroundJob` rows (`jobId` `internal.seal-document`, `send.document.completed.emails`, `internal.execute-webhook`) are finished. Count the rows.
+
+**Observed (40/40 trials across two runs of 20).**
+
+- Seal jobs: 2 per document, both COMPLETED; one of the two has `retried = 1` in every trial.
+- `DocumentAuditLog` rows of type `DOCUMENT_COMPLETED`: 2.
+- `DocumentData` rows added: 4 (expected 2: the original and one sealed copy).
+- Completed e-mails per recipient: 2.
+- `DOCUMENT_COMPLETED` webhook deliveries: 2; `WebhookCall` rows: 2, each SUCCESS with 200.
+- Web log: `PrismaClientKnownRequestError` with code `P2025` ("No record was found for an update", model `EnvelopeItem`) inside the `internal.seal-document` task, then the job is retried and completes.
+
+**Control (0/10 duplicated).** The same two completions, one after another with a 300 ms gap: 1 seal job, 1 audit row, 1 e-mail per recipient, 1 webhook, 2 `DocumentData` rows, in 10 of 10 trials.
+
+**Root cause (code at `f4105e47`).**
+
+1. `packages/lib/server-only/document/complete-document-with-token.ts`: the recipient update is a conditional `updateMany` inside a transaction (line 322). After it commits, the code reads `haveAllRecipientsSigned` (line 554) and, when true, triggers `internal.seal-document` (line 566). Two requests that both commit before either read both see "all signed", so both trigger a seal.
+2. `packages/lib/jobs/definitions/internal/seal-document.handler.ts`: the handler reads the envelope once (line 43) and has no already-COMPLETED guard. Its item update (line 293) matches `documentDataId: oldDocumentDataId`. Once the other run has moved the item, the second run's update matches nothing (P2025), and the retry seals again.
+3. The completed-e-mail job (line 350) and the `DOCUMENT_COMPLETED` webhook (line 336) are triggered from the seal handler, so each seal run repeats them. The audit row is written inside the seal transaction (line 314).
+
+**Suggested fix shape (not tested).**
+
+- Make the seal trigger single-winner. For example, update the envelope from PENDING to COMPLETED with a conditional update inside the completion transaction, and trigger the seal only when that update changed one row.
+- Add an already-COMPLETED guard at the top of the seal handler, so a second run is a no-op.
+- Keep `ALREADY_SIGNED` with HTTP 200 for duplicate completions. That behaviour is correct.
+
+**Impact.** Consumers that process `DOCUMENT_COMPLETED` without de-duplication receive two events. Recipients get two completed e-mails. The audit trail shows two completion rows. The PDF is correct.
+
+**Not included.** No tokens, no API keys, no credentials.
