@@ -171,7 +171,7 @@ jobs:
           RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
-          echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
+          echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" | tee -a "$GITHUB_STEP_SUMMARY"
           npm run race:medusa
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
