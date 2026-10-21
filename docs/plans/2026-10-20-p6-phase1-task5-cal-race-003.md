@@ -1296,6 +1296,8 @@ No open questions remain. Building waits on approval of this plan; the build bra
 
 ## Appendix A. Draft upstream issue for `P6-OBS-CAL-002` (for the maintainer to file; not filed by P6)
 
+**Status (2026-10-21):** filed as [calcom/cal.diy#30374](https://github.com/calcom/cal.diy/issues/30374).
+
 Search `calcom/cal.com` issues for "double booking", "overlapping" and "race condition" first; if
 one exists, add this repro there instead.
 
