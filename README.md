@@ -346,7 +346,7 @@ n ≥ 3.
 
 ### Known product bugs
 
-Each bug is recorded in CI by the test named below, with the run that shows it. A `test.fail()` line turns red
+Each bug is listed with its evidence. Where a `test.fail()` test exists, it turns red
 ("expected to fail but passed") once the bug is fixed, and is then removed.
 
 | ID               | Severity | What happens                                                                                                                                                                      | Test                                                                       | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
