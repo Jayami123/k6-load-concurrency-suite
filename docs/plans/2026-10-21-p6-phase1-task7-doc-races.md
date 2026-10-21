@@ -2126,6 +2126,8 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 
 ## Appendix A. Draft upstream issue for `P6-OBS-DOC-002` (for the maintainer to file; not filed by P6)
 
+**Status (2026-10-21):** reported upstream already as [documenso/documenso#3187](https://github.com/documenso/documenso/issues/3187); reproduction added as [comment](https://github.com/documenso/documenso/issues/3187#issuecomment-6318151560).
+
 Search the upstream issues first (for example "seal", "double", "DOCUMENT_COMPLETED", "webhook twice", "completed email twice"). If an issue exists, add this repro there instead. Before filing, check that upstream `main` still has the same three files as the fork pin (the `diff -q` check Task 5 used).
 
 **Title:** Parallel completion of the last two recipients seals the document twice (duplicate DOCUMENT_COMPLETED webhook, completed e-mail and audit row)

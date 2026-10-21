@@ -1020,6 +1020,8 @@ is the observed range, §2.5); a line outside it prints `none`.
 
 ## Appendix B. Upstream draft: `P6-OBS-CAL-003` (for the maintainer to file; not filed by P6)
 
+**Status (2026-10-21):** filed as [calcom/cal.diy#30376](https://github.com/calcom/cal.diy/issues/30376).
+
 **Title:** Booking `uid` is not collision-safe: same-host, same-start bookings in the same millisecond fail with a
 redacted 400
 

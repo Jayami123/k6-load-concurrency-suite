@@ -1206,6 +1206,8 @@ on it.
 
 ## Appendix A. Draft upstream issue (for the maintainer to file; not filed by P6)
 
+**Status (2026-10-21):** filed as [calcom/cal.diy#30375](https://github.com/calcom/cal.diy/issues/30375).
+
 Search `calcom/cal.com` issues for `booking_conflict_error` and `redactError` first; if one exists,
 add the repro there instead.
 
