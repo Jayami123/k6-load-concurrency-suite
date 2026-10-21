@@ -90,7 +90,7 @@ jobs:
         with:
           k6-version: ${{ env.K6_VERSION }}
 
-      - name: Check (format, typecheck, k6 inspect, unit tests)
+      - name: Check (format, actionlint, typecheck, k6 inspect, unit tests)
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
