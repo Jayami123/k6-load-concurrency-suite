@@ -1235,7 +1235,7 @@ Out of scope (do not touch in this change):
 - The two negative checks in §4 fail with the stated messages.
 - On the PR's CI runs, the maintainer has checked the three job summaries (§5).
 
-Real results (filled in after the build): `npm run check` = **[pending]** tests, **[pending]** failing. Predicted 299.
+Real results (build, head `f332bc9`): `npm run check` = **299 tests, 299 pass, 0 fail** (276 on main, plus 23 new). Predicted 299. actionlint v1.7.12 on `perf.yml` and `evidence-release.yml`: exit 0, no output. PR: https://github.com/Jayami123/k6-load-concurrency-suite/pull/21.
 
 ## 9. Review changes (revision 2)
 
