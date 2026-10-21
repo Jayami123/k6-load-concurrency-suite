@@ -90,3 +90,36 @@ test("password, secret and token key-value pairs are hits", () => {
   assert.deepEqual(findHits("x\nsecret=abc"), [2]);
   assert.deepEqual(findHits("url?token=abc"), [1]);
 });
+
+// Fake values, built at run time so no token-shaped literal sits in this file.
+const fakeBasic = `Basic ${Buffer.from(`user:${"x".repeat(8)}`).toString("base64")}`;
+
+test("the exact JSON Authorization shape is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ Authorization: fakeBasic })), [1]);
+});
+
+test("a JSON authorization key is a hit whatever its value", () => {
+  assert.deepEqual(findHits(JSON.stringify({ authorization: "" })), [1]);
+});
+
+test("a JSON cookie key is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ Cookie: `sid=${"x".repeat(8)}` })), [1]);
+});
+
+test("a JSON set-cookie key is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ "set-cookie": `sid=${"x".repeat(8)}` })), [1]);
+});
+
+for (const key of ["password", "secret", "token", "api_key", "apiKey", "APIKEY"]) {
+  test(`a JSON ${key} key with a value is a hit`, () => {
+    assert.deepEqual(findHits(JSON.stringify({ [key]: "x".repeat(8) })), [1]);
+  });
+}
+
+test("a JSON secret key with an empty value is not a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ token: "" })), []);
+});
+
+test("ordinary JSON fields are not hits", () => {
+  assert.deepEqual(findHits(JSON.stringify({ status: "ok", count: 3, name: "p6" })), []);
+});

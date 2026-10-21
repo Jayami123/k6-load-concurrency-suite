@@ -39,6 +39,14 @@ jobs:
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
+      - name: Stop unless dispatched from main
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::this workflow must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+
       - name: Validate input formats
         run: |
           set -euo pipefail
@@ -62,9 +70,34 @@ jobs:
             || { echo "::error::target_sha is not on main"; exit 1; }
           [[ -f "docs/releases/$TAG.md" ]] || { echo "::error::docs/releases/$TAG.md is missing on main"; exit 1; }
 
-      - name: Stop if the release already exists
+      - name: Check that the notes list exactly the selected runs
         run: |
           set -euo pipefail
+          printf '%s\n' $RUN_IDS | sort > "$RUNNER_TEMP/input-ids.txt"
+          if [[ -n "$(uniq -d "$RUNNER_TEMP/input-ids.txt")" ]]; then
+            echo "::error::run_ids contains a duplicate id:"
+            uniq -d "$RUNNER_TEMP/input-ids.txt"
+            exit 1
+          fi
+          sort -u "$RUNNER_TEMP/input-ids.txt" > "$RUNNER_TEMP/input-unique.txt"
+          { grep -oE 'actions/runs/[0-9]+' "docs/releases/$TAG.md" || true; } \
+            | sed 's#^actions/runs/##' | sort -u > "$RUNNER_TEMP/notes-ids.txt"
+          if ! diff "$RUNNER_TEMP/notes-ids.txt" "$RUNNER_TEMP/input-unique.txt" > /dev/null; then
+            echo "::error::run_ids does not match the runs linked in docs/releases/$TAG.md"
+            echo "run_ids (sorted, unique):"
+            cat "$RUNNER_TEMP/input-unique.txt"
+            echo "runs linked in the notes (sorted, unique):"
+            cat "$RUNNER_TEMP/notes-ids.txt"
+            exit 1
+          fi
+
+      - name: Stop if the release or its tag already exists
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
+            echo "::error::tag $TAG already exists on the remote. A release tag is never reused or moved. Stopping."
+            exit 1
+          fi
           if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then
             echo "::error::release $TAG already exists. Stopping. A release is never overwritten."
             exit 1
