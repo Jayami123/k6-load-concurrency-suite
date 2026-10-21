@@ -31,12 +31,13 @@ Needs Medusa up (same as the smoke check). Use Node 22.23+ on PATH (see AGENTS.m
 export PATH="/usr/local/bin:$PATH"
 npm run test:unit
 npm run up:medusa
+npm run clean:results
 RACE_TRIALS=3 npm run race:medusa
 npm run down:medusa
 ```
 
 The self-test writes `results/races/framework-self-test.json` (gitignored). Playwright race
-projects use `retries: 0` and `workers: 1`; concurrency is inside the test via `fireTogether`.
+projects use `retries: 0` and `workers: 1`; concurrency is inside the test via `fireTogether`. Run `npm run clean:results` before a local race so the job summary only reads this run's reports.
 
 CI runs this self-test (`RACE_TRIALS=3`) in the `medusa-smoke` job on every PR once Medusa starts, and uploads
 `results/races/` as the `race-histograms-medusa` artifact.

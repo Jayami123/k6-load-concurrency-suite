@@ -19,6 +19,7 @@
     "race:documenso": "playwright test --project=documenso-race",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "clean:results": "node scripts/clean-results.mjs",
     "test:unit": "node --test tests/unit/*.test.ts",
     "race:medusa": "playwright test --project=medusa-race",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.races.json",
