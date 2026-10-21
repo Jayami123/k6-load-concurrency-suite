@@ -203,8 +203,9 @@ being refused. Severity **low**.
 **Why it matters for the test.** Overlap pairs with the same start in the same millisecond are rare (10 of 120
 trials here). The cause does not explain the 110 double-booked trials: those are a separate defect (`P6-OBS-CAL-002`).
 
-**Not checked.** Whether upstream `calcom/cal` `main` has the same two lines (the Task 5 check was on `0f19cc4`).
-The upstream draft (Appendix B) says so, and Jayami confirms before filing.
+**Upstream.** Also present on upstream `calcom/cal.com` `main` as of 2026-10-21: default-branch HEAD `0f19cc4`,
+`RegularBookingService.ts` lines 1267–1268, and `Booking.uid @unique` at `schema.prisma` line 853. This was read the
+same day with a read-only shallow clone of upstream.
 
 ### 2.6 Nightly schedule
 
@@ -249,7 +250,6 @@ repos are not in this session's scope. Jayami tells the build which ones are fil
 - Whether the nightly starts on time from now on (§2.6, check after 22 Oct).
 - Whether any upstream issue is filed (§2.8).
 - The 50-trial Medusa duration and spread (only 3-trial data exists).
-- Upstream `calcom/cal` `main` for the `uid` lines (§2.5, "Not checked").
 
 ## 3. CI change (PR 1: `.github/workflows/perf.yml`, the Medusa race step only)
 
@@ -708,11 +708,12 @@ Expected: for each run, the `race-histograms-*` folders and `k6-summary-*`; `cal
 `P6-CAL-RACE-003`; `documenso-web-log/` for the two Documenso runs. Runs `39429276298`–`39484324139` expire on
 **3 Nov 2026**. Download them now, as this step does, and do not rely on them after that date.
 
-Token scan (every count must be 0; a non-zero count is a stop):
+Token scan over every file that goes into a zip (every `*.json` and `*.log` under each run folder, the same
+set step 9 zips). Expected output: nothing. Any printed line (a file with a non-zero count) is a stop:
 
 ```bash
-for f in "$S"/*/cal-web-log/cal-web.log "$S"/*/documenso-web-log/documenso-web.log; do
-  printf '%s ' "$f"; grep -cE 'api_[A-Za-z0-9]{8,}|Bearer |sessionId' "$f" || true
+for r in "$S"/*/; do
+  grep -rcE 'api_[A-Za-z0-9]{8,}|Bearer |sessionId' "$r" --include='*.json' --include='*.log' | grep -v ':0$' || true
 done
 ```
 
@@ -740,19 +741,29 @@ node "$S/refused.cjs" "$S/{{RUN_B}}/race-histograms-cal/P6-CAL-RACE-003.json" "$
 Expected: one line per refused leg, `Booking_uid_key` within ±1 ms (as in §2.5). Any other constraint, or
 `NOT FOUND`: stop and report it. Do not add an ID by guessing.
 
-**Step 9. Evidence release (not in the repo).** After the token scan is clean:
+**Step 9. Evidence release (not in the repo).** After the token scan (step 8) is clean, first check that the
+release does not exist yet:
+
+```bash
+gh release view p6-phase1 -R Jayami123/k6-load-concurrency-suite
+```
+
+Expected: an error that the release is not found (non-zero exit). If the command prints a release, **stop and
+report it. Never delete or overwrite an existing release.**
+
+Then zip and create the release:
 
 ```bash
 for r in 39429276298 39434721131 39449102426 39484324139 39561220290 39563393657 {{RUN_A}} {{RUN_B}}; do
-  (cd "$S/$r" && zip -rq "$S/p6-$r-evidence.zip" .)
+  (cd "$S/$r" && zip -rq "$S/p6-$r-evidence.zip" . -i '*.json' '*.log')
 done
 gh release create p6-phase1 -R Jayami123/k6-load-concurrency-suite --target {{SHA_A}} \
   --title "P6 Phase 1 evidence (CI)" --notes "Histograms and Cal web logs of the CI runs cited in the README. One zip per run." \
   "$S"/p6-*-evidence.zip
 ```
 
-Expected: the release URL on stdout. Note the zip command includes the Cal web log: `-i '*.json' '*.log'`
-packs `cal-web.log` and `documenso-web.log` where present. The token scan (step 8) ran first.
+Expected: the release URL on stdout. The `-i` filter keeps only `*.json` and `*.log` files. The k6 summary JSON
+(`k6-summary-*`) matches `*.json`, so it is kept too; that is intended. Every file kept is one the step 8 scan read.
 
 The release is public and is created on purpose, because it is the evidence store (Jayami, Q4). Create it once.
 
@@ -773,7 +784,6 @@ git checkout -B docs/2026-10-2x-p6-phase1-results origin/main
 Replace `2x` with the build day (22 or later). The branch is new; it does not reuse the PR 1 branch.
 
 **Step 12. Edit `README.md`.** Apply §7.1, §7.2 and §7.3 with every `{{…}}` replaced by a value from step 10.
-Remove the interim sentence about the closeout runs only if it is not needed.
 
 ```bash
 npm run format:check
@@ -896,7 +906,7 @@ is still missing, leave the placeholder and stop. Do not write a guess.
 1. **Nightly timing.** The first slot (21 Oct 02:17 UTC) ran late, at 07:38 UTC (run `39563393657`, green). Please check
    after tonight's slot (22 Oct 02:17 UTC): does it start on time? Nothing else depends on it. Run B is a dispatch.
 2. **`P6-OBS-CAL-003`.** Approved as a new ID, low, with no test and no `test.fail()` (D34). The upstream draft is in
-   Appendix B. Your call on whether to file it now or after the upstream check.
+   Appendix B. The upstream check is done (§2.5), so this is your call on when to file it.
 3. **`P6-OBS-CAL-001`.** Low, agreed (recorded in §6 and §7).
 4. **Evidence store.** A GitHub Release `p6-phase1`, not `docs/evidence/` (D37), agreed. The build creates the release
    once run A is green (step 9).
@@ -991,7 +1001,12 @@ redacted 400
 > Cause, read at the pinned commit `c2b7ac44c66f24ffef1662b276f0653988a609a3`:
 >
 > - `packages/features/bookings/lib/service/RegularBookingService.ts`, lines 1267–1268:
->   `const seed = \`${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}\`;`and`const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));`
+>
+>   ```ts
+>   const seed = `${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}`;
+>   const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));
+>   ```
+>
 > - The seed has second precision (the default dayjs format) and a millisecond timestamp. Two requests with the same
 >   host and start second that run in the same millisecond get the same `uid`.
 > - `packages/prisma/schema.prisma`: `uid String @unique` on `Booking`. The second insert fails with Prisma `P2002`
@@ -1007,8 +1022,7 @@ redacted 400
 > is not refused by the `uid` constraint. Where a unique violation is still possible, the response should be a 409
 > conflict, not a redacted 400.
 >
-> Status: not checked against upstream `calcom/cal` `main` at the time of writing; the code above is from the pinned
-> fork commit.
+> Also present on upstream `calcom/cal.com` `main` as of 2026-10-21 (`RegularBookingService.ts` lines 1267–1268).
 
 **Notes for Jayami (not part of the issue):** the reproduction counts come from our CI runs
 (`P6-CAL-RACE-003`, runs 39449102426, 39484324139, 39561220290, 39563393657). Attach the redacted log lines and the
