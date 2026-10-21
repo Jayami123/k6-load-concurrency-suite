@@ -312,9 +312,10 @@ Pooled over all runs: 165 of 180 trials double-booked (91.7%). Median per-trial 
 
 ### Cal histogram publication (`P6-CAL-RACE-002`)
 
-`P6-CAL-RACE-002` (histogram publication) is evidenced by the `race-histograms-cal` artefact of every cited `main`
-run, which holds `P6-CAL-RACE-001.json` and `P6-CAL-RACE-003.json`, and by the same two files in the `p6-phase1`
-release zips. This subsection adds no numbers; the Cal numbers are in the sections above.
+`P6-CAL-RACE-002` (histogram publication) is evidenced by the `race-histograms-cal` artefact of the cited `main` runs:
+`P6-CAL-RACE-001.json` is present from run `39434721131` on, and `P6-CAL-RACE-003.json` from run `39449102426` on. The
+same files are in the matching `p6-phase1` release zips. This subsection adds no numbers; the Cal numbers are in the
+sections above.
 
 ### Documenso completion races (`P6-DOC-RACE-001`, `P6-DOC-RACE-002`, control)
 
