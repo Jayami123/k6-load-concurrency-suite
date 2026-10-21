@@ -4,9 +4,9 @@ P6 of the QA portfolio: load, concurrency and performance tests with [k6](https:
 against self-hosted products started by
 [qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.11`.
 
-Phase 0 proves the harness and k6 smoke. Phase 1 Task 1 adds the Playwright race framework
-(API-only, no browser) and an unmapped Medusa self-test against `GET /health` plus a read-only
-Postgres oracle.
+Phase 0 proved the harness and k6 smoke. Phase 1 is done: the race framework and the six race cases for
+Medusa, Cal and Documenso (see "Phase 1 results" below). Every published number comes from a GitHub Actions run
+on `main` (push, schedule or `workflow_dispatch`).
 
 ## Run the smoke check locally
 
@@ -66,6 +66,7 @@ password; locally copy names from `.env.example`). The oversell spec calls harne
 - Any `"500"` or `"error"` count is a **PRODUCT BUG** (report status and body summary). Do not treat
   it as a stock loser.
 - `dispatchSpreadMs` is still the Node start spread for the burst (see above).
+- Trial count: pull requests run 3 trials; `main` (push, schedule or `workflow_dispatch`) runs 50. The extras run 3.
 
 ## Run Cal
 
@@ -114,11 +115,8 @@ across all trials (`P6-CAL-RACE-002`).
 - **5xx** or a second accepted booking: **PRODUCT BUG**, never an allowed loser.
 - Any other 4xx: **TEST BUG** until a probe shows otherwise.
 
-Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 50.
-
-| Run (GitHub Actions)                                                           | Trials | 200 | 400 | 409 | 5xx | Accepted per slot |
-| ------------------------------------------------------------------------------ | ------ | --- | --- | --- | --- | ----------------- |
-| _filled from the first `main` and nightly runs; links to the run and artefact_ |
+Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 50. The per-run values are in
+[Phase 1 results](#phase-1-results).
 
 ### Cal overlap histogram (`P6-CAL-RACE-003`)
 
@@ -144,11 +142,8 @@ refused` test checks this on every run).
   were sent (test bug; see `P6-OBS-CAL-001` for that shape in `P6-CAL-RACE-001`).
 - **5xx**: product bug. Any other 4xx: test bug until a probe shows otherwise.
 
-Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 30.
-
-| Run (GitHub Actions)                                                           | Trials | Trials double-booked | Trials clean | 409 loser | 5xx | Overlapping pairs |
-| ------------------------------------------------------------------------------ | ------ | -------------------- | ------------ | --------- | --- | ----------------- |
-| _filled from the first `main` and nightly runs; links to the run and artefact_ |
+Pull requests run 5 trials; `main`, the nightly schedule and manual runs run 30. The per-run values are in
+[Phase 1 results](#phase-1-results).
 
 ## Run Documenso
 
@@ -193,7 +188,7 @@ The self-test does not log in with a password, so it never reaches this path.
 
 CI runs the `documenso-race` project (5 trials on pull requests, 50 on `main`) in the `documenso-smoke` job and
 uploads `race-histograms-documenso` and `documenso-web-log`. The web log is scanned for token patterns before
-upload, and a log that contains one fails the job and is not uploaded. No timings are published here;
+upload, and a log that contains one fails the job and is not uploaded. Timings are in [Phase 1 results](#phase-1-results);
 numbers come only from GitHub Actions runs (median of at least 3).
 
 ### Documenso completion races
@@ -232,8 +227,141 @@ expected failure):
 
 > **P6-OBS-DOC-002 (medium, known bug).** When the last two recipients of a document complete at the same moment, Documenso seals the document twice. Effects: integrators that receive `DOCUMENT_COMPLETED` webhooks get **two deliveries** for that document, so a consumer that does not de-duplicate may process the event twice; each recipient receives the **completed e-mail twice**; the audit trail holds **two `DOCUMENT_COMPLETED` rows**. The **final PDF is correct** and the envelope ends COMPLETED once. Sequential completion is not affected. Evidence and cause: plan `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2.8 and §2.10; the reproduction is `P6-DOC-RACE-001` (expected failure).
 
-Plan and evidence: `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2 and §10. No timings are published
-here; numbers come only from GitHub Actions runs (median of at least 3).
+Plan and evidence: `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2 and §10. Timings are in
+[Phase 1 results](#phase-1-results); numbers come only from GitHub Actions runs (median of at least 3).
+
+## Phase 1 results
+
+Every number here comes from a GitHub Actions run on `main` (push, schedule or `workflow_dispatch`). No number
+comes from a cloud VM or a laptop. A timing is a median of at least 3 runs **with the same trial count**; timings
+at different trial counts are shown as separate series, never pooled. Per-trial time is the run's wall-clock time
+from `startedAt` to `finishedAt`, divided by its trials.
+
+Each run links to its run page. The histograms of each run are in the
+[`p6-phase1` release](https://github.com/Jayami123/k6-load-concurrency-suite/releases/tag/p6-phase1) as one zip per
+run (`p6-<run-id>-evidence.zip`). The release does not expire; the Actions artefacts do (14 days).
+
+Closeout runs (the two runs that hold all three product jobs at full count):
+[39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) (push to `main`, `4aecc2d`) and [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) (`workflow_dispatch` on `main`, `4aecc2d`).
+
+### Medusa oversell (`P6-MED-RACE-001`)
+
+Stock S = 5. Pull requests run 3 trials. `main` (push, schedule or `workflow_dispatch`) runs 50. The extras run
+3 trials in every event.
+
+**3-trial series (before the count change):**
+
+| Run                                                                                            | Event    | Trials | Accepted per trial | Oversell | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------------ | -------- | ------------------ |
+| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | push     | 3      | 5                  | 0        | 12.52              |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push     | 3      | 5                  | 0        | 10.39              |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 3      | 5                  | 0        | 16.51              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 3      | 5                  | 0        | 14.28              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 3      | 5                  | 0        | 14.68              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 3      | 5                  | 0        | 9.77               |
+
+3-trial median per trial: **13.40 s** (n = 6 runs, 3 trials each).
+
+**50-trial series (the closeout runs; each run shown on its own):**
+
+| Run                                                                                            | Event    | Trials | Accepted per trial | Oversell | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------------ | -------- | ------------------ |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | 50     | 5                  | 0        | 14.40              |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | 50     | 5                  | 0        | 11.52              |
+
+A median of the 50-trial series is not published: it has 2 runs, and the rule needs 3. The 400 rows are
+out-of-stock refusals (`not_allowed`), which are expected: 750 in each closeout run, 15 per trial.
+
+### Cal identical slot (`P6-CAL-RACE-001`)
+
+Pull requests run 5 trials. `main` runs 50. Per trial: 1 ACCEPTED, the rest refused.
+
+| Run                                                                                            | Event    | Trials | Accepted per trial | Redacted 400 (of 1000 requests) | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------------ | ------------------------------- | ------------------ |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push     | 50     | 1                  | 950                             | 1.035              |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 50     | 1                  | 950                             | 0.761              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 50     | 1                  | 950                             | 1.009              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 50     | 1                  | 950                             | 0.965              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 50     | 1                  | 950                             | 0.647              |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | 50     | 1                  | 950                             | 1.052              |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | 50     | 1                  | 950                             | 0.788              |
+
+Median per-trial time (50 trials, all runs): 0.965 s (n = 7). The 950 redacted 400s per run are
+`P6-OBS-CAL-001` (see Known product bugs).
+
+### Cal overlap (`P6-CAL-RACE-003`)
+
+Pull requests run 5 trials. `main` runs 30 (the case cap). A double-booked trial has both legs ACCEPTED on
+overlapping windows. A refused leg is counted in its trial, and that trial is clean.
+
+| Run                                                                                            | Event    | Trials | Double-booked | Clean | Refused legs | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------- | ----- | ------------ | ------------------ |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 30     | 28            | 2     | 2            | 0.302              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 30     | 29            | 1     | 1            | 0.353              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 30     | 29            | 1     | 1            | 0.345              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 30     | 24            | 6     | 6            | 0.268              |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | 30     | 30            | 0     | 0            | 0.374              |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | 30     | 25            | 5     | 5            | 0.318              |
+
+Pooled over all runs: 165 of 180 trials double-booked (91.7%). Median per-trial time (30 trials, all runs):
+0.332 s (n = 6). `P6-OBS-CAL-002` is the product bug (high). The refused legs are `P6-OBS-CAL-003` (low).
+
+**Pending bookings count as busy.** The allocator treats any booking that is not cancelled or rejected, including
+`PENDING`, as busy. So it skipped windows over pending seed bookings: runs A and B each skipped 2 windows, and their
+`skippedWindowEvidence` names booking ids 2 and 14, both `pending`.
+
+### Cal histogram publication (`P6-CAL-RACE-002`)
+
+`P6-CAL-RACE-002` (histogram publication) is evidenced by the `race-histograms-cal` artefact of every cited `main`
+run, which holds `P6-CAL-RACE-001.json` and `P6-CAL-RACE-003.json`, and by the same two files in the `p6-phase1`
+release zips. This subsection adds no numbers; the Cal numbers are in the sections above.
+
+### Documenso completion races (`P6-DOC-RACE-001`, `P6-DOC-RACE-002`, control)
+
+Pull requests run 5 trials. `main` runs 50, and the control 5.
+
+In plain terms: when the last two recipients of a document sign at the same moment, Documenso completes the document
+twice. Each trial of that race shows **8 invariant violations**: six duplicate side effects (a second seal, a second
+`DOCUMENT_COMPLETED` record, a second set of completion e-mails, a second set of webhook deliveries and `WebhookCall`
+rows, and a second document-data write), plus two duplicate `Signing Complete!` lines. Over 50 trials each run shows
+**400 violations**. The sequential control shows none.
+
+| Run                                                                                            | Event    | Case              | Trials | Result                                                     | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ----------------- | ------ | ---------------------------------------------------------- | ------------------ |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.50               |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.44               |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | control           | 5      | 5 of 5 single seal                                         | 2.66               |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.23               |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.34               |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | control           | 5      | 5 of 5 single seal                                         | 2.58               |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.56               |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.47               |
+| [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) | push     | control           | 5      | 5 of 5 single seal                                         | 2.69               |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.49               |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.46               |
+| [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937) | dispatch | control           | 5      | 5 of 5 single seal                                         | 2.70               |
+
+Per-trial medians (n = 4 runs at 50 trials): `P6-DOC-RACE-001` 2.49 s, `P6-DOC-RACE-002` 1.45 s. Published because
+n ≥ 3.
+
+### Known product bugs
+
+Each bug is recorded in CI by the test named below, with the run that shows it. A `test.fail()` line turns red
+("expected to fail but passed") once the bug is fixed, and is then removed.
+
+| ID               | Severity | What happens                                                                                                                                                                      | Test                                                                       | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P6-OBS-CAL-001` | low      | Concurrent identical-slot losers get 400 "An error occurred while querying the database." (Prisma `P2002` on the idempotency key, redacted) instead of 409                        | `cal-race-001-identical-slot.spec.ts`: `test.fail()` on the loser contract | [p6-39561220290-evidence.zip](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase1/p6-39561220290-evidence.zip): `race-histograms-cal/P6-CAL-RACE-001.json` and `extra-loser-contract.json`                                                                                                                                                                                                                                                               |
+| `P6-OBS-CAL-002` | high     | Two overlapping bookings on one host are both ACCEPTED                                                                                                                            | `cal-race-003-overlap.spec.ts`: `test.fail()`                              | [p6-39563393657-evidence.zip](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase1/p6-39563393657-evidence.zip): `race-histograms-cal/P6-CAL-RACE-003.json`                                                                                                                                                                                                                                                                                               |
+| `P6-OBS-CAL-003` | low      | A same-host, same-start request pair in the same millisecond collides on the booking `uid` (`Booking_uid_key`); the loser gets the redacted 400 instead of 409. No double booking | none (no `test.fail()`)                                                    | [p6-39563393657-evidence.zip](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase1/p6-39563393657-evidence.zip): `cal-web-log/cal-web.log` (the `P2002` line) and `race-histograms-cal/P6-CAL-RACE-003.json` (`refusedTraceIds`); code: [`RegularBookingService.ts` L1267–1268 at `c2b7ac44`](https://github.com/Jayami123/cal/blob/c2b7ac44c66f24ffef1662b276f0653988a609a3/packages/features/bookings/lib/service/RegularBookingService.ts#L1267-L1268) |
+| `P6-OBS-DOC-001` | low      | A wrong password or CSRF token on sign-in returns 500                                                                                                                             | none in CI yet (Phase 2 backlog)                                           | **Probe + code path.** Not a CI artefact. The Task 6 probe is the evidence until the Phase 2 CI test lands                                                                                                                                                                                                                                                                                                                                                                              |
+| `P6-OBS-DOC-002` | medium   | Two last recipients complete in parallel: double seal                                                                                                                             | `doc-race-001-last-recipients.spec.ts`: `test.fail()`                      | [p6-39563393657-evidence.zip](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase1/p6-39563393657-evidence.zip): `race-histograms-documenso/P6-DOC-RACE-001.json`                                                                                                                                                                                                                                                                                         |
+
+### Phase 1 status
+
+Phase 1 of the master plan is **done**. The six cases are evidenced from `main` runs: `P6-MED-RACE-001`,
+`P6-CAL-RACE-001`, `P6-CAL-RACE-002`, `P6-CAL-RACE-003`, `P6-DOC-RACE-001`, `P6-DOC-RACE-002`. Closeout runs:
+[39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) and [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937). Open product bugs: the five above.
 
 ## Rule for numbers
 
