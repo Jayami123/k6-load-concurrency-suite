@@ -1,0 +1,129 @@
+name: evidence-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example p6-phase1"
+        required: true
+        type: string
+      target_sha:
+        description: "Full 40-character commit SHA on main that the release points at"
+        required: true
+        type: string
+      run_ids:
+        description: "Space-separated perf.yml run ids on main"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: evidence-release-${{ inputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+      RUN_IDS: ${{ inputs.run_ids }}
+      PERF_WORKFLOW_ID: "376454455"
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - name: Validate input formats
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^p6-[a-z0-9-]+$ ]] || { echo "::error::tag must match ^p6-[a-z0-9-]+$"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be 40 lowercase hex characters"; exit 1; }
+          [[ -n "$RUN_IDS" ]] || { echo "::error::run_ids is empty"; exit 1; }
+          for id in $RUN_IDS; do
+            [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::every run id must be digits only"; exit 1; }
+          done
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check that target_sha is on main
+        run: |
+          set -euo pipefail
+          git cat-file -e "$TARGET_SHA^{commit}" || { echo "::error::target_sha is not a commit in this repository"; exit 1; }
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main \
+            || { echo "::error::target_sha is not on main"; exit 1; }
+          [[ -f "docs/releases/$TAG.md" ]] || { echo "::error::docs/releases/$TAG.md is missing on main"; exit 1; }
+
+      - name: Stop if the release already exists
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then
+            echo "::error::release $TAG already exists. Stopping. A release is never overwritten."
+            exit 1
+          fi
+          grep -qi 'not found' "$RUNNER_TEMP/release-view.err" \
+            || { echo "::error::gh release view failed for a reason other than not-found"; exit 1; }
+
+      - name: Check each run, then download its artefacts
+        run: |
+          set -euo pipefail
+          for id in $RUN_IDS; do
+            gh run view "$id" --json workflowDatabaseId,headBranch,conclusion,event,headSha > "$RUNNER_TEMP/run.json"
+            jq -e --argjson wf "$PERF_WORKFLOW_ID" \
+              '.workflowDatabaseId == $wf and .headBranch == "main" and .conclusion == "success"' \
+              "$RUNNER_TEMP/run.json" > /dev/null \
+              || { echo "::error::run $id is not a successful perf.yml run on main"; exit 1; }
+            head_sha="$(jq -r '.headSha' "$RUNNER_TEMP/run.json")"
+            git merge-base --is-ancestor "$head_sha" "$TARGET_SHA" \
+              || { echo "::error::run $id headSha is not an ancestor of target_sha"; exit 1; }
+            gh run download "$id" --dir "$RUNNER_TEMP/evidence/$id"
+            find "$RUNNER_TEMP/evidence/$id" -type f ! -name '*.json' ! -name '*.log' -delete
+          done
+
+      - name: Install gitleaks (pinned version, pinned sha256)
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+
+      - name: Project token scan (any hit stops the job before upload)
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs "$RUNNER_TEMP/evidence"
+
+      - name: gitleaks scan (any hit stops the job before upload)
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/evidence" --redact --no-banner --exit-code 1
+
+      - name: Build one zip per run and the checksum file
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          for id in $RUN_IDS; do
+            (cd "$RUNNER_TEMP/evidence/$id" && zip -rq "$out/p6-$id-evidence.zip" .)
+          done
+          (cd "$out" && sha256sum -- *.zip > SHA256SUMS.txt)
+          ls -l "$out"
+
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$TARGET_SHA" \
+            --title "P6 Phase 1 evidence (CI)" \
+            --notes-file "docs/releases/$TAG.md" \
+            "$RUNNER_TEMP"/release/*.zip "$RUNNER_TEMP/release/SHA256SUMS.txt"
