@@ -1,6 +1,6 @@
 # P6 Phase 1 Task 3: Cal stack in P6 (plan only)
 
-This is the implementation plan a weaker model will build from. Do not write code until Jayami
+This is the implementation plan a weaker model will build from. Do not write code until the maintainer
 approves this document.
 
 Structure and depth follow
@@ -333,11 +333,11 @@ install + ≈ 6–7 min `up:cal`; warm (caches hit) ≈ 1–2 min `up:cal`.
 - **R7 Seeded slot drift.** Seed bookings are relative to the seed date and DST changes the UTC
   hours; Task 4 must always ask `getSchedule` for free slots, never hard-code times.
 - **R8 Seed log prints demo credentials** into CI logs. They are the fork's public fixtures; P6 never
-  copies them. If Jayami wants them out of logs, that is a harness change (section 19).
+  copies them. If the maintainer wants them out of logs, that is a harness change (section 19).
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
-Do not start until Jayami approves this plan. Never `git add -A`. Never print secrets. Always finish
+Do not start until the maintainer approves this plan. Never `git add -A`. Never print secrets. Always finish
 a session with `npm run down:cal`, even after a failure.
 
 ### Step 0. Branch and prerequisites
@@ -897,7 +897,7 @@ HARNESS_UP_TIMEOUT_MS=
 5. `ci(cal): add cal-smoke job` — `.github/workflows/perf.yml`
 6. `docs(cal): document running cal` — `README.md`, `.env.example`
 
-No Co-Authored-By, no "Generated with", no attribution lines. Push the branch; Jayami opens the PR.
+No Co-Authored-By, no "Generated with", no attribution lines. Push the branch; the maintainer opens the PR.
 
 ## 17. Docs
 
@@ -915,7 +915,7 @@ This plan; README "Run Cal"; `.env.example` names. No master-plan edits.
 - No published timings; README cites none
 - No `test.fail()`, retries, `workers` > 1, browsers or page objects
 
-## 19. Answers from Jayami (2026-10-20)
+## 19. Answers from the maintainer (2026-10-20)
 
 1. **Yarn host: allowed.** `repo.yarnpkg.com` is added to the allowed domains of the
    k6-load-concurrency-suite environment in Claude, and in Cursor if its cloud environment
@@ -924,7 +924,7 @@ This plan; README "Run Cal"; `.env.example` names. No master-plan edits.
    ships with the bridge (D4). A separate small `qa-portfolio-harness` release makes `up` return
    once Cal is healthy, makes `down` stop the web server, fixes the seed presence check to use the
    `users` table, and stops printing seed credentials. Then P6 bumps the harness and deletes the
-   bridge. Jayami tracks this in the backlog (P1 likely has the same problems).
+   bridge. The maintainer tracks this in the backlog (P1 likely has the same problems).
 3. **`cal-smoke` becomes a required check after two green runs on `main`**, the same rule as
    `medusa-smoke`.
 

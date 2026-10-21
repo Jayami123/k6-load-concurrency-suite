@@ -6,13 +6,13 @@ Batch 1 (PR #37) gave P1 a Medusa admin suite (FW-001..005, X01..X05) and the `m
 
 ## 1. Header
 
-- Repo: `D:\Jayami\Portfolio\p1-web-e2e-ci` · [Jayami123/playwright-e2e-ci-framework](https://github.com/Jayami123/playwright-e2e-ci-framework) · P1.
-- Branch: **to be given by Jayami** after PR #37 merges. Placeholder only: `feat/2026-10-17-p1-phase4-batch2-medusa`. No branch was created.
+- Repo: `D:\<workspace>\Portfolio\p1-web-e2e-ci` · [Jayami123/playwright-e2e-ci-framework](https://github.com/Jayami123/playwright-e2e-ci-framework) · P1.
+- Branch: **to be given by the maintainer** after PR #37 merges. Placeholder only: `feat/2026-10-17-p1-phase4-batch2-medusa`. No branch was created.
 - Base: **main @ `8c7d4ca9084ca579f3e5eecc35ed9d5cd022bb75`** (PR #37 merge). Verified 2026-10-17: `gh pr view 37` → `MERGED 8c7d4ca…`; `git fetch` + `git rev-parse origin/main` → `8c7d4ca…`. The plan was drafted from the PR #37 head `5ee47e3c5e20ec178be9f9e17e69632bc56a689f`, which is the merge's second parent, so every P1 path:line cited here is the same on the base.
 - Harness: `qa-portfolio-harness#v0.2.10` = `312dae581cec2ec23eb05645ee0eb17e524d40a4` (local checkout `git describe` = `v0.2.10`; `package-lock.json:2196-2198`). That lock entry still says `"version": "0.2.9"` because the harness `package.json` version was not bumped in the tag. This is cosmetic and reported only.
 - Medusa fork: `Jayami123/medusa-dtc-starter` @ **`f677db438f27294fc50e4c7c6612e71ff38eeff5`** (`git rev-parse HEAD`, clean), `@medusajs/medusa` and `@medusajs/dashboard` **2.21.2** (`apps/backend/package.json:29,32`).
 - German strings: `node_modules/.pnpm/@medusajs+dashboard@2.21.2__f2dd…/node_modules/@medusajs/dashboard/src/i18n/translations/de.json` in the fork (cited below as `de.json:<line>`; English as `en.json:<line>`).
-- Status: **approved with review answers (2026-10-17): D9–D12 and the review edits. Step 1 probe done twice. Not built.** Building waits for the harness tag `v0.2.11` (D9). That harness PR is a **separate task**: Jayami gives the go-ahead before it starts, and this plan does not change the harness.
+- Status: **approved with review answers (2026-10-17): D9–D12 and the review edits. Step 1 probe done twice. Not built.** Building waits for the harness tag `v0.2.11` (D9). That harness PR is a **separate task**: the maintainer gives the go-ahead before it starts, and this plan does not change the harness.
 - Plan file: `docs/plans/2026-10-17-p1-phase4-batch2-medusa.md`.
 - Structure/depth model: [2026-10-11-phase-2e-task3-2fa.md](2026-10-11-phase-2e-task3-2fa.md). Facts and fixtures: [2026-10-16-phase4-batch1-medusa.md](2026-10-16-phase4-batch1-medusa.md). Visual/i18n/a11y patterns: Phase 3 cal/rest plans, ADR 0017, ADR 0018.
 - "Verified" means seen live in this session's probe (rows Q-xx, run 1 and run 2) or read in source with path:line. Everything else is marked **not verified**. Probe scripts, JSON and PNGs stay only in the session scratchpad (`…/scratchpad/probe/`). Nothing was written to the repo, harness or fork.
@@ -139,7 +139,7 @@ A "gate" holds matching routes in an array until the probe calls `route.continue
 - **D5 255-char data.** `medusaQaTitleOfLength(prefix, 255, "x")` builds an exact 255 UTF-16 unit title starting with the P1-QA prefix (pure, unit-tested). It is created through the API (`medusaQa.createProduct(title)`). Independent oracle: API `GET /admin/products/{id}?fields=title` → `title.length === 255` and equal to the sent string. The UI tooltip must equal that API string. The tooltip needs two pointer events on a cold page (Q-15, `truncated-text.tsx:23-28,40`), so `revealTitleTooltip` hovers the centre, then hovers `{x: 4, y: 4}`. That is two deterministic moves, not a retry.
 - **D6 Where the cases run:** all batch 2 specs live under `tests/medusa/{i18n,visual,a11y}/`, so they run only in `visual-*` projects (Docker) and `medusa-chromium` ignores them (`playwright.config.ts:43-48,327`). Network-state and a11y cases run on `visual-desktop` only (Twenty precedent `tests/twenty/visual/graphql-error.visual.spec.ts:46`); X13 runs on `visual-mobile`.
 - **D7 Admin session in visual projects:** a worker fixture does the API login (`loginAdminToken` + `createAdminSession`, `admin-api.ts:97-116`) in a throwaway browser context and keeps the `storageState()` object in memory. The test `storageState` fixture returns it. This mirrors Twenty's `storageState` override (`twenty/visual-fixtures.ts:78`) without a file. `baseURL` comes from `medusaBaseUrlFromEnv()` (`env.ts:131-133`).
-- **D9 (OQ1, Jayami 2026-10-17) Production admin build:** testing against a production build is the standard. A separate harness PR, tagged `v0.2.11`, runs `medusa build` with `NODE_ENV=production` and records the build mode in `harness-build.json` so cached dev builds rebuild. P1 is never patched for it. This batch bumps the pin to `#v0.2.11` (its one approved exception, like batch 1 D10) and bumps the CI build-cache key. **Building waits for the tag.** The harness PR is a separate task that starts only on Jayami's go-ahead; this plan does not change the harness.
+- **D9 (OQ1, the maintainer 2026-10-17) Production admin build:** testing against a production build is the standard. A separate harness PR, tagged `v0.2.11`, runs `medusa build` with `NODE_ENV=production` and records the build mode in `harness-build.json` so cached dev builds rebuild. P1 is never patched for it. This batch bumps the pin to `#v0.2.11` (its one approved exception, like batch 1 D10) and bumps the CI build-cache key. **Building waits for the tag.** The harness PR is a separate task that starts only on the maintainer's go-ahead; this plan does not change the harness.
 - **D10 (OQ2) VIS-002 retry:** keep the map wording. Assert the recovery message ("Please try again later.", `en.json:388`) and recovery after a reload. Log the missing in-page retry control as observation O-03.
 - **D11 (OQ3) Extras:** all nine accepted (X06–X14). X13 stands: 393 px is wider than the 320 px that WCAG 1.4.10 Reflow requires, so overflow at 393 also fails at 320.
 - **D12 (OQ4) Pages parity:** add the `blob-functional-medusa` upload in the CI commit. It copies Twenty's existing upload (`e2e.yml:1540-1546`), so it is parity, not a new process.
@@ -344,7 +344,7 @@ Rules carried from batch 1:
 | R4  | First tooltip hover on a cold page                                                  | Q-15 ×2                                                              | two pointer moves (D5)                                                                                                                                                   |
 | R5  | `staleTime` 90 s makes a revisit cache-only                                         | Q-30, Q-33                                                           | VIS-003 uses the first orders visit (Q-29)                                                                                                                               |
 | R6  | Flag CDN unreachable or slow                                                        | Q-17                                                                 | stubbed (D3)                                                                                                                                                             |
-| R7  | WCAG 1.4.10 2D-layout exemption argued for F-07                                     | Q-10                                                                 | evidence names the section; if Jayami judges it exempt, drop X13                                                                                                         |
+| R7  | WCAG 1.4.10 2D-layout exemption argued for F-07                                     | Q-10                                                                 | evidence names the section; if the maintainer judges it exempt, drop X13                                                                                                         |
 | R8  | Constant visual emails collide if two P1 runs share one Medusa DB                   | design                                                               | P1 never shares the DB (CI is ephemeral; locally one run at a time, `PW_WORKERS=1` default `playwright.config.ts:188`)                                                   |
 | R9  | Medusa visual suite duration unknown                                                | not measured                                                         | Step 11 measures; §12 rule                                                                                                                                               |
 | R10 | `main div:has(> h1)` depends on DOM shape                                           | Q-12 ×2 (count 1)                                                    | mask counts asserted ≥ 1 before each shot                                                                                                                                |
@@ -354,9 +354,9 @@ Rules carried from batch 1:
 ### Step 0. Branch, plan, prerequisites
 
 - `git checkout main && git pull --ff-only && git rev-parse HEAD` → **`8c7d4ca9084ca579f3e5eecc35ed9d5cd022bb75`**. If different: stop and report.
-- `git checkout -b <branch from Jayami>`.
+- `git checkout -b <branch from the maintainer>`.
 - Save this plan as `docs/plans/2026-10-17-p1-phase4-batch2-medusa.md`, run `npx prettier --write` on it, commit `docs(plan): phase 4 batch 2 medusa i18n and visual`.
-- **Harness prerequisite (D9).** The `v0.2.11` harness PR is a separate task, started only after Jayami's go-ahead and reviewed and merged by her. Nothing in this plan edits the harness. Check: `git ls-remote --tags https://github.com/Jayami123/qa-portfolio-harness.git v0.2.11` prints one line. If it prints nothing: stop; do not continue past this point. Then → `npm install github:Jayami123/qa-portfolio-harness#v0.2.11` → `git diff package.json package-lock.json` shows only the pin → commit `chore(deps): bump qa-portfolio-harness to v0.2.11`.
+- **Harness prerequisite (D9).** The `v0.2.11` harness PR is a separate task, started only after the maintainer's go-ahead and reviewed and merged by the maintainer. Nothing in this plan edits the harness. Check: `git ls-remote --tags https://github.com/Jayami123/qa-portfolio-harness.git v0.2.11` prints one line. If it prints nothing: stop; do not continue past this point. Then → `npm install github:Jayami123/qa-portfolio-harness#v0.2.11` → `git diff package.json package-lock.json` shows only the pin → commit `chore(deps): bump qa-portfolio-harness to v0.2.11`.
 - Local rebuild through the harness: `cd ../qa-portfolio-harness && MEDUSA_WEB_REBUILD=1 node scripts/up.mjs medusa` (flag named at `medusa.adapter.ts:288`), then `npm run smoke -- medusa` → "smoke ok".
 
 ### Step 0a. Functional suite on the production bundle, twice (before anything else)
@@ -563,7 +563,7 @@ YAML per §12, docs per §17. Commands: `npm run check` → exit 0 (includes act
    - The leak script after each shows the same zeros; archived/carts grow by 17. Evidence JSON for X06/X07/X08/X13 must be identical in both runs.
 5. The baseline stability check from Step 11.
 6. Unchanged suites, one at a time: `npm run test:cal`, `npm run test:documenso`, `npm run test:twenty`, and `npm run visual:test -- --product=cal|documenso|twenty`. Each must equal its `main` baseline; their leak scripts show 0.
-7. After the push (Jayami pushes or approves): paste the `medusa-self-hosted` footer, its summary rows (harness up seconds, seed, Playwright totals, leak block) and the visual step outcome. Confirm the job output came from `steps.visual.outcome` and `e2e / visual` reads "medusa: visual passed", all other jobs are green, and there are no `flaky`/`retry` lines.
+7. After the push (the maintainer pushes or approves): paste the `medusa-self-hosted` footer, its summary rows (harness up seconds, seed, Playwright totals, leak block) and the visual step outcome. Confirm the job output came from `steps.visual.outcome` and `e2e / visual` reads "medusa: visual passed", all other jobs are green, and there are no `flaky`/`retry` lines.
 
 ## 16. Commit plan (Conventional, lowercase, no trailer, explicit paths, never `git add -A`)
 
@@ -579,7 +579,7 @@ YAML per §12, docs per §17. Commands: `npm run check` → exit 0 (includes act
 10. `ci(e2e): run the medusa visual suite and gate it` (`e2e.yml` incl. `blob-functional-medusa`, `visual-baselines.yml`)
 11. `docs(medusa): adr 0018 amendment, known issues and readme coverage`
 
-No merge, tag or force-push. No CodeRabbit (Jayami runs `cr review --agent`). Never the Bridge-bss account. No Co-Authored-By.
+No merge, tag or force-push. No CodeRabbit (the maintainer runs `cr review --agent`). Never the Bridge-bss account. No Co-Authored-By.
 
 ## 17. Docs and ADR
 
@@ -597,7 +597,7 @@ No merge, tag or force-push. No CodeRabbit (Jayami runs `cr review --agent`). Ne
 
 ## 18. Will NOT do
 
-- No edits to forks or harness source. No harness bump except `v0.2.11` (D9). The harness PR itself is a separate task on Jayami's go-ahead. No `NODE_ENV` override, `X-Forwarded-Proto` spoofing or bundle patching in P1.
+- No edits to forks or harness source. No harness bump except `v0.2.11` (D9). The harness PR itself is a separate task on the maintainer's go-ahead. No `NODE_ENV` override, `X-Forwarded-Proto` spoofing or bundle patching in P1.
 - No UI language switch, and no write to the admin user.
 - No `waitForTimeout`, sleeps, retries, longer timeouts, timer delays in mocks, or env-conditional test logic.
 - No new workflow, artifact type, report format or script. No exported PNG/JSON beyond the 5 baselines. No new `.md` except this plan and known-issue entries.
@@ -605,8 +605,8 @@ No merge, tag or force-push. No CodeRabbit (Jayami runs `cr review --agent`). Ne
 - No batch 3/4 (Twenty) work.
 - No branch creation now, no CodeRabbit, no merge/tag/force-push, never Bridge-bss, no Co-Authored-By.
 
-## 19. Open questions for Jayami
+## 19. Open questions for the maintainer
 
 None. OQ1–OQ4 were answered on 2026-10-17 and are recorded as D9–D12. The review edits (base `8c7d4ca`, Step 0a, the VIS-002 refetch check, the I18N-001 badge precondition, outcome-not-conclusion in §12, and the harness PR as a separate task) are applied above.
 
-Plan saved as docs/plans/2026-10-17-p1-phase4-batch2-medusa.md. Not built: building starts after harness `v0.2.11` is tagged (D9) and Jayami gives the branch name.
+Plan saved as docs/plans/2026-10-17-p1-phase4-batch2-medusa.md. Not built: building starts after harness `v0.2.11` is tagged (D9) and the maintainer gives the branch name.
