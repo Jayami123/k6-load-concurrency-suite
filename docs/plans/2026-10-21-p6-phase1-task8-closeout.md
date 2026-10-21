@@ -291,7 +291,7 @@ New:
     RACE_MAX_SPREAD_MS: "20"
   run: |
     set -euo pipefail
-    echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
+    echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" | tee -a "$GITHUB_STEP_SUMMARY"
     npm run race:medusa
 ```
 
@@ -299,7 +299,7 @@ Why each line:
 
 - The `RACE_TRIALS` expression is the one the Cal and Documenso steps already use. A `push` to `main`, a
   `schedule` and a `workflow_dispatch` all take `'50'`.
-- The `echo` into `$GITHUB_STEP_SUMMARY` matches the Cal steps, so the count shows on the run page.
+- The `echo` goes to `$GITHUB_STEP_SUMMARY` and, through `tee`, to the job log. The count shows on the run page and in the log.
 - No step-level `timeout-minutes`: the job timeout (45) fits (§2.4).
 - The job name `medusa-smoke`, `RACE_MAX_SPREAD_MS` and the upload step do not change, so the required-check name
   (§5.3) does not change.
@@ -536,6 +536,12 @@ Pooled over all runs: {{C3_POOLED_DOUBLE}} of {{C3_POOLED_TOTAL}} trials double-
 Median per-trial time (30 trials, all runs): {{C3_MEDIAN}} s (n = {{C3_N}}). `P6-OBS-CAL-002` is the product bug
 (high). The refused legs are `P6-OBS-CAL-003` (low).
 
+### Cal histogram publication (`P6-CAL-RACE-002`)
+
+`P6-CAL-RACE-002` (histogram publication) is evidenced by the `race-histograms-cal` artefact of every cited `main`
+run, which holds `P6-CAL-RACE-001.json` and `P6-CAL-RACE-003.json`, and by the same two files in the `p6-phase1`
+release zips. This subsection adds no numbers; the Cal numbers are in the sections above.
+
 ### Documenso completion races (`P6-DOC-RACE-001`, `P6-DOC-RACE-002`, control)
 
 Pull requests run 5 trials. `main` runs 50, and the control 5.
@@ -664,7 +670,8 @@ If the repo has a PR template (`.github/pull_request_template.md`), follow its h
 step changed (§3), the trial counts per event, and that run A and run B are the closeout runs. Expected: the three
 jobs (`medusa-smoke`, `cal-smoke`, `documenso-smoke`) all run on the PR and go green (they are required, §5.3).
 
-**Step 5. Jayami merges PR 1.** The build waits here. Merging creates run A on `main` automatically.
+**Step 5. Jayami merges PR 1.** The build waits here. Merging creates run A on `main` automatically. Run A's count is
+checked against its log and its histogram in step 6, once run A has finished.
 
 ### Closeout runs A and B
 
@@ -687,6 +694,16 @@ gh run view {{RUN_A}} -R Jayami123/k6-load-concurrency-suite --log | grep "P6-ME
 
 Expected: `P6-MED-RACE-001 trials: 50`. Any other value: stop and report.
 
+Confirm the same count from the histogram, not only from the log. The histogram's `trials` field must be 50:
+
+```bash
+S="$(mktemp -d)"
+gh run download {{RUN_A}} -R Jayami123/k6-load-concurrency-suite -n race-histograms-medusa -D "$S"
+node -p "require('$S/P6-MED-RACE-001.json').trials"
+```
+
+Expected: `50`. Any other value: stop and report.
+
 **Step 7. Run B (dispatch, after run A is green).**
 
 ```bash
@@ -694,8 +711,8 @@ gh workflow run perf.yml -R Jayami123/k6-load-concurrency-suite --ref main
 ```
 
 Find it with the same `gh run list` command (the `event` is `workflow_dispatch`), then watch it to exit 0 and run
-the same grep. Record `{{RUN_B}}` and `{{SHA_B}}`. If the nightly fires first and is green at full count, it may
-stand in for run B; record that choice in the README (§7.2 wording).
+the same grep. Record `{{RUN_B}}` and `{{SHA_B}}`. Run B is always a dispatch: a scheduled run never stands in for
+it, even one that is green at full count.
 
 **Step 8. Download, token-scan and check R8.**
 
@@ -891,7 +908,8 @@ is still missing, leave the placeholder and stop. Do not write a guess.
   "a valid booking is refused" is withdrawn.
 - **D35 The rerun-on-high-spread item is closed as carried to the Phase 2 backlog, not built.** Maximum measured
   spread is 7.6 ms against a 20 ms limit. A spread retry would be a retry to make a test pass.
-- **D36 Run B is a `workflow_dispatch`.** The nightly ran late (§2.6), so the closeout does not wait on it. The nightly
+- **D36 Run B is always a `workflow_dispatch`.** No scheduled run stands in for it, even a green one at full count. The
+  nightly ran late (§2.6), so the closeout does not wait on it. The nightly
   `39563393657` is cited as `main` evidence, labelled "schedule".
 - **D37 Evidence lives in a GitHub Release (`p6-phase1`), one zip per cited run.** It does not expire. The README
   links the release and the run pages. No `docs/evidence/` commit. (Jayami, Q4.)
