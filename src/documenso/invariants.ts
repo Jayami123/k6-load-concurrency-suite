@@ -1,12 +1,14 @@
 export type CompletionMode = "last-recipients" | "same-recipient" | "sequential-control";
 
 export type CompletionClass =
-  "SIGNED" | "ALREADY_SIGNED" | "client-error" | "server-error" | "other";
+  "SIGNED" | "ALREADY_SIGNED" | "client-error" | "rate-limited" | "server-error" | "other";
 
 /** One completion response. A 200 is classified by its tRPC status. The body is never echoed. */
 export function classifyCompletion(status: number | null, text: string): CompletionClass {
   if (status === null) return "other";
   if (status >= 500) return "server-error";
+  // 429 is the limiter, not the product: DANGEROUS_BYPASS_RATE_LIMITS should prevent it (ENV).
+  if (status === 429) return "rate-limited";
   if (status >= 400) return "client-error";
   if (status !== 200) return "other";
   let json: unknown = null;
@@ -27,6 +29,7 @@ export function countClasses(classes: CompletionClass[]): Record<CompletionClass
     SIGNED: 0,
     ALREADY_SIGNED: 0,
     "client-error": 0,
+    "rate-limited": 0,
     "server-error": 0,
     other: 0,
   };
@@ -105,6 +108,8 @@ export function checkCompletionTrial(input: TrialInput): string[] {
     v.push(`${label}: completion HTTP 5xx x${counts["server-error"]}`);
   if (counts["client-error"] > 0)
     v.push(`${label}: completion HTTP 4xx x${counts["client-error"]}`);
+  if (counts["rate-limited"] > 0)
+    v.push(`ENV: completion HTTP 429 x${counts["rate-limited"]} (limiter not bypassed)`);
   if (counts.other > 0)
     v.push(`${label}: completion response not SIGNED or ALREADY_SIGNED x${counts.other}`);
   if (counts.SIGNED !== exp.signed)

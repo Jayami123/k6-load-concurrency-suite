@@ -75,10 +75,28 @@ describe("documenso invariants", () => {
     assert.equal(classifyCompletion(200, "<html>"), "other");
   });
 
-  it("classifies 400, 404 and 429 as client errors", () => {
-    for (const status of [400, 404, 429]) {
+  it("classifies 400, 404 and 409 as client errors", () => {
+    for (const status of [400, 404, 409]) {
       assert.equal(classifyCompletion(status, ""), "client-error");
     }
+  });
+
+  it("classifies 429 as rate-limited, not as a client error", () => {
+    assert.equal(classifyCompletion(429, ""), "rate-limited");
+  });
+
+  it("labels a 429 as ENV, and a 4xx as PRODUCT BUG", () => {
+    const env = checkDoc001Trial(input(["SIGNED", "rate-limited"], passing()));
+    assert.ok(env.includes("ENV: completion HTTP 429 x1 (limiter not bypassed)"));
+    assert.ok(!env.some((line) => line.startsWith("PRODUCT BUG: completion HTTP")));
+    const product = checkDoc001Trial(input(["SIGNED", "client-error"], passing()));
+    assert.ok(product.includes("PRODUCT BUG: completion HTTP 4xx x1"));
+  });
+
+  it("keeps 5xx as a PRODUCT BUG and never as ENV", () => {
+    const v = checkDoc001Trial(input(["SIGNED", "server-error"], passing()));
+    assert.ok(v.includes("PRODUCT BUG: completion HTTP 5xx x1"));
+    assert.ok(!v.some((line) => line.startsWith("ENV:")));
   });
 
   it("classifies 500 as a server error", () => {
@@ -99,6 +117,7 @@ describe("documenso invariants", () => {
     assert.equal(counts.ALREADY_SIGNED, 2);
     assert.equal(counts["client-error"], 1);
     assert.equal(counts["server-error"], 0);
+    assert.equal(counts["rate-limited"], 0);
     assert.equal(counts.other, 0);
     const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
     assert.equal(total, 4);
