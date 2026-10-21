@@ -77,7 +77,7 @@ export function legacyDocumentId(secondaryId: string): number {
 
 /** Last path segment of `…/sign/<token>`. The token is never logged. */
 export function signingTokenFromUrl(signingUrl: string): string {
-  const match = /\/sign\/([A-Za-z0-9_-]+)$/.exec(signingUrl);
-  if (!match) throw new Error("TEST BUG: distribute signingUrl has no /sign/<token>");
-  return match[1];
+  const token = /\/sign\/([A-Za-z0-9_-]+)$/.exec(signingUrl)?.[1];
+  if (!token) throw new Error("TEST BUG: distribute signingUrl has no /sign/<token>");
+  return token;
 }
