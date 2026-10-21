@@ -1,233 +1,260 @@
 # P6 Phase 1 Task 8: Phase 1 closeout (plan only)
 
 This is the implementation plan a weaker model will build from. Do not write code until Jayami
-approves this document. Plan only: no build, no PR, no run has been started by this document.
+approves this document. Plan only: no build, no PR, and no run is started by this document.
 
 Structure follows [2026-10-21-p6-phase1-task7-doc-races.md](2026-10-21-p6-phase1-task7-doc-races.md)
 (Task 7) and [2026-10-20-p6-phase1-task5-cal-race-003.md](2026-10-20-p6-phase1-task5-cal-race-003.md).
-Source: [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase1-roadmap.md), section "Task 8: Phase 1
-closeout" and decision D2.
+Source: [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase1-roadmap.md), "Task 8: Phase 1 closeout", and
+decision D2.
 
 ## Context
 
-- Repo: [Jayami123/k6-load-concurrency-suite](https://github.com/Jayami123/k6-load-concurrency-suite)
-  (P6). Plan branch **`plan/2026-10-20-p6-phase1`**, merged with `origin/main` at `0f8bf23` (PR #16,
-  Task 7 merged). Written there only; no PR.
-- Build branch (later): **`feat/2026-10-22-p6-phase1-closeout`**, cut from `origin/main`. Its first
-  commit brings this doc in with
-  `git checkout origin/plan/2026-10-20-p6-phase1 -- docs/plans/2026-10-21-p6-phase1-task8-closeout.md`.
-- Cases: **no new cases** (roadmap, Task 8). All six Phase 1 cases are evidenced from CI: `P6-MED-RACE-001`,
+- Repo: [Jayami123/k6-load-concurrency-suite](https://github.com/Jayami123/k6-load-concurrency-suite) (P6).
+  Plan branch **`plan/2026-10-20-p6-phase1`**.
+- The build ships in **two pull requests**:
+  - **PR 1**, `ci(medusa): …`, from **`feat/2026-10-22-p6-phase1-closeout`** into `main`. It changes one
+    step in `perf.yml`. Merging it triggers run A (a push to `main`). Then the build dispatches run B.
+  - **PR 2**, `docs(readme): …`, from a **fresh branch** `docs/2026-10-2x-p6-phase1-results`, cut from the
+    `main` that contains PR 1 (replace `2x` with the build day, 22 or later). It carries the README. The
+    evidence lives in a GitHub Release (§9 step 9), not in the repo.
+- Cases: **no new cases** (roadmap, Task 8). The six Phase 1 cases are evidenced from CI: `P6-MED-RACE-001`,
   `P6-CAL-RACE-001`, `P6-CAL-RACE-002` (histogram publication), `P6-CAL-RACE-003`, `P6-DOC-RACE-001`,
   `P6-DOC-RACE-002`.
-- Harness `qa-portfolio-harness#v0.2.11`. Products pinned in `perf.yml` (`MEDUSA_REF`, `CAL_REF`,
+- Harness `qa-portfolio-harness#v0.2.11`. Products are pinned in `perf.yml` (`MEDUSA_REF`, `CAL_REF`,
   `DOCUMENSO_REF`). Never edit the harness, the forks or `src/races/*` here.
-- Probe status: **done on 2026-10-21 (UTC)**, from GitHub only (`gh` and the GitHub MCP tools). No cloud
-  VM number is used anywhere in this document (AGENTS.md). The probe read run ids, job data, artefacts
-  and histogram JSON; it changed nothing in the repo, the forks or the harness.
+- Probe status: **done on 2026-10-21 (UTC)**, from GitHub only (`gh` and the GitHub API). No cloud-VM number is
+  used anywhere in this document (AGENTS.md).
 
 ## 1. Header
 
-- Probe date 2026-10-21. Repo state: `main` = `0f8bf23`. Plan branch = `bf64e33` (a merge of `main`).
+- Repo state at the probe: `main` = `0f8bf23` (PR #16). Plan branch = `69ff98e` (this plan).
 - Workflow `perf` (`.github/workflows/perf.yml`, id 376454455), state **active**.
-- Ruleset `Main` (id 25341555), enforcement **active**, target the default branch.
-- Artefacts are kept **14 days** (`retention-days: 14` in `perf.yml`). The earliest artefact expires
-  2026-11-03. This matters for the README links (§7, Decision D37).
-- Timings below are **CI job and step durations** from the GitHub run data, or per-trial values
-  computed from the histograms' `startedAt` and `finishedAt`. They are not VM numbers.
+- Ruleset `Main` (id 25341555), enforcement **active**, target = default branch.
+- The cron came in with **commit `411bfa1`** ("ci(cal): run cal races nightly with full trial counts", 20 Oct,
+  merged as PR #13 at 19:26 Colombo time, 13:56 UTC). It did not come in with PR #1.
+- Artefacts are kept **14 days** (`retention-days: 14`). Artefacts of runs before 22 Oct expire from
+  **3 Nov 2026**. The build downloads any older artefact it cites before then (§9 step 8).
+- Timings are CI job or step durations from the run data, or per-trial values computed from the histograms
+  (`(finishedAt − startedAt) ÷ trials`). They are not VM numbers.
 
 ## 2. Probe findings (required; no guessed values)
 
 ### 2.1 Every `perf.yml` run on `main` since PR #12
 
-Runs with event `push` on `main` (the merge commits). Durations are job wall clock from the run data.
+Job durations are wall clock from the run data.
 
-| Run                                                                                            | PR  | Head SHA  | medusa-smoke     | cal-smoke        | documenso-smoke  | Cal cases in the run | Documenso cases in the run      |
-| ---------------------------------------------------------------------------------------------- | --- | --------- | ---------------- | ---------------- | ---------------- | -------------------- | ------------------------------- |
-| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | #12 | `98b1c82` | success, 2.8 min | success, 5.6 min | not in workflow  | self-test only (3)   | not in workflow                 |
-| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | #13 | `c3183d2` | success, 2.2 min | success, 4.5 min | not in workflow  | 001 (50)             | not in workflow                 |
-| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | #14 | `6d73fd3` | success, 2.9 min | success, 4.2 min | not in workflow  | 001 (50), 003 (30)   | not in workflow                 |
-| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | #15 | `3c6b7c6` | success, 2.6 min | success, 4.6 min | success, 5.1 min | 001 (50), 003 (30)   | self-test only (3)              |
-| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | #16 | `0f8bf23` | success, 2.7 min | success, 4.4 min | success, 5.5 min | 001 (50), 003 (30)   | 001 (50), 002 (50), control (5) |
+| Run                                                                                            | Event        | PR  | Head SHA  | medusa-smoke (trials) | cal-smoke        | documenso-smoke  | Cal cases          | Documenso cases            |
+| ---------------------------------------------------------------------------------------------- | ------------ | --- | --------- | --------------------- | ---------------- | ---------------- | ------------------ | -------------------------- |
+| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | push         | #12 | `98b1c82` | success, 2.8 min (3)  | success, 5.6 min | not in workflow  | self-test only     | not in workflow            |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push         | #13 | `c3183d2` | success, 2.2 min (3)  | success, 4.5 min | not in workflow  | 001 (50)           | not in workflow            |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push         | #14 | `6d73fd3` | success, 2.9 min (3)  | success, 4.2 min | not in workflow  | 001 (50), 003 (30) | not in workflow            |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push         | #15 | `3c6b7c6` | success, 2.6 min (3)  | success, 4.6 min | success, 5.1 min | 001 (50), 003 (30) | self-test only (3)         |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push         | #16 | `0f8bf23` | success, 2.7 min (3)  | success, 4.4 min | success, 5.5 min | 001 (50), 003 (30) | 001, 002 (50), control (5) |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | **schedule** | —   | `0f8bf23` | success, 2.2 min (3)  | success, 3.7 min | success, 4.8 min | 001 (50), 003 (30) | 001, 002 (50), control (5) |
 
-- Every `main` run is green in all of its jobs (the three PR-era run ids are PRs and are not counted).
-- **Nightly `schedule`: zero runs.** `gh api .../workflows/376454455/runs?event=schedule` returns
-  `total_count: 0`. The cron `17 2 * * *` has been on `main` since PR #1 (2026-10-18), and no scheduled
-  run exists. See §2.6.
-- **`workflow_dispatch`: zero runs** on record.
-- Pull-request runs exist (37 in total). The latest one used for PR timings is
-  [39558975663](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39558975663) (`ff07910`,
-  Task 7 branch). Its jobs: cal-smoke 4.3 min, medusa-smoke 2.9 min, documenso-smoke 2.2 min.
+- Every `main` run in the table is green in all of its jobs.
+- **The nightly fired.** The cron (`17 2 * * *`, from `411bfa1`) has one scheduled slot so far: 21 Oct
+  02:17 UTC (07:47 Colombo). The run for it, `39563393657`, was created at **07:38 UTC** and finished green. So
+  the schedule works, but it ran about 5 hours 20 minutes late. Whether GitHub keeps to the slot time is
+  checked after the 22 Oct slot (Open question 1). It is evidence, because it runs on `main`.
+- `workflow_dispatch`: no run yet. Run B will be the first.
+- Pull-request runs: 37 in total. The latest is [39558975663](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39558975663)
+  (`ff07910`). Its jobs: cal-smoke 4.3 min, medusa-smoke 2.9 min, documenso-smoke 2.2 min.
 
-### 2.2 Which runs are full-count
+### 2.2 Full-count status
 
-"Full count" means the case ran at the D2 count on `main`: Cal 001 at 50, Cal 003 at 30 (its cap), Documenso
-at 50, and Medusa at 50.
+"Full count" means the case ran at the D2 count on `main` (push, schedule or workflow_dispatch). Cal 001 runs
+at 50, Cal 003 at its cap of 30, Documenso at 50 and its control at 5.
 
-| Product                                  | Full-count `main` runs today                           | Still at the old count            | Verdict                |
-| ---------------------------------------- | ------------------------------------------------------ | --------------------------------- | ---------------------- |
-| Cal `P6-CAL-RACE-001`                    | 39434721131, 39449102426, 39484324139, 39561220290 (4) | none                              | full count             |
-| Cal `P6-CAL-RACE-003`                    | 39449102426, 39484324139, 39561220290 (3)              | none                              | full count (cap 30)    |
-| Documenso `P6-DOC-RACE-001/002`, control | 39561220290 (1)                                        | none                              | full count, first run  |
-| Medusa `P6-MED-RACE-001`                 | none                                                   | all 5 `main` runs (3 trials each) | **not full count yet** |
+| Product                                      | Full-count `main` runs today                                        | Still at the old count            | Verdict                |
+| -------------------------------------------- | ------------------------------------------------------------------- | --------------------------------- | ---------------------- |
+| Cal `P6-CAL-RACE-001`                        | 39434721131, 39449102426, 39484324139, 39561220290, 39563393657 (5) | none                              | full count             |
+| Cal `P6-CAL-RACE-003`                        | 39449102426, 39484324139, 39561220290, 39563393657 (4)              | none                              | full count (cap 30)    |
+| Documenso `P6-DOC-RACE-001`, `-002`, control | 39561220290, 39563393657 (2)                                        | none                              | full count             |
+| Medusa `P6-MED-RACE-001`                     | none                                                                | all 6 `main` runs (3 trials each) | **not full count yet** |
 
-**Medusa is the only product still at the old count.** The Medusa step in `perf.yml` hard-codes
-`RACE_TRIALS: "3"` for every event. So no `main` run is yet a full-count run for all three jobs. Run
-39561220290 is green and full count for Cal and Documenso, but Medusa there ran 3 trials. It therefore
-does not count as one of the two closeout runs (§10).
+**Medusa is the only product still at the old count.** The Medusa step hard-codes `RACE_TRIALS: "3"` for
+every event. So no run is yet full count for all three jobs. Runs A and B (PR 1) are the first.
 
-### 2.3 Histograms of the latest full-count runs
+### 2.3 Histograms
 
-All numbers are read from the `race-histograms-*` artefacts of the run ids shown (`gh run download`).
-"Verdict" is the value the spec wrote. A `fail` verdict on a product bug is the planned `test.fail()` path
-(the step itself stays green because the `test.fail()` expectation holds; see §5.2).
+All values are read from the `race-histograms-*` artefacts (`gh run download`). "Verdict" is what the spec
+wrote. `fail` on a product-bug case is the planned `test.fail()` path (the step stays green; §5.2 and §6).
 
-**Cal `P6-CAL-RACE-001` (identical slot, N=20, 50 trials per run).** Each run: 50 ACCEPTED (1 per
-trial), 950 redacted 400 (`db-unique-redacted`), 0 unexpected, 0 leaks. Verdict `pass`.
+**Cal `P6-CAL-RACE-001` (identical slot, N=20, 50 trials per run).** Every full-count run: 50 ACCEPTED
+(1 per trial), 950 redacted 400, 0 unexpected, 0 leaks, verdict `pass`.
 
-| Run         | Head      | Accepted per trial  | Redacted 400 per 1000 requests | Per-trial time (s) |
-| ----------- | --------- | ------------------- | ------------------------------ | ------------------ |
-| 39434721131 | `c3183d2` | 1 (50 of 50 trials) | 950                            | 1.04               |
-| 39449102426 | `6d73fd3` | 1 (50 of 50)        | 950                            | 0.76               |
-| 39484324139 | `3c6b7c6` | 1 (50 of 50)        | 950                            | 1.01               |
-| 39561220290 | `0f8bf23` | 1 (50 of 50)        | 950                            | 0.96               |
+| Run         | Event    | Head      | Accepted per trial | Redacted 400 (of 1000) | Per-trial time (s) |
+| ----------- | -------- | --------- | ------------------ | ---------------------- | ------------------ |
+| 39434721131 | push     | `c3183d2` | 1 (50 of 50)       | 950                    | 1.035              |
+| 39449102426 | push     | `6d73fd3` | 1 (50 of 50)       | 950                    | 0.761              |
+| 39484324139 | push     | `3c6b7c6` | 1 (50 of 50)       | 950                    | 1.009              |
+| 39561220290 | push     | `0f8bf23` | 1 (50 of 50)       | 950                    | 0.965              |
+| 39563393657 | schedule | `0f8bf23` | 1 (50 of 50)       | 950                    | 0.647              |
 
-Median per-trial time over these four runs: **0.99 s** (n = 4).
+Median per-trial time over these five: **0.965 s** (n = 5). All five are the same count (50), so one median is
+valid here.
 
 **Cal `P6-CAL-RACE-003` (overlap, 30 trials per run, `verdict: fail` = planned `test.fail()`).**
 
-| Run         | Head      | Double-booked trials | Clean trials | Refused legs (`refusedTraceIds`) | Per-trial time (s) |
-| ----------- | --------- | -------------------- | ------------ | -------------------------------- | ------------------ |
-| 39449102426 | `6d73fd3` | 28 of 30             | 2            | 2                                | 0.302              |
-| 39484324139 | `3c6b7c6` | 29 of 30             | 1            | 1                                | 0.353              |
-| 39561220290 | `0f8bf23` | 29 of 30             | 1            | 1                                | 0.345              |
+| Run         | Event    | Double-booked | Clean | Refused legs | Per-trial time (s) |
+| ----------- | -------- | ------------- | ----- | ------------ | ------------------ |
+| 39449102426 | push     | 28 of 30      | 2     | 2            | 0.302              |
+| 39484324139 | push     | 29 of 30      | 1     | 1            | 0.353              |
+| 39561220290 | push     | 29 of 30      | 1     | 1            | 0.345              |
+| 39563393657 | schedule | 24 of 30      | 6     | 6            | 0.268              |
 
-Pooled over the three full-count runs: **86 of 90 trials double-booked (95.6%)**, all on the
-"both legs ACCEPTED" outcome. The median per-trial time is **0.345 s** (n = 3). Each refused-leg trial is a
-clean trial: the other leg won, so no double booking happened in it.
+Pooled over the four full-count runs: **110 of 120 trials double-booked (91.7%)**, all with both legs ACCEPTED.
+The 10 clean trials are exactly the 10 trials with a refused leg (the other leg won). Median per-trial time
+over the four runs: **0.324 s** (n = 4).
 
-**Documenso `P6-DOC-RACE-001`, `P6-DOC-RACE-002` and the control (run 39561220290 only, n = 1).**
+**Documenso (full count, two runs; both run the three cases).**
 
-| Case                                    | Trials | Result                                                                                                              | Per-trial time (s) |
-| --------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `P6-DOC-RACE-001` (two last recipients) | 50     | **50 of 50 double-sealed** (2 SIGNED per trial, `sealJobsRetriedTotal` 50); `verdict: fail` = planned `test.fail()` | 2.50               |
-| `P6-DOC-RACE-002` (same recipient ×10)  | 50     | 50 SIGNED + 450 ALREADY_SIGNED, **0 4xx, 0 5xx**, 50 of 50 single-sealed; verdict `pass`                            | 1.44               |
-| Control `extra-doc-sequential-control`  | 5      | 5 of 5 single-sealed; verdict `pass`                                                                                | 2.66               |
+| Run                    | Case              | Trials | Result                                                                               | Per-trial time (s) |
+| ---------------------- | ----------------- | ------ | ------------------------------------------------------------------------------------ | ------------------ |
+| 39561220290 (push)     | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (2 SIGNED per trial); `verdict: fail` = planned `test.fail()` | 2.50               |
+| 39561220290 (push)     | `P6-DOC-RACE-002` | 50     | 50 SIGNED + 450 ALREADY_SIGNED; 50 of 50 single-sealed; 0 4xx, 0 5xx; `pass`         | 1.44               |
+| 39561220290 (push)     | control           | 5      | 5 of 5 single-sealed; `pass`                                                         | 2.66               |
+| 39563393657 (schedule) | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed; `fail` (planned)                                             | 2.23               |
+| 39563393657 (schedule) | `P6-DOC-RACE-002` | 50     | 50 of 50 single-sealed; 0 4xx, 0 5xx; `pass`                                         | 1.34               |
+| 39563393657 (schedule) | control           | 5      | 5 of 5 single-sealed; `pass`                                                         | 2.58               |
 
-Timings are n = 1, so **no Documenso timing is published** until the two closeout runs add samples (§7).
-The `documenso-web-log` of this run has 0 lines that match the token patterns (`api_…`, `Bearer `,
-`sessionId`).
+Documenso timings have n = 2 today. A median is published once runs A and B add two more (n = 4).
 
-**Medusa `P6-MED-RACE-001` (oversell, stock S=5, 3 trials per run, the old count).**
+The web logs of both Documenso runs have 0 lines matching the token patterns (`api_…`, `Bearer `, `sessionId`).
 
-| Run         | Head      | Accepted (orders) per trial | Oversell | Per-trial time (s) |
-| ----------- | --------- | --------------------------- | -------- | ------------------ |
-| 39429276298 | `98b1c82` | 5                           | 0        | 12.52              |
-| 39434721131 | `c3183d2` | 5                           | 0        | 10.39              |
-| 39449102426 | `6d73fd3` | 5                           | 0        | 16.51              |
-| 39484324139 | `3c6b7c6` | 5                           | 0        | 14.28              |
-| 39561220290 | `0f8bf23` | 5                           | 0        | 14.68              |
+**Medusa `P6-MED-RACE-001` (oversell, stock S = 5). Two separate series.**
 
-The 400 rows are `loserType: not_allowed` (out of stock), which is the clean refusal the README already
-describes. Median of the five per-trial samples: **14.28 s** (n = 5, all 3-trial runs). The Medusa extras
-(`extra-mixed-qty`, `extra-s0-n5`, `extra-s1-n2`, `extra-same-cart`) cap themselves at 3 trials in the spec
-(`Math.min(raceTrialsFromEnv(), 3)`, Task 2 D15). They take about 0.5 min in total in each run.
+3-trial series (old count, six `main` runs):
+
+| Run         | Event    | Head      | Accepted per trial | Oversell | Per-trial time (s) |
+| ----------- | -------- | --------- | ------------------ | -------- | ------------------ |
+| 39429276298 | push     | `98b1c82` | 5                  | 0        | 12.525             |
+| 39434721131 | push     | `c3183d2` | 5                  | 0        | 10.388             |
+| 39449102426 | push     | `6d73fd3` | 5                  | 0        | 16.512             |
+| 39484324139 | push     | `3c6b7c6` | 5                  | 0        | 14.280             |
+| 39561220290 | push     | `0f8bf23` | 5                  | 0        | 14.676             |
+| 39563393657 | schedule | `0f8bf23` | 5                  | 0        | 9.771              |
+
+**3-trial median per trial: 13.40 s (n = 6).** This is one series with one trial count, so one median is valid.
+
+50-trial series: runs A and B only (§9). **Each run's value is shown on its own, labelled "50 trials".** No median
+is taken across the two runs until a third full-count Medusa run exists (D39). The 400 rows are out-of-stock
+refusals (`loserType: not_allowed`), which are expected. The four Medusa extras (`extra-mixed-qty`, `extra-s0-n5`,
+`extra-s1-n2`, `extra-same-cart`) cap themselves at 3 trials in the spec (`Math.min(raceTrialsFromEnv(), 3)`,
+Task 2 D15). They take about 0.5 min in total in each run.
 
 ### 2.4 Medusa 50-trial step against the job timeout (Task 2 §2.12)
 
-Task 2 estimated about 10 minutes for 50 trials. The real step timings say a little more:
+Task 2 estimated about 10 minutes for 50 trials. The step timings say a little more:
 
-- Per-trial time at 3 trials: samples 10.39–16.51 s, median 14.28 s (§2.3).
-- Full-count race loop: 50 × 14.28 s = 714 s ≈ **11.9 min**. Extras and self-test add about 0.5 min, so the
-  step is about **12.4 min**. Worst observed sample (16.51 s): 50 × 16.51 = 826 s ≈ 13.8 min, plus extras.
-- Medusa job: today 2.7 min, of which the 3-trial `P6-MED-RACE-001` is 0.73 min. After the change the expected job is
-  2.7 − 0.73 + 11.9 ≈ **13.9 min** (worst ≈ 15.7 min).
-- `medusa-smoke` has `timeout-minutes: 45`. The expected 14–16 min **fits** with about 30 min to spare.
-  No timeout change is needed (Decision D38).
-- **Risk:** the 50-trial Medusa spread is unknown (only 3-trial spreads exist, max 2.8 ms, §5.1).
+- Full-count race loop: 50 × 13.40 s (3-trial median) = 670 s ≈ **11.2 min**. With extras and self-test, the
+  step is about 11.7 min. Worst 3-trial sample (16.51 s): 50 × 16.51 s = 826 s ≈ 13.8 min.
+- Medusa job: today 2.7 min, of which the 3-trial `P6-MED-RACE-001` is about 0.7 min. After PR 1 the expected
+  job is 2.7 − 0.7 + 11.2 ≈ **13.2 min** (worst ≈ 15.7 min).
+- `medusa-smoke` has `timeout-minutes: 45`. The expected 13–16 min fits with about 30 min to spare. No
+  timeout change (D38).
+- **Unknown until run A:** the 50-trial Medusa spread and duration. The build records both.
 
-### 2.5 R8: the CI-only redacted 400 on same-start Cal pairs (Task 5 §13)
+### 2.5 R8: root cause of the redacted 400 on overlap pairs (confirmed at `CAL_REF`)
 
-R8 asked: when a run shows `refusedTraceIds`, grep `cal-web-log` for the traceId, record the Prisma code and
-target, then decide whether it is a new finding. Done for the four refused legs in the three full-count runs:
+**Source.** Read on 21 Oct from the Cal fork at **`c2b7ac44c66f24ffef1662b276f0653988a609a3`** (`CAL_REF`, the
+pin in `perf.yml` and `bootstrap.sh`). Read-only, shallow fetch of that one commit. The file is
+`packages/features/bookings/lib/service/RegularBookingService.ts`:
 
-| Run         | Refused legs | traceId (from `P6-CAL-RACE-003.json`)                                             | Log time (UTC)             | Prisma code and target at the same timestamp   |
-| ----------- | ------------ | --------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------- |
-| 39449102426 | 2            | `trace_Vgxbc2ui-gSxhRO9ALeZB` (trial 5), `trace_FldQWEPN3ifZmponf5D3G` (trial 17) | 15:34:49.728, 15:34:53.320 | `P2002`, `Booking_uid_key` (0 ms offset, both) |
-| 39484324139 | 1            | `trace_yre81k4JVfI4Sf2VwwgD0` (trial 21)                                          | 19:36:53.594               | `P2002`, `Booking_uid_key` (0 ms)              |
-| 39561220290 | 1            | `trace__MAvOcdrdUxdbI3VtDY5g` (trial 13)                                          | 07:24:08.528               | `P2002`, `Booking_uid_key` (0 ms)              |
+- line 1267: `const seed = \`${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}\`;`
+- line 1268: `const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));`
 
-- The refused leg is the **same redaction bug as `P6-OBS-CAL-001`** (Prisma `P2002` → generic 400 text
-  "An error occurred while querying the database."). But the **unique constraint is different**: the
-  identical-slot losers hit `Booking_idempotencyKey_key` (1,117–1,120 lines per run), while the refused
-  legs hit `Booking_uid_key` (5–9 lines per run in total).
-- The Prisma line carries **no traceId**. The match is by timestamp: each refused trace's first log line
-  and its `P2002` line share the same millisecond. That is strong but not a proof. It is recorded as such.
-- **Why `uid` collides is unknown.** `uid` is a per-booking identifier, so a collision between two different
-  bookings is surprising. It suggests `uid` is derived from something both legs share, or the two legs
-  write the same row. Confirming that needs Cal's source at `CAL_REF` (read-only), which this probe did not
-  do (Open question 2).
-- **Reproduction count.** 4 refused legs in 90 pooled trials of 003 over 3 full-count runs (4.4%), and
-  in all 3 of 3 runs that have 003. The "did not reproduce in ~225 local trials" note in R8 is not the
-  question any more: it is reproduced in CI, in every full-count run.
-- Classification (proposed; §5.2): **new finding `P6-OBS-CAL-003`, severity medium** (no double booking
-  in those trials, but a valid booking is refused with a generic 400 under overlap).
+Supporting facts from the same commit:
+
+- `packages/prisma/schema.prisma` line 853: `uid String @unique` on the `Booking` model.
+- `apps/web/pages/api/book/event.ts` (the route P6 calls) runs this booking path.
+- `dayjs(...).format()` with no argument uses the default format `YYYY-MM-DDTHH:mm:ssZ`, so it has **second**
+  precision. (Checked against the default format; the pinned dayjs version was not read.)
+
+**Mechanism.** Two requests for the same host, with the same start second, that run in the same millisecond
+get the same seed and so the same `uid`. The second `INSERT` violates `Booking_uid_key`, and Prisma raises
+`P2002`. Cal's `redactError` then returns the generic 400 "An error occurred while querying the database."
+That is the same redaction as `P6-OBS-CAL-001`, with a different constraint.
+
+**Evidence from the runs.** Ten refused legs in 120 overlap trials across the four full-count runs. Each refused
+leg's first log line and its `P2002` line share a millisecond, within ±1 ms:
+
+| Run                    | Refused legs | Constraint at the same ms | Offset            |
+| ---------------------- | ------------ | ------------------------- | ----------------- |
+| 39449102426 (push)     | 2            | `Booking_uid_key`         | 0 ms, 0 ms        |
+| 39484324139 (push)     | 1            | `Booking_uid_key`         | 0 ms              |
+| 39561220290 (push)     | 1            | `Booking_uid_key`         | 0 ms              |
+| 39563393657 (schedule) | 6            | `Booking_uid_key`         | 0 ms ×4, −1 ms ×2 |
+
+Across the four logs, the `P2002` lines are `Booking_idempotencyKey_key` (1,102 to 1,120 per run; the CAL-001
+losers) and `Booking_uid_key` (5 to 28 per run; the CAL-003 refused legs, plus others not yet mapped). The Prisma
+line carries no traceId, so the match is by timestamp. That is strong, and recorded as such, but it is not a
+direct proof.
+
+**Corrected summary (replaces the earlier one).** In an overlap pair, one leg is meant to be refused. The
+refused leg is the **second** of two same-host, same-start requests that land in the same millisecond. Its
+refusal is correct; the **defect is the status code and the cause**. The status is a redacted 400 instead of a
+409, and the cause is a `uid` that is not collision-safe, because it is built from a second-precision start and
+`Date.now()`. No double booking happens in those trials. So this is a wrong-status defect, not a valid booking
+being refused. Severity **low**.
+
+**Why it matters for the test.** Overlap pairs with the same start in the same millisecond are rare (10 of 120
+trials here). The cause does not explain the 110 double-booked trials: those are a separate defect (`P6-OBS-CAL-002`).
+
+**Not checked.** Whether upstream `calcom/cal` `main` has the same two lines (the Task 5 check was on `0f19cc4`).
+The upstream draft (Appendix B) says so, and Jayami confirms before filing.
 
 ### 2.6 Nightly schedule
 
-- `perf.yml` has `schedule: cron "17 2 * * *"` on `main`. The workflow is `active`.
-- **No `schedule` run exists** (`total_count: 0`), 3 days after the cron landed on `main`.
-- The probe cannot see why (no Actions settings access beyond the run API). The likely causes are: GitHub
-  skipped the scheduled runs, or the schedule is disabled in the Actions UI. Jayami must check
-  (Open question 1).
-- Until it fires, **the nightly is not evidence** (README rule: `main` and nightly runs). The second
-  closeout run therefore uses `workflow_dispatch` (§10).
+- The cron was added by **`411bfa1`** (PR #13, merged 20 Oct 19:26 Colombo). Earlier notes that said "since PR #1"
+  were wrong.
+- The first slot after it was **21 Oct 02:17 UTC**. Its run, **`39563393657`**, was created at **07:38 UTC** and is
+  green. So the nightly ran about 5 h 20 min late. GitHub documents that scheduled runs can be delayed, so this
+  alone is not a fault.
+- **Check after tonight's slot (22 Oct 02:17 UTC).** Whether that run starts on time is the only open question
+  here. Until then, a late run still counts as nightly evidence.
+- Run B is a dispatch regardless, so the closeout does not wait for the schedule.
 
 ### 2.7 Required checks (ruleset `Main`)
 
-- The ruleset `Main` (id 25341555) is active and has **three** rules: `deletion`, `non_fast_forward`, and
-  `pull_request` (0 approvals required, no code-owner review). It has **no `required_status_checks` rule**.
-- Branch protection (classic) is not set (`Branch not protected`, 404).
-- **Today nothing blocks a merge on CI.** A red `medusa-smoke`, `cal-smoke` or `documenso-smoke` can be
-  merged.
-- Green history on `main` (job name = status context):
+- Ruleset `Main` (id 25341555) has three rules: `deletion`, `non_fast_forward`, and `pull_request` (0 approvals,
+  no code-owner review). It has **no `required_status_checks` rule**. Classic branch protection is not set.
+- **Today nothing blocks a merge on CI.** A red `medusa-smoke`, `cal-smoke` or `documenso-smoke` can be merged.
+- Green `main` history (job name = status context):
 
-| Check (job name)  | Green `main` runs                                               | Count | At least two?     |
-| ----------------- | --------------------------------------------------------------- | ----- | ----------------- |
-| `medusa-smoke`    | 39429276298, 39434721131, 39449102426, 39484324139, 39561220290 | 5     | yes               |
-| `cal-smoke`       | the same 5 runs                                                 | 5     | yes               |
-| `documenso-smoke` | 39484324139, 39561220290                                        | 2     | yes (exactly two) |
+| Check             | Green `main` runs                                                            | Count | At least two? |
+| ----------------- | ---------------------------------------------------------------------------- | ----- | ------------- |
+| `medusa-smoke`    | 39429276298, 39434721131, 39449102426, 39484324139, 39561220290, 39563393657 | 6     | yes           |
+| `cal-smoke`       | the same 6 runs                                                              | 6     | yes           |
+| `documenso-smoke` | 39484324139, 39561220290, 39563393657                                        | 3     | yes           |
 
-- The exact change is in §5.3. It is made **by hand** in the GitHub UI (or with the one API call given there).
-  The build must not change the ruleset in code.
+- All three have at least two green `main` runs, so Jayami adds them **now** (§5.3, D33).
 
-### 2.8 Upstream issue drafts (P6-OBS-CAL-001, -CAL-002, -DOC-002)
+### 2.8 Upstream issue drafts
 
-The drafts exist in the plan docs (for Jayami to file; P6 files nothing upstream):
+Drafts for Jayami to file (P6 files nothing upstream). The filing status is unknown here, because the upstream
+repos are not in this session's scope. Jayami tells the build which ones are filed (Open question 7).
 
-| Finding                                 | Draft                | Location                                                                                                                                                         |
-| --------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `P6-OBS-CAL-001` (400 for 409)          | Appendix A of Task 4 | [task4 Appendix A](2026-10-20-p6-phase1-task4-cal-race-001.md#appendix-a-draft-upstream-issue-for-jayami-to-file-not-filed-by-p6) (line 1207)                    |
-| `P6-OBS-CAL-002` (double booking, high) | Appendix A of Task 5 | [task5 Appendix A](2026-10-20-p6-phase1-task5-cal-race-003.md#appendix-a-draft-upstream-issue-for-p6-obs-cal-002-for-jayami-to-file-not-filed-by-p6) (line 1297) |
-| `P6-OBS-DOC-002` (double seal, medium)  | Appendix A of Task 7 | [task7 Appendix A](2026-10-21-p6-phase1-task7-doc-races.md#appendix-a-draft-upstream-issue-for-p6-obs-doc-002-for-jayami-to-file-not-filed-by-p6) (line 2127)    |
-
-- **Filing status is not checkable from here.** The upstream repos are outside this session's GitHub scope
-  (only `jayami123/k6-load-concurrency-suite` is in scope). So this document does not say whether they are
-  filed. Jayami confirms. (The three drafts were written in Tasks 4, 5 and 7.)
-- There is **no draft for `P6-OBS-CAL-003`** (R8). §5.4 says what to do.
+| Finding                                        | Draft                             | Location                                                        |
+| ---------------------------------------------- | --------------------------------- | --------------------------------------------------------------- |
+| `P6-OBS-CAL-001` (400 for 409, redacted P2002) | Task 4 Appendix A                 | [task4](2026-10-20-p6-phase1-task4-cal-race-001.md) (line 1207) |
+| `P6-OBS-CAL-002` (double booking, high)        | Task 5 Appendix A                 | [task5](2026-10-20-p6-phase1-task5-cal-race-003.md) (line 1297) |
+| `P6-OBS-DOC-002` (double seal, medium)         | Task 7 Appendix A                 | [task7](2026-10-21-p6-phase1-task7-doc-races.md) (line 2127)    |
+| `P6-OBS-CAL-003` (uid not collision-safe, low) | **Appendix B of this plan** (new) | this document                                                   |
 
 ### 2.9 What the probe did not confirm
 
-- The nightly schedule (§2.6).
-- Whether the upstream issues are filed (§2.8).
-- The Medusa 50-trial timing and spread (only 3-trial data exists).
-- Two closeout runs with Medusa at 50 (they do not exist yet; they are the build's output).
-- Artefact availability after 14 days (retention).
-- Why `Booking_uid_key` collides (needs Cal's source, §2.5).
+- Whether the nightly starts on time from now on (§2.6, check after 22 Oct).
+- Whether any upstream issue is filed (§2.8).
+- The 50-trial Medusa duration and spread (only 3-trial data exists).
+- Upstream `calcom/cal` `main` for the `uid` lines (§2.5, "Not checked").
 
-## 3. CI change (`perf.yml`, the Medusa race step only)
+## 3. CI change (PR 1: `.github/workflows/perf.yml`, the Medusa race step only)
 
-Only the Medusa race step changes. Nothing else in `perf.yml` changes unless a run proves a timeout (none is
-proven, §2.4). The step name is changed too: "3 trials" in the old name would be wrong on `main`.
+Only the Medusa race step changes. Nothing else changes unless a run proves a timeout (none is proven, §2.4). The
+step name changes too, because "3 trials" would be wrong on `main`.
 
 Current (verbatim from `main` at `0f8bf23`):
 
@@ -250,7 +277,7 @@ New:
 ```yaml
 # API-only Playwright project: no browser install needed (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD above).
 # The race spec reads MEDUSA_BASE_URL and MEDUSA_DB_URL from the job env.
-# Roadmap D2: 3 trials on PRs, the full 50 on main, nightly and workflow_dispatch. The extras cap
+# Roadmap D2: 3 trials on PRs, the full 50 on main (push, schedule, workflow_dispatch). The extras cap
 # themselves at 3 in the spec (Task 2 D15), so only P6-MED-RACE-001 follows this count.
 - name: Race P6-MED-RACE-001 + extras (medusa-race)
   if: ${{ steps.medusa_up.outcome == 'success' }}
@@ -266,83 +293,74 @@ New:
 
 Why each line:
 
-- `RACE_TRIALS` expression: the same pattern as the Cal and Documenso steps (`github.event_name ==
-'pull_request' && … || …`). A `push` to `main`, a `schedule` and a `workflow_dispatch` all take `'50'`.
-- The `echo` into `$GITHUB_STEP_SUMMARY`: the same as the Cal steps, so the count is visible on the run page.
-- No `timeout-minutes` on the step: the job timeout (45) fits (§2.4).
-- Job name `medusa-smoke`, `RACE_MAX_SPREAD_MS` and the upload step are unchanged, so the required-check
-  names (§5.3) do not change.
+- The `RACE_TRIALS` expression is the one the Cal and Documenso steps already use. A `push` to `main`, a
+  `schedule` and a `workflow_dispatch` all take `'50'`.
+- The `echo` into `$GITHUB_STEP_SUMMARY` matches the Cal steps, so the count shows on the run page.
+- No step-level `timeout-minutes`: the job timeout (45) fits (§2.4).
+- The job name `medusa-smoke`, `RACE_MAX_SPREAD_MS` and the upload step do not change, so the required-check name
+  (§5.3) does not change.
 
-Expected CI minutes per event: see §4.
+## 4. CI time per event (three jobs)
 
-## 4. CI minutes per event (three heavy jobs)
+Job wall clock from the run data. The PR row is run 39558975663. The `main` rows are run 39561220290 and the
+estimate in §2.4.
 
-Job wall clock from the run data. The PR row is the latest PR run (39558975663). The `main` rows come from
-run 39561220290 and the estimate in §2.4.
+| Event                                      | medusa-smoke              | cal-smoke | documenso-smoke | Sum of job minutes    | Longest job (wall) |
+| ------------------------------------------ | ------------------------- | --------- | --------------- | --------------------- | ------------------ |
+| PR push, now (39558975663)                 | 2.9                       | 4.3       | 2.2             | 9.4                   | 4.3                |
+| PR push, after PR 1                        | 2.9 (unchanged, 3 trials) | 4.3       | 2.2             | 9.4                   | 4.3                |
+| `main` push, now (39561220290)             | 2.7                       | 4.4       | 5.5             | 12.6                  | 5.5                |
+| `main` push, after PR 1 (estimate)         | **13.2** (worst 15.7)     | 4.4       | 5.5             | **23.1** (worst 25.6) | 13.2               |
+| schedule, after PR 1 (estimate)            | 13.2 (worst 15.7)         | 3.7       | 4.8             | 21.7 (worst 24.2)     | 13.2               |
+| `workflow_dispatch`, after PR 1 (estimate) | 13.2 (worst 15.7)         | 4.4       | 5.5             | 23.1 (worst 25.6)     | 13.2               |
 
-| Event                                             | medusa-smoke              | cal-smoke | documenso-smoke | Sum of job minutes    | Longest job (wall) |
-| ------------------------------------------------- | ------------------------- | --------- | --------------- | --------------------- | ------------------ |
-| PR push, now (39558975663)                        | 2.9                       | 4.3       | 2.2             | 9.4                   | 4.3                |
-| PR push, after this change                        | 2.9 (unchanged, 3 trials) | 4.3       | 2.2             | 9.4                   | 4.3                |
-| `main` push, now (39561220290)                    | 2.7                       | 4.4       | 5.5             | 12.6                  | 5.5                |
-| `main` push, after this change (estimate)         | **13.9** (worst 15.7)     | 4.4       | 5.5             | **23.8** (worst 25.6) | 13.9               |
-| nightly `schedule`, after this change (estimate)  | 13.9 (worst 15.7)         | 4.4       | 5.5             | 23.8 (worst 25.6)     | 13.9               |
-| `workflow_dispatch`, after this change (estimate) | 13.9 (worst 15.7)         | 4.4       | 5.5             | 23.8 (worst 25.6)     | 13.9               |
-
-- The change adds **about 11 job-minutes per `main` push, nightly or manual run**. A nightly alone adds about
-  30 × 11.2 ≈ 336 job-minutes a month, plus any `main` pushes.
+- This repo is public, so these runs use GitHub's standard hosted runners at no cost (Jayami, Q8). The table is
+  kept for **time**, not for money: the closeout's full-count runs take about 13 minutes of Medusa wall clock.
 - PR runs do not change (Medusa stays at 3).
-- GitHub bills each job rounded up per minute, so the billed total is a little above these sums. Check the
-  billing page after the first closeout run.
 
 ## 5. Open items this task closes or carries
 
-### 5.1 Rerun-on-high-spread (the Medusa spread guard) — close as carried, not built
+### 5.1 Rerun-on-high-spread (the Medusa spread guard): closed, carried to Phase 2
 
-- The item: "rerun a trial when its dispatch spread is high". Named as out of scope in Task 5 (`No rerun-
-on-high-spread logic (Task 8)`) and Task 7 (`rerun-on-spread logic`).
-- The data says the guard is not needed now. Max dispatch spread per case, across all `main` runs
-  (`dispatchSpreadMs`, from the histogram trials):
+- The item: "rerun a trial when its dispatch spread is high". Named out of scope in Task 5 and Task 7.
+- The data says the guard is not needed. Max dispatch spread per case, across all `main` runs (`dispatchSpreadMs`):
 
 | Case                          | Runs | Max spread (ms) | Limit (`RACE_MAX_SPREAD_MS`) |
 | ----------------------------- | ---- | --------------- | ---------------------------- |
-| `P6-MED-RACE-001` (3 trials)  | 5    | 2.8             | 20                           |
-| `P6-CAL-RACE-001` (50 trials) | 4    | 7.6             | 20                           |
-| `P6-CAL-RACE-003` (30 trials) | 3    | 1.6             | 20                           |
-| `P6-DOC-RACE-001` (50 trials) | 1    | 0.5             | 20                           |
-| `P6-DOC-RACE-002` (50 trials) | 1    | 0.7             | 20                           |
+| `P6-MED-RACE-001` (3 trials)  | 6    | 2.8             | 20                           |
+| `P6-CAL-RACE-001` (50 trials) | 5    | 7.6             | 20                           |
+| `P6-CAL-RACE-003` (30 trials) | 4    | 1.6             | 20                           |
+| `P6-DOC-RACE-001` (50 trials) | 2    | 0.5             | 20                           |
+| `P6-DOC-RACE-002` (50 trials) | 2    | 0.7             | 20                           |
 
-- **Decision D35:** carry to the Phase 2 backlog, **not built**. A retry on a spread failure would be a
-  retry to make a test pass, which the race rules forbid (Task 1: "Do not `test.fail()`, retries, or
-  sleeps to 'make it pass'"). The spread assertion stays a hard fail. The 50-trial Medusa spread is the
-  one unknown (§2.9); the build records it in the README, and if it exceeds ~10 ms the item is reopened.
+- **Decision D35:** closed as carried to the Phase 2 backlog, **not built**. A retry on a spread failure would be
+  a retry to make a test pass, which the race rules forbid (Task 1: "Do not `test.fail()`, retries, or sleeps to
+  'make it pass'"). The spread assertion stays a hard fail. The 50-trial Medusa spread is recorded in the
+  README from runs A and B. If it exceeds about 10 ms, the item reopens.
 
-### 5.2 R8 finding ID and severity — proposed
+### 5.2 R8 becomes `P6-OBS-CAL-003`, severity low, no test
 
-- **Proposed finding `P6-OBS-CAL-003`, severity medium.** Evidence: §2.5 (4 refused legs, 3 of 3 runs with
-  003, all `P2002` `Booking_uid_key` at 0 ms). Rationale for medium, not high: no double booking happens in
-  those trials; a valid booking gets a generic 400. Rationale for a new ID, not a sub-bullet of `-001`: the
-  constraint and so the likely cause differ (`uid`, not the idempotency key).
-- **Test:** none. No `test.fail()` (the rule needs a _proven_ product bug with repeated evidence, and the
-  cause is unproven). The count stays visible in `P6-CAL-RACE-003` as `loser_refused-db-error`. The README
-  describes it.
-- **Escalate later** to a `test.fail()` only if the closeout runs show a refused leg **plus** the second
-  leg accepted in the _same_ trial as a double booking, or if the cause is confirmed.
-- The build greps the two closeout runs' `cal-web-log` (§9 step 7) and records any new refused legs and
-  their constraint. If a closeout run shows a **different** constraint, stop and report (do not add an ID
-  by guessing).
+- **Finding `P6-OBS-CAL-003`, severity low.** Summary: the booking `uid` is built from the host username, the
+  start second and `Date.now()`, so two same-host, same-start requests in the same millisecond collide on
+  `Booking_uid_key`. The loser gets Cal's redacted 400 instead of a 409. No double booking results.
+- Why low: a wrong status code and a rare collision (10 of 120 overlap trials). Not a double booking. The
+  double-booking defect is `P6-OBS-CAL-002`, which is high.
+- Why a new ID, not a sub-bullet of `-001`: the constraint (`uid`, not the idempotency key) and the code cause
+  differ.
+- **Test: none, and no `test.fail()` for now** (Jayami, Q2). The count stays visible in `P6-CAL-RACE-003` as
+  `loser_refused-db-error`, and the README describes it.
+- **Upstream draft:** Appendix B. The code read in §2.5 confirms the cause at `CAL_REF`. Jayami files it.
 
-### 5.3 Required checks: the exact ruleset change (by hand)
+### 5.3 Required checks: add all three now, by hand
 
-Today the `Main` ruleset (id 25341555) has no status-check rule. Add it **by hand**, in this order:
+Each check has at least two green `main` runs (§2.7), so Jayami adds them now, before PR 1 is opened. The steps:
 
-1. GitHub, repository `Jayami123/k6-load-concurrency-suite` → **Settings** → **Rules** → **Rulesets** →
-   **Main** → **Edit**.
+1. GitHub, repository `Jayami123/k6-load-concurrency-suite` → **Settings** → **Rules** → **Rulesets** → **Main** →
+   **Edit**.
 2. Under **Rules**, click **Add rule** → **Require status checks to pass**.
-3. Leave **Require branches to be up to date before merging** **off** (not asked for; it would make every
-   PR re-run CI).
-4. Search for and add each of these three checks, exactly: `medusa-smoke`, `cal-smoke`, `documenso-smoke`
-   (the search only offers a check that has run on the repo, and all three have).
+3. Leave **Require branches to be up to date before merging** **off** (not asked for; it would make every PR
+   re-run CI).
+4. Search for and add each of these three checks, exactly: `medusa-smoke`, `cal-smoke`, `documenso-smoke`.
 5. **Save changes**.
 
 The same rule as JSON (the API equivalent, if Jayami prefers `gh api`):
@@ -362,14 +380,14 @@ The same rule as JSON (the API equivalent, if Jayami prefers `gh api`):
 }
 ```
 
-Check after saving (the build runs this, read-only):
+Check after saving (read-only; the build runs it):
 
 ```bash
 gh api repos/Jayami123/k6-load-concurrency-suite/rulesets/25341555 \
   --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
 ```
 
-Expected output (three lines, in any order):
+Expected output (three lines):
 
 ```
 medusa-smoke
@@ -377,37 +395,49 @@ cal-smoke
 documenso-smoke
 ```
 
-Note: once this rule is on, a PR cannot merge until all three jobs are green. Documenso's PR job is 2.2 min
-(§4), so this costs little.
+Once this is on, PR 1 cannot merge until its three jobs are green. PR 1 runs all three on its own head, so it can
+satisfy the rule.
 
-### 5.4 Upstream issue drafts and the new ID
+### 5.4 Upstream drafts and the new ID
 
-- The three drafts exist (§2.8). Jayami files them (P6 files nothing upstream). The build does not check
+- The three drafts (§2.8) and the new draft in Appendix B are for Jayami to file. The build does not check
   filing status.
-- For `P6-OBS-CAL-003` there is no draft. Recommended: Jayami asks for one (Open question 2), written in
-  the Task 4 Appendix A style once its root cause is read at `CAL_REF`.
+- Jayami sends the build the URLs of any that are filed (Open question 7). The README then links them.
+
+### 5.5 Phase 2 backlog carried from Task 8
+
+Recorded here so it is not lost. Not built in Task 8.
+
+1. **`P6-OBS-DOC-001` CI test.** Add a Documenso test that asserts a wrong password and a wrong CSRF token on
+   sign-in return **401**, not 500, marked with `test.fail()` while the 500 persists. This turns the README-only
+   finding into CI evidence, the same way the other bugs are recorded. (New test: Phase 2, not Task 8.)
+2. **Rerun-on-high-spread.** Closed as carried (§5.1). Reopens if the 50-trial Medusa spread exceeds about 10 ms.
+3. **`P6-OBS-CAL-003` test.** Only after the upstream `uid` fix ships: a same-start, same-millisecond pair that
+   expects one 2xx and one 409, with `test.fail()` while the 400 persists. Not before (Jayami, Q2).
 
 ## 6. Known product bugs (the table the README carries)
 
-| ID                              | Severity                                       | Summary                                                                                                                              | Test (how it is recorded)                                                                        | Evidence (run and artefact)                                                                                              |
-| ------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `P6-OBS-CAL-001`                | low (proposed; Task 4 set no severity, §14 Q3) | Concurrent identical-slot losers get a 400 "An error occurred while querying the database." (Prisma `P2002` redacted) instead of 409 | `tests/cal/races/cal-race-001-identical-slot.spec.ts`, `test.fail()` on the loser-contract extra | run 39561220290, `race-histograms-cal`: `P6-CAL-RACE-001.json` (950 redacted 400 per 1000), `extra-loser-contract.json`  |
-| `P6-OBS-CAL-002`                | **high** (confirmed)                           | Two overlapping bookings on one host are both ACCEPTED                                                                               | `tests/cal/races/cal-race-003-overlap.spec.ts`, `test.fail()`                                    | run 39561220290, `race-histograms-cal`: `P6-CAL-RACE-003.json` (29 of 30 double-booked)                                  |
-| `P6-OBS-CAL-003` (proposed, R8) | medium (proposed)                              | A valid booking in an overlapping pair is refused with a generic 400 on a `Booking_uid_key` unique violation                         | none (no `test.fail()`); counted as `loser_refused-db-error` in `P6-CAL-RACE-003`                | runs 39449102426, 39484324139, 39561220290: `P6-CAL-RACE-003.json` (`refusedTraceIds`), `cal-web-log` (the `P2002` line) |
-| `P6-OBS-DOC-001`                | low                                            | A wrong password or CSRF token on sign-in returns 500                                                                                | none (README only, Task 6 §2.11)                                                                 | **no CI artefact**: Task 6 probe only (gap, §14 Q5)                                                                      |
-| `P6-OBS-DOC-002`                | medium (approved)                              | Two last recipients complete in parallel: double seal (2 DocumentData, 2 completed emails, 2 webhooks)                               | `tests/documenso/races/doc-race-001-last-recipients.spec.ts`, `test.fail()`                      | run 39561220290, `race-histograms-documenso`: `P6-DOC-RACE-001.json` (50 of 50 double-sealed)                            |
+| ID               | Severity             | Summary                                                                                                                                                               | Test (how it is recorded)                                                                                 | Evidence (run and artefact)                                                                                                                                                                 |
+| ---------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P6-OBS-CAL-001` | low (agreed)         | Concurrent identical-slot losers get a 400 "An error occurred while querying the database." (Prisma `P2002` on `Booking_idempotencyKey_key`, redacted) instead of 409 | `tests/cal/races/cal-race-001-identical-slot.spec.ts`: `test.fail()` on the loser-contract extra          | 39561220290 `race-histograms-cal`: `P6-CAL-RACE-001.json` (950 redacted 400 per 1000) and **`extra-loser-contract.json`** (the `test.fail()` test's own evidence: 57 redacted 400 per 60)   |
+| `P6-OBS-CAL-002` | **high** (confirmed) | Two overlapping bookings on one host are both ACCEPTED                                                                                                                | `tests/cal/races/cal-race-003-overlap.spec.ts`: `test.fail()`                                             | 39561220290 and 39563393657 `race-histograms-cal`: `P6-CAL-RACE-003.json` (29 of 30, and 24 of 30, double-booked)                                                                           |
+| `P6-OBS-CAL-003` | low                  | A same-start, same-millisecond pair collides on `Booking_uid_key`; the loser gets the redacted 400 instead of 409                                                     | none (no `test.fail()`, Jayami Q2); counted as `loser_refused-db-error` in `P6-CAL-RACE-003`              | 39449102426, 39484324139, 39561220290, 39563393657: `cal-web-log` (the `P2002` line) and `P6-CAL-RACE-003.json` (`refusedTraceIds`); code at `CAL_REF` `RegularBookingService.ts:1267–1268` |
+| `P6-OBS-DOC-001` | low                  | A wrong password or CSRF token on sign-in returns 500                                                                                                                 | none in CI. README states the evidence as "probe + code path" (Task 6 §2.11). Phase 2 backlog §5.5 item 1 | Probe + code path. **No CI artefact** (stated plainly)                                                                                                                                      |
+| `P6-OBS-DOC-002` | medium (approved)    | Two last recipients complete in parallel: double seal                                                                                                                 | `tests/documenso/races/doc-race-001-last-recipients.spec.ts`: `test.fail()`                               | 39561220290 and 39563393657 `race-histograms-documenso`: `P6-DOC-RACE-001.json` (50 of 50 double-sealed in each)                                                                            |
 
 Notes:
 
-- `test.fail()` is used only where a product bug is proven with repeated evidence (roadmap rule for
-  `test.fail()`). The full-count CI evidence today is 4 runs for `-001`, 3 for `-003`, and 1 for `DOC-002`.
-  Runs A and B add two more for `DOC-002` (§10). For `-003` (R8) there is no `test.fail()` (§5.2).
+- `test.fail()` is used only where a product bug is proven with repeated evidence (roadmap rule). The full-count CI
+  evidence is: `-001` 5 runs, `-003` 4 runs, `DOC-002` 2 runs. For `-003` there is no `test.fail()` (§5.2).
 - Each `test.fail()` line is already in place. This task changes none of them (§11).
 
 ## 7. README text (verbatim; placeholders are marked `{{…}}`)
 
-The build replaces the **whole** of the README sections shown here. Every `{{…}}` placeholder is a value
-that does not exist yet (run ids and numbers from the two closeout runs). Nothing else is a placeholder.
+PR 2 replaces the sections below. Every `{{…}}` is a value that does not exist yet: the run ids of runs A and B,
+their numbers, and the medians that need them. Nothing else is a placeholder.
+
+**Wording rule (used in every section):** the README says "`main` (push, schedule or `workflow_dispatch`)". It
+does not say "main or nightly", because run B is a manual dispatch.
 
 ### 7.1 Intro (replaces the first paragraph after the title)
 
@@ -417,8 +447,8 @@ against self-hosted products started by
 [qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.11`.
 
 Phase 0 proved the harness and k6 smoke. Phase 1 is done: the race framework and the six race cases for
-Medusa, Cal and Documenso (§ "Phase 1 results" below). Every published number comes from a GitHub Actions
-run on `main` or a nightly run.
+Medusa, Cal and Documenso (see "Phase 1 results" below). Every published number comes from a GitHub Actions run
+on `main` (push, schedule or `workflow_dispatch`).
 ```
 
 ### 7.2 New section, placed before "## Rule for numbers"
@@ -426,137 +456,161 @@ run on `main` or a nightly run.
 ```markdown
 ## Phase 1 results
 
-Every number here comes from a GitHub Actions run on `main` or a nightly `schedule` run. A timing is the
-median of at least 3 runs. No number comes from a cloud VM or a laptop. Each run links to its run page;
-the histograms are the `race-histograms-*` artefacts on that run page. Artefacts are kept 14 days, so the
-run page is the lasting link.
+Every number here comes from a GitHub Actions run on `main` (push, schedule or `workflow_dispatch`). No number
+comes from a cloud VM or a laptop. A timing is a median of at least 3 runs **with the same trial count**; timings
+at different trial counts are shown as separate series, never pooled.
+
+Each run links to its run page. The histograms of each run are in the
+[`p6-phase1` release](https://github.com/Jayami123/k6-load-concurrency-suite/releases/tag/p6-phase1) as one zip per
+run (`p6-<run-id>-evidence.zip`). The release does not expire; the Actions artefacts do (14 days).
 
 Closeout runs (the two runs that hold all three product jobs at full count):
-[{{RUN_A}}]({{RUN_A_URL}}) (push to `main`, `{{SHA_A}}`) and
-[{{RUN_B}}]({{RUN_B_URL}}) (`workflow_dispatch` on `main`, `{{SHA_B}}`).
+[{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}}) (push to `main`,
+`{{SHA_A}}`) and [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})
+(`workflow_dispatch` on `main`, `{{SHA_B}}`).
 
 ### Medusa oversell (`P6-MED-RACE-001`)
 
-Stock S = 5. Pull requests run 3 trials; `main`, nightly and manual runs run 50. The extras run 3 trials.
+Stock S = 5. Pull requests run 3 trials. `main` (push, schedule or `workflow_dispatch`) runs 50. The extras run
+3 trials in every event.
 
-| Run                                                                                            | Event                 | Trials | Accepted per trial | Oversell           | Per-trial time (s)  |
-| ---------------------------------------------------------------------------------------------- | --------------------- | ------ | ------------------ | ------------------ | ------------------- |
-| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | push, `98b1c82`       | 3      | 5                  | 0                  | 12.52               |
-| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push, `c3183d2`       | 3      | 5                  | 0                  | 10.39               |
-| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push, `6d73fd3`       | 3      | 5                  | 0                  | 16.51               |
-| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push, `3c6b7c6`       | 3      | 5                  | 0                  | 14.28               |
-| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push, `0f8bf23`       | 3      | 5                  | 0                  | 14.68               |
-| [{{RUN_A}}]({{RUN_A_URL}})                                                                     | push, `{{SHA_A}}`     | **50** | {{MED_A_ACCEPTED}} | {{MED_A_OVERSELL}} | {{MED_A_PER_TRIAL}} |
-| [{{RUN_B}}]({{RUN_B_URL}})                                                                     | dispatch, `{{SHA_B}}` | **50** | {{MED_B_ACCEPTED}} | {{MED_B_OVERSELL}} | {{MED_B_PER_TRIAL}} |
+**3-trial series (before the count change):**
 
-The 3-trial rows are the history before the count change. The full-count rows are the evidence.
-Per-trial median over all main and nightly runs: {{MED_MEDIAN}} s (n = {{MED_N}}). The 400 rows are
+| Run                                                                                            | Event    | Trials | Accepted per trial | Oversell | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------------ | -------- | ------------------ |
+| [39429276298](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39429276298) | push     | 3      | 5                  | 0        | 12.53              |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push     | 3      | 5                  | 0        | 10.39              |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 3      | 5                  | 0        | 16.51              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 3      | 5                  | 0        | 14.28              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 3      | 5                  | 0        | 14.68              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 3      | 5                  | 0        | 9.77               |
+
+3-trial median per trial: **13.40 s** (n = 6 runs, 3 trials each).
+
+**50-trial series (the closeout runs; each run shown on its own):**
+
+| Run                                                                                        | Event    | Trials | Accepted per trial | Oversell           | Per-trial time (s)  |
+| ------------------------------------------------------------------------------------------ | -------- | ------ | ------------------ | ------------------ | ------------------- |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}}) | push     | 50     | {{MED_A_ACCEPTED}} | {{MED_A_OVERSELL}} | {{MED_A_PER_TRIAL}} |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}}) | dispatch | 50     | {{MED_B_ACCEPTED}} | {{MED_B_OVERSELL}} | {{MED_B_PER_TRIAL}} |
+
+A median of the 50-trial series is not published: it has 2 runs, and the rule needs 3. The 400 rows are
 out-of-stock refusals (`not_allowed`), which are expected.
 
 ### Cal identical slot (`P6-CAL-RACE-001`)
 
-Pull requests run 5 trials; `main`, nightly and manual runs run 50. Per trial: 1 ACCEPTED, the rest refused.
+Pull requests run 5 trials. `main` runs 50. Per trial: 1 ACCEPTED, the rest refused.
 
-| Run                                                                                            | Event                 | Trials | Accepted per trial | Redacted 400 (of 1000 requests) | Per-trial time (s) |
-| ---------------------------------------------------------------------------------------------- | --------------------- | ------ | ------------------ | ------------------------------- | ------------------ |
-| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push, `c3183d2`       | 50     | 1                  | 950                             | 1.04               |
-| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push, `6d73fd3`       | 50     | 1                  | 950                             | 0.76               |
-| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push, `3c6b7c6`       | 50     | 1                  | 950                             | 1.01               |
-| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push, `0f8bf23`       | 50     | 1                  | 950                             | 0.96               |
-| [{{RUN_A}}]({{RUN_A_URL}})                                                                     | push, `{{SHA_A}}`     | 50     | 1                  | 950                             | {{CAL1_A}}         |
-| [{{RUN_B}}]({{RUN_B_URL}})                                                                     | dispatch, `{{SHA_B}}` | 50     | 1                  | 950                             | {{CAL1_B}}         |
+| Run                                                                                            | Event    | Trials | Accepted per trial | Redacted 400 (of 1000 requests) | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | ------------------ | ------------------------------- | ------------------ |
+| [39434721131](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39434721131) | push     | 50     | 1                  | 950                             | 1.035              |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 50     | 1                  | 950                             | 0.761              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 50     | 1                  | 950                             | 1.009              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 50     | 1                  | 950                             | 0.965              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 50     | 1                  | 950                             | 0.647              |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}})     | push     | 50     | 1                  | 950                             | {{CAL1_A}}         |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})     | dispatch | 50     | 1                  | 950                             | {{CAL1_B}}         |
 
-Median per-trial time: {{CAL1_MEDIAN}} s (n = {{CAL1_N}}). The 950 redacted 400s per run are
+Median per-trial time (50 trials, all runs): {{CAL1_MEDIAN}} s (n = {{CAL1_N}}). The 950 redacted 400s per run are
 `P6-OBS-CAL-001` (see Known product bugs).
 
 ### Cal overlap (`P6-CAL-RACE-003`)
 
-Pull requests run 5 trials; `main`, nightly and manual runs run 30 (the case cap). A double-booked trial
-has both legs ACCEPTED on overlapping windows. A refused leg is counted in its trial, which is clean.
+Pull requests run 5 trials. `main` runs 30 (the case cap). A double-booked trial has both legs ACCEPTED on
+overlapping windows. A refused leg is counted in its trial, and that trial is clean.
 
-| Run                                                                                            | Event                 | Trials | Double-booked   | Clean          | Refused legs     | Per-trial time (s) |
-| ---------------------------------------------------------------------------------------------- | --------------------- | ------ | --------------- | -------------- | ---------------- | ------------------ |
-| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push, `6d73fd3`       | 30     | 28              | 2              | 2                | 0.302              |
-| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push, `3c6b7c6`       | 30     | 29              | 1              | 1                | 0.353              |
-| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push, `0f8bf23`       | 30     | 29              | 1              | 1                | 0.345              |
-| [{{RUN_A}}]({{RUN_A_URL}})                                                                     | push, `{{SHA_A}}`     | 30     | {{C3_A_DOUBLE}} | {{C3_A_CLEAN}} | {{C3_A_REFUSED}} | {{C3_A_PER_TRIAL}} |
-| [{{RUN_B}}]({{RUN_B_URL}})                                                                     | dispatch, `{{SHA_B}}` | 30     | {{C3_B_DOUBLE}} | {{C3_B_CLEAN}} | {{C3_B_REFUSED}} | {{C3_B_PER_TRIAL}} |
+| Run                                                                                            | Event    | Trials | Double-booked   | Clean          | Refused legs     | Per-trial time (s) |
+| ---------------------------------------------------------------------------------------------- | -------- | ------ | --------------- | -------------- | ---------------- | ------------------ |
+| [39449102426](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39449102426) | push     | 30     | 28              | 2              | 2                | 0.302              |
+| [39484324139](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39484324139) | push     | 30     | 29              | 1              | 1                | 0.353              |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | 30     | 29              | 1              | 1                | 0.345              |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | 30     | 24              | 6              | 6                | 0.268              |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}})     | push     | 30     | {{C3_A_DOUBLE}} | {{C3_A_CLEAN}} | {{C3_A_REFUSED}} | {{C3_A_PER_TRIAL}} |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})     | dispatch | 30     | {{C3_B_DOUBLE}} | {{C3_B_CLEAN}} | {{C3_B_REFUSED}} | {{C3_B_PER_TRIAL}} |
 
-Median per-trial time: {{C3_MEDIAN}} s (n = {{C3_N}}). Pooled double-booked: {{C3_POOLED}} of {{C3_TOTAL}}
-trials. `P6-OBS-CAL-002` is the product bug (high).
+Pooled over all runs: {{C3_POOLED_DOUBLE}} of {{C3_POOLED_TOTAL}} trials double-booked (today: 110 of 120, 91.7%).
+Median per-trial time (30 trials, all runs): {{C3_MEDIAN}} s (n = {{C3_N}}). `P6-OBS-CAL-002` is the product bug
+(high). The refused legs are `P6-OBS-CAL-003` (low).
 
 ### Documenso completion races (`P6-DOC-RACE-001`, `P6-DOC-RACE-002`, control)
 
-Pull requests run 5 trials; `main`, nightly and manual runs run 50 (the control: 5).
+Pull requests run 5 trials. `main` runs 50, and the control 5.
 
-| Case                 | Run                                                                                            | Trials | Result                                                     | Per-trial time (s)   |
-| -------------------- | ---------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------- | -------------------- |
-| `P6-DOC-RACE-001`    | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.50                 |
-| `P6-DOC-RACE-002`    | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.44                 |
-| control (sequential) | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | 5      | 5 of 5 single seal                                         | 2.66                 |
-| `P6-DOC-RACE-001`    | [{{RUN_A}}]({{RUN_A_URL}})                                                                     | 50     | {{DOC1_A}}                                                 | {{DOC1_A_PER_TRIAL}} |
-| `P6-DOC-RACE-002`    | [{{RUN_B}}]({{RUN_B_URL}})                                                                     | 50     | {{DOC2_B}}                                                 | {{DOC2_B_PER_TRIAL}} |
+| Run                                                                                            | Event    | Case              | Trials | Result                                                     | Per-trial time (s)   |
+| ---------------------------------------------------------------------------------------------- | -------- | ----------------- | ------ | ---------------------------------------------------------- | -------------------- |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.50                 |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 50 SIGNED, 450 ALREADY_SIGNED; 0 5xx | 1.44                 |
+| [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) | push     | control           | 5      | 5 of 5 single seal                                         | 2.66                 |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | `P6-DOC-RACE-001` | 50     | 50 of 50 double-sealed (`P6-OBS-DOC-002`)                  | 2.23                 |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | `P6-DOC-RACE-002` | 50     | 50 of 50 single seal; 0 5xx                                | 1.34                 |
+| [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) | schedule | control           | 5      | 5 of 5 single seal                                         | 2.58                 |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}})     | push     | `P6-DOC-RACE-001` | 50     | {{DOC1_A}}                                                 | {{DOC1_A_PER_TRIAL}} |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}})     | push     | `P6-DOC-RACE-002` | 50     | {{DOC2_A}}                                                 | {{DOC2_A_PER_TRIAL}} |
+| [{{RUN_A}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_A}})     | push     | control           | 5      | {{DOCC_A}}                                                 | {{DOCC_A_PER_TRIAL}} |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})     | dispatch | `P6-DOC-RACE-001` | 50     | {{DOC1_B}}                                                 | {{DOC1_B_PER_TRIAL}} |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})     | dispatch | `P6-DOC-RACE-002` | 50     | {{DOC2_B}}                                                 | {{DOC2_B_PER_TRIAL}} |
+| [{{RUN_B}}](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/{{RUN_B}})     | dispatch | control           | 5      | {{DOCC_B}}                                                 | {{DOCC_B_PER_TRIAL}} |
 
-Timings are published once they have a median of at least 3 runs: {{DOC_TIMING_STATUS}}.
+Per-trial medians (n = {{DOC_N}} runs at 50 trials): {{DOC_MEDIANS}}. Published only once n ≥ 3, which the closeout gives.
 
 ### Known product bugs
 
-Each bug is recorded in CI by the test named below, with the run that proves it. A `test.fail()` line turns
-red ("expected to fail but passed") once the bug is fixed, and is then removed.
+Each bug is recorded in CI by the test named below, with the run that shows it. A `test.fail()` line turns red
+("expected to fail but passed") once the bug is fixed, and is then removed.
 
-| ID                    | Severity          | What happens                                                                                                                       | Test                                                                       | Evidence                                                                                                                                          |
-| --------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `P6-OBS-CAL-001`      | low (proposed)    | Concurrent identical-slot losers get 400 "An error occurred while querying the database." (Prisma `P2002` redacted) instead of 409 | `cal-race-001-identical-slot.spec.ts`, `test.fail()` on the loser contract | [{{RUN_A}}]({{RUN_A_URL}}) `race-histograms-cal` `P6-CAL-RACE-001.json`                                                                           |
-| `P6-OBS-CAL-002`      | high              | Two overlapping bookings on one host are both ACCEPTED                                                                             | `cal-race-003-overlap.spec.ts`, `test.fail()`                              | [{{RUN_A}}]({{RUN_A_URL}}) `race-histograms-cal` `P6-CAL-RACE-003.json`                                                                           |
-| `P6-OBS-CAL-003` (R8) | medium (proposed) | A valid booking in an overlapping pair is refused with a generic 400 (Prisma `P2002` on `Booking_uid_key`)                         | none; counted as `loser_refused-db-error` in `P6-CAL-RACE-003`             | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) `cal-web-log`, `P6-CAL-RACE-003.json`              |
-| `P6-OBS-DOC-001`      | low               | A wrong password or CSRF token on sign-in returns 500                                                                              | none (README only)                                                         | Task 6 probe (not a CI artefact)                                                                                                                  |
-| `P6-OBS-DOC-002`      | medium            | Two last recipients complete in parallel: double seal                                                                              | `doc-race-001-last-recipients.spec.ts`, `test.fail()`                      | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) `race-histograms-documenso` `P6-DOC-RACE-001.json` |
+| ID               | Severity | What happens                                                                                                                                                                      | Test                                                                       | Evidence                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `P6-OBS-CAL-001` | low      | Concurrent identical-slot losers get 400 "An error occurred while querying the database." (Prisma `P2002` on the idempotency key, redacted) instead of 409                        | `cal-race-001-identical-slot.spec.ts`: `test.fail()` on the loser contract | [39561220290](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39561220290) `race-histograms-cal`: `P6-CAL-RACE-001.json` and `extra-loser-contract.json`                                                                                                                                                                                                         |
+| `P6-OBS-CAL-002` | high     | Two overlapping bookings on one host are both ACCEPTED                                                                                                                            | `cal-race-003-overlap.spec.ts`: `test.fail()`                              | [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) `race-histograms-cal`: `P6-CAL-RACE-003.json`                                                                                                                                                                                                                                         |
+| `P6-OBS-CAL-003` | low      | A same-host, same-start request pair in the same millisecond collides on the booking `uid` (`Booking_uid_key`); the loser gets the redacted 400 instead of 409. No double booking | none (no `test.fail()`)                                                    | [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) `cal-web-log` and `P6-CAL-RACE-003.json` (`refusedTraceIds`); code: [`RegularBookingService.ts` L1267–1268 at `c2b7ac44`](https://github.com/Jayami123/cal/blob/c2b7ac44c66f24ffef1662b276f0653988a609a3/packages/features/bookings/lib/service/RegularBookingService.ts#L1267-L1268) |
+| `P6-OBS-DOC-001` | low      | A wrong password or CSRF token on sign-in returns 500                                                                                                                             | none in CI yet (Phase 2 backlog)                                           | **Probe + code path.** Not a CI artefact. The Task 6 probe is the evidence until the Phase 2 CI test lands                                                                                                                                                                                                                                                                           |
+| `P6-OBS-DOC-002` | medium   | Two last recipients complete in parallel: double seal                                                                                                                             | `doc-race-001-last-recipients.spec.ts`: `test.fail()`                      | [39563393657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39563393657) `race-histograms-documenso`: `P6-DOC-RACE-001.json`                                                                                                                                                                                                                                   |
 
 ### Phase 1 status
 
-Phase 1 of the master plan is **done**. Cases evidenced from `main` runs: `P6-MED-RACE-001`, `P6-CAL-RACE-001`,
-`P6-CAL-RACE-002`, `P6-CAL-RACE-003`, `P6-DOC-RACE-001`, `P6-DOC-RACE-002`. Closeout runs:
+Phase 1 of the master plan is **done**. The six cases are evidenced from `main` runs: `P6-MED-RACE-001`,
+`P6-CAL-RACE-001`, `P6-CAL-RACE-002`, `P6-CAL-RACE-003`, `P6-DOC-RACE-001`, `P6-DOC-RACE-002`. Closeout runs:
 {{RUN_A}} and {{RUN_B}}. Open product bugs: the five above.
 ```
 
 ### 7.3 Medusa section (add one line under "### Medusa oversell histogram", after the existing bullets)
 
 ```markdown
-- Trial count: pull requests run 3 trials; `main`, nightly and manual runs run 50 (the extras run 3).
+- Trial count: pull requests run 3 trials; `main` (push, schedule or `workflow_dispatch`) runs 50. The extras run 3.
 ```
 
-(The existing Cal and Documenso sections already state the trial counts and need no change.)
+The Cal and Documenso sections already state their trial counts, so they need no change.
 
 ## 8. Environment
 
-Two cloud environments run this repo. For each, what is automatic and what must be pasted by hand:
-
 **Cursor cloud** (`.cursor/environment.json`, `AGENTS.md`).
 
-- Automatic from the repo: npm packages are installed, and `scripts/bootstrap.sh medusa` clones the Medusa
-  fork; Docker is started by the environment's `start` command.
-- Before any harness command, the shell must `export PATH="/usr/local/bin:$PATH"` (Cursor puts its own Node
-  22.14 first; Medusa needs Node 22.23). This is a per-shell step, written in `AGENTS.md`, not a secret.
+- Automatic from the repo: npm packages are installed, and `scripts/bootstrap.sh medusa` clones the Medusa fork.
+  Docker is started by the environment's `start` command.
+- Before any harness command, the shell exports `PATH="/usr/local/bin:$PATH"` (Cursor puts its own Node 22.14
+  first; Medusa needs Node 22.23).
 - Pasted by hand: **nothing.**
 
 **Claude Code cloud** (`.claude/hooks/session-start.sh`, `AGENTS.md`).
 
-- Automatic from the repo: the session-start hook starts Docker and puts `/usr/local/bin` (Node 22.23)
-  first on PATH through `$CLAUDE_ENV_FILE`; the environment's setup script installs the tools.
+- Automatic from the repo: the session-start hook starts Docker and puts `/usr/local/bin` (Node 22.23) first on
+  PATH through `$CLAUDE_ENV_FILE`. The environment's setup script installs the tools.
 - Documenso needs Node 24. `npm run up:documenso` and `bootstrap.sh documenso` pick `/opt/node24` themselves.
-- Pasted by hand: **nothing** for the build. The `gh` CLI printed a `GH_TOKEN` login warning during this
-  probe, but every `gh run` and `gh api` read succeeded, so no token needs pasting. (If a later `gh` call
-  fails, say so and check the GitHub access settings rather than pasting a token into the chat.)
+- Pasted by hand: **nothing** for the build. A `gh` login warning (`GH_TOKEN`) appeared during the probe, but every
+  `gh` read succeeded. If a later `gh` call fails, report it and check the GitHub access settings. Do not paste a
+  token into the chat.
 
-Neither environment needs a secret for this task. The ruleset change (§5.3) is done in the GitHub UI by
-Jayami, not in either environment.
+Neither environment needs a secret for this task. The ruleset change (§5.3) is done in the GitHub UI by Jayami.
 
-## 9. Build steps (for the weaker model; repo root; in order)
+## 9. Build steps (for the weaker model; in order)
 
 Rules for the whole build: never `git add -A`; never print a token; never edit a product fork, the harness
-package, or any `test.fail()` line. Stop and report on any output that differs from the expected output.
+package, or a `test.fail()` line. Stop and report on any output that differs from the expected output. Use
+`S="$(mktemp -d)"` for scratch files; never the repo, and never `$HOME`.
 
-### Step 0. Branch and the plan doc
+### PR 1: `ci(medusa): …`
+
+**Step 0. Branch and the plan doc.**
 
 ```bash
 export PATH="/usr/local/bin:$PATH"
@@ -568,7 +622,7 @@ git status --short
 
 Expected: `A  docs/plans/2026-10-21-p6-phase1-task8-closeout.md` and nothing else.
 
-### Step 1. Baseline
+**Step 1. Baseline.**
 
 ```bash
 npm ci
@@ -577,288 +631,289 @@ npm run check
 
 Expected: Prettier clean, typecheck clean, `k6 inspect: 4 script(s) ok.`, unit tests `# fail 0`.
 
-### Step 2. Edit the Medusa race step in `.github/workflows/perf.yml`
-
-Replace the block in §3 ("Current") with the block in §3 ("New"). Change nothing else. Then:
+**Step 2. Edit the Medusa race step in `.github/workflows/perf.yml`.** Replace the block in §3 "Current" with the
+block in §3 "New". Change nothing else. Then:
 
 ```bash
 git diff --stat
 npx prettier --check .github/workflows/perf.yml
 ```
 
-Expected: `1 file changed`, about 9 lines in the diff, and `All matched files use Prettier code style!`.
+Expected: `1 file changed`, about 9 changed lines, and `All matched files use Prettier code style!`. Check by eye
+that the new step is indented 6 spaces, like the Cal race steps.
 
-Check the YAML by eye: the step indentation is 6 spaces (same as the Cal race steps). The check named
-`medusa-smoke` does not change (only the step name does).
+**Step 3. Local check.** `npm run check`. Expected: the same as step 1. Do not push on any other result.
 
-### Step 3. Local check (must be green before push)
-
-```bash
-npm run check
-```
-
-Expected: the same as step 1. Do not push on any other result.
-
-### Step 4. Commit and push (no PR unless Jayami asks)
+**Step 4. Commit, push, open PR 1.**
 
 ```bash
 git add .github/workflows/perf.yml docs/plans/2026-10-21-p6-phase1-task8-closeout.md
-git commit -m "ci(medusa): run 50 trials on main, nightly and manual; 3 on PRs"
+git commit -m "ci(medusa): run the 50-trial race on main, schedule and manual runs; 3 on PRs"
 git push -u origin feat/2026-10-22-p6-phase1-closeout
 ```
 
-No trailers on the commit (the user's rule for this task). Retry the push up to 4 times with 2 s, 4 s, 8 s,
-16 s backoff only on network errors.
+No trailers on the commit (the rule for this task). Retry a push up to 4 times, with 2 s, 4 s, 8 s and 16 s
+backoff, only on network errors.
 
-### Step 5. Run A (automatic after merge)
+Open PR 1 into `main` with the title `ci(medusa): run the 50-trial race on main, schedule and manual runs; 3 on PRs`.
+If the repo has a PR template (`.github/pull_request_template.md`), follow its headings. The body states: the one
+step changed (§3), the trial counts per event, and that run A and run B are the closeout runs. Expected: the three
+jobs (`medusa-smoke`, `cal-smoke`, `documenso-smoke`) all run on the PR and go green (they are required, §5.3).
 
-The build merges only when Jayami says so (Jayami opens and merges the PR). Then the push to `main` starts
-run A. Find it:
+**Step 5. Jayami merges PR 1.** The build waits here. Merging creates run A on `main` automatically.
+
+### Closeout runs A and B
+
+**Step 6. Run A (automatic, from the merge).**
 
 ```bash
 gh run list -R Jayami123/k6-load-concurrency-suite --workflow perf.yml --branch main --limit 3 \
   --json databaseId,headSha,event,status,conclusion
 ```
 
-Expected: a `push` run whose `headSha` is the merge commit, `status` `completed`, `conclusion` `success`.
-Record its id as `{{RUN_A}}` and its SHA as `{{SHA_A}}`.
+Expected: a `push` run whose `headSha` is the merge commit. Wait for it to finish:
+`gh run watch <RUN_A> -R Jayami123/k6-load-concurrency-suite --exit-status`. Expected: exit 0.
+Record `{{RUN_A}}` and `{{SHA_A}}`.
 
-Check the step count on the run page: the Medusa step summary must say `### P6-MED-RACE-001 trials: 50`.
+Check the count:
 
 ```bash
 gh run view {{RUN_A}} -R Jayami123/k6-load-concurrency-suite --log | grep "P6-MED-RACE-001 trials"
 ```
 
-Expected: a line `P6-MED-RACE-001 trials: 50`. If it says 3, stop and report (the expression is wrong).
+Expected: `P6-MED-RACE-001 trials: 50`. Any other value: stop and report.
 
-### Step 6. Run B (workflow_dispatch on main)
-
-The nightly has not fired (§2.6), so run B is manual:
+**Step 7. Run B (dispatch, after run A is green).**
 
 ```bash
 gh workflow run perf.yml -R Jayami123/k6-load-concurrency-suite --ref main
 ```
 
-Then find it with the same `gh run list` command as in step 5 (look for `event` `workflow_dispatch`).
-Record `{{RUN_B}}` and `{{SHA_B}}`. Expected: `conclusion` `success`, and the same `trials: 50` line.
+Find it with the same `gh run list` command (the `event` is `workflow_dispatch`), then watch it to exit 0 and run
+the same grep. Record `{{RUN_B}}` and `{{SHA_B}}`. If the nightly fires first and is green at full count, it may
+stand in for run B; record that choice in the README (§7.2 wording).
 
-If the nightly fires before run B, it is a valid second run as well. Use whichever one is green and full
-count first, and record the choice in the README.
-
-### Step 7. Download the artefacts and summarise (read-only)
-
-Keep the downloads out of the repo. Use the scratchpad directory for the work:
+**Step 8. Download, token-scan and check R8.**
 
 ```bash
-# S = this session's scratchpad directory (never /tmp, never the repo). Set it by hand:
-S="<session scratchpad directory>"; mkdir -p "$S"
-for r in {{RUN_A}} {{RUN_B}}; do
+S="$(mktemp -d)"
+for r in {{RUN_A}} {{RUN_B}} 39563393657 39561220290 39484324139 39449102426 39434721131 39429276298; do
   mkdir -p "$S/$r"
   gh run download "$r" -R Jayami123/k6-load-concurrency-suite -D "$S/$r"
 done
 find "$S" -type f | sort
 ```
 
-Expected: for each run, `race-histograms-cal/`, `race-histograms-medusa/`, `race-histograms-documenso/`,
-and `cal-web-log/`, `documenso-web-log/`, plus the `k6-summary-*` folders.
+Expected: for each run, the `race-histograms-*` folders and `k6-summary-*`; `cal-web-log/` for every run with
+`P6-CAL-RACE-003`; `documenso-web-log/` for the two Documenso runs. Runs `39429276298`–`39484324139` expire on
+**3 Nov 2026**. Download them now, as this step does, and do not rely on them after that date.
 
-Summarise with the script in Appendix A (kept in the scratchpad, never in the repo):
-
-```bash
-node "$S/summ.cjs" "$S"/{{RUN_A}}/race-histograms-*/*.json "$S"/{{RUN_B}}/race-histograms-*/*.json
-```
-
-Expected per full-count run: `P6-MED-RACE-001 … trials 50`, `P6-CAL-RACE-001 … trials 50`, `P6-CAL-RACE-003 …
-trials 30`, `P6-DOC-RACE-001/002 … trials 50`, control `… trials 5`, and `viol 0` on every case that is
-not a planned `test.fail()` (`P6-DOC-RACE-001` has 400 expected violations; the verdict is `fail` by design).
-
-Token check (must print `0` for every line; a non-zero count is a stop):
+Token scan (every count must be 0; a non-zero count is a stop):
 
 ```bash
-for r in {{RUN_A}} {{RUN_B}}; do
-  grep -cE 'api_[A-Za-z0-9]{8,}|Bearer |sessionId' "$S/$r/documenso-web-log/documenso-web.log" || true
+for f in "$S"/*/cal-web-log/cal-web.log "$S"/*/documenso-web-log/documenso-web.log; do
+  printf '%s ' "$f"; grep -cE 'api_[A-Za-z0-9]{8,}|Bearer |sessionId' "$f" || true
 done
 ```
 
-### Step 8. R8 check (for `P6-OBS-CAL-003`)
+**R8 check at `CAL_REF` (read-only).** This re-confirms §2.5 before the upstream draft (Appendix B) is filed:
 
-For each run, list the refused legs and the Prisma constraint at the same millisecond:
+```bash
+GIT_LFS_SKIP_SMUDGE=1 git clone --no-checkout --filter=blob:none https://github.com/Jayami123/cal "$S/cal"
+git -C "$S/cal" fetch --depth 1 origin "$(grep -oE 'CAL_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}')"
+git -C "$S/cal" checkout -q FETCH_HEAD
+git -C "$S/cal" rev-parse HEAD
+grep -nE 'const seed = .*Date\.now\(\)|const uid = translator\.fromUUID\(uuidv5' "$S/cal/packages/features/bookings/lib/service/RegularBookingService.ts"
+grep -nE '^\s+uid\s+String\s+@unique' "$S/cal/packages/prisma/schema.prisma"
+```
+
+Expected: the `rev-parse` line equals `CAL_REF` (`c2b7ac44…`); the grep prints lines 1267 and 1268 (the seed and
+the uid); the schema grep prints line 853. Any other result: stop and report (the pin or the code has changed).
+
+Then map each refused leg to its constraint (Appendix A, `refused.cjs`):
 
 ```bash
 node "$S/refused.cjs" "$S/{{RUN_A}}/race-histograms-cal/P6-CAL-RACE-003.json" "$S/{{RUN_A}}/cal-web-log/cal-web.log"
 node "$S/refused.cjs" "$S/{{RUN_B}}/race-histograms-cal/P6-CAL-RACE-003.json" "$S/{{RUN_B}}/cal-web-log/cal-web.log"
 ```
 
-(`refused.cjs` is the second script in Appendix A.) Expected: one line per refused trace with
-`P2002 Booking_uid_key` at 0 ms, the same as §2.5. If a line shows any other constraint, or no match, stop
-and report it (do not add an ID by guessing).
+Expected: one line per refused leg, `Booking_uid_key` within ±1 ms (as in §2.5). Any other constraint, or
+`NOT FOUND`: stop and report it. Do not add an ID by guessing.
 
-### Step 9. Timings (the medians the README needs)
+**Step 9. Evidence release (not in the repo).** After the token scan is clean:
 
-Per-trial time = (`finishedAt` − `startedAt`) ÷ `trials`, from each histogram. The summary script prints it.
-Medians are over all `main` and nightly runs of that case (n = number of runs). Compute the Medusa median
-over all five 3-trial runs plus runs A and B (n = 7). The per-trial rate is comparable across counts; the
-README says so.
+```bash
+for r in 39429276298 39434721131 39449102426 39484324139 39561220290 39563393657 {{RUN_A}} {{RUN_B}}; do
+  (cd "$S/$r" && zip -rq "$S/p6-$r-evidence.zip" .)
+done
+gh release create p6-phase1 -R Jayami123/k6-load-concurrency-suite --target {{SHA_A}} \
+  --title "P6 Phase 1 evidence (CI)" --notes "Histograms and Cal web logs of the CI runs cited in the README. One zip per run." \
+  "$S"/p6-*-evidence.zip
+```
 
-### Step 10. Fill the README placeholders and commit
+Expected: the release URL on stdout. Note the zip command includes the Cal web log: `-i '*.json' '*.log'`
+packs `cal-web.log` and `documenso-web.log` where present. The token scan (step 8) ran first.
 
-Replace every `{{…}}` in §7 with the value from the summaries. Apply §7.1–§7.3 to `README.md`. Then:
+The release is public and is created on purpose, because it is the evidence store (Jayami, Q4). Create it once.
+
+**Step 10. Timings and summaries.** Run the summary script (Appendix A, `summ.cjs`) on the histograms of runs A and B,
+and compute the medians named in §7 (the Cal 001 and 003 medians over all runs at that count, the Medusa 3-trial
+median over its 6 runs, and the Documenso medians over the 4 runs at 50 trials, once A and B add their values).
+Write each value down with its trial count. Do not pool the 3-trial and 50-trial Medusa values (D39).
+
+### PR 2: the README and the results (`docs/...`)
+
+**Step 11. Fresh branch from the new `main`.** Only after PR 1 is merged:
+
+```bash
+git fetch origin main
+git checkout -B docs/2026-10-2x-p6-phase1-results origin/main
+```
+
+Replace `2x` with the build day (22 or later). The branch is new; it does not reuse the PR 1 branch.
+
+**Step 12. Edit `README.md`.** Apply §7.1, §7.2 and §7.3 with every `{{…}}` replaced by a value from step 10.
+Remove the interim sentence about the closeout runs only if it is not needed.
 
 ```bash
 npm run format:check
 grep -n '{{' README.md || echo "no placeholders left"
 ```
 
-Expected: Prettier clean and `no placeholders left`. If the grep prints a line, a value is missing: stop.
+Expected: Prettier clean and `no placeholders left`. A line printed by `grep` means a value is missing: stop.
 
-Commit (no trailers) and push:
+**Step 13. Commit, push, open PR 2.**
 
 ```bash
+npm run check
 git add README.md
 git commit -m "docs(readme): add phase 1 results from main runs and mark phase 1 done"
-git push -u origin feat/2026-10-22-p6-phase1-closeout
+git push -u origin docs/2026-10-2x-p6-phase1-results
 ```
 
-### Step 11. Ruleset (by hand, then verify)
+Open PR 2 into `main` (title: `docs(readme): add phase 1 results from main runs and mark phase 1 done`).
 
-Jayami does §5.3 in the GitHub UI. Then the build runs the read-only check from §5.3 and expects the three
-lines. Do not change the ruleset in code.
-
-### Step 12. Stop and report
-
-Report, in one message: run ids A and B; their conclusions per job; the Medusa trial line; the Medusa median
-per-trial time; any new refused-leg constraint; whether the nightly fired; and the ruleset check output.
+**Step 14. Jayami merges PR 2.** Then check the Done-when list (§10) and report run ids, conclusions, the Medusa
+trial line, the medians, the R8 output, and the release URL.
 
 ## 10. Done when, and what the build waits for
 
 **Done when** (all of these):
 
-1. Two green `main` runs (A and B) with all three jobs `success`, each at full count: Medusa 50, Cal 50 and
-   30, Documenso 50 and 5 (control). Run A is the push after this change merges; run B is a
-   `workflow_dispatch` (or the nightly, if it fires).
-2. All histograms are attached to both runs (the `race-histograms-cal`, `-medusa`, `-documenso` artefacts
-   exist on each run).
-3. The README cites only runs A and B and the three earlier `main` runs listed in §7 (no PR run, no VM).
-4. Every open product bug has its evidence linked (§7 "Known product bugs": CAL-001, CAL-002, CAL-003,
-   DOC-001, DOC-002). DOC-001 has no CI artefact yet (Open question 5).
-5. `npm run check` is green on the build branch.
-6. The ruleset has the three required checks (§5.3), set by Jayami.
+1. PR 1 is merged. Run A (push) and run B (dispatch) are green in all three jobs at full count: Medusa 50, Cal 50
+   and 30, Documenso 50 and control 5.
+2. The `p6-phase1` release holds one zip per cited run, and each closeout zip contains its `race-histograms-*`
+   JSON. The Cal zips contain `cal-web.log`.
+3. The README cites only `main` runs (push, schedule or `workflow_dispatch`). Every run it cites is one of those in
+   §2.1 or runs A and B. There is no PR run and no VM number.
+4. Every open product bug has its evidence linked (§7 "Known product bugs"). `P6-OBS-DOC-001` is stated as "probe +
+   code path", with its Phase 2 test in the backlog (§5.5).
+5. `npm run check` is green on PR 2's branch.
+6. The three required checks are in the `Main` ruleset (§5.3), set by Jayami.
 
-**The build waits for** (not for anything else):
+**The build waits for:**
 
-- The CI change from §3 to be merged to `main` (Jayami merges it). Run A is then created automatically.
-- Run B: a `workflow_dispatch` of `perf.yml` on `main`, started by the build (§9 step 6), or the nightly.
-- Documenso and Cal already have full-count `main` data in run 39561220290. They do not need to wait, but
-  they need a second and third full-count sample (A and B) for their timings to have a median of 3.
+- Jayami to add the three required checks (§5.3), before PR 1 is opened.
+- Jayami to merge PR 1. Run A starts automatically from that merge.
+- Run A to finish green. Only then the build dispatches run B.
+- Jayami to merge PR 2 (the README). Then the Phase 1 status is done.
+- Jayami's answer on which upstream issues are filed (Q7), so the README can link them. Until then the README
+  says the issues are drafted, not filed.
 
-**How the build fills the placeholders:** run A's id and SHA go into `{{RUN_A}}`, `{{RUN_A_URL}}`, `{{SHA_A}}`;
-run B's into the `_B` set; the per-run values come from the step 7 summary; the medians from step 9. Run
-`39561220290` keeps its own link for the 003 and Documenso rows and needs no placeholder. Where a value is
-still missing, leave the placeholder and stop: do not write a guess.
+**How the build fills the placeholders:** run A's id and SHA go into `{{RUN_A}}` and `{{SHA_A}}`, and run B's into
+`{{RUN_B}}` and `{{SHA_B}}`. The per-run values come from step 10. The medians come from step 10 and name their trial
+counts. Run `39561220290` and the nightly `39563393657` keep their own links and need no placeholder. Where a value
+is still missing, leave the placeholder and stop. Do not write a guess.
 
 ## 11. Rules
 
-- **No product fork and no harness package is edited.** This task changes `perf.yml` (one step), `README.md`
-  and this plan doc only.
-- **No secret or token anywhere**: not in the README, the plan, a commit, a log or the chat. The probe read
-  the run API only. The signed artefact download links (temporary, from the API) are not written anywhere.
-- **No `test.fail()` change.** Each existing line stays as it is. A new `test.fail()` needs repeated proof and
-  is out of scope here (§5.2).
-- **A failing `main` run is root-caused, never re-run blindly.** Classify it as PRODUCT BUG (with the
-  histogram and the log line that prove it), TEST BUG (the spec or the oracle is wrong; fix the test), or ENV
-  (the runner, the cache, the network; show the step log). A re-run is allowed only to confirm an ENV
-  diagnosis, once. A second failure is real.
-- **Timing numbers come only from CI runs** on `main` or nightly. The median rule (at least 3 runs) applies to
-  every timing published in the README. A timing with n < 3 is not published (§7, Documenso).
-- **No number from a cloud VM** (AGENTS.md). The README tables cite run ids only.
-- **Read-only probes stay read-only.** The build does not change Cal's or Documenso's data; it reads
-  artefacts and `cal-web-log` only.
-- **Commits: environment identity, no trailers.** No `Claude-Session`, no `Co-Authored-By`, no "Generated
-  with". The `GIT_AUTHOR_*` and `GIT_COMMITTER_*` values come from the environment; they are not rewritten.
-- **Do not create a PR** unless Jayami asks for one (§9 step 4).
+- **No product fork and no harness package is edited.** This task changes `perf.yml` (one step), `README.md`, and
+  this plan doc. The evidence goes in a release, not a commit.
+- **No secret or token anywhere**: not in the README, the plan, a commit, a release, a log or the chat. The probe
+  read the run API only. Signed artefact download links are temporary and are not written down.
+- **No `test.fail()` change.** Each existing line stays as it is. A new `test.fail()` needs repeated proof and is
+  out of scope here (§5.2).
+- **A failing `main` run is root-caused, never re-run blindly.** Classify it as PRODUCT BUG (with the histogram and
+  the log line that prove it), TEST BUG (the spec or oracle is wrong; fix the test), or ENV (runner, cache,
+  network; show the step log). A re-run is allowed only to confirm an ENV diagnosis, once. A second failure is real.
+- **Timings come only from `main` runs**, with the median rule (at least 3 runs, same trial count). A timing with
+  n < 3 is not published (Documenso until the closeout, Medusa 50-trial).
+- **No number from a cloud VM** (AGENTS.md).
+- **Read-only where it says read-only.** The R8 clone is read-only. The build changes no Cal or Documenso data.
+- **Commits: environment identity, no trailers.** No `Claude-Session`, no `Co-Authored-By`, no "Generated with".
+  `GIT_AUTHOR_*` and `GIT_COMMITTER_*` come from the environment; they are not rewritten.
+- **Two PRs, as in §1.** The build opens PR 1 and PR 2 only as the plan says. No other PR.
 
 ## 12. Risks
 
-1. **Total CI minutes (main-run cost).** `main`, nightly and manual runs go from about 12.6 to about 23.8 job-
-   minutes (§4). The nightly alone adds about 336 job-minutes a month. Mitigation: none in this task; the
-   cost is Jayami's call (Open question 8).
-2. **Medusa 50-trial duration and spread.** Measured per-trial times are 10.4–16.5 s at 3 trials; the 50-trial
-   run is unmeasured. Expected job 13.9 min, worst 15.7 min, against a 45-min timeout. The 50-trial spread is
-   unknown (§5.1). If the job ever times out, root-cause it (ENV vs PRODUCT BUG) before raising the timeout.
-3. **The nightly has never fired** (§2.6). The README must not cite a nightly run until one exists. Run B is
-   a dispatch.
-4. **Artefact retention is 14 days.** The README links the run pages (lasting) and the artefacts (expire).
-   After 2026-11-03 the earliest histograms are gone. Decision D37 covers how to keep the JSON.
-5. **R8 root cause unknown.** `Booking_uid_key` collisions in an overlapping pair suggest a shared `uid`
-   source. Until Cal's code at `CAL_REF` is read, the finding is medium and proposed (§2.5, §5.2). The
-   timestamp match is strong but not a proof.
-6. **`P6-OBS-DOC-001` has no CI evidence** (Task 6 probe only). The README says so; the gap is Open question 5.
-7. **Required checks change the merge flow.** Once the three checks are required, a PR waits for all three (§5.3).
-   Documenso's PR job is about 2.2 min, so the cost is small.
-8. **A `test.fail()` can flip.** If Cal or Documenso ships a fix before the closeout, the matching test turns
-   red ("expected to fail but passed"). The rule is to remove that one line and update the README (§6). It is
-   not a flake.
-9. **The `gh` login warning.** A `GH_TOKEN` login warning appears in this container, but reads work. If a later
-   read fails, it is an access problem, not a code problem: say so.
+1. **Medusa 50-trial duration and spread.** Expected job about 13 min, worst about 16 min, against a 45-min timeout.
+   The 50-trial spread is unknown until run A. If the job ever times out, root-cause it (ENV or PRODUCT BUG) before
+   raising the timeout.
+2. **The nightly ran late** (§2.6). It is evidence, but its timing is not reliable yet. Run B is a dispatch so the
+   closeout does not wait on the schedule.
+3. **Artefact retention is 14 days.** Runs before 22 Oct expire from 3 Nov. The release is the lasting store (step 9).
+   Download before 3 Nov (step 8).
+4. **R8 mechanism is confirmed at `CAL_REF`, by code and by logs, but the log match is by timestamp** (within ±1 ms,
+   no traceId on the Prisma line). The code read is strong; the log link is strong, not a proof. Recorded as such.
+5. **`P6-OBS-DOC-001` has no CI artefact.** It is "probe + code path" and stated plainly. The Phase 2 test closes
+   the gap (§5.5 item 1).
+6. **Required checks change the merge flow.** Once the three are required, PRs wait for all three. Documenso's PR job
+   is about 2.2 min.
+7. **A `test.fail()` can flip.** If Cal or Documenso ships a fix before the closeout, the matching test turns red
+   ("expected to fail but passed"). Remove that one line and update the README (§6). It is not a flake.
+8. **The `gh` login warning** (`GH_TOKEN`) appears in this container, but reads work. If a later read fails, it is an
+   access problem, not a code problem.
 
 ## 13. Decisions (continue from D31)
 
-- **D32 Medusa trial count follows D2.** The Medusa race step is `'3'` on pull requests and `'50'` on `main`,
-  nightly and `workflow_dispatch`. Extras stay capped at 3 in the spec (Task 2 D15). Only the one step changes,
-  and its name and summary line change with it.
-- **D33 Required checks are set by hand, in the `Main` ruleset.** The ruleset gets one rule, the three job
-  names (`medusa-smoke`, `cal-smoke`, `documenso-smoke`). No code change, no classic branch protection.
-  Strict up-to-date is off.
-- **D34 R8 is a new finding, proposed as `P6-OBS-CAL-003`, severity medium, with no test.** Evidence: four
-  refused legs in three full-count runs, each a `P2002` on `Booking_uid_key` at 0 ms. Not a sub-bullet of
-  `-001`, because the constraint differs. No `test.fail()` until the cause is proven.
-- **D35 The rerun-on-high-spread item is carried to the Phase 2 backlog, not built.** The measured maximum
-  spread is 7.6 ms against a 20 ms limit, across all `main` runs. A spread retry would be a retry to make a
-  test pass. The item reopens if the 50-trial Medusa spread exceeds about 10 ms.
-- **D36 The second closeout run is a `workflow_dispatch`** on `main`, because the nightly has not fired. If the
-  nightly fires first and is green at full count, it may be run B instead, and the README says so.
-- **D37 Histogram evidence is linked by run page; the JSON is kept in the repo only if Jayami agrees.** The
-  README cites the run page (lasting) and the artefact name (14-day retention). Recommended: commit the closeout
-  runs' histogram JSON under `docs/evidence/<run-id>/` (about 60–70 KB per run, no tokens; scan before commit).
-  This needs Jayami's yes (Open question 4).
-- **D38 No timeout change for Medusa.** The expected 14–16 min fits the 45-min job timeout; a timeout is added
-  only when a run proves it is needed (roadmap rule).
-- **D39 Timing medians follow the README rule.** The Medusa per-trial median is taken over every `main` and
-  nightly run (n = 7 after the closeout), because a 50-trial-only median would have n = 2. The README says that
-  the 3-trial and 50-trial samples are the same kind of measurement.
-- **D40 `P6-OBS-DOC-001` stays README-only with the probe as its evidence.** A CI assertion for it would be a
-  new test, which Task 8 does not add (roadmap: "No new cases"). Open question 5 asks Jayami to confirm.
+- **D32 Medusa trial count follows D2.** The step is `'3'` on pull requests and `'50'` on `main` (push, schedule,
+  `workflow_dispatch`). Extras stay capped at 3 (Task 2 D15). Only the one step changes.
+- **D33 Required checks are added by hand, now.** The `Main` ruleset gets one rule with the three job names. No
+  code change, no classic branch protection, strict up-to-date off. Each check already has at least two green `main`
+  runs (§2.7).
+- **D34 R8 is `P6-OBS-CAL-003`, severity low, no test, no `test.fail()`.** Mechanism confirmed at `CAL_REF`:
+  `uid = f(username, start second, Date.now())` collides for same-host, same-start requests in the same millisecond,
+  which fails `Booking_uid_key` (P2002) and is redacted to 400. Wrong status, no double booking. The earlier summary
+  "a valid booking is refused" is withdrawn.
+- **D35 The rerun-on-high-spread item is closed as carried to the Phase 2 backlog, not built.** Maximum measured
+  spread is 7.6 ms against a 20 ms limit. A spread retry would be a retry to make a test pass.
+- **D36 Run B is a `workflow_dispatch`.** The nightly ran late (§2.6), so the closeout does not wait on it. The nightly
+  `39563393657` is cited as `main` evidence, labelled "schedule".
+- **D37 Evidence lives in a GitHub Release (`p6-phase1`), one zip per cited run.** It does not expire. The README
+  links the release and the run pages. No `docs/evidence/` commit. (Jayami, Q4.)
+- **D38 No timeout change for Medusa.** The expected 13–16 min fits the 45-min job timeout.
+- **D39 Timings are not pooled across trial counts.** The Medusa 3-trial series (n = 6) is one median, labelled "3
+  trials". The Medusa 50-trial values are shown per run, labelled "50 trials", with no median until n ≥ 3. Cal and
+  Documenso have one trial count each, so their medians are valid.
+- **D40 `P6-OBS-DOC-001` is "probe + code path" in the README,** with a Phase 2 CI test (401 instead of 500, marked
+  `test.fail()`) in the backlog (§5.5). It is not left README-only for good. (Jayami, Q5.)
+- **D41 Two PRs.** PR 1 is the CI change (`ci(medusa): …`) on the feat branch. Merging it triggers run A. The build
+  then dispatches run B. PR 2 (`docs/2026-10-2x-p6-phase1-results`) is cut fresh from the new `main` and carries the
+  README. The evidence goes in the release, so PR 2 has no evidence files.
 
 ## 14. Open questions for Jayami
 
-1. **Nightly never ran.** `perf.yml` has `schedule: 17 2 * * *` on `main` (since 2026-10-18), but the run list
-   shows zero `schedule` runs. Can you check Actions → `perf` (is the schedule disabled, or has GitHub skipped
-   it)? Should the build use `workflow_dispatch` as run B (D36)? _Recommendation: yes, and fix the nightly
-   separately._
-2. **R8 as `P6-OBS-CAL-003`, medium.** Do you approve the new ID and medium severity, or should it fold into
-   `P6-OBS-CAL-001` as a second instance? And do you want an upstream draft for it (the Task 4 style, once Cal's
-   `uid` code at `CAL_REF` is read)? _Recommendation: new ID, medium, and a draft after the code read._
-3. **Severity of `P6-OBS-CAL-001`.** Task 4 recorded it as a product bug but never set a severity. It is a wrong
-   status code and no double booking happens. _Recommendation: low._ Confirm?
-4. **Artefacts expire after 14 days.** Keep run-page links only (D37 default), or commit the closeout runs'
-   histogram JSON under `docs/evidence/` (recommended, after a token scan)? Your call.
-5. **`P6-OBS-DOC-001` has no CI artefact.** Its evidence is the Task 6 probe (§2.11). Accept the probe as
-   evidence with a README note (recommended; a CI check would be a new test, outside Task 8), or add a CI check
-   in a later task?
-6. **Required checks (§5.3).** Add the three checks to the `Main` ruleset by hand (recommended, D33)? I will not
-   change the ruleset.
-7. **Upstream drafts.** Three drafts exist (Tasks 4, 5, 7). Confirm they are filed, or tell me where they are if
-   they are not. I cannot check the upstream repos from this session.
-8. **CI minutes.** The change adds about 11 job-minutes per `main`, nightly or manual run (about 336 a month from
-   the nightly alone). Accept the cost, or cut the nightly to the Cal and Documenso cases only? _Recommendation:
-   accept; the closeout needs the full count._
-9. **Medusa median (D39).** Accept a median over all 7 `main` and nightly runs for the Medusa timing, or require a
-   third full-count Medusa run first (a third dispatch)? _Recommendation: accept the 7-run median._
-10. **Rerun-on-high-spread (D35).** Close it as carried to the Phase 2 backlog, as proposed, or keep it open?
+1. **Nightly timing.** The first slot (21 Oct 02:17 UTC) ran late, at 07:38 UTC (run `39563393657`, green). Please check
+   after tonight's slot (22 Oct 02:17 UTC): does it start on time? Nothing else depends on it. Run B is a dispatch.
+2. **`P6-OBS-CAL-003`.** Approved as a new ID, low, with no test and no `test.fail()` (D34). The upstream draft is in
+   Appendix B. Your call on whether to file it now or after the upstream check.
+3. **`P6-OBS-CAL-001`.** Low, agreed (recorded in §6 and §7).
+4. **Evidence store.** A GitHub Release `p6-phase1`, not `docs/evidence/` (D37), agreed. The build creates the release
+   once run A is green (step 9).
+5. **`P6-OBS-DOC-001`.** Probe + code path in the README, plus the Phase 2 CI test in §5.5, agreed (D40).
+6. **Required checks.** Add the three by hand now, before PR 1 (§5.3, D33). Agreed.
+7. **Upstream issues.** Which of these have you filed, and what are the URLs? (1) `P6-OBS-CAL-001` (Task 4 Appendix A),
+   (2) `P6-OBS-CAL-002` (Task 5 Appendix A), (3) `P6-OBS-DOC-002` (Task 7 Appendix A), (4) `P6-OBS-CAL-003` (Appendix B,
+   not yet filed). The README will link the ones you give me.
+8. **CI time.** Accepted; the repo is public, so standard runners cost nothing (§4).
+9. **Medusa median.** Covered by D39: the 3-trial series and the 50-trial values are separate. No pooled median.
+10. **Rerun-on-high-spread.** Closed as carried to Phase 2 (D35). Agreed.
 
-## Appendix A. Scripts (scratchpad only; never committed)
+## Appendix A. Scripts (scratch only; never committed)
 
-`summ.cjs` prints one line per histogram and the per-trial time. Save it as `$S/summ.cjs`:
+Save each script in `$S`, the `mktemp -d` scratch directory. Run with `node`.
+
+`summ.cjs` prints one line per histogram, with its trial count and per-trial time:
 
 ```js
 // usage: node summ.cjs <histogram.json>...
@@ -868,7 +923,6 @@ for (const f of process.argv.slice(2)) {
   const h = JSON.parse(fs.readFileSync(f, "utf8"));
   const secs = (Date.parse(h.finishedAt) - Date.parse(h.startedAt)) / 1000;
   const oracle = typeof h.oracle === "object" && h.oracle ? h.oracle : {};
-  const doubles = oracle.trialsDoubleBooked ?? oracle.trialsDoubleSeal ?? "n/a";
   console.log(
     [
       path.basename(path.dirname(f)),
@@ -877,7 +931,7 @@ for (const f of process.argv.slice(2)) {
       `status ${JSON.stringify(h.statusCounts)}`,
       `verdict ${h.verdict}`,
       `viol ${(h.invariantViolations || []).length}`,
-      `double ${doubles}`,
+      `double ${oracle.trialsDoubleBooked ?? oracle.trialsDoubleSeal ?? "n/a"}`,
       `refused ${oracle["loser_refused-db-error"] ?? 0}`,
       `per-trial ${(secs / h.trials).toFixed(3)} s`,
     ].join(" | "),
@@ -885,7 +939,7 @@ for (const f of process.argv.slice(2)) {
 }
 ```
 
-`refused.cjs` matches each refused trace to its Prisma constraint by timestamp. Save it as `$S/refused.cjs`:
+`refused.cjs` matches each refused trace to the Prisma constraint at the same millisecond:
 
 ```js
 // usage: node refused.cjs <P6-CAL-RACE-003.json> <cal-web.log>
@@ -914,17 +968,48 @@ for (const id of ids) {
     continue;
   }
   const t = Date.parse(JSON.parse(hit)._meta.date);
-  const near = p2002.filter((p) => Math.abs(p.t - t) <= 100).map((p) => `${p.c} (${p.t - t} ms)`);
-  console.log(
-    id,
-    "at",
-    new Date(t).toISOString(),
-    "P2002 within 100 ms:",
-    near.join(", ") || "none",
-  );
+  const near = p2002.filter((p) => Math.abs(p.t - t) <= 1).map((p) => `${p.c} (${p.t - t} ms)`);
+  console.log(id, "at", new Date(t).toISOString(), "P2002 within 1 ms:", near.join(", ") || "none");
 }
 ```
 
-Note on `refused.cjs`: the unique-constraint text in the log is escaped (`\\\"Booking_uid_key\\\"`), so the
-regex matches the constraint name after the backslashes. If a run's log has a different escape, the
-output says `?`, which is a stop, not a pass.
+Note: the log escapes the constraint name (`\\\"Booking_uid_key\\\"`), so the regex matches the name after the
+backslashes. A `?` in the output means the escape differs: stop, do not read it as a pass. The window is 1 ms (±1 ms
+is the observed range, §2.5); a line outside it prints `none`.
+
+## Appendix B. Upstream draft: `P6-OBS-CAL-003` (for Jayami to file; not filed by P6)
+
+**Title:** Booking `uid` is not collision-safe: same-host, same-start bookings in the same millisecond fail with a
+redacted 400
+
+**Body (paste as is; it contains no secrets):**
+
+> When two booking requests for the same host and the same start time reach the server in the same millisecond, the
+> second one fails with a generic 400 ("An error occurred while querying the database.") instead of a conflict
+> response.
+>
+> Cause, read at the pinned commit `c2b7ac44c66f24ffef1662b276f0653988a609a3`:
+>
+> - `packages/features/bookings/lib/service/RegularBookingService.ts`, lines 1267–1268:
+>   `const seed = \`${organizerUser.username}:${dayjs(reqBody.start).utc().format()}:${Date.now()}\`;`and`const uid = translator.fromUUID(uuidv5(seed, uuidv5.URL));`
+> - The seed has second precision (the default dayjs format) and a millisecond timestamp. Two requests with the same
+>   host and start second that run in the same millisecond get the same `uid`.
+> - `packages/prisma/schema.prisma`: `uid String @unique` on `Booking`. The second insert fails with Prisma `P2002`
+>   on `Booking_uid_key`.
+> - Error redaction turns the `P2002` into the generic 400, so the caller cannot tell the cause (the same redaction as
+>   the identical-slot case, reported separately).
+>
+> Reproduction: two `POST /api/book/event` requests for one host, the same start, fired together. About 1 in 12
+> overlap trials in our runs (10 of 120) produced the redacted 400 on the second request. The first request was
+> accepted. No double booking resulted.
+>
+> Expected: a non-colliding `uid` (for example random, or with a random component), so a concurrent same-start request
+> is not refused by the `uid` constraint. Where a unique violation is still possible, the response should be a 409
+> conflict, not a redacted 400.
+>
+> Status: not checked against upstream `calcom/cal` `main` at the time of writing; the code above is from the pinned
+> fork commit.
+
+**Notes for Jayami (not part of the issue):** the reproduction counts come from our CI runs
+(`P6-CAL-RACE-003`, runs 39449102426, 39484324139, 39561220290, 39563393657). Attach the redacted log lines and the
+trace ids from `refusedTraceIds`, with no tokens.
