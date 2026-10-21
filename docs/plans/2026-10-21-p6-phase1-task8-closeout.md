@@ -153,8 +153,10 @@ Task 2 estimated about 10 minutes for 50 trials. The step timings say a little m
   step is about 11.7 min. Worst 3-trial sample (16.51 s): 50 × 16.51 s = 826 s ≈ 13.8 min.
 - Medusa job: today 2.7 min, of which the 3-trial `P6-MED-RACE-001` is about 0.7 min. After PR 1 the expected
   job is 2.7 − 0.7 + 11.2 ≈ **13.2 min** (worst ≈ 15.7 min).
-- `medusa-smoke` has `timeout-minutes: 45`. The expected 13–16 min fits with about 30 min to spare. No
-  timeout change (D38).
+- `medusa-smoke` has `timeout-minutes: 45`. The expected 13–16 min fits with about 30 min to spare, so the job
+  timeout is not the limit. **The limit is the per-test Playwright timeout.** The `P6-MED-RACE-001` test sat in a
+  describe with a fixed 180 s timeout, and 50 trials at 13.4 s (670 s) would exceed it. The fix scales that timeout
+  with the trial count (D42).
 - **Unknown until run A:** the 50-trial Medusa spread and duration. The build records both.
 
 ### 2.5 R8: root cause of the redacted 400 on overlap pairs (confirmed at `CAL_REF`)
@@ -858,8 +860,8 @@ is still missing, leave the placeholder and stop. Do not write a guess.
 
 ## 11. Rules
 
-- **No product fork and no harness package is edited.** This task changes `perf.yml` (one step), `README.md`, and
-  this plan doc. The evidence goes in a release, not a commit.
+- **No product fork and no harness package is edited.** This task changes `perf.yml` (one step),
+  `tests/medusa/races/med-race-001-oversell.spec.ts` (describe timeouts only, D42), `README.md`, and this plan doc. The evidence goes in a release, not a commit.
 - **No secret or token anywhere**: not in the README, the plan, a commit, a release, a log or the chat. The probe
   read the run API only. Signed artefact download links are temporary and are not written down.
 - **No `test.fail()` change.** Each existing line stays as it is. A new `test.fail()` needs repeated proof and is
@@ -913,7 +915,8 @@ is still missing, leave the placeholder and stop. Do not write a guess.
   `39563393657` is cited as `main` evidence, labelled "schedule".
 - **D37 Evidence lives in a GitHub Release (`p6-phase1`), one zip per cited run.** It does not expire. The README
   links the release and the run pages. No `docs/evidence/` commit. (Jayami, Q4.)
-- **D38 No timeout change for Medusa.** The expected 13–16 min fits the 45-min job timeout.
+- **D38 No job-timeout change for Medusa.** The expected 13–16 min fits the 45-min job timeout. The limit that applies
+  is the per-test Playwright timeout, scaled by D42.
 - **D39 Timings are not pooled across trial counts.** The Medusa 3-trial series (n = 6) is one median, labelled "3
   trials". The Medusa 50-trial values are shown per run, labelled "50 trials", with no median until n ≥ 3. Cal and
   Documenso have one trial count each, so their medians are valid.
@@ -922,6 +925,12 @@ is still missing, leave the placeholder and stop. Do not write a guess.
 - **D41 Two PRs.** PR 1 is the CI change (`ci(medusa): …`) on the feat branch. Merging it triggers run A. The build
   then dispatches run B. PR 2 (`docs/2026-10-2x-p6-phase1-results`) is cut fresh from the new `main` and carries the
   README. The evidence goes in the release, so PR 2 has no evidence files.
+- **D42 The Medusa per-test timeout scales with the trial count.** `P6-MED-RACE-001` gets its own describe with
+  `timeout: 60_000 + trials * 30_000` (30 s per trial, about 2x the worst measured 16.5 s; 50 trials gives 1 560 s).
+  The extras keep a fixed 180 s in their own describe and cap at 3 trials. The framework self-test keeps 60 s: run
+  `39561220290` measured 0.212 s for 3 trials (`framework-self-test.json`, `startedAt` to `finishedAt`), about 71 ms
+  per trial, so 50 trials take about 3.5 s. Assertions, titles, case IDs and `src/races/*` do not change. (The
+  number is D42, not D41: D41 already records the two PRs.)
 
 ## 14. Open questions for Jayami
 
