@@ -1133,8 +1133,8 @@ session scratchpad, and nothing was committed from them.
 Create `.github/workflows/evidence-release.yml`. The `checkout` pin is the one `perf.yml` uses:
 `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`).
 
-The two `PIN-BEFORE-BUILD` values in `env` must be filled before the build (§6). Until then the install step fails
-closed, by design.
+The two pins in `env` are verified (G1, closed 21 Oct): gitleaks **8.30.1**, and the sha256 of its `linux_x64` archive as
+listed in `gitleaks_8.30.1_checksums.txt` (§6).
 
 ```yaml
 name: evidence-release
@@ -1175,8 +1175,8 @@ jobs:
       TARGET_SHA: ${{ inputs.target_sha }}
       RUN_IDS: ${{ inputs.run_ids }}
       PERF_WORKFLOW_ID: "376454455"
-      GITLEAKS_VERSION: "PIN-BEFORE-BUILD"
-      GITLEAKS_SHA256: "PIN-BEFORE-BUILD"
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
       - name: Validate input formats
         run: |
@@ -1279,18 +1279,21 @@ Why it is shaped this way:
 - The release is created in one call, last. A failure before it leaves no release behind.
 - `zip` and `jq` come with the runner image. The project scan uses only built-in Node modules.
 
-### 6. gitleaks: pinned version and checksum source (open item G1)
+### 6. gitleaks: pinned version and checksum source (G1, closed)
 
 gitleaks is the industry-standard scanner. It runs in addition to the project scan, and any hit stops the job before the zip.
 
-- **Version and checksum are not pinned yet.** The release that would supply them is in `gitleaks/gitleaks`, which is outside
-  this session's GitHub scope. I did not read it. Open item G1 asks for one of two things: the version and its checksum line
-  copied from the release page, or permission to add `gitleaks/gitleaks` (read-only) so Claude can read it.
-- **How the pin is taken (at build time):**
-  1. Choose the latest stable release. Note its version (no `v` prefix) for `GITLEAKS_VERSION`.
-  2. Open that release's checksums file, `gitleaks_<version>_checksums.txt`, on the release page.
-  3. Copy the sha256 on the line for `gitleaks_<version>_linux_x64.tar.gz` into `GITLEAKS_SHA256`.
-  4. Check the two asset names on the release page. Change them only if they differ, and say so.
+- **Pinned (G1, verified by QA against the release, not from memory):**
+  - Version: `8.30.1` (`GITLEAKS_VERSION`).
+  - Asset: `https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz`.
+  - sha256: `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` (`GITLEAKS_SHA256`), which matches
+    `gitleaks_8.30.1_checksums.txt` on the same release.
+  - `gitleaks dir <path> --redact --no-banner --exit-code 1` was confirmed working on 8.30.1.
+- **How to re-pin a future version (same procedure):**
+  1. Note the new version (no `v` prefix) for `GITLEAKS_VERSION`.
+  2. Open that release's `gitleaks_<version>_checksums.txt` on the release page.
+  3. Copy the sha256 of `gitleaks_<version>_linux_x64.tar.gz` into `GITLEAKS_SHA256`.
+  4. Check the asset names on the release page. Change them only if they differ, and say so.
 - **Limit, stated plainly.** The checksum file comes from the same release as the binary. The literal sha256 committed in the
   workflow is what catches a changed download. A compromised release would still need a human review of the pin.
 - **False positives.** If gitleaks stops the job on a real-looking but harmless string, the job stops and nothing is uploaded.
@@ -1535,7 +1538,7 @@ repository) and public release asset URLs with `curl`. No token is used or print
    (folder and file) from those artefacts. `unzip -Z1` on the matching release zip must give the same list. Expected: identical
    lists, eight of eight.
 4. **Scan again.** The project scan (`node scripts/evidence-token-scan.mjs <dir>`) on the unpacked release contents must print
-   `token scan: clean`. gitleaks is not run here, because its pinned binary is not verified in this session (open item G1). The
+   `token scan: clean`. gitleaks is not run here, because its pinned binary is not run in this session. The
    workflow runs it before upload.
 5. **Run.** The connector's `get_workflow_run` for the dispatched run shows `conclusion: success`.
 
@@ -1549,7 +1552,7 @@ Anything in this list that cannot be read is reported as not verified, with the 
 
 ### 12. Order of work (replaces §9 steps 8 and 9 for the release)
 
-1. Jayami approves this addendum and closes G1 (§6).
+1. Jayami approves this addendum. G1 is closed (§6).
 2. Branch `ci/2026-10-21-p6-evidence-release` from `4aecc2d`. Add the four files (§4) with the pins filled. Run `npm run check`. Push.
 3. Open the CI PR. Jayami merges it.
 4. Jayami dispatches the workflow (§9). Claude verifies (§10).
@@ -1566,7 +1569,8 @@ Step 8 of the closeout still does its R8 read-only check. Its token scan is now 
    report it. Do not add a PAT. The fix is a repository setting, and it is Jayami's call.
 4. **The "not found" wording.** The guard greps for `not found`. Check the exact text on the first dispatch. If it differs,
    change only that grep, and say so.
-5. **gitleaks pin.** Until G1 is closed, the workflow fails closed. That is the intended state, not a bug.
+5. **gitleaks pin.** The pin is 8.30.1 with a literal sha256. A version bump needs the re-pin procedure in §6, not a
+   floating `latest`.
 6. **No retries.** A failed run is reported, not re-dispatched. Only Jayami dispatches again, after the cause is known.
 
 ### 14. Deviations and open items
@@ -1579,7 +1583,4 @@ Deviation:
 Closed since revision 1: Q1 (confirmed in §3; release-note wording set in §8), Q2 (accepted: artefact file lists are the
 reference, §10), Q3 (confirmed in §3; wording in §8), D-b, D-c and D-d (removed, §3 and §8).
 
-Open item:
-
-- **G1.** The gitleaks version and the sha256 of its `linux_x64` archive. Either paste them from the release page, or allow
-  read-only access to `gitleaks/gitleaks` so Claude can read them (§6).
+Open items: none. G1 is closed with gitleaks 8.30.1 and its sha256 (§6).
