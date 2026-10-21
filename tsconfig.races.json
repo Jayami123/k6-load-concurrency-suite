@@ -18,6 +18,7 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "playwright.config.ts",
-    "scripts/write-ci-job-summary.ts"
+    "scripts/write-ci-job-summary.ts",
+    "scripts/actionlint.mts"
   ]
 }
