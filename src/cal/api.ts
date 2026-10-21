@@ -111,9 +111,10 @@ export function createSlotAllocator(
           slug,
         );
         for (const start of freeSlotCandidates(slots, used, from)) {
-          used.add(start);
           const end = slotEnd(start, minutes);
+          // Marked used only after the read: a failed read leaves the candidate for the next call.
           const overlaps = await readHostOverlaps(opts.pool, opts.userId, start, end);
+          used.add(start);
           if (overlaps.length === 0) return { start, end, skipped };
           skipped.push({ slotStart: start, slotEnd: end, overlaps });
         }

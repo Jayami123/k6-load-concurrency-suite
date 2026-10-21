@@ -77,6 +77,26 @@ describe("createSlotAllocator skips host overlaps", () => {
     });
   });
 
+  it("keeps the candidate when the overlap read fails once, and offers it on the next call", async () => {
+    offer(["2026-10-29T10:00:00.000Z"]);
+    let reads = 0;
+    const flaky = {
+      query: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error("connection reset");
+        return { rows: [] };
+      },
+    } as unknown as pg.Pool;
+    const allocator = createSlotAllocator(1, { pool: flaky, userId: HOST });
+    await assert.rejects(allocator.next(), /connection reset/);
+    assert.deepEqual(await allocator.next(), {
+      start: "2026-10-29T10:00:00.000Z",
+      end: "2026-10-29T10:30:00.000Z",
+      skipped: [],
+    });
+    assert.equal(reads, 2);
+  });
+
   it("never offers a skipped slot again, so a later call reports no skip for it", async () => {
     offer(["2026-10-29T09:00:00.000Z", "2026-10-29T10:00:00.000Z", "2026-10-29T11:00:00.000Z"]);
     const allocator = createSlotAllocator(1, { pool: fakePool([SEED]), userId: HOST });
