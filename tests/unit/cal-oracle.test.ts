@@ -3,18 +3,26 @@ import { describe, it } from "node:test";
 import { assertSelectOnly } from "../../src/oracles/pg.ts";
 import {
   CASE_LIVE_BOOKINGS_SQL,
+  HOST_OVERLAP_SQL,
   HOST_SETUP_SQL,
   OVERLAP_PAIRS_SQL,
   SLOT_ACCEPTED_SQL,
   WINDOW_ACCEPTED_SQL,
+  overlapEvidence,
   pairEvidence,
   rowEvidence,
+  skippedEvidence,
   toDbTimestamp,
 } from "../../src/cal/oracle.ts";
 
 describe("cal oracle SQL", () => {
   it("every query is SELECT-only", () => {
-    for (const sql of [HOST_SETUP_SQL, SLOT_ACCEPTED_SQL, CASE_LIVE_BOOKINGS_SQL]) {
+    for (const sql of [
+      HOST_SETUP_SQL,
+      SLOT_ACCEPTED_SQL,
+      CASE_LIVE_BOOKINGS_SQL,
+      HOST_OVERLAP_SQL,
+    ]) {
       assertSelectOnly(sql);
     }
   });
@@ -23,6 +31,37 @@ describe("cal oracle SQL", () => {
     assert.match(SLOT_ACCEPTED_SQL, /"Booking"/);
     assert.match(SLOT_ACCEPTED_SQL, /status = 'accepted'/);
     assert.doesNotMatch(SLOT_ACCEPTED_SQL, /ACCEPTED/);
+  });
+});
+
+describe("host overlap SQL and evidence", () => {
+  it("counts every non-cancelled host booking that overlaps the window, not only attendee-tagged ones", () => {
+    assert.match(HOST_OVERLAP_SQL, /status NOT IN \('cancelled', 'rejected'\)/);
+    assert.match(
+      HOST_OVERLAP_SQL,
+      /b\."startTime" < \$3::timestamp AND b\."endTime" > \$2::timestamp/,
+    );
+    assert.doesNotMatch(HOST_OVERLAP_SQL, /Attendee/);
+  });
+
+  it("evidence is empty when nothing overlaps", () => {
+    assert.equal(overlapEvidence("2026-10-29T09:00:00.000Z", "2026-10-29T09:30:00.000Z", []), "");
+    assert.equal(skippedEvidence([]), "");
+  });
+
+  it("evidence names the window and each overlapping row", () => {
+    assert.equal(
+      overlapEvidence("2026-10-29T09:00:00.000Z", "2026-10-29T10:00:00.000Z", [
+        {
+          id: 7,
+          uid: "seedYoga",
+          status: "accepted",
+          start: "2026-10-29T08:30:54.000Z",
+          end: "2026-10-29T09:00:54.000Z",
+        },
+      ]),
+      "window 2026-10-29T09:00:00.000Z..2026-10-29T10:00:00.000Z overlaps id=7 uid=seedYoga status=accepted 2026-10-29T08:30:54.000Z..2026-10-29T09:00:54.000Z",
+    );
   });
 });
 

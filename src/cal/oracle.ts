@@ -77,6 +77,17 @@ WHERE b."userId" = $1 AND b.status = 'accepted'
 ORDER BY b.id
 `;
 
+// Every non-cancelled booking of the host that touches [from, to), whoever booked it (seed bookings too).
+export const HOST_OVERLAP_SQL = `
+SELECT b.id, b.uid, b.status::text AS status,
+  to_char(b."startTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS start,
+  to_char(b."endTime", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "end"
+FROM "Booking" b
+WHERE b."userId" = $1 AND b.status NOT IN ('cancelled', 'rejected')
+  AND b."startTime" < $3::timestamp AND b."endTime" > $2::timestamp
+ORDER BY b.id
+`;
+
 export type OverlapPair = {
   aId: number;
   aUid: string;
@@ -179,4 +190,31 @@ export async function readWindowAccepted(
       likePattern,
     ]),
   );
+}
+
+/** Non-cancelled bookings of the host that overlap [from, to). Read-only (pool is default_transaction_read_only). */
+export async function readHostOverlaps(
+  pool: pg.Pool,
+  userId: number,
+  from: string,
+  to: string,
+): Promise<SlotRow[]> {
+  return selectRows<SlotRow>(pool, HOST_OVERLAP_SQL, [
+    userId,
+    toDbTimestamp(from),
+    toDbTimestamp(to),
+  ]);
+}
+
+/** "" when nothing overlaps, else the window and the overlapping rows (ids, uids, status, times). */
+export function overlapEvidence(from: string, to: string, rows: SlotRow[]): string {
+  return rows.length === 0 ? "" : `window ${from}..${to} overlaps ${rowEvidence(rows)}`;
+}
+
+/** A slot the allocator passed over because the host already had an overlapping booking. */
+export type SkippedWindow = { slotStart: string; slotEnd: string; overlaps: SlotRow[] };
+
+/** "" when nothing was skipped, else one overlapEvidence() per skipped slot. */
+export function skippedEvidence(skipped: SkippedWindow[]): string {
+  return skipped.map((s) => overlapEvidence(s.slotStart, s.slotEnd, s.overlaps)).join(" | ");
 }

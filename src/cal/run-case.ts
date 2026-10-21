@@ -33,9 +33,12 @@ import {
 import {
   caseLiveBookings,
   leakCheck,
+  overlapEvidence,
+  readHostOverlaps,
   readOverlapPairs,
   readSlotAccepted,
   readWindowAccepted,
+  skippedEvidence,
 } from "./oracle.ts";
 import {
   attendeeEmail,
@@ -138,6 +141,8 @@ export async function runIdenticalSlotCase(input: {
   };
   let acceptedTotal = 0;
   let leakAccepted = 0;
+  let skippedTotal = 0;
+  const skippedNotes: string[] = [];
 
   const cancelQuietly = makeCanceller(cleanupViolations);
 
@@ -150,6 +155,16 @@ export async function runIdenticalSlotCase(input: {
       try {
         const slot = await input.slots.next();
         slotStart = slot.start;
+        // Read before firing: a refusal on a slot with a host booking in it is a setup violation.
+        const setupOverlaps = await readHostOverlaps(
+          input.pool,
+          input.setup.userId,
+          slot.start,
+          slot.end,
+        );
+        const setupEvidence = overlapEvidence(slot.start, slot.end, setupOverlaps);
+        skippedTotal += slot.skipped.length;
+        skippedNotes.push(skippedEvidence(slot.skipped));
         const rawBodies: string[] = Array.from({ length: input.n }, () => "");
         const spelled = timeSpellings(slot.start);
         const spelledEnd = timeSpellings(slot.end);
@@ -218,6 +233,7 @@ export async function runIdenticalSlotCase(input: {
             accepted,
             dispatchSpreadMs: fired.dispatchSpreadMs,
             spreadLimit,
+            setupEvidence,
           });
           if (violations.length > 0) throw new Error(violations.join("; "));
         });
@@ -233,6 +249,8 @@ export async function runIdenticalSlotCase(input: {
             winners.length === 1 && accepted.length > 0 && winners[0]!.uid === accepted[0]!.uid,
           hasIdempotencyKey: accepted.length > 0 && accepted.every((a) => a.hasKey),
           slotRowsTotal: accepted.length,
+          skippedWindows: slot.skipped.length,
+          skippedWindowEvidence: skippedEvidence(slot.skipped),
           "loser_slot-taken": kinds["slot-taken"],
           "loser_booking-conflict": kinds["booking-conflict"],
           "loser_db-unique-redacted": kinds["db-unique-redacted"],
@@ -268,6 +286,8 @@ export async function runIdenticalSlotCase(input: {
     histogram.oracle = {
       hostUserId: input.setup.userId,
       eventTypeId: input.setup.eventTypeId,
+      skippedWindows: skippedTotal,
+      skippedWindowEvidence: skippedNotes.filter(Boolean).join(" | "),
       "loser_slot-taken": loserTotals["slot-taken"],
       "loser_booking-conflict": loserTotals["booking-conflict"],
       "loser_db-unique-redacted": loserTotals["db-unique-redacted"],
@@ -345,6 +365,8 @@ export async function runOverlapPairCase(input: {
   const outcomes = { both: 0, "60_only": 0, "30_only": 0, none: 0 };
   let overlapPairs = 0;
   let leakAccepted = 0;
+  let skippedTotal = 0;
+  const skippedNotes: string[] = [];
 
   const cancelQuietly = makeCanceller(cleanupViolations);
 
@@ -356,6 +378,16 @@ export async function runOverlapPairCase(input: {
 
       try {
         const window = await input.windows.next();
+        // Read before firing: a refusal on a window with a host booking in it is a setup violation.
+        const setupOverlaps = await readHostOverlaps(
+          input.pool,
+          input.setup.userId,
+          window.start,
+          window.end,
+        );
+        const setupEvidence = overlapEvidence(window.start, window.end, setupOverlaps);
+        skippedTotal += window.skipped.length;
+        skippedNotes.push(skippedEvidence(window.skipped));
         const seq = input.mode === "sequential" ? sequentialPlan(trial) : null;
         const shape = seq ? seq.shape : overlapShapeForTrial(trial);
         const [leg60, leg30] = overlapLegs(window.start, shape, input.setup);
@@ -444,8 +476,11 @@ export async function runOverlapPairCase(input: {
           windowAccepted,
           dispatchSpreadMs: fired.dispatchSpreadMs,
           spreadLimit,
+          setupEvidence,
         });
-        if (input.mode === "sequential") guards.push(...checkSequentialRefusal(responses));
+        if (input.mode === "sequential") {
+          guards.push(...checkSequentialRefusal(responses, setupEvidence));
+        }
         const product = overlapViolations(pairs);
 
         const kinds: Record<OverlapLoserKind, number> = {
@@ -492,6 +527,8 @@ export async function runOverlapPairCase(input: {
           "loser_refused-db-error": kinds["refused-db-error"],
           loser_unexpected: kinds.unexpected,
           refusedTraceIds: refused.join(","),
+          skippedWindows: window.skipped.length,
+          skippedWindowEvidence: skippedEvidence(window.skipped),
         };
 
         guardViolations.push(...guards.map((g) => `t${trial}: ${g}`));
@@ -537,6 +574,8 @@ export async function runOverlapPairCase(input: {
       loser_unexpected: loserTotals.unexpected,
       refusedTraceIds: refusedTraceIds.join(","),
       leakAccepted,
+      skippedWindows: skippedTotal,
+      skippedWindowEvidence: skippedNotes.filter(Boolean).join(" | "),
     };
     histogram.invariantViolations.push(...cleanupViolations, ...swept.leak);
     guardViolations.push(...cleanupViolations, ...swept.leak);

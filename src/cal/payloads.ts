@@ -50,11 +50,20 @@ export function bookingBody(input: {
 }
 
 /** Earliest slot not in `used` and not before notBeforeMs. Throws TEST BUG when none. */
-export function pickFreeSlot(slots: string[], used: Set<string>, notBeforeMs: number): string {
-  const pick = [...slots]
+/** Unused slot starts at or after notBeforeMs, normalised to ISO and sorted earliest first. */
+export function freeSlotCandidates(
+  slots: string[],
+  used: Set<string>,
+  notBeforeMs: number,
+): string[] {
+  return [...slots]
     .map((s) => new Date(Date.parse(s)).toISOString())
     .sort()
-    .find((s) => !used.has(s) && Date.parse(s) >= notBeforeMs);
+    .filter((s) => !used.has(s) && Date.parse(s) >= notBeforeMs);
+}
+
+export function pickFreeSlot(slots: string[], used: Set<string>, notBeforeMs: number): string {
+  const [pick] = freeSlotCandidates(slots, used, notBeforeMs);
   if (!pick) throw new Error("TEST BUG: no free 30-min slot in window");
   return pick;
 }

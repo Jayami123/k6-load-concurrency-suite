@@ -4,6 +4,7 @@ import {
   attendeeEmail,
   bookingBody,
   overlapLegs,
+  freeSlotCandidates,
   overlapShapeForTrial,
   parseBookingResponse,
   pickFreeSlot,
@@ -89,6 +90,29 @@ describe("pickFreeSlot", () => {
       () => pickFreeSlot(slots, new Set(), Date.parse("2027-01-01T00:00:00Z")),
       /TEST BUG/,
     );
+  });
+});
+
+describe("freeSlotCandidates", () => {
+  const slots = ["2026-11-03T10:00:00Z", "2026-11-03T09:00:00.000Z", "2026-11-03T08:00:00Z"];
+
+  it("lists unused slots at or after notBefore, earliest first, normalised", () => {
+    const used = new Set(["2026-11-03T09:00:00.000Z"]);
+    assert.deepEqual(freeSlotCandidates(slots, used, Date.parse("2026-11-03T08:30:00Z")), [
+      "2026-11-03T10:00:00.000Z",
+    ]);
+  });
+
+  it("lists every slot, earliest first, when nothing is excluded", () => {
+    assert.deepEqual(freeSlotCandidates(slots, new Set(), 0), [
+      "2026-11-03T08:00:00.000Z",
+      "2026-11-03T09:00:00.000Z",
+      "2026-11-03T10:00:00.000Z",
+    ]);
+  });
+
+  it("is empty when every slot is used or too early", () => {
+    assert.deepEqual(freeSlotCandidates(slots, new Set(), Date.parse("2027-01-01T00:00:00Z")), []);
   });
 });
 

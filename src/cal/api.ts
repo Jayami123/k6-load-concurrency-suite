@@ -1,9 +1,11 @@
+import type pg from "pg";
 import { calBaseUrlFromEnv } from "../races/env.ts";
+import { readHostOverlaps, type SkippedWindow } from "./oracle.ts";
 import {
   CAL_EVENT_SLUG,
   CAL_HOST_USERNAME,
   SLOT_MINUTES,
-  pickFreeSlot,
+  freeSlotCandidates,
   slotEnd,
 } from "./payloads.ts";
 
@@ -80,12 +82,16 @@ export async function cancelBooking(uid: string): Promise<void> {
   if (res.status !== 200) throw new Error(`cancel ${uid} HTTP ${res.status}`);
 }
 
-/** One per spec file. next() = fresh getSchedule (28-day windows from UTC midnight today + 2 d, up to 6). */
+/**
+ * One per spec file. next() = fresh getSchedule (28-day windows from UTC midnight today + 2 d, up to 6).
+ * A slot is returned only after the read-only pool shows no non-cancelled booking of the host that
+ * overlaps [start, end). Slots that fail that check are returned in `skipped`, never reused.
+ */
 export function createSlotAllocator(
   eventTypeId: number,
-  opts: { slug?: string; minutes?: number } = {},
+  opts: { pool: pg.Pool; userId: number; slug?: string; minutes?: number },
 ): {
-  next(): Promise<{ start: string; end: string }>;
+  next(): Promise<{ start: string; end: string; skipped: SkippedWindow[] }>;
 } {
   const slug = opts.slug ?? CAL_EVENT_SLUG;
   const minutes = opts.minutes ?? SLOT_MINUTES;
@@ -94,6 +100,7 @@ export function createSlotAllocator(
     async next() {
       const now = Date.now();
       const firstFrom = Math.floor(now / DAY_MS) * DAY_MS + 2 * DAY_MS;
+      const skipped: SkippedWindow[] = [];
       for (let w = 0; w < MAX_WINDOWS; w++) {
         const from = firstFrom + w * WINDOW_DAYS * DAY_MS;
         const to = from + WINDOW_DAYS * DAY_MS;
@@ -103,14 +110,14 @@ export function createSlotAllocator(
           eventTypeId,
           slug,
         );
-        let start: string;
-        try {
-          start = pickFreeSlot(slots, used, from);
-        } catch {
-          continue;
+        for (const start of freeSlotCandidates(slots, used, from)) {
+          const end = slotEnd(start, minutes);
+          // Marked used only after the read: a failed read leaves the candidate for the next call.
+          const overlaps = await readHostOverlaps(opts.pool, opts.userId, start, end);
+          used.add(start);
+          if (overlaps.length === 0) return { start, end, skipped };
+          skipped.push({ slotStart: start, slotEnd: end, overlaps });
         }
-        used.add(start);
-        return { start, end: slotEnd(start, minutes) };
       }
       throw new Error(`TEST BUG: no free ${minutes}-min slot`);
     },

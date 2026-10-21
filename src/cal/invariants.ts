@@ -41,15 +41,23 @@ export function loserKinds(responses: ParsedResponse[]): LoserKind[] {
     .map((r) => classifyLoser(r.status, r.message));
 }
 
+/** A refusal on a window the host already had booked is a TEST BUG (setup), never a PRODUCT BUG. */
+export function setupViolation(evidence: string): string {
+  return `TEST BUG: setup violation: ${evidence}`;
+}
+
 export function checkIdenticalSlotInvariants(input: {
   n: number;
   responses: ParsedResponse[];
   accepted: AcceptedRow[];
   dispatchSpreadMs: number;
   spreadLimit: number;
+  setupEvidence?: string; // overlapEvidence() of the host's bookings in the slot, read before firing
 }): string[] {
   const out: string[] = [];
   const { responses, accepted } = input;
+  const setup = input.setupEvidence ?? "";
+  if (setup) out.push(setupViolation(setup));
 
   if (responses.length !== input.n) {
     out.push(`TEST BUG: expected ${input.n} responses, got ${responses.length}`);
@@ -70,12 +78,12 @@ export function checkIdenticalSlotInvariants(input: {
       `PRODUCT BUG: ${accepted.length} ACCEPTED bookings for one slot: ${rowEvidence(accepted)}`,
     );
   }
-  if (accepted.length === 0) {
+  if (accepted.length === 0 && !setup) {
     out.push("PRODUCT BUG: no ACCEPTED booking for a free slot");
   }
 
   const winners = responses.filter(isWinner);
-  if (winners.length !== 1) {
+  if (winners.length !== 1 && !(setup && winners.length === 0)) {
     out.push(`PRODUCT BUG: ${winners.length} HTTP 2xx for one slot`);
   } else if (accepted.length > 0) {
     const winner = winners[0]!;
@@ -134,9 +142,12 @@ export function checkOverlapPairGuards(input: {
   dispatchSpreadMs: number;
   spreadLimit: number;
   expectedResponses?: number; // default 2
+  setupEvidence?: string; // overlapEvidence() of the host's bookings in the window, read before firing
 }): string[] {
   const out: string[] = [];
   const n = input.expectedResponses ?? 2;
+  const setup = input.setupEvidence ?? "";
+  if (setup) out.push(setupViolation(setup));
   if (input.responses.length !== n) {
     out.push(`TEST BUG: expected ${n} responses, got ${input.responses.length}`);
   }
@@ -154,7 +165,8 @@ export function checkOverlapPairGuards(input: {
     }
   }
   const winners = input.responses.filter(isWinner);
-  if (winners.length === 0) out.push("PRODUCT BUG: no booking accepted for a free window");
+  if (winners.length === 0 && !setup)
+    out.push("PRODUCT BUG: no booking accepted for a free window");
   const dbUids = new Set(input.windowAccepted.map((r) => r.uid));
   for (const w of winners) {
     if (w.bodyStatus !== "ACCEPTED" || !w.uid || !dbUids.has(w.uid)) {
@@ -177,7 +189,9 @@ export function checkOverlapPairGuards(input: {
  * with exactly 409 no_available_users_found_error. A redacted db 400 is not a refusal here (it is
  * only an allowed refused leg in the race). The summary keeps the traceId.
  */
-export function checkSequentialRefusal(responses: ParsedResponse[]): string[] {
+export function checkSequentialRefusal(responses: ParsedResponse[], setupEvidence = ""): string[] {
+  // A host overlap in the window is reported once, by checkOverlapPairGuards as a setup violation.
+  if (setupEvidence) return [];
   const [first, second] = responses;
   const out: string[] = [];
   if (!first || !isWinner(first) || first.bodyStatus !== "ACCEPTED") {
