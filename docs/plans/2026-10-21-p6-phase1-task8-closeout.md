@@ -1178,6 +1178,14 @@ jobs:
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
+      - name: Stop unless dispatched from main
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::this workflow must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+
       - name: Validate input formats
         run: |
           set -euo pipefail
@@ -1201,9 +1209,34 @@ jobs:
             || { echo "::error::target_sha is not on main"; exit 1; }
           [[ -f "docs/releases/$TAG.md" ]] || { echo "::error::docs/releases/$TAG.md is missing on main"; exit 1; }
 
-      - name: Stop if the release already exists
+      - name: Check that the notes list exactly the selected runs
         run: |
           set -euo pipefail
+          printf '%s\n' $RUN_IDS | sort > "$RUNNER_TEMP/input-ids.txt"
+          if [[ -n "$(uniq -d "$RUNNER_TEMP/input-ids.txt")" ]]; then
+            echo "::error::run_ids contains a duplicate id:"
+            uniq -d "$RUNNER_TEMP/input-ids.txt"
+            exit 1
+          fi
+          sort -u "$RUNNER_TEMP/input-ids.txt" > "$RUNNER_TEMP/input-unique.txt"
+          { grep -oE 'actions/runs/[0-9]+' "docs/releases/$TAG.md" || true; } \
+            | sed 's#^actions/runs/##' | sort -u > "$RUNNER_TEMP/notes-ids.txt"
+          if ! diff "$RUNNER_TEMP/notes-ids.txt" "$RUNNER_TEMP/input-unique.txt" > /dev/null; then
+            echo "::error::run_ids does not match the runs linked in docs/releases/$TAG.md"
+            echo "run_ids (sorted, unique):"
+            cat "$RUNNER_TEMP/input-unique.txt"
+            echo "runs linked in the notes (sorted, unique):"
+            cat "$RUNNER_TEMP/notes-ids.txt"
+            exit 1
+          fi
+
+      - name: Stop if the release or its tag already exists
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
+            echo "::error::tag $TAG already exists on the remote. A release tag is never reused or moved. Stopping."
+            exit 1
+          fi
           if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then
             echo "::error::release $TAG already exists. Stopping. A release is never overwritten."
             exit 1
@@ -1271,6 +1304,9 @@ jobs:
 Why it is shaped this way:
 
 - Inputs reach the scripts only through `env:`. No `${{ inputs.* }}` appears inside a `run:` block (script injection).
+- The first step stops unless the dispatch ref is `refs/heads/main`, so the scanned script and the notes come from `main`.
+- The guard also stops if `refs/tags/<tag>` exists on the remote. A release tag is never reused or moved.
+- A step after checkout requires `run_ids` to equal the runs linked in `docs/releases/<tag>.md`, sorted and unique. It rejects duplicate ids and prints both lists on a mismatch.
 - `concurrency` keyed on the tag means two dispatches for one tag queue. The second waits and then stops at the guard.
   `cancel-in-progress: false` means a running job is never cancelled.
 - The ancestor checks run before any download. A run that is not a green `perf.yml` run on `main`, or whose head is not in
@@ -1314,6 +1350,8 @@ only. The matched text is never printed.
 | `\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.`    | JWT-shaped strings                                  |
 | `Authorization:` (case-insensitive)                 | HTTP authorization headers                          |
 | `\b(?:password\|secret\|token)=\S+` (case-insensitive) | key-value secrets such as `password=`, `secret=`, `token=` |
+| `["'](?:authorization\|cookie\|set-cookie)["']\s*:` (case-insensitive) | quoted JSON keys for these headers, with any value, such as `"Authorization":"Basic …"` |
+| `["'](?:password\|secret\|token\|api_key\|apiKey)["']\s*:\s*["'][^"']+["']` (case-insensitive) | quoted JSON secret keys with a non-empty string value |
 
 `scripts/evidence-token-scan.mjs` (this code was run against the unit tests in a scratch copy: 17 of 17 pass):
 
@@ -1335,6 +1373,8 @@ export const PATTERNS = [
   /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\./,
   /Authorization:/i,
   /\b(?:password|secret|token)=\S+/i,
+  /["'](?:authorization|cookie|set-cookie)["']\s*:/i,
+  /["'](?:password|secret|token|api_key|apiKey)["']\s*:\s*["'][^"']+["']/i,
 ];
 
 /** @param {string} text @returns {number[]} */
@@ -1474,10 +1514,42 @@ test("password, secret and token key-value pairs are hits", () => {
   assert.deepEqual(findHits("x\nsecret=abc"), [2]);
   assert.deepEqual(findHits("url?token=abc"), [1]);
 });
+
+// Fake values, built at run time so no token-shaped literal sits in this file.
+const fakeBasic = `Basic ${Buffer.from(`user:${"x".repeat(8)}`).toString("base64")}`;
+
+test("the exact JSON Authorization shape is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ Authorization: fakeBasic })), [1]);
+});
+
+test("a JSON authorization key is a hit whatever its value", () => {
+  assert.deepEqual(findHits(JSON.stringify({ authorization: "" })), [1]);
+});
+
+test("a JSON cookie key is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ Cookie: `sid=${"x".repeat(8)}` })), [1]);
+});
+
+test("a JSON set-cookie key is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ "set-cookie": `sid=${"x".repeat(8)}` })), [1]);
+});
+
+for (const key of ["password", "secret", "token", "api_key", "apiKey", "APIKEY"]) {
+  test(`a JSON ${key} key with a value is a hit`, () => {
+    assert.deepEqual(findHits(JSON.stringify({ [key]: "x".repeat(8) })), [1]);
+  });
+}
+
+test("a JSON secret key with an empty value is not a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ token: "" })), []);
+});
+
+test("ordinary JSON fields are not hits", () => {
+  assert.deepEqual(findHits(JSON.stringify({ status: "ok", count: 3, name: "p6" })), []);
+});
 ```
 
-Expected: `npm run test:unit` passes all 17 tests (a `GitHub token` test per prefix, one each for the fine-grained PAT, JWT,
-header and key-value groups, and the three original cases). `npm run check` is green.
+Expected: `npm run test:unit` passes all 29 scanner tests: the 17 above, and 12 more. These cover the exact JSON `Authorization` shape, one test per new JSON key family (`authorization`, `cookie`, `set-cookie`, `password`, `secret`, `token`, `api_key`, `apiKey`, `APIKEY`), an empty secret value that is not a hit, and an ordinary JSON object that is not a hit. `npm run check` is green.
 
 ### 8. Release notes: `docs/releases/p6-phase1.md`
 
