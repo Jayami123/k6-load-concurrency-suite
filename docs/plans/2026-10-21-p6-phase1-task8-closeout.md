@@ -1233,8 +1233,15 @@ jobs:
       - name: Stop if the release or its tag already exists
         run: |
           set -euo pipefail
-          if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
             echo "::error::tag $TAG already exists on the remote. A release tag is never reused or moved. Stopping."
+            exit 1
+          elif [[ "$rc" -ne 2 ]]; then
+            echo "::error::tag lookup failed (exit $rc). Stopping."
             exit 1
           fi
           if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then
@@ -1305,7 +1312,7 @@ Why it is shaped this way:
 
 - Inputs reach the scripts only through `env:`. No `${{ inputs.* }}` appears inside a `run:` block (script injection).
 - The first step stops unless the dispatch ref is `refs/heads/main`, so the scanned script and the notes come from `main`.
-- The guard also stops if `refs/tags/<tag>` exists on the remote. A release tag is never reused or moved.
+- The guard also stops if `refs/tags/<tag>` exists on the remote. `git ls-remote --exit-code` exit 2 means absent, exit 0 means present, and any other exit stops the job. A release tag is never reused or moved.
 - A step after checkout requires `run_ids` to equal the runs linked in `docs/releases/<tag>.md`, sorted and unique. It rejects duplicate ids and prints both lists on a mismatch.
 - `concurrency` keyed on the tag means two dispatches for one tag queue. The second waits and then stops at the guard.
   `cancel-in-progress: false` means a running job is never cancelled.
@@ -1351,7 +1358,8 @@ only. The matched text is never printed.
 | `Authorization:` (case-insensitive)                 | HTTP authorization headers                          |
 | `\b(?:password\|secret\|token)=\S+` (case-insensitive) | key-value secrets such as `password=`, `secret=`, `token=` |
 | `["'](?:authorization\|cookie\|set-cookie)["']\s*:` (case-insensitive) | quoted JSON keys for these headers, with any value, such as `"Authorization":"Basic …"` |
-| `["'](?:password\|secret\|token\|api_key\|apiKey)["']\s*:\s*["'][^"']+["']` (case-insensitive) | quoted JSON secret keys with a non-empty string value |
+| `"(?:password\|secret\|token\|api_key\|apiKey)"\s*:\s*"(?:[^"\\]\|\\.)+"` (case-insensitive) | double-quoted JSON secret keys with a value; escaped characters and single quotes allowed in the value |
+| `'(?:password\|secret\|token\|api_key\|apiKey)'\s*:\s*'(?:[^'\\]\|\\.)+'` (case-insensitive) | single-quoted JSON secret keys with a value; escaped characters and double quotes allowed in the value |
 
 `scripts/evidence-token-scan.mjs` (this code was run against the unit tests in a scratch copy: 17 of 17 pass):
 
@@ -1374,7 +1382,8 @@ export const PATTERNS = [
   /Authorization:/i,
   /\b(?:password|secret|token)=\S+/i,
   /["'](?:authorization|cookie|set-cookie)["']\s*:/i,
-  /["'](?:password|secret|token|api_key|apiKey)["']\s*:\s*["'][^"']+["']/i,
+  /"(?:password|secret|token|api_key|apiKey)"\s*:\s*"(?:[^"\\]|\\.)+"/i,
+  /'(?:password|secret|token|api_key|apiKey)'\s*:\s*'(?:[^'\\]|\\.)+'/i,
 ];
 
 /** @param {string} text @returns {number[]} */
@@ -1544,12 +1553,29 @@ test("a JSON secret key with an empty value is not a hit", () => {
   assert.deepEqual(findHits(JSON.stringify({ token: "" })), []);
 });
 
+test("a JSON password value containing a single quote is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ password: `pa'${"ssword"}` })), [1]);
+});
+
+test("an escaped double quote inside a JSON value is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ token: `ab"${"x".repeat(8)}` })), [1]);
+});
+
+test("a single-quoted secret pair is a hit", () => {
+  assert.deepEqual(findHits(`{'secret':'${"x".repeat(8)}'}`), [1]);
+});
+
+test("an empty JSON password value is not a hit, in either quote style", () => {
+  assert.deepEqual(findHits(JSON.stringify({ password: "" })), []);
+  assert.deepEqual(findHits("{'password':''}"), []);
+});
+
 test("ordinary JSON fields are not hits", () => {
   assert.deepEqual(findHits(JSON.stringify({ status: "ok", count: 3, name: "p6" })), []);
 });
 ```
 
-Expected: `npm run test:unit` passes all 29 scanner tests: the 17 above, and 12 more. These cover the exact JSON `Authorization` shape, one test per new JSON key family (`authorization`, `cookie`, `set-cookie`, `password`, `secret`, `token`, `api_key`, `apiKey`, `APIKEY`), an empty secret value that is not a hit, and an ordinary JSON object that is not a hit. `npm run check` is green.
+Expected: `npm run test:unit` passes all 33 scanner tests: the 17 above, 12 more for the JSON patterns, and 4 more for quote-aware values and empty values. These cover the exact JSON `Authorization` shape, one test per new JSON key family (`authorization`, `cookie`, `set-cookie`, `password`, `secret`, `token`, `api_key`, `apiKey`, `APIKEY`), an empty secret value that is not a hit, and an ordinary JSON object that is not a hit. `npm run check` is green.
 
 ### 8. Release notes: `docs/releases/p6-phase1.md`
 
