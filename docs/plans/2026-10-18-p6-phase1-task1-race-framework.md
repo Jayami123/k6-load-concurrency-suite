@@ -1,7 +1,7 @@
 # P6 Phase 1 Task 1: race framework (plan only)
 
 This is the implementation plan a weaker model will build from. Do not write framework code
-until Jayami approves this document.
+until the maintainer approves this document.
 
 Structure and depth follow
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md)
@@ -661,7 +661,7 @@ File: `.github/workflows/perf.yml`. Job stays `medusa-smoke`.
 
 ## 14. Build steps (repo root; PATH export first; on any differing output: stop and report, paste it)
 
-Do not start these until Jayami approves this plan. Then implement in this order. Never
+Do not start these until the maintainer approves this plan. Then implement in this order. Never
 `git add -A`.
 
 ### Step 0. Branch
@@ -1093,7 +1093,7 @@ Plan-only commit (this Cursor task):
 1. `docs: add p6 phase 1 task 1 race framework plan` —
    `docs/plans/2026-10-18-p6-phase1-task1-race-framework.md` only
 
-After Jayami approves the plan (implementation, later commits on this branch):
+After the maintainer approves the plan (implementation, later commits on this branch):
 
 2. `build: add playwright, pg and race typecheck project`
 3. `feat(races): add env, prefix and histogram types`
@@ -1103,7 +1103,7 @@ After Jayami approves the plan (implementation, later commits on this branch):
 7. `ci: run unit tests via check and document races`
 
 No merge, tag or force-push. No Co-Authored-By. No `Generated with` / attribution lines. No
-CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
+CodeRabbit from the builder (the maintainer runs review). Never the Bridge-bss account.
 
 ## 17. Docs
 
@@ -1130,7 +1130,7 @@ CodeRabbit from the builder (Jayami runs review). Never the Bridge-bss account.
 - No `options.warm: boolean` that reuses `makeRequest`
 - No `{} as RaceHistogram`
 
-## 19. Open questions for Jayami
+## 19. Open questions for the maintainer
 
 None remaining. OQ1–OQ4 were answered 2026-10-18 and are recorded as:
 

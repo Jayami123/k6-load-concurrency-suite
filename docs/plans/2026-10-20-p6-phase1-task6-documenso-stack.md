@@ -1,6 +1,6 @@
 # P6 Phase 1 Task 6: Documenso stack in P6 (plan only)
 
-This is the implementation plan a weaker model will build from. Do not write code until Jayami
+This is the implementation plan a weaker model will build from. Do not write code until the maintainer
 approves this document.
 
 Structure and depth follow
@@ -736,7 +736,7 @@ restricts network access, allow the §13.2 domains there.
 
 ## 15. Build steps (repo root; on any differing output: stop and report, paste it)
 
-Do not start until Jayami approves this plan. Never `git add -A`. Never print secrets. Always finish
+Do not start until the maintainer approves this plan. Never `git add -A`. Never print secrets. Always finish
 with `npm run down:documenso`. Run `export PATH="/usr/local/bin:$PATH"` first (AGENTS.md); the
 Documenso commands pick Node 24 themselves (D1).
 
@@ -1469,7 +1469,7 @@ before each commit lists only that commit's paths; nothing under `products/`; `.
 - No committed secrets, `.env`, certs or anything under `products/`
 - No published timings; no `test.fail()`, retries, `workers` > 1, browsers or page objects
 
-## 20. Answers from Jayami (2026-10-20)
+## 20. Answers from the maintainer (2026-10-20)
 
 1. **Finding:** record **`P6-OBS-DOC-001`**, severity low, README only, no test. P1 checked first:
    the same `/authorize` handler and root cause are P1 `P7-OBS-DOC-2FA-003` (wrong TOTP → 500);

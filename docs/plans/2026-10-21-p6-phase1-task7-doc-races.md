@@ -1,12 +1,12 @@
 # P6 Phase 1 Task 7: Documenso completion races `P6-DOC-RACE-001` + `P6-DOC-RACE-002` (plan only)
 
-This is the implementation plan a weaker model will build from. Do not write code until Jayami
+This is the implementation plan a weaker model will build from. Do not write code until the maintainer
 approves this document.
 
 Structure and depth follow
 [2026-10-20-p6-phase1-task5-cal-race-003.md](2026-10-20-p6-phase1-task5-cal-race-003.md) and
 [2026-10-20-p6-phase1-task6-documenso-stack.md](2026-10-20-p6-phase1-task6-documenso-stack.md). Section
-numbers follow them, with one change requested by Jayami: **Risks (§18), Decisions (§19) and numbered
+numbers follow them, with one change requested by the maintainer: **Risks (§18), Decisions (§19) and numbered
 and the recorded answers to the questions (§20) close the document; no open questions remain.** P1 UI-assertion and page-object rules do **not** apply. P6
 asserts through HTTP and a read-only database oracle.
 
@@ -29,7 +29,7 @@ The source of this task is [2026-10-20-p6-phase1-roadmap.md](2026-10-20-p6-phase
 - Cases in this task: **`P6-DOC-RACE-001`** (P0) and **`P6-DOC-RACE-002`** (P0), plus one unmapped extra
   (`extra (unmapped): sequential control for P6-DOC-RACE-001`, §4). **Not taken:** `P6-DOC-RACE-003`
   (later), and no ID is invented or renumbered. The observation ID `P6-OBS-DOC-002` (§2.13) is a finding
-  label, not a case ID, and it is proposed for Jayami's approval (approved in §20, Q2).
+  label, not a case ID, and it is proposed for the maintainer's approval (approved in §20, Q2).
 - Probe status: **done once on 2026-10-21** (§2) in a Claude Code cloud session. The probe scripts lived
   only in the session scratchpad and imported the real `src/documenso/*`, `src/races/*` and
   `src/oracles/pg.ts`. Nothing was written to the repo, the harness or the fork. The stack was stopped
@@ -1028,7 +1028,7 @@ export const checkSequentialControl = (input: TrialInput) =>
   checkCompletionTrial({ ...input, mode: "sequential-control" });
 ```
 
-Note on the 002 expectation: a 4xx is a PRODUCT BUG by the contract change (D16). If Jayami keeps the
+Note on the 002 expectation: a 4xx is a PRODUCT BUG by the contract change (D16). If the maintainer keeps the
 roadmap wording ("one 2xx and nine 4xx"), this function changes in one place (answered in §20: Q1 yes).
 
 `tests/unit/documenso-invariants.test.ts` (node:test). A helper `passing(overrides)` returns a snapshot
@@ -1941,7 +1941,7 @@ Nothing new beyond Task 6 §13.3 (Node 24 at `/opt/node24`, the hosts entry, `ba
 
 ## 13. Build steps (repo root; on any differing output: stop and report, paste it)
 
-Do not start until Jayami approves this plan. Never `git add -A`. Never print secrets. Always finish with
+Do not start until the maintainer approves this plan. Never `git add -A`. Never print secrets. Always finish with
 `npm run down:documenso`. Run `export PATH="/usr/local/bin:$PATH"` first (AGENTS.md).
 
 ### Step 0. Branch, plan doc, machine prerequisites
@@ -2109,22 +2109,22 @@ Environment identity; no Co-Authored-By, "Generated with" or session lines. `git
 - **D28 Finding label (Q2 yes).** `P6-OBS-DOC-002`, PRODUCT BUG, **medium**. It follows the `P6-OBS-*` pattern of Tasks 5 and 6; it is not a case ID, and no case ID is invented. The README text is in §16.
 - **D29 Task 6 wording corrected in its own commit (Q8 yes).** `envelope.field.sign` becomes `field.signFieldWithToken` (§2.12) in `docs/plans/2026-10-20-p6-phase1-task6-documenso-stack.md`, as a separate docs commit on the plan branch (`fa4aa43`).
 - **D30 Residue is reported, never asserted, never cleaned via SQL (Q4 yes).** The histogram carries `softDeletedEnvelopes` and `documentDataResidue` (§8.5). Neither is asserted. No SQL writes or deletes remove them.
-- **D31 Upstream issue draft (Q5 yes).** Appendix A is a draft for Jayami to file herself. It contains no secrets and no tokens. P6 files nothing upstream.
+- **D31 Upstream issue draft (Q5 yes).** Appendix A is a draft for the maintainer to file. It contains no secrets and no tokens. P6 files nothing upstream.
 
-## 20. Answers from Jayami (2026-10-21)
+## 20. Answers from the maintainer (2026-10-21)
 
 1. **Q1, DOC-RACE-002 oracle: yes (D16).** Exact per-body counts: exactly 1 `SIGNED` and 9 `ALREADY_SIGNED`, all HTTP 200, any 4xx or 5xx fails, plus 1 seal job, 1 `DOCUMENT_COMPLETED` row, 1 completed e-mail per recipient, and 1 webhook (receiver and `WebhookCall`). Per-body counts are first proven by the build's run (§2.9). Applied in §2.9, §8.6 and D16.
 2. **Q2, finding and test: yes.** `P6-OBS-DOC-002`, **medium**. The README impact text names the duplicate `DOCUMENT_COMPLETED` webhooks (integrators may double-process), the duplicate completed e-mails and the doubled audit rows, and states that the final PDF is correct (§16). `test.fail()` goes right before the product assertion, with setup (both legs 200 `SIGNED`, envelope COMPLETED) asserted first (§8.6, §10).
 3. **Q3, trial counts: yes.** 5 on PRs; 50 on `main`, nightly and `workflow_dispatch` (D22).
 4. **Q4, residue: yes.** Reported in the histogram (`softDeletedEnvelopes`, `documentDataResidue`), never asserted, never cleaned via SQL (D30).
-5. **Q5, upstream draft: yes.** Appendix A, in the style of Task 5's: repro steps, 40/40 vs 0/10 control, root-cause file and line references at `f4105e47`, suggested fix shape. Jayami files it herself, with no secrets and no tokens (D31).
+5. **Q5, upstream draft: yes.** Appendix A, in the style of Task 5's: repro steps, 40/40 vs 0/10 control, root-cause file and line references at `f4105e47`, suggested fix shape. The maintainer files it, with no secrets and no tokens (D31).
 6. **Q6, sequential control: yes.** It is a passing test (D26).
 7. **Q7, completed e-mails: per recipient** (D19).
 8. **Q8, Task 6 wording: yes.** Fixed now in a separate docs commit on this branch, `fa4aa43` (D29).
 
 **No open questions remain.** Building waits on the plan's approval. The build branch is `feat/2026-10-22-p6-doc-races` from `origin/main` (§13 Step 0).
 
-## Appendix A. Draft upstream issue for `P6-OBS-DOC-002` (for Jayami to file; not filed by P6)
+## Appendix A. Draft upstream issue for `P6-OBS-DOC-002` (for the maintainer to file; not filed by P6)
 
 Search the upstream issues first (for example "seal", "double", "DOCUMENT_COMPLETED", "webhook twice", "completed email twice"). If an issue exists, add this repro there instead. Before filing, check that upstream `main` still has the same three files as the fork pin (the `diff -q` check Task 5 used).
 
