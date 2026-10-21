@@ -94,8 +94,15 @@ jobs:
       - name: Stop if the release or its tag already exists
         run: |
           set -euo pipefail
-          if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
             echo "::error::tag $TAG already exists on the remote. A release tag is never reused or moved. Stopping."
+            exit 1
+          elif [[ "$rc" -ne 2 ]]; then
+            echo "::error::tag lookup failed (exit $rc). Stopping."
             exit 1
           fi
           if gh release view "$TAG" > /dev/null 2> "$RUNNER_TEMP/release-view.err"; then

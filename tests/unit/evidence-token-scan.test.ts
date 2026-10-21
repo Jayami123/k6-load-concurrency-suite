@@ -120,6 +120,23 @@ test("a JSON secret key with an empty value is not a hit", () => {
   assert.deepEqual(findHits(JSON.stringify({ token: "" })), []);
 });
 
+test("a JSON password value containing a single quote is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ password: `pa'${"ssword"}` })), [1]);
+});
+
+test("an escaped double quote inside a JSON value is a hit", () => {
+  assert.deepEqual(findHits(JSON.stringify({ token: `ab"${"x".repeat(8)}` })), [1]);
+});
+
+test("a single-quoted secret pair is a hit", () => {
+  assert.deepEqual(findHits(`{'secret':'${"x".repeat(8)}'}`), [1]);
+});
+
+test("an empty JSON password value is not a hit, in either quote style", () => {
+  assert.deepEqual(findHits(JSON.stringify({ password: "" })), []);
+  assert.deepEqual(findHits("{'password':''}"), []);
+});
+
 test("ordinary JSON fields are not hits", () => {
   assert.deepEqual(findHits(JSON.stringify({ status: "ok", count: 3, name: "p6" })), []);
 });

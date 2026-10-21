@@ -16,7 +16,8 @@ export const PATTERNS = [
   /Authorization:/i,
   /\b(?:password|secret|token)=\S+/i,
   /["'](?:authorization|cookie|set-cookie)["']\s*:/i,
-  /["'](?:password|secret|token|api_key|apiKey)["']\s*:\s*["'][^"']+["']/i,
+  /"(?:password|secret|token|api_key|apiKey)"\s*:\s*"(?:[^"\\]|\\.)+"/i,
+  /'(?:password|secret|token|api_key|apiKey)'\s*:\s*'(?:[^'\\]|\\.)+'/i,
 ];
 
 /** @param {string} text @returns {number[]} */
