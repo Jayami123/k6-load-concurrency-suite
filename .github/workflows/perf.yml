@@ -161,14 +161,17 @@ jobs:
 
       # API-only Playwright project: no browser install needed (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD above).
       # The race spec reads MEDUSA_BASE_URL and MEDUSA_DB_URL from the job env.
-      - name: Race self-test (medusa-race, 3 trials)
+      # Roadmap D2: 3 trials on PRs, the full 50 on main (push, schedule, workflow_dispatch). The extras cap
+      # themselves at 3 in the spec (Task 2 D15), so only P6-MED-RACE-001 follows this count.
+      - name: Race P6-MED-RACE-001 + extras (medusa-race)
         if: ${{ steps.medusa_up.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
-          RACE_TRIALS: "3"
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '3' || '50' }}
           RACE_MAX_SPREAD_MS: "20"
         run: |
           set -euo pipefail
+          echo "### P6-MED-RACE-001 trials: ${RACE_TRIALS}" >> "$GITHUB_STEP_SUMMARY"
           npm run race:medusa
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
