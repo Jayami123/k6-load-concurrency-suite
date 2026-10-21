@@ -191,10 +191,49 @@ root cause as `P7-OBS-DOC-2FA-003` (a wrong TOTP returns 500) in
 [documenso-2fa-known-issues.md](https://github.com/Jayami123/playwright-e2e-ci-framework/blob/main/docs/observations/documenso-2fa-known-issues.md).
 The self-test does not log in with a password, so it never reaches this path.
 
-CI runs the self-test (`RACE_TRIALS=3`) in the `documenso-smoke` job and uploads
-`race-histograms-documenso` and `documenso-web-log`. The web log is scanned for token patterns before
+CI runs the `documenso-race` project (5 trials on pull requests, 50 on `main`) in the `documenso-smoke` job and
+uploads `race-histograms-documenso` and `documenso-web-log`. The web log is scanned for token patterns before
 upload, and a log that contains one fails the job and is not uploaded. No timings are published here;
 numbers come only from GitHub Actions runs (median of at least 3).
+
+### Documenso completion races
+
+Three completion cases share one histogram each. The self-test (above) runs in the same project.
+
+- **`P6-DOC-RACE-001`**, two last recipients complete in parallel. It proves that a parallel last-recipient
+  completion seals the document once. Today it reproduces `P6-OBS-DOC-002`: the test is an expected
+  failure under `test.fail()`, the histogram verdict is `fail`, and the Playwright run is green.
+- **`P6-DOC-RACE-002`**, one recipient, ten parallel completions. Every response is HTTP 200, with exactly
+  one `SIGNED` and nine `ALREADY_SIGNED` per trial (a duplicate is 200 by design, not a 4xx), and one seal,
+  one completed e-mail per recipient and one webhook.
+- **Extra (unmapped): sequential control for `P6-DOC-RACE-001`.** The same two completions, one after
+  another. It must be clean. A failing control is labelled `TEST BUG (control)` until a repro proves a
+  product bug.
+
+Trial counts: 5 on pull requests, 50 on `main`, nightly and `workflow_dispatch`. Run locally with
+`RACE_TRIALS=5 npm run race:documenso` after `npm run up:documenso`.
+
+The completion races need a serial database: no other write may reach the Documenso database during the run,
+because the `DocumentData` count is a per-trial delta. CI runs one job with `workers: 1` and a fresh
+database. Locally, run no other Documenso work while the race runs.
+
+Residue is reported, never asserted and never cleaned via SQL: `softDeletedEnvelopes` and
+`documentDataResidue` appear in the histogram. Leak checks count live envelopes by title prefix (not by
+team or user, because account deletion re-owns completed envelopes).
+
+Labels: **PRODUCT BUG** (a completion 4xx or 5xx, a seal or audit count that is not 1, a delta that is not
+2, a duplicate e-mail or webhook, a `WebhookCall` that is not SUCCESS 200); **TEST BUG** (setup, spread,
+cleanup, leak, histogram); **ENV** (a blocked webhook host, a 429, a missing fixture, a stack that is down);
+**TEST BUG (control)** (the sequential control failed). Paste the evidence (status, counts, the violation
+line); never a token.
+
+Known product finding **`P6-OBS-DOC-002`** (medium, known bug; the reproduction is `P6-DOC-RACE-001`, an
+expected failure):
+
+> **P6-OBS-DOC-002 (medium, known bug).** When the last two recipients of a document complete at the same moment, Documenso seals the document twice. Effects: integrators that receive `DOCUMENT_COMPLETED` webhooks get **two deliveries** for that document, so a consumer that does not de-duplicate may process the event twice; each recipient receives the **completed e-mail twice**; the audit trail holds **two `DOCUMENT_COMPLETED` rows**. The **final PDF is correct** and the envelope ends COMPLETED once. Sequential completion is not affected. Evidence and cause: plan `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2.8 and §2.10; the reproduction is `P6-DOC-RACE-001` (expected failure).
+
+Plan and evidence: `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2 and §10. No timings are published
+here; numbers come only from GitHub Actions runs (median of at least 3).
 
 ## Rule for numbers
 
