@@ -38,6 +38,15 @@ test.describe("Medusa refunds", () => {
         n: 10,
         trials,
       });
+      for (const attempt of histogram.attempts) {
+        const suspected = String(attempt.oracle.suspectedBug ?? "");
+        if (suspected) {
+          test.info().annotations.push({
+            type: "suspected-bug",
+            description: `trial ${attempt.trial} attempt ${attempt.attempt}: ${suspected}`,
+          });
+        }
+      }
       for (const id of reportedLeakedOrderIds) {
         test
           .info()
