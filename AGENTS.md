@@ -1,5 +1,7 @@
 # Agent notes
 
+Read [`docs/agent-rules.md`](docs/agent-rules.md) before any task.
+
 ## Cursor Cloud specific instructions
 
 - The environment (`.cursor/environment.json`) installs npm packages and clones the Medusa fork with
