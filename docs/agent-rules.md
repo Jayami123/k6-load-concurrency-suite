@@ -6,7 +6,8 @@ These rules apply to every agent task in this repository. Read them before plann
 
 1. Branch names follow `<type>/<YYYY-MM-DD>-p6-<topic>`, where type is one of `feat`, `fix`,
    `docs`, `chore`, `ci` or `test`. Never use `claude/...` branches; if the session starts on one,
-   create the correct branch before the first commit.
+   create the correct branch before the first commit. Plan branches are the one exception:
+   `plan/<YYYY-MM-DD>-p6-<topic>` (rules 6 and 10).
 2. Use Conventional Commits with a lowercase subject. Stage with `git add <path>` only, never
    `git add -A` or `git add .`.
 3. No `Co-Authored-By`, `Claude-Session`, "Generated with/by Claude Code" lines or any other AI
@@ -29,9 +30,9 @@ These rules apply to every agent task in this repository. Read them before plann
 9. List contradictions with the roadmap, proposed extras (not in scope until accepted) and open
    questions. Decide routine questions yourself and give the reason; stop and ask only for
    product-bug labels, scope changes, or anything that weakens a check.
-10. Commit the plan alone and push it, with no PR. Stop for review if the task changes a shared
-    runner, a CI workflow or a harness pin, or labels a product bug; otherwise continue to the
-    build.
+10. Commit the plan alone and push it to its `plan/...` branch, with no PR. Stop for review if the
+    task changes a shared runner, a CI workflow or a harness pin, or labels a product bug;
+    otherwise continue to the build.
 
 ## C. Building and testing
 
