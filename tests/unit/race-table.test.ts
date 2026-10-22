@@ -34,10 +34,11 @@ function histogram(caseId: string, trials: unknown[], extra: Record<string, unkn
     commitSha: "0".repeat(40),
     startedAt: "2026-01-01T00:00:00.000Z",
     finishedAt: "2026-01-01T00:01:00.000Z",
-    trials: trials.length,
+    trialsRequested: trials.length,
     concurrency: 2,
     statusCounts: {},
-    perTrial: trials,
+    trials: [],
+    attempts: trials,
     oracle: {},
     dispatchSpreadMs: { min: 0, max: 0, mean: 0 },
     invariantViolations: [],
@@ -160,6 +161,43 @@ describe("race rows", () => {
     assert.equal(row.outcome, "Reproduces P6-OBS-DOC-002: sealed twice in 2 of 2 trials");
   });
 
+  it("shows invalid attempts and reruns, and n/a for a histogram from before rerun-on-spread", () => {
+    assert.equal(rowOf(histogram("x", [], { invalidTrials: 2, reruns: 1 })).invalidReruns, "2 / 1");
+    assert.equal(rowOf(histogram("x", [], { invalidTrials: 0, reruns: 0 })).invalidReruns, "0 / 0");
+    assert.equal(rowOf(histogram("x", [])).invalidReruns, "n/a");
+  });
+
+  it("the table has an Invalid / reruns column", () => {
+    const md = formatRaceTable([rowOf(histogram("x", [], { invalidTrials: 2, reruns: 1 }))]);
+    assert.ok(
+      md.includes(
+        "| Case | Trials | Verdict | Key counts | Per-trial time | Invalid / reruns | Outcome |",
+      ),
+    );
+    assert.ok(md.includes("| 2 / 1 |"));
+  });
+
+  it("Medusa: an oversell seen only in an invalid attempt is still reported (D3)", () => {
+    const invalid = {
+      ...trial(1, { httpWinnerCount: 6, available: -1 }),
+      attempt: 1,
+      valid: false,
+    };
+    const valid = { ...trial(1, { httpWinnerCount: 5, available: 0 }), attempt: 2, valid: true };
+    const row = rowOf(histogram("P6-MED-RACE-001", [invalid, valid], { trialsRequested: 1 }));
+    assert.equal(row.keyCounts, "accepted per trial 5; oversold trials 1"); // rate: valid attempts only
+    assert.equal(row.outcome, "Oversold in 1 of 2 attempts (not a tracked bug yet)");
+  });
+
+  it("identical slot: loser counts use valid attempts only, double accepts use every attempt", () => {
+    const bad = { acceptedCount: 2, "loser_db-unique-redacted": 18, loser_unexpected: 0 };
+    const ok = { acceptedCount: 1, "loser_db-unique-redacted": 19, loser_unexpected: 0 };
+    const invalid = { ...trial(1, bad), attempt: 1, valid: false };
+    const valid = { ...trial(1, ok), attempt: 2, valid: true };
+    const row = rowOf(histogram("P6-CAL-RACE-001", [invalid, valid], { trialsRequested: 1 }));
+    assert.equal(row.keyCounts, "double-accepted trials 1; non-409 losers 19");
+  });
+
   it("unknown case id uses the verdict only, key counts n/a", () => {
     const row = rowOf(histogram("framework-self-test", [], { verdict: "pass" }));
     assert.equal(row.keyCounts, "n/a");
@@ -170,6 +208,22 @@ describe("race rows", () => {
     const row = rowOf(histogram("P6-CAL-RACE-001", [{ trial: 1, ok: true, oracle: {} }]));
     assert.equal(row.keyCounts, "n/a");
     assert.equal(row.outcome, "n/a");
+  });
+
+  it("reads a histogram written before rerun-on-spread (trials is a number, perTrial the list)", () => {
+    const legacy = {
+      ...histogram("P6-MED-RACE-001", []),
+      trials: 2,
+      perTrial: [
+        trial(1, { httpWinnerCount: 5, available: 0 }),
+        trial(2, { httpWinnerCount: 5, available: 0 }),
+      ],
+    };
+    const { trialsRequested: _drop, attempts: _drop2, ...rest } = legacy;
+    const row = rowOf(rest);
+    assert.equal(row.trials, "2");
+    assert.equal(row.outcome, "No oversell in 2 trials");
+    assert.equal(row.invalidReruns, "n/a");
   });
 
   it("trialNumbers returns undefined when any trial lacks the key", () => {
@@ -189,6 +243,10 @@ describe("parsing and formatting", () => {
       () => parseRaceFile({ caseId: "x", perTrial: "no" }, "c.json"),
       /c\.json: perTrial must be an array/,
     );
+    assert.throws(
+      () => parseRaceFile({ caseId: "x", attempts: "no" }, "d.json"),
+      /d\.json: attempts must be an array/,
+    );
   });
 
   it("empty input prints the no-histograms line", () => {
@@ -206,6 +264,7 @@ describe("parsing and formatting", () => {
         verdict: "pass",
         keyCounts: "n/a",
         perTrialTime: "n/a",
+        invalidReruns: "0 / 0",
         outcome: "a | b",
       },
     ]);

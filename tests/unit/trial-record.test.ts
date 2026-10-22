@@ -15,6 +15,8 @@ describe("recordTrial", () => {
       () => {},
     );
     assert.equal(record.ok, true);
+    assert.equal(record.attempt, 1); // the rerun runner overwrites attempt and valid
+    assert.equal(record.valid, true);
     assert.deepEqual(record.statuses, [200, 200]);
     assert.deepEqual(record.statusCounts, { "200": 2 });
     assert.equal(record.dispatchSpreadMs, 1);

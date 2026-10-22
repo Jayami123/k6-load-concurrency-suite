@@ -7,6 +7,7 @@ export interface RaceSummaryRow {
   readonly verdict: string;
   readonly keyCounts: string;
   readonly perTrialTime: string;
+  readonly invalidReruns: string;
   readonly outcome: string;
 }
 
@@ -44,6 +45,9 @@ function finiteNumber(value: unknown): number | undefined {
 
 const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0);
 
+// Histograms written before rerun-on-spread have no `valid` field: every record is a valid trial.
+const isValidTrial = (trial: unknown): boolean => !(isJson(trial) && trial.valid === false);
+
 // One value per trial, or undefined if any trial lacks it (the row then shows n/a).
 export function trialNumbers(trials: readonly unknown[], key: string): number[] | undefined {
   const out: number[] = [];
@@ -79,12 +83,15 @@ function acceptedPerTrial(accepted: readonly number[]): string {
 
 interface ParsedRace {
   readonly caseId: string;
-  readonly trials?: number;
+  readonly trialsRequested?: number;
   readonly verdict?: string;
   readonly startedAt?: unknown;
   readonly finishedAt?: unknown;
-  readonly perTrial: readonly unknown[];
+  // Every attempt. Histograms written before rerun-on-spread call this list perTrial.
+  readonly attempts: readonly unknown[];
   readonly oracle: Json;
+  readonly invalidTrials?: number;
+  readonly reruns?: number;
   readonly invariantViolations?: readonly unknown[];
 }
 
@@ -96,49 +103,64 @@ export function parseRaceFile(raw: unknown, file: string): ParsedRace {
   if (raw.perTrial !== undefined && !Array.isArray(raw.perTrial)) {
     throw new Error(`${file}: perTrial must be an array when present`);
   }
+  if (raw.attempts !== undefined && !Array.isArray(raw.attempts)) {
+    throw new Error(`${file}: attempts must be an array when present`);
+  }
   if (raw.oracle !== undefined && !isJson(raw.oracle)) {
     throw new Error(`${file}: oracle must be an object when present`);
   }
   return {
     caseId: raw.caseId,
-    trials: finiteNumber(raw.trials),
+    // Old histograms: `trials` is the number. New ones: `trialsRequested` is the number, `trials` is a list.
+    trialsRequested: finiteNumber(raw.trialsRequested) ?? finiteNumber(raw.trials),
     verdict: typeof raw.verdict === "string" ? raw.verdict : undefined,
     startedAt: raw.startedAt,
     finishedAt: raw.finishedAt,
-    perTrial: Array.isArray(raw.perTrial) ? raw.perTrial : [],
+    attempts: Array.isArray(raw.attempts)
+      ? raw.attempts
+      : Array.isArray(raw.perTrial)
+        ? raw.perTrial
+        : [],
     oracle: isJson(raw.oracle) ? raw.oracle : {},
+    invalidTrials: finiteNumber(raw.invalidTrials),
+    reruns: finiteNumber(raw.reruns),
     invariantViolations: Array.isArray(raw.invariantViolations)
       ? raw.invariantViolations
       : undefined,
   };
 }
 
+// Rates (accepted per trial, loser counts) use valid attempts only; bug counts use every attempt (D3, D4).
+// The unit in the sentence is "trials" for a clean run and "attempts" when invalid bursts were fired.
 function outcomeFor(caseId: string, h: ParsedRace): { keyCounts: string; outcome: string } {
-  const total = h.trials ?? h.perTrial.length;
+  const valid = h.attempts.filter(isValidTrial);
+  const total = h.trialsRequested ?? valid.length;
+  const unit =
+    h.attempts.length === valid.length ? `${total} trials` : `${h.attempts.length} attempts`;
   if (MEDUSA_OVERSELL_CASES.has(caseId)) {
-    const accepted = trialNumbers(h.perTrial, "httpWinnerCount");
-    const available = trialNumbers(h.perTrial, "available");
+    const accepted = trialNumbers(valid, "httpWinnerCount");
+    const available = trialNumbers(h.attempts, "available");
     if (!accepted || !available) return { keyCounts: NA, outcome: NA };
     const oversold = available.filter((a) => a < 0).length;
     return {
       keyCounts: `accepted per trial ${acceptedPerTrial(accepted)}; oversold trials ${oversold}`,
       outcome:
         oversold > 0
-          ? `Oversold in ${oversold} of ${total} trials (not a tracked bug yet)`
-          : `No oversell in ${total} trials`,
+          ? `Oversold in ${oversold} of ${unit} (not a tracked bug yet)`
+          : `No oversell in ${unit}`,
     };
   }
   if (CAL_IDENTICAL_SLOT_CASES.has(caseId)) {
-    const accepted = trialNumbers(h.perTrial, "acceptedCount");
-    const redacted = trialNumbers(h.perTrial, "loser_db-unique-redacted");
-    const unexpected = trialNumbers(h.perTrial, "loser_unexpected");
+    const accepted = trialNumbers(h.attempts, "acceptedCount");
+    const redacted = trialNumbers(valid, "loser_db-unique-redacted");
+    const unexpected = trialNumbers(valid, "loser_unexpected");
     if (!accepted || !redacted || !unexpected) return { keyCounts: NA, outcome: NA };
     const doubleAccepted = accepted.filter((n) => n > 1).length;
     const losers400 = sum(redacted) + sum(unexpected);
     const first =
       doubleAccepted > 0
-        ? `Double-accepted in ${doubleAccepted} of ${total} trials`
-        : `One ACCEPTED per slot in ${total} trials`;
+        ? `Double-accepted in ${doubleAccepted} of ${unit}`
+        : `One ACCEPTED per slot in ${unit}`;
     const second =
       losers400 > 0
         ? `Reproduces P6-OBS-CAL-001: ${losers400} losers got 400 not 409`
@@ -156,8 +178,8 @@ function outcomeFor(caseId: string, h: ParsedRace): { keyCounts: string; outcome
       keyCounts: `double-booked trials ${doubleBooked}; clean ${clean}`,
       outcome:
         doubleBooked > 0
-          ? `Reproduces P6-OBS-CAL-002: overlapping bookings both accepted in ${doubleBooked} of ${total} trials`
-          : `Did not reproduce: no overlapping pair accepted together in ${total} trials`,
+          ? `Reproduces P6-OBS-CAL-002: overlapping bookings both accepted in ${doubleBooked} of ${unit}`
+          : `Did not reproduce: no overlapping pair accepted together in ${unit}`,
     };
   }
   if (DOC_SEAL_CASES.has(caseId)) {
@@ -168,8 +190,8 @@ function outcomeFor(caseId: string, h: ParsedRace): { keyCounts: string; outcome
       keyCounts: `double-sealed trials ${doubleSealed}; invariant violations ${violations ?? NA}`,
       outcome:
         doubleSealed > 0
-          ? `Reproduces P6-OBS-DOC-002: sealed twice in ${doubleSealed} of ${total} trials`
-          : `Did not reproduce: sealed once in ${total} trials`,
+          ? `Reproduces P6-OBS-DOC-002: sealed twice in ${doubleSealed} of ${unit}`
+          : `Did not reproduce: sealed once in ${unit}`,
     };
   }
   // Self-tests and unknown ids: verdict only.
@@ -185,10 +207,14 @@ export function raceSummaryRow(file: string, raw: unknown): RaceSummaryRow {
   const { keyCounts, outcome } = outcomeFor(h.caseId, h);
   return {
     caseId: h.caseId,
-    trials: h.trials === undefined ? NA : String(h.trials),
+    trials: h.trialsRequested === undefined ? NA : String(h.trialsRequested),
     verdict: h.verdict ?? NA,
     keyCounts,
-    perTrialTime: perTrialTime(h),
+    perTrialTime: perTrialTime({ ...h, trials: h.trialsRequested }),
+    invalidReruns:
+      h.invalidTrials === undefined || h.reruns === undefined
+        ? NA
+        : `${h.invalidTrials} / ${h.reruns}`,
     outcome,
   };
 }
@@ -204,12 +230,12 @@ export function formatRaceTable(rows: readonly RaceSummaryRow[]): string {
   const header = [
     "## Race results",
     "",
-    "| Case | Trials | Verdict | Key counts | Per-trial time | Outcome |",
-    "| --- | ---: | --- | --- | ---: | --- |",
+    "| Case | Trials | Verdict | Key counts | Per-trial time | Invalid / reruns | Outcome |",
+    "| --- | ---: | --- | --- | ---: | ---: | --- |",
   ];
   const body = rows.map(
     (r) =>
-      `| ${[r.caseId, r.trials, r.verdict, r.keyCounts, r.perTrialTime, r.outcome].map(cell).join(" | ")} |`,
+      `| ${[r.caseId, r.trials, r.verdict, r.keyCounts, r.perTrialTime, r.invalidReruns, r.outcome].map(cell).join(" | ")} |`,
   );
   return [...header, ...body, ""].join("\n");
 }

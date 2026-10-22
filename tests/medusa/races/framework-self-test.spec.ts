@@ -2,25 +2,16 @@ import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 import { fireTogether } from "../../../src/races/fire-together.ts";
 import { runTrials } from "../../../src/races/run-trials.ts";
-import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../../../src/races/histogram.ts";
+import { createHistogram, writeHistogram } from "../../../src/races/histogram.ts";
+import { createRerunRunner, spreadPolicyFromEnv } from "../../../src/races/rerun-on-spread.ts";
 import { recordTrial } from "../../../src/races/trial-record.ts";
-import {
-  raceMaxSpreadMsFromEnv,
-  raceTrialsFromEnv,
-  medusaBaseUrlFromEnv,
-} from "../../../src/races/env.ts";
+import { raceTrialsFromEnv, medusaBaseUrlFromEnv } from "../../../src/races/env.ts";
 import {
   closePool,
   createReadOnlyPool,
   selectRows,
   waitForStable,
 } from "../../../src/oracles/pg.ts";
-import type { RaceTrialResult } from "../../../src/races/types.ts";
 
 const CONCURRENCY = 20;
 
@@ -47,7 +38,6 @@ test.describe.configure({ timeout: 60_000 });
 
 test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", async () => {
   const trials = raceTrialsFromEnv();
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = medusaBaseUrlFromEnv();
   const pool = createReadOnlyPool();
   const histogram = createHistogram({
@@ -60,10 +50,10 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
 
   try {
     const before = await snapshot(pool);
-    const spreads: number[] = [];
-    const perTrial: RaceTrialResult[] = [];
+    const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
 
-    const trialResults = await runTrials(trials, async (trial) => {
+    // One burst = fire, record, validate. Trial index 0 is the warm-up (left out of every verdict and count).
+    const burst = async (trial: number) => {
       // Raw bodies by request index: the exact "OK" check uses these, while
       // bodySummary stays diagnostics-only.
       const rawBodies: Array<string | undefined> = Array.from({ length: CONCURRENCY });
@@ -91,38 +81,16 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
             throw new Error(`PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`);
           }
         }
-        if (fired.dispatchSpreadMs >= spreadLimit) {
-          throw new Error(`TEST BUG: dispatchSpreadMs ${fired.dispatchSpreadMs} >= ${spreadLimit}`);
-        }
       });
 
-      perTrial.push(record);
-      spreads.push(record.dispatchSpreadMs);
-      mergeStatusCounts(histogram.statusCounts, record.statusCounts);
+      return record;
+    };
+    await runner.warmup(() => burst(0));
+    const trialResults = await runTrials(trials, (trial) =>
+      runner.runTrial(trial, () => burst(trial)),
+    );
 
-      if (!record.ok) {
-        throw new Error(record.error);
-      }
-      return fired;
-    });
-
-    // Trials that failed before a record existed (e.g. fireTogether threw).
-    const recorded = new Set(perTrial.map((t) => t.trial));
-    for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
-      perTrial.push({
-        trial: failed.trial,
-        ok: false,
-        statuses: [],
-        statusCounts: {},
-        dispatchSpreadMs: 0,
-        oracle: {},
-        invariantViolations: failed.error ? [failed.error] : [],
-        error: failed.error,
-      });
-    }
-
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
+    runner.applyTo(histogram);
 
     const stableOne = await waitForStable(() =>
       selectRows<{ ok: number | string }>(pool, "SELECT 1 AS ok"),
@@ -175,7 +143,7 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
   expect(raw.caseId).toBe("framework-self-test");
   expect(raw.title).toBe("framework self-test (unmapped)");
   expect(raw.verdict).toBe("pass");
-  expect(raw.trials).toBe(trials);
+  expect(raw.trialsRequested).toBe(trials);
   expect(raw.concurrency).toBe(20);
   expect(raw.oracle.readOnlySqlstate).toBe("25006");
 });

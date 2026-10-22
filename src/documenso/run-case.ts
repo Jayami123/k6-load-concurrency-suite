@@ -2,21 +2,21 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
-import { raceMaxSpreadMsFromEnv } from "../races/env.ts";
 import { fireTogether, summariseBody } from "../races/fire-together.ts";
+import { createHistogram, writeHistogram } from "../races/histogram.ts";
 import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../races/histogram.ts";
+  createRerunRunner,
+  spreadPolicyFromEnv,
+  sumOracle,
+  validAttempts,
+} from "../races/rerun-on-spread.ts";
 import { runTrials } from "../races/run-trials.ts";
 import { recordTrial } from "../races/trial-record.ts";
 import type {
   RaceHistogram,
   RaceOracleValue,
   RaceRequestResult,
-  RaceTrialResult,
+  RaceAttemptResult,
 } from "../races/types.ts";
 import { casePrefix, likeLiteralPrefix } from "../medusa/payloads.ts";
 import {
@@ -253,12 +253,19 @@ export type TrialDoc = {
 /** Creates a document with `count` recipients, one signature field each, distributes it and signs every field. */
 export async function prepareDocument(
   ctx: RunContext,
-  opts: { casePfx: string; trial: number; count: number; label: string; pdf: Uint8Array },
+  opts: {
+    casePfx: string;
+    trial: number;
+    attempt: number;
+    count: number;
+    label: string;
+    pdf: Uint8Array;
+  },
 ): Promise<TrialDoc> {
-  const title = documentTitle(opts.casePfx, opts.trial, opts.label);
+  const title = documentTitle(opts.casePfx, opts.trial, opts.label, opts.attempt);
   const envelopeId = await createEnvelope(ctx.baseUrl, ctx.apiToken, title, opts.pdf);
   ctx.envelopeIds.push(envelopeId); // registered before the rest, so endRun deletes it if a later step fails
-  const bodies = recipientBodies(opts.casePfx, opts.trial, opts.count);
+  const bodies = recipientBodies(opts.casePfx, opts.trial, opts.count, opts.attempt);
   const recipientIds = await createRecipients(ctx.baseUrl, ctx.apiToken, envelopeId, bodies);
   const env = await getEnvelope(ctx.baseUrl, ctx.apiToken, envelopeId);
   const fields = await createSignatureFields(
@@ -381,7 +388,8 @@ export type CaseResult = {
   histogram: RaceHistogram;
   productViolations: string[]; // every "PRODUCT BUG: …" line, across trials
   testViolations: string[]; // everything else: TEST BUG, ENV, TEST BUG (control)
-  doubleSealTrials: number;
+  doubleSealTrials: number; // attempts (valid and invalid) that sealed twice (D3)
+  attempts: number; // every burst that was fired: valid trials plus invalid attempts
 };
 
 const splitViolations = (all: string[]) => ({
@@ -402,7 +410,6 @@ export async function runCompletionCase(input: {
 }): Promise<CaseResult> {
   const burst = input.mode === "same-recipient" ? 10 : 2;
   const recipientCount = input.mode === "same-recipient" ? 1 : 2;
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const casePfx = casePrefix(input.runPrefix, input.caseId);
   const pdf = await readFixturePdf();
   const docDataAtStart = await docDataCount(input.pool); // residue baseline (Q4)
@@ -414,18 +421,20 @@ export async function runCompletionCase(input: {
     concurrency: burst,
     trials: input.trials,
   });
-  const perTrial: RaceTrialResult[] = [];
-  const spreads: number[] = [];
+  const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const violations: string[] = [];
   const recipientMailboxes: string[] = [];
   try {
-    const results = await runTrials(input.trials, async (trial) => {
+    const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+      // Re-read at the start of every attempt: DocumentData rows survive envelope/delete, so an invalid
+      // attempt's rows must be in this baseline, never in the next attempt's delta (phase 2 task 1 plan, D18).
       const docDataBefore = await docDataCount(ctx.pool);
       let doc: TrialDoc | null = null;
       try {
         doc = await prepareDocument(ctx, {
           casePfx,
           trial,
+          attempt,
           count: recipientCount,
           label: input.mode,
           pdf,
@@ -455,8 +464,6 @@ export async function runCompletionCase(input: {
           mode: input.mode,
           burst,
           classes,
-          spreadMs: fired.dispatchSpreadMs,
-          spreadLimitMs: spreadLimit,
           snapshot,
         });
         // recordTrial's validate hook is not used: every violation must be its own entry (plan §8.5).
@@ -465,9 +472,6 @@ export async function runCompletionCase(input: {
         record.invariantViolations = trialViolations;
         record.ok = trialViolations.length === 0;
         if (!record.ok) record.error = trialViolations[0];
-        perTrial.push(record);
-        spreads.push(fired.dispatchSpreadMs);
-        mergeStatusCounts(histogram.statusCounts, record.statusCounts);
         return record;
       } finally {
         if (doc) {
@@ -480,51 +484,43 @@ export async function runCompletionCase(input: {
           for (const mb of removed.mailboxes) await ctx.inbucket.purge(mb).catch(() => undefined);
         }
       }
-    });
-    for (const failed of results.filter(
-      (t) => !t.ok && !perTrial.some((p) => p.trial === t.trial),
-    )) {
-      perTrial.push({
-        trial: failed.trial,
-        ok: false,
-        statuses: [],
-        statusCounts: {},
-        dispatchSpreadMs: 0,
-        oracle: {},
-        invariantViolations: [failed.error ?? "TEST BUG: trial failed"],
-        error: failed.error,
-      });
-    }
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
-    const doubleSealTrials = perTrial.filter((t) => t.oracle.doubleSealed === true).length;
-    histogram.oracle = {
-      trialsSingleSeal: perTrial.filter((t) => t.oracle.sealJobs === 1).length,
-      trialsDoubleSeal: doubleSealTrials,
-      sealJobsRetriedTotal: perTrial.reduce((n, t) => n + Number(t.oracle.sealJobsRetried ?? 0), 0),
-      signedResponses: perTrial.reduce((n, t) => n + Number(t.oracle.signedResponses ?? 0), 0),
-      alreadySignedResponses: perTrial.reduce(
-        (n, t) => n + Number(t.oracle.alreadySignedResponses ?? 0),
-        0,
-      ),
-      clientErrorResponses: perTrial.reduce(
-        (n, t) => n + Number(t.oracle.clientErrorResponses ?? 0),
-        0,
-      ),
-      envelopeCompletedTrials: perTrial.reduce(
-        (n, t) => n + Number(t.oracle.envelopeCompletedTrials ?? 0),
-        0,
-      ),
-      serverErrorResponses: perTrial.reduce(
-        (n, t) => n + Number(t.oracle.serverErrorResponses ?? 0),
-        0,
-      ),
     };
-    histogram.invariantViolations = [
+
+    // The sequential control fires no concurrent burst, so there is nothing to warm up.
+    if (input.mode !== "sequential-control") {
+      await runner.warmup((attempt) => runAttempt(0, attempt));
+    }
+    await runTrials(input.trials, (trial) =>
+      runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
+    );
+    runner.applyTo(histogram);
+    const all = runner.attempts;
+    const valid = validAttempts(all);
+    const doubleSealTrials = all.filter((t) => t.oracle.doubleSealed === true).length;
+    // Rates and setup counts use valid attempts (D4). Bug and error counters use every attempt (D3).
+    histogram.oracle = {
+      trialsSingleSeal: valid.filter((t) => t.oracle.sealJobs === 1).length,
+      trialsDoubleSeal: doubleSealTrials,
+      sealJobsRetriedTotal: sumOracle(all, "sealJobsRetried"),
+      signedResponses: sumOracle(valid, "signedResponses"),
+      alreadySignedResponses: sumOracle(valid, "alreadySignedResponses"),
+      clientErrorResponses: sumOracle(all, "clientErrorResponses"),
+      envelopeCompletedTrials: sumOracle(valid, "envelopeCompletedTrials"),
+      serverErrorResponses: sumOracle(all, "serverErrorResponses"),
+    };
+    histogram.invariantViolations.push(
       ...violations,
-      ...perTrial.flatMap((t) => t.invariantViolations),
-    ];
-    return await finish(ctx, histogram, recipientMailboxes, true, doubleSealTrials, docDataAtStart);
+      ...histogram.attempts.flatMap((t) => t.invariantViolations),
+    );
+    return await finish(
+      ctx,
+      histogram,
+      recipientMailboxes,
+      true,
+      doubleSealTrials,
+      docDataAtStart,
+      all.length,
+    );
   } catch (err) {
     histogram.invariantViolations.push(
       `TEST BUG: case aborted: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
@@ -541,6 +537,7 @@ async function finish(
   ran: boolean,
   doubleSealTrials: number,
   docDataAtStart: number,
+  attempts = 0,
 ): Promise<CaseResult> {
   const cleanup = await endRun(ctx, recipientMailboxes);
   const leak = await leakCounts(ctx, recipientMailboxes);
@@ -552,5 +549,5 @@ async function finish(
   histogram.finishedAt = new Date().toISOString();
   await writeHistogram(histogram);
   const { productViolations, testViolations } = splitViolations(histogram.invariantViolations);
-  return { histogram, productViolations, testViolations, doubleSealTrials };
+  return { histogram, productViolations, testViolations, doubleSealTrials, attempts };
 }

@@ -18,6 +18,16 @@ describe("documenso payloads", () => {
     assert.equal(recipientEmail(CASE_PREFIX, 3, 1), `${CASE_PREFIX}-t3-r1@example.com`);
   });
 
+  it("a rerun gets its own mailbox and title, attempt 1 keeps today's names", () => {
+    assert.equal(recipientEmail(CASE_PREFIX, 3, 1, 1), `${CASE_PREFIX}-t3-r1@example.com`);
+    assert.equal(recipientEmail(CASE_PREFIX, 3, 1, 2), `${CASE_PREFIX}-t3a2-r1@example.com`);
+    assert.equal(
+      recipientBodies(CASE_PREFIX, 3, 2, 2)[0]?.email,
+      `${CASE_PREFIX}-t3a2-r0@example.com`,
+    );
+    assert.equal(documentTitle(CASE_PREFIX, 4, "two-last", 3), `${CASE_PREFIX} t4a3 two-last`);
+  });
+
   it("rejects a recipient count below one", () => {
     assert.throws(() => recipientBodies(CASE_PREFIX, 0, 0), /TEST BUG/);
   });

@@ -16,8 +16,6 @@ export function checkOversellInvariants(input: {
   loserTypes: string[];
   loserMessages: string[];
   loserQuantities: number[];
-  dispatchSpreadMs: number;
-  spreadLimit: number;
 }): string[] {
   const violations: string[] = [];
 
@@ -25,10 +23,6 @@ export function checkOversellInvariants(input: {
     if (status === null || status >= 500) {
       violations.push(`PRODUCT BUG: HTTP ${status === null ? "error" : status}`);
     }
-  }
-
-  if (input.dispatchSpreadMs >= input.spreadLimit) {
-    violations.push(`TEST BUG: dispatchSpreadMs ${input.dispatchSpreadMs} >= ${input.spreadLimit}`);
   }
 
   if (input.orderCount > input.s || input.reservationQty > input.s || input.orderQty > input.s) {

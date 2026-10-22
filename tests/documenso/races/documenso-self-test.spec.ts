@@ -5,14 +5,10 @@ import { isDeepStrictEqual } from "node:util";
 import { expect, test } from "@playwright/test";
 import { fireTogether } from "../../../src/races/fire-together.ts";
 import { runTrials } from "../../../src/races/run-trials.ts";
-import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../../../src/races/histogram.ts";
+import { createHistogram, writeHistogram } from "../../../src/races/histogram.ts";
+import { createRerunRunner, spreadPolicyFromEnv } from "../../../src/races/rerun-on-spread.ts";
 import { recordTrial } from "../../../src/races/trial-record.ts";
-import { raceMaxSpreadMsFromEnv, raceTrialsFromEnv } from "../../../src/races/env.ts";
+import { raceTrialsFromEnv } from "../../../src/races/env.ts";
 import {
   closePool,
   createReadOnlyPool,
@@ -41,7 +37,6 @@ import {
 import { leakCheck, readWebhookCalls } from "../../../src/documenso/oracle.ts";
 import { casePrefix, likeLiteralPrefix } from "../../../src/medusa/payloads.ts";
 import { p6RunPrefix } from "../../../src/races/prefix.ts";
-import type { RaceTrialResult } from "../../../src/races/types.ts";
 
 const CASE_ID = "documenso-self-test";
 const CONCURRENCY = 20;
@@ -84,7 +79,6 @@ async function readOnlyInsertSqlstate(
 
 test("documenso self-test (unmapped): health burst, oracle, one email, one webhook", async () => {
   const trials = raceTrialsFromEnv();
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = documensoBaseUrlFromEnv();
   const inbucket = createInbucketClient(inbucketBaseUrlFromEnv());
   const webhookHost = webhookHostFromEnv();
@@ -113,9 +107,9 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
 
   try {
     // 1. Health burst: every trial fires 20 gated GET /api/auth/csrf at once.
-    const spreads: number[] = [];
-    const perTrial: RaceTrialResult[] = [];
-    const trialResults = await runTrials(trials, async (trial) => {
+    const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
+    // One burst = fire, record, validate. Trial index 0 is the warm-up (left out of every verdict and count).
+    const burst = async (trial: number) => {
       const fired = await fireTogether(
         CONCURRENCY,
         async () => {
@@ -139,38 +133,17 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
             );
           }
         }
-        if (fired.dispatchSpreadMs >= spreadLimit) {
-          throw new Error(`TEST BUG: dispatchSpreadMs ${fired.dispatchSpreadMs} >= ${spreadLimit}`);
-        }
       });
 
-      perTrial.push(record);
-      spreads.push(record.dispatchSpreadMs);
-      mergeStatusCounts(histogram.statusCounts, record.statusCounts);
+      return record;
+    };
+    await runner.warmup(() => burst(0));
+    const trialResults = await runTrials(trials, (trial) =>
+      runner.runTrial(trial, () => burst(trial)),
+    );
 
-      if (!record.ok) {
-        throw new Error(record.error);
-      }
-      return fired;
-    });
-
-    // Trials that failed before a record existed (e.g. fireTogether threw).
-    const recorded = new Set(perTrial.map((t) => t.trial));
-    for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
-      perTrial.push({
-        trial: failed.trial,
-        ok: false,
-        statuses: [],
-        statusCounts: {},
-        dispatchSpreadMs: 0,
-        oracle: {},
-        invariantViolations: failed.error ? [failed.error] : [],
-        error: failed.error,
-      });
-    }
+    runner.applyTo(histogram);
     trialsOk = trialResults.every((t) => t.ok);
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     // 2. Oracle: the read-only pool answers, and refuses a write with SQLSTATE 25006.
     const stableOne = await waitForStable(() =>
@@ -321,7 +294,7 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
   expect(raw.title).toBe("documenso self-test (unmapped)");
   expect(raw.product).toBe("documenso");
   expect(raw.verdict).toBe("pass");
-  expect(raw.trials).toBe(trials);
+  expect(raw.trialsRequested).toBe(trials);
   expect(raw.concurrency).toBe(CONCURRENCY);
   expect(raw.oracle.readOnlySqlstate).toBe("25006");
   expect(raw.oracle.leakUsers).toBe(0);

@@ -40,12 +40,12 @@ test.describe("P6-DOC-RACE-001 two last recipients", () => {
       const result = await runCompletionCase(input);
       test.info().annotations.push({
         type: "issue",
-        description: `P6-OBS-DOC-002: double seal in ${result.doubleSealTrials}/${trials} trials`,
+        description: `P6-OBS-DOC-002: double seal in ${result.doubleSealTrials} of ${result.attempts} attempts (${trials} valid trials)`,
       });
       // Setup, contract, spread, cleanup and leak come first. They are not expected to fail (plan §10).
       expect(result.testViolations, result.testViolations.join("; ")).toEqual([]);
       const raw = JSON.parse(await readFile(`results/races/${CASE_ID}.json`, "utf8"));
-      expect(raw.trials).toBe(trials);
+      expect(raw.trialsRequested).toBe(trials);
       expect(raw.concurrency).toBe(2);
       // Setup for the product assertion (Q2): both legs answered 200 SIGNED and the envelope is COMPLETED.
       expect(
@@ -63,7 +63,7 @@ test.describe("P6-DOC-RACE-001 two last recipients", () => {
       test.fail();
       expect(
         result.doubleSealTrials,
-        `PRODUCT BUG: P6-OBS-DOC-002 double seal in ${result.doubleSealTrials} of ${trials} trials`,
+        `PRODUCT BUG: P6-OBS-DOC-002 double seal in ${result.doubleSealTrials} of ${result.attempts} attempts`,
       ).toBe(0);
     } finally {
       await closePool(input.pool);

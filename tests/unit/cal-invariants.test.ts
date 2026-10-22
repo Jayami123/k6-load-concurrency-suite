@@ -46,14 +46,12 @@ const row = (uid: string, hasKey = true): AcceptedRow => ({
 function check(
   responses: ParsedResponse[],
   accepted: AcceptedRow[],
-  extra: { n?: number; spread?: number; limit?: number } = {},
+  extra: { n?: number } = {},
 ): string[] {
   return checkIdenticalSlotInvariants({
     n: extra.n ?? responses.length,
     responses,
     accepted,
-    dispatchSpreadMs: extra.spread ?? 1,
-    spreadLimit: extra.limit ?? 20,
   });
 }
 
@@ -133,11 +131,6 @@ describe("checkIdenticalSlotInvariants", () => {
     assert.ok(v429.some((x) => x.startsWith("ENV")));
   });
 
-  it("flags spread at or above the limit", () => {
-    const v = check([win(), ...many(redacted, 19)], [row("u1")], { spread: 21, limit: 20 });
-    assert.ok(v.some((x) => /TEST BUG.*dispatchSpreadMs/.test(x)));
-  });
-
   it("flags a wrong response count", () => {
     const v = check([win(), ...many(redacted, 18)], [row("u1")], { n: 20 });
     assert.ok(v.some((x) => /TEST BUG.*expected 20 responses/.test(x)));
@@ -159,16 +152,10 @@ const slotRow = (uid: string): SlotRow => ({
   end: "2026-11-30T10:00:00.000Z",
 });
 
-function guards(
-  responses: ParsedResponse[],
-  rows: SlotRow[],
-  extra: { spread?: number; limit?: number } = {},
-): string[] {
+function guards(responses: ParsedResponse[], rows: SlotRow[]): string[] {
   return checkOverlapPairGuards({
     responses,
     windowAccepted: rows,
-    dispatchSpreadMs: extra.spread ?? 1,
-    spreadLimit: extra.limit ?? 20,
   });
 }
 
@@ -234,11 +221,6 @@ describe("checkOverlapPairGuards", () => {
   it("flags a winner uid that is not in the rows", () => {
     const v = guards([win("u9"), taken()], [slotRow("u1")]);
     assert.ok(v.some((x) => /PRODUCT BUG.*not an ACCEPTED row/.test(x)));
-  });
-
-  it("flags spread at the limit", () => {
-    const v = guards([win("u1"), taken()], [slotRow("u1")], { spread: 20, limit: 20 });
-    assert.ok(v.some((x) => /TEST BUG.*dispatchSpreadMs/.test(x)));
   });
 
   it("flags a wrong response count", () => {
@@ -379,8 +361,6 @@ describe("setup violation labelling", () => {
   const base = {
     responses: [taken(), taken()],
     windowAccepted: [],
-    dispatchSpreadMs: 1,
-    spreadLimit: 20,
   };
 
   it("a refusal on a window the oracle proved free stays a PRODUCT BUG", () => {
@@ -407,8 +387,6 @@ describe("setup violation labelling", () => {
       n: 2,
       responses: [taken(), taken()],
       accepted: [],
-      dispatchSpreadMs: 1,
-      spreadLimit: 20,
     };
     assert.deepEqual(checkIdenticalSlotInvariants(slot), [
       "PRODUCT BUG: no ACCEPTED booking for a free slot",

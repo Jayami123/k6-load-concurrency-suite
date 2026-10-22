@@ -59,8 +59,6 @@ export type TrialInput = {
   mode: CompletionMode;
   burst: number; // completions fired in the trial: 2 for 001 and the control, 10 for 002
   classes: CompletionClass[]; // one per completion request
-  spreadMs: number;
-  spreadLimitMs: number;
   snapshot: TrialSnapshot;
 };
 
@@ -101,9 +99,6 @@ export function checkCompletionTrial(input: TrialInput): string[] {
     v.push(`${label}: envelope status ${s.envelopeStatus}, expected COMPLETED`);
   }
 
-  if (input.spreadMs >= input.spreadLimitMs) {
-    v.push(`TEST BUG: dispatchSpreadMs ${input.spreadMs} >= ${input.spreadLimitMs}`);
-  }
   if (counts["server-error"] > 0)
     v.push(`${label}: completion HTTP 5xx x${counts["server-error"]}`);
   if (counts["client-error"] > 0)

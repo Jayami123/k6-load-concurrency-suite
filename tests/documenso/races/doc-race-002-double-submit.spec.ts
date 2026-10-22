@@ -35,7 +35,7 @@ test.describe("P6-DOC-RACE-002 same recipient double submit", () => {
       // Setup and cleanup first, then the product contract (plan §8.4, D16).
       expect(result.testViolations, result.testViolations.join("; ")).toEqual([]);
       const raw = JSON.parse(await readFile(`results/races/${CASE_ID}.json`, "utf8"));
-      expect(raw.trials).toBe(trials);
+      expect(raw.trialsRequested).toBe(trials);
       expect(raw.concurrency).toBe(10);
       // Q1: exactly one SIGNED and nine ALREADY_SIGNED per trial, all HTTP 200; any 4xx or 5xx fails.
       expect(result.histogram.statusCounts).toEqual({ "200": 10 * trials });

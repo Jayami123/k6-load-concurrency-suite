@@ -168,7 +168,6 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '3' || '50' }}
-          RACE_MAX_SPREAD_MS: "20"
           P6_PLAYWRIGHT_JSON: results/playwright/medusa-race.json
         run: |
           set -euo pipefail
@@ -365,7 +364,6 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           RACE_TRIALS: "3"
-          RACE_MAX_SPREAD_MS: "20"
           P6_PLAYWRIGHT_JSON: results/playwright/cal-self-test.json
         run: |
           set -euo pipefail
@@ -379,7 +377,6 @@ jobs:
         env:
           # Roadmap D2: about 5 on PRs, the full 50 on main, nightly and manual runs.
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
-          RACE_MAX_SPREAD_MS: "20"
           P6_PLAYWRIGHT_JSON: results/playwright/cal-race-001.json
         run: |
           set -euo pipefail
@@ -393,7 +390,6 @@ jobs:
         env:
           # Same values as the P6-CAL-RACE-001 step; the case caps itself at 30 trials (plan D10).
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
-          RACE_MAX_SPREAD_MS: "20"
           P6_PLAYWRIGHT_JSON: results/playwright/cal-race-003.json
         run: |
           set -euo pipefail
@@ -596,7 +592,6 @@ jobs:
         env:
           # Plan D22: about 5 trials on PRs, the full count (50) on main, nightly and workflow_dispatch.
           RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
-          RACE_MAX_SPREAD_MS: "20"
           P6_PLAYWRIGHT_JSON: results/playwright/documenso-race.json
         run: |
           set -euo pipefail
