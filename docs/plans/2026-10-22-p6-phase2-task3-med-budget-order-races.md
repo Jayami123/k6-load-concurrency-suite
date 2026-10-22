@@ -1,7 +1,9 @@
-# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 1)
+# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 2)
 
-This is the implementation plan a weaker model will build from. **Do not write code until the owner approves this
-document** (rule 10: this task adds a CI job and proposes product-bug labels, §11 and §10).
+This is the implementation plan a weaker model will build from. The owner reviewed revision 1 (rule 10: this task adds
+a CI job and proposes product-bug labels, §11 and §10) and **agreed to every proposed answer in §21 on 2026-10-22**.
+Revision 2 records those answers (D54 to D59). **The build has not started:** the owner said not to build yet, so no
+code is written until the owner says to start.
 
 Structure follows [2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). The
 source of this task is [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md), section "Task 3: Medusa budget +
@@ -213,7 +215,7 @@ record it with repeated-run evidence and the right label; never hide it and neve
 
 - Changes to `runTrials`, `fireTogether`, `src/races/rerun-on-spread.ts`, `src/oracles/pg.ts`, `run-case.ts`,
   `run-money-case.ts`, the harness, the fork.
-- The proposed extras of §5 (until accepted), the P1 follow-up PR (listed for Task 9), spend budgets beyond the probe
+- The extras of §5 (`-013` and `-014` are a follow-up task, `-015` is "Later"), the P1 follow-up PR (listed for Task 9), spend budgets beyond the probe
   note, any `test.fail()` before the owner accepts a label (§10, D47).
 
 ## 4. Test-case mapping
@@ -229,13 +231,13 @@ Each case fires the Task 1 untimed warm-up burst first (D28), with its own setup
 
 ## 5. Extras, follow-ups and priorities
 
-| #                 | Item                                                                                                                                 | Status                                                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `P6-MED-RACE-013` | **Proposed extra.** N=10 cancels of one order: `reserved_quantity` equals live reservations                                          | Out of scope until accepted. F-M3 at N=10 in 6 of 6 cancel runs. Same runner as `-008` with N=10; no new code beyond a spec. |
-| `P6-MED-RACE-014` | **Proposed extra.** N=10 cancels of a **captured** order: refunds ≤ captured and the order's `refunded_total` equals the refund rows | Out of scope until accepted. F-M4 in 2 of 3 runs. Money primitive; reuses Task 2 helpers.                                    |
-| `P6-MED-RACE-015` | **Proposed extra.** Spend budget (EUR) under N parallel carts: budget `used ≤ limit`                                                 | Out of scope until accepted. Held 3 of 3 live. Only if the owner wants both budget types covered (roadmap risk).             |
-| F-P1              | P1 follow-up PR removing X04/X05 from P1                                                                                             | Not this PR (roadmap). Listed for the Task 9 closeout once `-008`/`-009` are labelled at full count.                         |
-| Priorities (D45)  | `-008` **P1**, `-009` **P1**, `-012` **P2**                                                                                          | Proposed. `-008`/`-009` were known P1 failures and cover state exclusivity; `-012` is the counter twin of `-005`.            |
+| #                 | Item                                                                                                                                       | Status                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `P6-MED-RACE-013` | **Accepted extra (D57).** N=10 cancels of one order: `reserved_quantity` equals live reservations                                          | Follow-up task after this PR (D57). F-M3 at N=10 in 6 of 6 cancel runs. Same runner as `-008` with N=10; a spec only. |
+| `P6-MED-RACE-014` | **Accepted extra (D57).** N=10 cancels of a **captured** order: refunds ≤ captured and the order's `refunded_total` equals the refund rows | Follow-up task after this PR (D57). F-M4 in 2 of 3 runs. Money primitive; reuses Task 2 helpers.                      |
+| `P6-MED-RACE-015` | **Moved to "Later" (D57).** Spend budget (EUR) under N parallel carts: budget `used ≤ limit`                                               | Not planned. Held 3 of 3 live. The roadmap "Later" list gets it in Step 10.                                           |
+| F-P1              | P1 follow-up PR removing X04/X05 from P1                                                                                                   | Not this PR (roadmap). Listed for the Task 9 closeout once `-008`/`-009` are labelled at full count.                  |
+| Priorities (D45)  | `-008` **P1**, `-009` **P1**, `-012` **P2**                                                                                                | Agreed (D58). `-008`/`-009` were known P1 failures and cover state exclusivity; `-012` is the counter twin of `-005`. |
 
 ## 6. Architecture (every file touched, one responsibility each)
 
@@ -506,7 +508,7 @@ n, cap, trials })` and `runOrderCase({ ..., mode: "double-cancel" | "cancel-vs-f
 runner with `createRerunRunner(spreadPolicyFromEnv(), trials)`, run `runner.warmup`, then `runTrials`, then the leak
 check, write the histogram in `finally`, and return `{ histogram, suspected: string[], reportedLeaked: string[] }`.
 
-How a violation is used (D47, pending the owner's answer to open question 1):
+How a violation is used (D47, agreed as D54):
 
 - Strings starting `PRODUCT BUG` or `TEST BUG` go through `recordTrial`'s throw → the trial fails → verdict `fail`.
 - Strings starting `SUSPECTED PRODUCT BUG` go into `record.oracle.suspectedBug` and the run's `suspected` list; the spec
@@ -596,17 +598,18 @@ test.describe("Medusa double cancel", () => {
 | Two cancels both 200, pending credit_line change (X04)              | **SUSPECTED PRODUCT BUG**  | Seen 7 of 8; was a P1 expected failure. Full-count CI runs, then the owner decides `test.fail()` (D47). |
 | Canceled with an open fulfillment (X05)                             | **SUSPECTED PRODUCT BUG**  | Seen 1 of 5; was a P1 expected failure. As X04.                                                         |
 | Reservation restored or `reserved_quantity` drift (F-M3)            | **SUSPECTED PRODUCT BUG**  | Seen 2 of 13 at N=2, 9 of 9 at N=10. As X04.                                                            |
-| `order_summary.refunded_total` above the refund rows (F-M4)         | not asserted in this task  | Only in the proposed `-014`. Seen 2 of 3.                                                               |
+| `order_summary.refunded_total` above the refund rows (F-M4)         | not asserted in this task  | Only in the follow-up `-014` (D57). Seen 2 of 3.                                                        |
 | 5xx on a raced request                                              | PRODUCT BUG                | The status and body. Not seen live.                                                                     |
 | Setup step fails (campaign, promotion, apply code, checkout)        | TEST BUG                   | The step name (D37). Never rerun (rule 13).                                                             |
 | Leftover product, customer, promotion, campaign not explained above | TEST BUG (cleanup)         | The leftover rows.                                                                                      |
 | F-M3 product, X05 fulfillment, X04 pending change after cleanup     | REPORTED LEAKED DATA (D49) | The ids and the failed route bodies in the histogram.                                                   |
 
 **This plan does not apply `PRODUCT BUG` or `test.fail()` to anything.** Rule 13 needs repeated full-count CI runs;
-rule 9 needs the owner for any product-bug label. §21 question 1 asks how the suspected signals affect the verdict until
-then.
+rule 9 needs the owner for any product-bug label. Agreed rule (D54): until then, suspected signals are annotations and do
+not change the verdict. After 3 full-count CI runs the owner labels X04, X05, F-M2 and F-M3; each labelled signal then
+becomes an asserted invariant under `test.fail()` with the run links (a separate commit, never in this PR's build steps).
 
-## 11. CI (`.github/workflows/perf.yml`) — needs owner review (rule 10)
+## 11. CI (`.github/workflows/perf.yml`) — agreed by the owner (D55)
 
 - **Why a new job (D50).** `medusa-smoke` already uses 17 min 36 s of its 45-min timeout on `main` (run 39829474241;
   race step 16 min 01 s). The four new cases at 50 trials need about 26 to 30 min of race time on the probe's per-attempt
@@ -729,8 +732,8 @@ File: `tests/medusa/races/med-race-012-usage-limit.spec.ts`. **381** tests. Proo
 ### Step 7. Order runner and `-008` — `feat(races): add medusa double cancel race P6-MED-RACE-008`
 
 Files: `src/medusa/run-order-case.ts`, `tests/medusa/races/med-race-008-double-cancel.spec.ts`. **381** tests. Proof run
-with `-g "P6-MED-RACE-008"`. Expected: X04 `suspected-bug` annotations on most trials; verdict per the owner's answer to
-§21 question 1.
+with `-g "P6-MED-RACE-008"`. Expected: X04 `suspected-bug` annotations on most trials; verdict `pass` unless a counter, 5xx or
+setup check fails (D54).
 
 ### Step 8. `-009` — `feat(races): add medusa cancel vs fulfil race P6-MED-RACE-009`
 
@@ -745,7 +748,7 @@ exactly 4.
 ### Step 10. Roadmap sync — `docs(plans): sync the phase 2 roadmap with task 3`
 
 File: `docs/plans/2026-10-22-p6-phase2-roadmap.md`: Task 3 status line (plan link, `-012` lands, suspected bugs, new job),
-the proposed extras `-013` to `-015` under "Later" if the owner does not accept them. **381** tests.
+`-013` and `-014` as accepted extras for a follow-up task, `-015` under "Later", the priorities of D58. **381** tests.
 
 ### Step 11. Push and PR
 
@@ -774,7 +777,7 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 
 - "Medusa budget and order-state races (Phase 2)" section: one row per case with N, cap, oracle, and the CI job.
 - F-M2, F-M3 and X04/X05 as **suspected** product bugs with the probe counts (not in "Known product bugs" until §10 is
-  met). F-M4 as a probe note pointing at the proposed `-014`.
+  met). F-M4 as a probe note pointing at the accepted follow-up `-014`.
 - A note that an F-M3 product cannot be deleted through the admin API and is reported as leaked data.
 
 ## 18. Will NOT do
@@ -782,7 +785,7 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 - No fork or harness change; no SQL writes; no `retries`; no sleeps; no `test.fail()` without the owner's label (§10).
 - No reduction of trials, no timeout change (D39, Task 1 D24).
 - No change to `runTrials`, `fireTogether`, the rerun policy, `run-case.ts` or the money logic.
-- No work on `-013` to `-015` until accepted; no P1 repo change (follow-up only).
+- No work on `-013` or `-014` in this PR (follow-up task, D57) and none on `-015` ("Later"); no P1 repo change (follow-up only).
 - No publication of probe timings.
 
 ## 19. Risks
@@ -791,22 +794,22 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The new job's time exceeds the estimate (setup is 10 carts per attempt) | First full-count run decides; split `-005`/`-012` into a third job (D50). Never cut trials.                                                                            |
 | F-M3 products pile up in a long-lived local DB                          | Each is prefixed and reported; CI databases are throwaway. Local: `npm run down:medusa` keeps volumes, so the leftovers stay until the volume is removed (documented). |
-| X05 is intermittent (1 of 5): a 3-trial PR run may not show it          | It is a suspected signal, not an assertion, until labelled (§21 Q1). Full count gives ≈ 1 − 0.8⁵⁰ chance to see it.                                                    |
+| X05 is intermittent (1 of 5): a 3-trial PR run may not show it          | It is a suspected signal, not an assertion, until labelled (D54). Full count gives ≈ 1 − 0.8⁵⁰ chance to see it.                                                       |
 | `lock_timeout = '3s'` in `registerUsage` could give 5xx under load      | Not seen live (burst ≤ 2.8 s). A 5xx is a PRODUCT BUG with the body.                                                                                                   |
 | A ghost order (F-M2) blocks the product delete                          | The cleanup sweeps orders by email prefix first (§9), proven live.                                                                                                     |
-| The P1 X04/X05 sequence differs from the reference text                 | P1 is out of reach here; §21 Q3 asks the owner to confirm or paste it. The P6 cases stand on their own probe evidence.                                                 |
+| The P1 X04/X05 sequence differs from the reference text                 | P1 is out of reach here; the P6 reference text is the agreed source (D56). The P6 cases stand on their own probe evidence.                                             |
 | `order_promotion` join counts a soft-deleted link                       | The SQL filters `op.deleted_at IS NULL AND o.deleted_at IS NULL` (live: losers' links are soft deleted).                                                               |
 
 ## 20. Decisions (2026-10-22; numbering continues from Task 2's D41)
 
 - **D42 One campaign/promotion per attempt.** `QA10` is shared and has no cap (Q4).
 - **D43 `-005` uses a usage budget, K = 3, N = 10.** Usage is the budget type the master plan names ("allows K"); spend is
-  the proposed `-015`.
+  `-015`, moved to "Later" (D57).
 - **D44 `-012` lands.** Same setup, one oracle field, same time (§2.4).
-- **D45 Priorities proposed:** `-008` P1, `-009` P1, `-012` P2 (§5).
-- **D46 `-008`/`-009` use N = 2** (the X04/X05 shape the roadmap ports). N = 10 behaviour is the proposed `-013`.
+- **D45 Priorities (agreed, D58):** `-008` P1, `-009` P1, `-012` P2 (§5).
+- **D46 `-008`/`-009` use N = 2** (the X04/X05 shape the roadmap ports). N = 10 behaviour is the accepted follow-up `-013` (D57).
 - **D47 Suspected signals are annotated, not asserted, until the owner labels them** (D40 precedent). Counter overdraws,
-  5xx and setup errors are asserted. Proposed; §21 Q1.
+  5xx and setup errors are asserted. Agreed (D54).
 - **D48 Cleanup sweeps live orders by attempt email prefix** (F-M2 ghost orders, §2.5).
 - **D49 F-M3 products and X05 fulfillment rows are reported leaked data, not failures** (D41 rule; no admin route clears
   them, §2.5).
@@ -816,7 +819,21 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 - **D53 Two runner modules** (`run-promo-case.ts`, `run-order-case.ts`), not a grown `run-money-case.ts`: each holds one
   setup shape.
 
-## 21. Contradictions with the roadmap, and open questions (with proposed answers)
+Owner answers to revision 1 (agreed 2026-10-22; each closes the §21 question of the same number):
+
+- **D54 Verdict before labelling (Q1).** Suspected signals (X04, X05, F-M2, F-M3) are annotations and histogram fields; they
+  do not fail the case. Counter overdraws, HTTP 200s above the cap, 5xx and setup errors are asserted. After 3 full-count
+  CI runs the owner labels each signal; a labelled signal becomes an asserted invariant under `test.fail()` with the run
+  links.
+- **D55 New CI job `medusa-order-races` (Q2).** Accepted as in §11: same pins, restore-only caches, `timeout-minutes: 45`.
+- **D56 X04/X05 source (Q3).** The P6 reference text (`docs/reference/p1-plan-example-medusa.md` line 365) is the source
+  of the port. If the owner later pastes P1's blocks and they differ, the build stops and reports the difference.
+- **D57 Extras (Q4).** `-013` and `-014` are accepted for a follow-up task after this PR; `-015` moves to "Later".
+- **D58 Priorities (Q5).** `-008` P1, `-009` P1, `-012` P2.
+- **D59 Upstream issues (Q6).** X04, X05, F-M2 and F-M3 are filed upstream only after the D54 labels, as for the Phase 1
+  findings.
+
+## 21. Contradictions with the roadmap, and open questions (answered)
 
 **Contradictions:**
 
@@ -828,20 +845,22 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 4. Rule 10 says a plan goes on a `plan/...` branch; the owner's instruction for this task says to commit the plan on
    `feat/2026-10-22-p6-med-budget-order-races`. The owner's instruction was followed (Task 2 did the same).
 
-**Open questions (proposed answers):**
+**Open questions (all answered by the owner on 2026-10-22; the answers are D54 to D59):**
 
 1. **How do suspected signals affect the verdict before labelling?** Proposed (D47): annotate, do not fail, as `-011`
    does for F-M1; assert only the counters, 5xx and setup. After 3 full-count CI runs, the owner labels X04, X05, F-M2
    and F-M3, and each labelled signal becomes an asserted invariant under `test.fail()` with the run links. Alternative:
-   assert everything now and accept red `main` runs until labelled.
-2. **Accept the new CI job `medusa-order-races` (D50)?** Proposed: yes, same pins, restore-only caches, 45 min.
+   assert everything now and accept red `main` runs until labelled. **Agreed: the proposal (D54).**
+2. **Accept the new CI job `medusa-order-races` (D50)?** Proposed: yes, same pins, restore-only caches, 45 min. **Agreed (D55).**
 3. **P1 X04/X05 sequence.** Proposed: accept the P6 reference text as the port's source; the owner pastes P1's
-   `tests/medusa/api/races.spec.ts` X04/X05 blocks if they differ.
+   `tests/medusa/api/races.spec.ts` X04/X05 blocks if they differ. **Agreed (D56).**
 4. **Accept the extras `-013`, `-014`, `-015`?** Proposed: accept `-014` (money: F-M4 is an order-accounting drift) and
-   `-013` (F-M3 at N=10, 9 of 9) in a follow-up task after this PR; `-015` to "Later".
-5. **Priorities (D45).** Proposed `-008` P1, `-009` P1, `-012` P2.
+   `-013` (F-M3 at N=10, 9 of 9) in a follow-up task after this PR; `-015` to "Later". **Agreed (D57).**
+5. **Priorities (D45).** Proposed `-008` P1, `-009` P1, `-012` P2. **Agreed (D58).**
 6. **Upstream issues.** Proposed: file X04, X05, F-M2, F-M3 upstream only after the labels of question 1, as for the
-   Phase 1 findings.
+   Phase 1 findings. **Agreed (D59).**
+
+No open questions remain. The next step is the owner's word to start the build (§14 Step 0).
 
 ## Closeout notes
 
