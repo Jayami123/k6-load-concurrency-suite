@@ -1,4 +1,5 @@
 // Pure request bodies and parsers for the Documenso completion races (plan §8.1). No I/O.
+import { attemptTag } from "../races/rerun-on-spread.ts";
 
 export type RecipientBody = {
   email: string;
@@ -9,16 +10,21 @@ export type RecipientBody = {
 };
 
 /** One recipient mailbox per trial (plan D19). Lowercase, so Inbucket's mailbox name is stable. */
-export function recipientEmail(casePfx: string, trial: number, index: number): string {
-  return `${casePfx}-t${trial}-r${index}@example.com`;
+export function recipientEmail(casePfx: string, trial: number, index: number, attempt = 1): string {
+  return `${casePfx}-${attemptTag(trial, attempt)}-r${index}@example.com`;
 }
 
-export function recipientBodies(casePfx: string, trial: number, count: number): RecipientBody[] {
+export function recipientBodies(
+  casePfx: string,
+  trial: number,
+  count: number,
+  attempt = 1,
+): RecipientBody[] {
   if (!Number.isInteger(count) || count < 1) {
     throw new Error("TEST BUG: recipientBodies count must be an integer >= 1");
   }
   return Array.from({ length: count }, (_, index) => ({
-    email: recipientEmail(casePfx, trial, index),
+    email: recipientEmail(casePfx, trial, index, attempt),
     name: `P6 Signer ${index}`,
     role: "SIGNER" as const,
     accessAuth: [] as [],
@@ -27,8 +33,8 @@ export function recipientBodies(casePfx: string, trial: number, count: number): 
 }
 
 /** Document title. The case prefix comes first so the leak LIKE pattern matches it (plan §9). */
-export function documentTitle(casePfx: string, trial: number, label: string): string {
-  return `${casePfx} t${trial} ${label}`;
+export function documentTitle(casePfx: string, trial: number, label: string, attempt = 1): string {
+  return `${casePfx} ${attemptTag(trial, attempt)} ${label}`;
 }
 
 /**

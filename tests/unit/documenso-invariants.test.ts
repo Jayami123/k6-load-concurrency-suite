@@ -42,8 +42,6 @@ function input(
     mode: "last-recipients",
     burst: 2,
     classes,
-    spreadMs: 0.4,
-    spreadLimitMs: 20,
     snapshot,
     ...overrides,
   };
@@ -173,13 +171,6 @@ describe("documenso invariants", () => {
       ),
     );
     assert.ok(v4.includes("PRODUCT BUG: completion HTTP 4xx x1"));
-  });
-
-  it("flags a spread at or above the limit as a test bug", () => {
-    const v = checkDoc001Trial(
-      input(DOC001_CLASSES, passing(), { spreadMs: 20, spreadLimitMs: 20 }),
-    );
-    assert.ok(v.includes("TEST BUG: dispatchSpreadMs 20 >= 20"));
   });
 
   it("flags sealed items that are not 1 of 1", () => {
