@@ -100,6 +100,7 @@ export async function runMoneyCase(input: RunMoneyCaseInput): Promise<RunMoneyCa
   const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const cleanupViolations: string[] = [];
   const reportedLeakedOrderIds: string[] = [];
+  let liveLeakedOrderIds: string[] = [];
 
   // Cleanup per plan §9: confirm a pending change, refund the rest to zero, cancel and archive, delete the product.
   // Any failure here is reported as leaked data (D41); it never fails the case by itself.
@@ -287,6 +288,7 @@ export async function runMoneyCase(input: RunMoneyCaseInput): Promise<RunMoneyCa
 
     runner.applyTo(histogram);
     const leak = await moneyLeakCheck(input.pool, leakPrefix, reportedLeakedOrderIds);
+    liveLeakedOrderIds = leak.reportedLeaked;
     histogram.invariantViolations.push(...cleanupViolations, ...leak.violations);
 
     const trialsOk = trialResults.every((t) => t.ok);
@@ -296,5 +298,5 @@ export async function runMoneyCase(input: RunMoneyCaseInput): Promise<RunMoneyCa
     await writeHistogram(histogram);
   }
 
-  return { histogram, reportedLeakedOrderIds };
+  return { histogram, reportedLeakedOrderIds: liveLeakedOrderIds };
 }
