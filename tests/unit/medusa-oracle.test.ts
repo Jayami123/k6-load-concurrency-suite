@@ -3,6 +3,9 @@ import { describe, it } from "node:test";
 import type pg from "pg";
 import { assertSelectOnly } from "../../src/oracles/pg.ts";
 import {
+  LEAK_LIVE_ORDER_IDS_SQL,
+  MONEY_PAYMENT_FOR_ORDER_SQL,
+  MONEY_SNAPSHOT_SQL,
   LEAK_CUSTOMERS_SQL,
   LEAK_LIVE_ORDERS_SQL,
   LEAK_LIVE_RESERVATIONS_SQL,
@@ -51,5 +54,31 @@ describe("leakCheck", () => {
     assert.ok(v.some((x) => x.includes("leak products")));
     assert.ok(v.some((x) => x.includes("leak live orders")));
     assert.ok(v.some((x) => x.includes("inv_1")));
+  });
+});
+
+describe("money oracle SQL", () => {
+  it("every money query is a SELECT and reads through the read-only pool", () => {
+    for (const sql of [MONEY_PAYMENT_FOR_ORDER_SQL, MONEY_SNAPSHOT_SQL, LEAK_LIVE_ORDER_IDS_SQL]) {
+      assert.doesNotThrow(() => assertSelectOnly(sql));
+    }
+  });
+
+  it("the snapshot sums capture and refund amounts by payment id and counts pending changes by order id", () => {
+    assert.match(MONEY_SNAPSHOT_SQL, /FROM capture c WHERE c\.payment_id = \$1/);
+    assert.match(MONEY_SNAPSHOT_SQL, /FROM refund r WHERE r\.payment_id = \$1/);
+    assert.match(MONEY_SNAPSHOT_SQL, /oc\.order_id = \$2 AND oc\.status = 'pending'/);
+    assert.match(MONEY_SNAPSHOT_SQL, /deleted_at IS NULL/);
+  });
+
+  it("the payment lookup goes from order to payment collection to payment", () => {
+    assert.match(MONEY_PAYMENT_FOR_ORDER_SQL, /JOIN order_payment_collection opc/);
+    assert.match(MONEY_PAYMENT_FOR_ORDER_SQL, /opc\.order_id = \$1/);
+  });
+
+  it("the live-order id query matches the case prefix and excludes archived and canceled orders", () => {
+    assert.match(LEAK_LIVE_ORDER_IDS_SQL, /SELECT id FROM "order"/);
+    assert.match(LEAK_LIVE_ORDER_IDS_SQL, /email LIKE \$1/);
+    assert.match(LEAK_LIVE_ORDER_IDS_SQL, /status <> 'archived' AND status <> 'canceled'/);
   });
 });
