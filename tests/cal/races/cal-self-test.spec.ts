@@ -2,17 +2,12 @@ import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 import { fireTogether } from "../../../src/races/fire-together.ts";
 import { runTrials } from "../../../src/races/run-trials.ts";
-import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../../../src/races/histogram.ts";
+import { createHistogram, writeHistogram } from "../../../src/races/histogram.ts";
+import { createRerunRunner, spreadPolicyFromEnv } from "../../../src/races/rerun-on-spread.ts";
 import { recordTrial } from "../../../src/races/trial-record.ts";
 import {
   calBaseUrlFromEnv,
   calDatabaseUrlFromEnv,
-  raceMaxSpreadMsFromEnv,
   raceTrialsFromEnv,
 } from "../../../src/races/env.ts";
 import {
@@ -21,7 +16,6 @@ import {
   selectRows,
   waitForStable,
 } from "../../../src/oracles/pg.ts";
-import type { RaceAttemptResult } from "../../../src/races/types.ts";
 
 const CONCURRENCY = 20;
 // The booker page for the host and event type the Cal races use.
@@ -39,7 +33,6 @@ test.describe.configure({ timeout: 120_000 });
 
 test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async () => {
   const trials = raceTrialsFromEnv();
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = calBaseUrlFromEnv();
   const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
   const histogram = createHistogram({
@@ -53,67 +46,40 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
   try {
     const before = await bookingCount(pool);
     histogram.oracle.bookingCountBefore = before;
-    const spreads: number[] = [];
-    const perTrial: RaceAttemptResult[] = [];
+    const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
 
-    const trialResults = await runTrials(trials, async (trial) => {
-      const fired = await fireTogether(
-        CONCURRENCY,
-        async () => {
-          const res = await fetch(`${base}${HEALTH_PATH}`);
-          return { status: res.status, body: await res.text() };
-        },
-        {
-          warm: async () => {
+    const trialResults = await runTrials(trials, (trial) =>
+      runner.runTrial(trial, async () => {
+        const fired = await fireTogether(
+          CONCURRENCY,
+          async () => {
             const res = await fetch(`${base}${HEALTH_PATH}`);
-            await res.text();
+            return { status: res.status, body: await res.text() };
           },
-        },
-      );
+          {
+            warm: async () => {
+              const res = await fetch(`${base}${HEALTH_PATH}`);
+              await res.text();
+            },
+          },
+        );
 
-      // Record first so perTrial and statusCounts keep the real statuses even when validation fails.
-      const record = recordTrial(trial, fired, () => {
-        for (const req of fired.requests) {
-          if (req.status !== 200) {
-            throw new Error(
-              `PRODUCT BUG: GET ${HEALTH_PATH} HTTP ${req.status} ${req.bodySummary}`,
-            );
+        // Record first so perTrial and statusCounts keep the real statuses even when validation fails.
+        const record = recordTrial(trial, fired, () => {
+          for (const req of fired.requests) {
+            if (req.status !== 200) {
+              throw new Error(
+                `PRODUCT BUG: GET ${HEALTH_PATH} HTTP ${req.status} ${req.bodySummary}`,
+              );
+            }
           }
-        }
-        if (fired.dispatchSpreadMs >= spreadLimit) {
-          throw new Error(`TEST BUG: dispatchSpreadMs ${fired.dispatchSpreadMs} >= ${spreadLimit}`);
-        }
-      });
+        });
 
-      perTrial.push(record);
-      spreads.push(record.dispatchSpreadMs);
-      mergeStatusCounts(histogram.statusCounts, record.statusCounts);
+        return record;
+      }),
+    );
 
-      if (!record.ok) {
-        throw new Error(record.error);
-      }
-      return fired;
-    });
-
-    // Trials that failed before a record existed (e.g. fireTogether threw).
-    const recorded = new Set(perTrial.map((t) => t.trial));
-    for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
-      perTrial.push({
-        trial: failed.trial,
-        attempt: 1,
-        valid: false,
-        ok: false,
-        statuses: [],
-        statusCounts: {},
-        dispatchSpreadMs: 0,
-        oracle: {},
-        invariantViolations: failed.error ? [failed.error] : [],
-        error: failed.error,
-      });
-    }
-
-    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
+    runner.applyTo(histogram);
 
     const stableOne = await waitForStable(() =>
       selectRows<{ ok: number | string }>(pool, "SELECT 1 AS ok"),
@@ -168,7 +134,7 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
   expect(raw.title).toBe("cal self-test (unmapped)");
   expect(raw.product).toBe("cal");
   expect(raw.verdict).toBe("pass");
-  expect(raw.trials).toBe(trials);
+  expect(raw.trialsRequested).toBe(trials);
   expect(raw.concurrency).toBe(20);
   expect(raw.oracle.readOnlySqlstate).toBe("25006");
 });
