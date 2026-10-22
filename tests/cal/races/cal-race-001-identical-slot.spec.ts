@@ -47,8 +47,11 @@ test.describe.serial("P6-CAL-RACE-001 Cal identical slot", () => {
     expect(raw.caseId).toBe("P6-CAL-RACE-001");
     expect(raw.product).toBe("cal");
     expect(raw.concurrency).toBe(20);
-    expect(raw.trials).toBe(trials);
-    expect(raw.perTrial).toHaveLength(trials);
+    expect(raw.trialsRequested).toBe(trials);
+    // trials[] has one entry per trial index; attempts[] has every burst (valid and invalid).
+    expect(raw.trials).toHaveLength(trials);
+    expect(raw.attempts.filter((t: { valid: boolean }) => t.valid)).toHaveLength(trials);
+    expect(raw.attempts).toHaveLength(trials + raw.invalidTrials);
     const counts = raw.statusCounts as Record<string, number>;
     for (const key of Object.keys(counts)) expect(key).toMatch(/^\d{3}$|^error$/);
     const total = Object.values(counts).reduce((a, b) => a + b, 0);

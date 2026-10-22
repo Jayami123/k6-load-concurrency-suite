@@ -50,8 +50,6 @@ export function checkIdenticalSlotInvariants(input: {
   n: number;
   responses: ParsedResponse[];
   accepted: AcceptedRow[];
-  dispatchSpreadMs: number;
-  spreadLimit: number;
   setupEvidence?: string; // overlapEvidence() of the host's bookings in the slot, read before firing
 }): string[] {
   const out: string[] = [];
@@ -96,10 +94,6 @@ export function checkIdenticalSlotInvariants(input: {
     out.push("PRODUCT BUG: ACCEPTED row has no idempotencyKey");
   }
 
-  if (input.dispatchSpreadMs >= input.spreadLimit) {
-    out.push(`TEST BUG: dispatchSpreadMs ${input.dispatchSpreadMs} >= ${input.spreadLimit}`);
-  }
-
   return out;
 }
 
@@ -139,8 +133,6 @@ export function refusedLegs(responses: ParsedResponse[]): Array<{ traceId: strin
 export function checkOverlapPairGuards(input: {
   responses: ParsedResponse[];
   windowAccepted: SlotRow[];
-  dispatchSpreadMs: number;
-  spreadLimit: number;
   expectedResponses?: number; // default 2
   setupEvidence?: string; // overlapEvidence() of the host's bookings in the window, read before firing
 }): string[] {
@@ -177,9 +169,6 @@ export function checkOverlapPairGuards(input: {
     out.push(
       `PRODUCT BUG: HTTP 2xx ${winners.length} != DB accepted ${input.windowAccepted.length} in window`,
     );
-  }
-  if (input.dispatchSpreadMs >= input.spreadLimit) {
-    out.push(`TEST BUG: dispatchSpreadMs ${input.dispatchSpreadMs} >= ${input.spreadLimit}`);
   }
   return out;
 }

@@ -51,12 +51,12 @@ test.describe("P6-CAL-RACE-003 Cal overlapping windows", () => {
     // D16: partial reproduction stays visible in the report even when test.fail() keeps it green.
     test.info().annotations.push({
       type: "issue",
-      description: `P6-OBS-CAL-002: double-booked ${doubleBook.trialsDoubleBooked}/${trials} trials, clean ${doubleBook.trialsClean}, pairs by trial ${doubleBook.doubleBookedByTrial}`,
+      description: `P6-OBS-CAL-002: double-booked ${doubleBook.trialsDoubleBooked} of ${doubleBook.trialsDoubleBooked + doubleBook.trialsClean} attempts (${trials} valid trials), clean ${doubleBook.trialsClean}, pairs by attempt ${doubleBook.doubleBookedByTrial}`,
     });
     // Setup, HTTP contract, spread, cleanup and leak must hold before the product assertion.
     expect(guardViolations, guardViolations.join("; ")).toEqual([]);
     const raw = JSON.parse(await readFile("results/races/P6-CAL-RACE-003.json", "utf8"));
-    expect(raw.trials).toBe(trials);
+    expect(raw.trialsRequested).toBe(trials);
     expect(raw.concurrency).toBe(2);
     // PRODUCT BUG, severity high (plan §2.5–2.6, P6-OBS-CAL-002): Cal checks availability outside the insert
     // transaction and only the idempotencyKey unique guards the DB, so a 60-min and an overlapping

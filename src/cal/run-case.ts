@@ -1,14 +1,16 @@
 import type pg from "pg";
 import { fireTogether, summariseBody } from "../races/fire-together.ts";
 import { runTrials } from "../races/run-trials.ts";
+import { createHistogram, writeHistogram } from "../races/histogram.ts";
 import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../races/histogram.ts";
+  attemptTag,
+  createRerunRunner,
+  spreadPolicyFromEnv,
+  sumOracle,
+  validAttempts,
+} from "../races/rerun-on-spread.ts";
 import { recordTrial } from "../races/trial-record.ts";
-import { calBaseUrlFromEnv, raceMaxSpreadMsFromEnv } from "../races/env.ts";
+import { calBaseUrlFromEnv } from "../races/env.ts";
 import type { RaceHistogram, RaceRequestResult, RaceAttemptResult } from "../races/types.ts";
 import {
   caseLeakPattern,
@@ -27,7 +29,6 @@ import {
   overlapViolations,
   refusedLegs,
   type OverlapLoserKind,
-  type LoserKind,
   type ParsedResponse,
 } from "./invariants.ts";
 import {
@@ -54,13 +55,6 @@ import {
 
 export type IdenticalSlotMode = "distinct" | "sameAttendee" | "spellings";
 
-const LOSER_KINDS: LoserKind[] = [
-  "slot-taken",
-  "booking-conflict",
-  "db-unique-redacted",
-  "unexpected",
-];
-
 function makeCanceller(cleanupViolations: string[]) {
   return async (uid: string, cancelled: Set<string>) => {
     if (cancelled.has(uid)) return;
@@ -73,25 +67,12 @@ function makeCanceller(cleanupViolations: string[]) {
   };
 }
 
-function failedTrialRecords(
-  trialResults: Array<{ trial: number; ok: boolean; error?: string }>,
-  perTrial: RaceAttemptResult[],
-): RaceAttemptResult[] {
-  const recorded = new Set(perTrial.map((t) => t.trial));
-  return trialResults
-    .filter((t) => !t.ok && !recorded.has(t.trial))
-    .map((failed) => ({
-      trial: failed.trial,
-      attempt: 1,
-      valid: false,
-      ok: false,
-      statuses: [],
-      statusCounts: {},
-      dispatchSpreadMs: 0,
-      oracle: {},
-      invariantViolations: failed.error ? [failed.error] : [],
-      error: failed.error,
-    }));
+/** The skipped-window notes of every attempt, joined as before (empty notes dropped). */
+function skippedEvidenceOf(attempts: readonly RaceAttemptResult[]): string {
+  return attempts
+    .map((a) => String(a.oracle.skippedWindowEvidence ?? ""))
+    .filter(Boolean)
+    .join(" | ");
 }
 
 async function sweepAndLeakCheck(
@@ -119,7 +100,6 @@ export async function runIdenticalSlotCase(input: {
   mode: IdenticalSlotMode;
   trials: number;
 }): Promise<{ histogram: RaceHistogram; responses: ParsedResponse[] }> {
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = calBaseUrlFromEnv();
   const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const leakPattern = caseLeakPattern(input.runPrefix, input.caseId);
@@ -131,25 +111,16 @@ export async function runIdenticalSlotCase(input: {
     trials: input.trials,
   });
 
-  const spreads: number[] = [];
-  const perTrial: RaceAttemptResult[] = [];
-  const allResponses: ParsedResponse[] = [];
+  const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
+  const allResponses: ParsedResponse[] = []; // every attempt: a product violation in an invalid attempt counts (D3)
   const cleanupViolations: string[] = [];
-  const loserTotals: Record<LoserKind, number> = {
-    "slot-taken": 0,
-    "booking-conflict": 0,
-    "db-unique-redacted": 0,
-    unexpected: 0,
-  };
-  let acceptedTotal = 0;
   let leakAccepted = 0;
-  let skippedTotal = 0;
-  const skippedNotes: string[] = [];
 
   const cancelQuietly = makeCanceller(cleanupViolations);
 
   try {
-    const trialResults = await runTrials(input.trials, async (trial) => {
+    const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+      const tag = attemptTag(trial, attempt);
       const cancelled = new Set<string>();
       const winnerUids: string[] = [];
       let slotStart = "";
@@ -165,8 +136,6 @@ export async function runIdenticalSlotCase(input: {
           slot.end,
         );
         const setupEvidence = overlapEvidence(slot.start, slot.end, setupOverlaps);
-        skippedTotal += slot.skipped.length;
-        skippedNotes.push(skippedEvidence(slot.skipped));
         const rawBodies: string[] = Array.from({ length: input.n }, () => "");
         const spelled = timeSpellings(slot.start);
         const spelledEnd = timeSpellings(slot.end);
@@ -176,8 +145,8 @@ export async function runIdenticalSlotCase(input: {
           async (i) => {
             const leaf =
               input.mode === "sameAttendee"
-                ? `t${trial}-same`
-                : `t${trial}-c${String(i).padStart(2, "0")}`;
+                ? `${tag}-same`
+                : `${tag}-c${String(i).padStart(2, "0")}`;
             const result = await createBooking(
               bookingBody({
                 start: input.mode === "spellings" ? spelled[i % 3]! : slot.start,
@@ -225,16 +194,12 @@ export async function runIdenticalSlotCase(input: {
           if (r.status === null || (r.status >= 200 && r.status < 300)) continue;
           kinds[classifyLoser(r.status, r.message)] += 1;
         }
-        for (const k of LOSER_KINDS) loserTotals[k] += kinds[k];
-        acceptedTotal += accepted.length;
 
         const record = recordTrial(trial, fired, () => {
           const violations = checkIdenticalSlotInvariants({
             n: input.n,
             responses,
             accepted,
-            dispatchSpreadMs: fired.dispatchSpreadMs,
-            spreadLimit,
             setupEvidence,
           });
           if (violations.length > 0) throw new Error(violations.join("; "));
@@ -259,11 +224,7 @@ export async function runIdenticalSlotCase(input: {
           loser_unexpected: kinds.unexpected,
         };
 
-        perTrial.push(record);
-        spreads.push(record.dispatchSpreadMs);
-        mergeStatusCounts(histogram.statusCounts, record.statusCounts);
-
-        if (!record.ok) throw new Error(record.error);
+        return record;
       } finally {
         for (const uid of winnerUids) await cancelQuietly(uid, cancelled);
         if (slotStart) {
@@ -273,12 +234,13 @@ export async function runIdenticalSlotCase(input: {
           }
         }
       }
-    });
+    };
 
-    perTrial.push(...failedTrialRecords(trialResults, perTrial));
-
-    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
+    const trialResults = await runTrials(input.trials, (trial) =>
+      runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
+    );
+    runner.applyTo(histogram);
+    const valid = validAttempts(runner.attempts);
 
     // Sweep: cancel anything of this case still holding a slot, then the leak check wants 0.
     const swept = await sweepAndLeakCheck(input.pool, leakPattern, cancelQuietly);
@@ -288,13 +250,13 @@ export async function runIdenticalSlotCase(input: {
     histogram.oracle = {
       hostUserId: input.setup.userId,
       eventTypeId: input.setup.eventTypeId,
-      skippedWindows: skippedTotal,
-      skippedWindowEvidence: skippedNotes.filter(Boolean).join(" | "),
-      "loser_slot-taken": loserTotals["slot-taken"],
-      "loser_booking-conflict": loserTotals["booking-conflict"],
-      "loser_db-unique-redacted": loserTotals["db-unique-redacted"],
-      loser_unexpected: loserTotals.unexpected,
-      acceptedTotal,
+      skippedWindows: sumOracle(runner.attempts, "skippedWindows"), // every attempt: environment evidence
+      skippedWindowEvidence: skippedEvidenceOf(runner.attempts),
+      "loser_slot-taken": sumOracle(valid, "loser_slot-taken"), // rates: valid attempts only (D4)
+      "loser_booking-conflict": sumOracle(valid, "loser_booking-conflict"),
+      "loser_db-unique-redacted": sumOracle(valid, "loser_db-unique-redacted"),
+      loser_unexpected: sumOracle(valid, "loser_unexpected"),
+      acceptedTotal: sumOracle(valid, "acceptedCount"),
       leakAccepted,
     };
     histogram.invariantViolations.push(...cleanupViolations, ...leak);
@@ -340,7 +302,6 @@ export async function runOverlapPairCase(input: {
   overlapPairs: number;
   doubleBook: ReturnType<typeof doubleBookSummary>; // D16
 }> {
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = calBaseUrlFromEnv();
   const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const leakPattern = caseLeakPattern(input.runPrefix, input.caseId);
@@ -352,31 +313,21 @@ export async function runOverlapPairCase(input: {
     trials: input.trials,
   });
 
-  const spreads: number[] = [];
-  const perTrial: RaceAttemptResult[] = [];
+  const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const cleanupViolations: string[] = [];
-  const guardViolations: string[] = [];
-  const pairsByTrial: number[] = Array.from({ length: input.trials }, () => 0);
-  const refusedTraceIds: string[] = [];
-  const loserTotals: Record<OverlapLoserKind, number> = {
-    "slot-taken": 0,
-    "booking-conflict": 0,
-    "refused-db-error": 0,
-    unexpected: 0,
-  };
-  const outcomes = { both: 0, "60_only": 0, "30_only": 0, none: 0 };
+  const guardViolations: string[] = []; // every attempt: a violation in an invalid attempt counts (D3)
+  const pairsByAttempt: number[] = []; // every attempt, in firing order
   let overlapPairs = 0;
   let leakAccepted = 0;
-  let skippedTotal = 0;
-  const skippedNotes: string[] = [];
 
   const cancelQuietly = makeCanceller(cleanupViolations);
 
   try {
-    const trialResults = await runTrials(input.trials, async (trial) => {
+    const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+      const tag = attemptTag(trial, attempt);
       const cancelled = new Set<string>();
       const winnerUids: string[] = [];
-      const trialPattern = likeLiteralPrefix(`${dataPrefix}-t${trial}-`);
+      const trialPattern = likeLiteralPrefix(`${dataPrefix}-${tag}-`);
 
       try {
         const window = await input.windows.next();
@@ -388,8 +339,6 @@ export async function runOverlapPairCase(input: {
           window.end,
         );
         const setupEvidence = overlapEvidence(window.start, window.end, setupOverlaps);
-        skippedTotal += window.skipped.length;
-        skippedNotes.push(skippedEvidence(window.skipped));
         const seq = input.mode === "sequential" ? sequentialPlan(trial) : null;
         const shape = seq ? seq.shape : overlapShapeForTrial(trial);
         const [leg60, leg30] = overlapLegs(window.start, shape, input.setup);
@@ -407,7 +356,7 @@ export async function runOverlapPairCase(input: {
             bookingBody({
               start: leg.start,
               end: leg.end,
-              email: attendeeEmail(dataPrefix, `t${trial}-r${leg.role}`),
+              email: attendeeEmail(dataPrefix, `${tag}-r${leg.role}`),
               name: `p6 r${leg.role}`,
               eventTypeId: leg.eventTypeId,
               eventTypeSlug: leg.eventTypeSlug,
@@ -476,8 +425,6 @@ export async function runOverlapPairCase(input: {
         const guards = checkOverlapPairGuards({
           responses,
           windowAccepted,
-          dispatchSpreadMs: fired.dispatchSpreadMs,
-          spreadLimit,
           setupEvidence,
         });
         if (input.mode === "sequential") {
@@ -495,9 +442,7 @@ export async function runOverlapPairCase(input: {
           if (r.status === null || (r.status >= 200 && r.status < 300)) continue;
           kinds[classifyOverlapLoser(r.status, r.message)] += 1;
         }
-        for (const k of Object.keys(kinds) as OverlapLoserKind[]) loserTotals[k] += kinds[k];
         const refused = refusedLegs(responses).map((l) => l.traceId);
-        refusedTraceIds.push(...refused.map((id) => `t${trial}:${id}`));
 
         const winners = winnerRoles.includes("60")
           ? winnerRoles.includes("30")
@@ -506,10 +451,6 @@ export async function runOverlapPairCase(input: {
           : winnerRoles.includes("30")
             ? "30"
             : "none";
-        if (winners === "60+30") outcomes.both += 1;
-        else if (winners === "60") outcomes["60_only"] += 1;
-        else if (winners === "30") outcomes["30_only"] += 1;
-        else outcomes.none += 1;
 
         const record = recordTrial(trial, fired, () => {
           if (guards.length || product.length) {
@@ -528,35 +469,31 @@ export async function runOverlapPairCase(input: {
           "loser_booking-conflict": kinds["booking-conflict"],
           "loser_refused-db-error": kinds["refused-db-error"],
           loser_unexpected: kinds.unexpected,
-          refusedTraceIds: refused.join(","),
+          refusedTraceIds: refused.map((id) => `${tag}:${id}`).join(","),
           skippedWindows: window.skipped.length,
           skippedWindowEvidence: skippedEvidence(window.skipped),
         };
 
-        guardViolations.push(...guards.map((g) => `t${trial}: ${g}`));
-        pairsByTrial[trial - 1] = pairs.length;
-        overlapPairs += pairs.length;
+        guardViolations.push(...guards.map((g) => `${tag}: ${g}`));
+        pairsByAttempt.push(pairs.length);
 
-        perTrial.push(record);
-        spreads.push(record.dispatchSpreadMs);
-        mergeStatusCounts(histogram.statusCounts, record.statusCounts);
-
-        if (!record.ok) throw new Error(record.error);
+        return record;
       } finally {
         for (const uid of winnerUids) await cancelQuietly(uid, cancelled);
         const live = await caseLiveBookings(input.pool, trialPattern).catch(() => []);
         for (const row of live) await cancelQuietly(row.uid, cancelled);
       }
-    });
+    };
 
-    const failedRecords = failedTrialRecords(trialResults, perTrial);
-    for (const failed of failedRecords) {
-      guardViolations.push(`t${failed.trial}: ${failed.error ?? "trial failed"}`);
+    const trialResults = await runTrials(input.trials, (trial) =>
+      runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
+    );
+    runner.applyTo(histogram);
+    for (const stub of runner.stubs) {
+      guardViolations.push(`t${stub.trial}a${stub.attempt}: ${stub.error ?? "trial failed"}`);
     }
-    perTrial.push(...failedRecords);
-
-    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
+    const valid = validAttempts(runner.attempts);
+    overlapPairs = pairsByAttempt.reduce((a, b) => a + b, 0);
 
     const swept = await sweepAndLeakCheck(input.pool, leakPattern, cancelQuietly);
     leakAccepted = swept.leakAccepted;
@@ -565,19 +502,22 @@ export async function runOverlapPairCase(input: {
       hostUserId: input.setup.userId,
       eventTypeId30: input.setup.eventTypeId30,
       eventTypeId60: input.setup.eventTypeId60,
-      ...doubleBookSummary(pairsByTrial),
-      outcome_both: outcomes.both,
-      outcome_60_only: outcomes["60_only"],
-      outcome_30_only: outcomes["30_only"],
-      outcome_none: outcomes.none,
-      "loser_slot-taken": loserTotals["slot-taken"],
-      "loser_booking-conflict": loserTotals["booking-conflict"],
-      "loser_refused-db-error": loserTotals["refused-db-error"],
-      loser_unexpected: loserTotals.unexpected,
-      refusedTraceIds: refusedTraceIds.join(","),
+      ...doubleBookSummary(pairsByAttempt), // every attempt: a double booking in an invalid attempt counts (D3)
+      outcome_both: valid.filter((a) => a.oracle.winners === "60+30").length, // rates: valid attempts only (D4)
+      outcome_60_only: valid.filter((a) => a.oracle.winners === "60").length,
+      outcome_30_only: valid.filter((a) => a.oracle.winners === "30").length,
+      outcome_none: valid.filter((a) => a.oracle.winners === "none").length,
+      "loser_slot-taken": sumOracle(valid, "loser_slot-taken"),
+      "loser_booking-conflict": sumOracle(valid, "loser_booking-conflict"),
+      "loser_refused-db-error": sumOracle(valid, "loser_refused-db-error"),
+      loser_unexpected: sumOracle(valid, "loser_unexpected"),
+      refusedTraceIds: runner.attempts
+        .map((a) => String(a.oracle.refusedTraceIds ?? ""))
+        .filter(Boolean)
+        .join(","),
       leakAccepted,
-      skippedWindows: skippedTotal,
-      skippedWindowEvidence: skippedNotes.filter(Boolean).join(" | "),
+      skippedWindows: sumOracle(runner.attempts, "skippedWindows"),
+      skippedWindowEvidence: skippedEvidenceOf(runner.attempts),
     };
     histogram.invariantViolations.push(...cleanupViolations, ...swept.leak);
     guardViolations.push(...cleanupViolations, ...swept.leak);
@@ -593,6 +533,6 @@ export async function runOverlapPairCase(input: {
     histogram,
     guardViolations,
     overlapPairs,
-    doubleBook: doubleBookSummary(pairsByTrial),
+    doubleBook: doubleBookSummary(pairsByAttempt),
   };
 }
