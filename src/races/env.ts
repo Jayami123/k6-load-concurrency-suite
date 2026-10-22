@@ -6,16 +6,32 @@ function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   return raw.trim();
 }
 
-function positiveIntFromEnv(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
+/**
+ * Whole decimal integer in [min, max]. Rejects "3.5", "1e3", "3abc", "-1", "+2", "0x2" and, when min is 1, "0".
+ * Unset or blank gives the default.
+ */
+function intFromEnv(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  defaultValue: number,
+  min: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return defaultValue;
   const trimmed = raw.trim();
-  // Whole value must be a positive decimal integer: rejects "3.5", "1e3", "3abc", "0", "-1".
-  const n = /^[1-9]\d*$/.test(trimmed) ? Number(trimmed) : Number.NaN;
-  if (!Number.isSafeInteger(n)) {
-    throw new Error(`TEST BUG: ${name} must be an integer >= 1, got ${raw}`);
+  const n = (min === 0 ? /^(0|[1-9]\d*)$/ : /^[1-9]\d*$/).test(trimmed)
+    ? Number(trimmed)
+    : Number.NaN;
+  if (!Number.isSafeInteger(n) || n < min || n > max) {
+    const range = max === Number.MAX_SAFE_INTEGER ? `>= ${min}` : `between ${min} and ${max}`;
+    throw new Error(`TEST BUG: ${name} must be an integer ${range}, got ${raw}`);
   }
   return n;
+}
+
+function positiveIntFromEnv(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
+  return intFromEnv(env, name, defaultValue, 1);
 }
 
 export function raceTrialsFromEnv(env: NodeJS.ProcessEnv = process.env): number {
@@ -24,6 +40,21 @@ export function raceTrialsFromEnv(env: NodeJS.ProcessEnv = process.env): number 
 
 export function raceMaxSpreadMsFromEnv(env: NodeJS.ProcessEnv = process.env): number {
   return positiveIntFromEnv(env, "RACE_MAX_SPREAD_MS", 5);
+}
+
+/** Reruns allowed per trial index when the dispatch spread is above the limit. */
+export function raceMaxSpreadRerunsFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  return positiveIntFromEnv(env, "RACE_MAX_SPREAD_RERUNS", 3);
+}
+
+/** Share of invalid attempts a case may use, in whole percent of the trials asked for (0 to 100). */
+export function raceMaxInvalidSharePctFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  return intFromEnv(env, "RACE_MAX_INVALID_SHARE_PCT", 20, 0, 100);
+}
+
+/** Invalid attempts a case may always spend, whatever the share gives for a small trial count. */
+export function raceMinInvalidBudgetFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  return intFromEnv(env, "RACE_MIN_INVALID_BUDGET", 2, 0);
 }
 
 export function medusaBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {

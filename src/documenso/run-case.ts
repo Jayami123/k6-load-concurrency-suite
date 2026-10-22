@@ -16,7 +16,7 @@ import type {
   RaceHistogram,
   RaceOracleValue,
   RaceRequestResult,
-  RaceTrialResult,
+  RaceAttemptResult,
 } from "../races/types.ts";
 import { casePrefix, likeLiteralPrefix } from "../medusa/payloads.ts";
 import {
@@ -414,7 +414,7 @@ export async function runCompletionCase(input: {
     concurrency: burst,
     trials: input.trials,
   });
-  const perTrial: RaceTrialResult[] = [];
+  const perTrial: RaceAttemptResult[] = [];
   const spreads: number[] = [];
   const violations: string[] = [];
   const recipientMailboxes: string[] = [];
@@ -486,6 +486,8 @@ export async function runCompletionCase(input: {
     )) {
       perTrial.push({
         trial: failed.trial,
+        attempt: 1,
+        valid: false,
         ok: false,
         statuses: [],
         statusCounts: {},
@@ -495,7 +497,7 @@ export async function runCompletionCase(input: {
         error: failed.error,
       });
     }
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
     const doubleSealTrials = perTrial.filter((t) => t.oracle.doubleSealed === true).length;
     histogram.oracle = {

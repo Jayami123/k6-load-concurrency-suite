@@ -8,7 +8,7 @@ import {
 } from "../races/histogram.ts";
 import { recordTrial } from "../races/trial-record.ts";
 import { medusaBaseUrlFromEnv, raceMaxSpreadMsFromEnv } from "../races/env.ts";
-import type { RaceHistogram, RaceTrialResult } from "../races/types.ts";
+import type { RaceHistogram, RaceAttemptResult } from "../races/types.ts";
 import type pg from "pg";
 import {
   cancelAndArchive,
@@ -70,7 +70,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
   });
 
   const spreads: number[] = [];
-  const perTrial: RaceTrialResult[] = [];
+  const perTrial: RaceAttemptResult[] = [];
   const inventoryItemIds: string[] = [];
   const cleanupViolations: string[] = [];
   const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
@@ -298,6 +298,8 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
       perTrial.push({
         trial: failed.trial,
+        attempt: 1,
+        valid: false,
         ok: false,
         statuses: [],
         statusCounts: {},
@@ -308,7 +310,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
       });
     }
 
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     histogram.invariantViolations.push(

@@ -21,7 +21,7 @@ import {
   selectRows,
   waitForStable,
 } from "../../../src/oracles/pg.ts";
-import type { RaceTrialResult } from "../../../src/races/types.ts";
+import type { RaceAttemptResult } from "../../../src/races/types.ts";
 
 const CONCURRENCY = 20;
 // The booker page for the host and event type the Cal races use.
@@ -54,7 +54,7 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
     const before = await bookingCount(pool);
     histogram.oracle.bookingCountBefore = before;
     const spreads: number[] = [];
-    const perTrial: RaceTrialResult[] = [];
+    const perTrial: RaceAttemptResult[] = [];
 
     const trialResults = await runTrials(trials, async (trial) => {
       const fired = await fireTogether(
@@ -100,6 +100,8 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
     for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
       perTrial.push({
         trial: failed.trial,
+        attempt: 1,
+        valid: false,
         ok: false,
         statuses: [],
         statusCounts: {},
@@ -110,7 +112,7 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
       });
     }
 
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     const stableOne = await waitForStable(() =>

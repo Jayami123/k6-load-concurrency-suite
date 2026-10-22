@@ -65,7 +65,7 @@ test.describe("P6-CAL-RACE-003 Cal overlapping windows", () => {
     test.fail();
     expect(
       overlapPairs,
-      histogram.perTrial
+      histogram.attempts
         .flatMap((t) => t.invariantViolations)
         .slice(0, 3)
         .join(" | "),

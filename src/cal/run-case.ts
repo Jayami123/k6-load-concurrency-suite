@@ -9,7 +9,7 @@ import {
 } from "../races/histogram.ts";
 import { recordTrial } from "../races/trial-record.ts";
 import { calBaseUrlFromEnv, raceMaxSpreadMsFromEnv } from "../races/env.ts";
-import type { RaceHistogram, RaceRequestResult, RaceTrialResult } from "../races/types.ts";
+import type { RaceHistogram, RaceRequestResult, RaceAttemptResult } from "../races/types.ts";
 import {
   caseLeakPattern,
   casePrefix,
@@ -75,13 +75,15 @@ function makeCanceller(cleanupViolations: string[]) {
 
 function failedTrialRecords(
   trialResults: Array<{ trial: number; ok: boolean; error?: string }>,
-  perTrial: RaceTrialResult[],
-): RaceTrialResult[] {
+  perTrial: RaceAttemptResult[],
+): RaceAttemptResult[] {
   const recorded = new Set(perTrial.map((t) => t.trial));
   return trialResults
     .filter((t) => !t.ok && !recorded.has(t.trial))
     .map((failed) => ({
       trial: failed.trial,
+      attempt: 1,
+      valid: false,
       ok: false,
       statuses: [],
       statusCounts: {},
@@ -130,7 +132,7 @@ export async function runIdenticalSlotCase(input: {
   });
 
   const spreads: number[] = [];
-  const perTrial: RaceTrialResult[] = [];
+  const perTrial: RaceAttemptResult[] = [];
   const allResponses: ParsedResponse[] = [];
   const cleanupViolations: string[] = [];
   const loserTotals: Record<LoserKind, number> = {
@@ -275,7 +277,7 @@ export async function runIdenticalSlotCase(input: {
 
     perTrial.push(...failedTrialRecords(trialResults, perTrial));
 
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     // Sweep: cancel anything of this case still holding a slot, then the leak check wants 0.
@@ -351,7 +353,7 @@ export async function runOverlapPairCase(input: {
   });
 
   const spreads: number[] = [];
-  const perTrial: RaceTrialResult[] = [];
+  const perTrial: RaceAttemptResult[] = [];
   const cleanupViolations: string[] = [];
   const guardViolations: string[] = [];
   const pairsByTrial: number[] = Array.from({ length: input.trials }, () => 0);
@@ -553,7 +555,7 @@ export async function runOverlapPairCase(input: {
     }
     perTrial.push(...failedRecords);
 
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     const swept = await sweepAndLeakCheck(input.pool, leakPattern, cancelQuietly);

@@ -20,7 +20,7 @@ import {
   selectRows,
   waitForStable,
 } from "../../../src/oracles/pg.ts";
-import type { RaceTrialResult } from "../../../src/races/types.ts";
+import type { RaceAttemptResult } from "../../../src/races/types.ts";
 
 const CONCURRENCY = 20;
 
@@ -61,7 +61,7 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
   try {
     const before = await snapshot(pool);
     const spreads: number[] = [];
-    const perTrial: RaceTrialResult[] = [];
+    const perTrial: RaceAttemptResult[] = [];
 
     const trialResults = await runTrials(trials, async (trial) => {
       // Raw bodies by request index: the exact "OK" check uses these, while
@@ -111,6 +111,8 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
     for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
       perTrial.push({
         trial: failed.trial,
+        attempt: 1,
+        valid: false,
         ok: false,
         statuses: [],
         statusCounts: {},
@@ -121,7 +123,7 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
       });
     }
 
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     const stableOne = await waitForStable(() =>

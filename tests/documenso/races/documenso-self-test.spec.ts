@@ -41,7 +41,7 @@ import {
 import { leakCheck, readWebhookCalls } from "../../../src/documenso/oracle.ts";
 import { casePrefix, likeLiteralPrefix } from "../../../src/medusa/payloads.ts";
 import { p6RunPrefix } from "../../../src/races/prefix.ts";
-import type { RaceTrialResult } from "../../../src/races/types.ts";
+import type { RaceAttemptResult } from "../../../src/races/types.ts";
 
 const CASE_ID = "documenso-self-test";
 const CONCURRENCY = 20;
@@ -114,7 +114,7 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
   try {
     // 1. Health burst: every trial fires 20 gated GET /api/auth/csrf at once.
     const spreads: number[] = [];
-    const perTrial: RaceTrialResult[] = [];
+    const perTrial: RaceAttemptResult[] = [];
     const trialResults = await runTrials(trials, async (trial) => {
       const fired = await fireTogether(
         CONCURRENCY,
@@ -159,6 +159,8 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
     for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
       perTrial.push({
         trial: failed.trial,
+        attempt: 1,
+        valid: false,
         ok: false,
         statuses: [],
         statusCounts: {},
@@ -169,7 +171,7 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
       });
     }
     trialsOk = trialResults.every((t) => t.ok);
-    histogram.perTrial = perTrial.sort((a, b) => a.trial - b.trial);
+    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
     histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
 
     // 2. Oracle: the read-only pool answers, and refuses a write with SQLSTATE 25006.
