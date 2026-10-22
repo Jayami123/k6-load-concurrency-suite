@@ -224,25 +224,31 @@ changes the order; each is resolved inside the named task):
     violations still count (D3). Its data is still cleaned and leak-checked.
   - Rerun from scratch: fresh setup (new cart / slot / document), new `fireTogether` burst. The
     invalid attempt keeps its record (statuses, spread, oracle) with `valid: false`.
-  - Cap: per trial and per case (env `RACE_MAX_SPREAD_RERUNS`, default chosen by the plan from probe
-    data). Hitting the cap fails the case as **TEST BUG** (runner too noisy), with every attempt in
-    the histogram.
-  - Histogram: `invalidTrials`, `reruns`, per-attempt `attempt` and `valid`; `trials` stays the
-    number of valid trials asked for. Job summary / race table show invalid and rerun counts.
+  - Cap: two limits, both env-configurable with strict integer parsing. `RACE_MAX_SPREAD_RERUNS` (default 3):
+    reruns per trial index. A per-case invalid-attempt budget:
+    `max(RACE_MIN_INVALID_BUDGET, ceil(trials × RACE_MAX_INVALID_SHARE_PCT / 100))` with defaults 2 and 20 (a whole
+    percent, 0 to 100). Defaults come from the probe (plan §2.8). Hitting either limit fails the case as **TEST BUG**
+    (runner too noisy), with every attempt in the histogram.
+  - Warm-up (accepted extra X1): `RACE_WARMUP_BURSTS` (default 1, 0 disables) untimed warm-up burst(s) before trial 1,
+    with their own fresh setup and cleanup; excluded from the verdict, `statusCounts` and the histograms' trial data,
+    recorded as `warmup[]` with their spread. Rerun-on-spread stays as the backstop. The probe shows 9 of 13 slow Cal
+    bursts are trial 1.
+  - Histogram: `perTrial` is replaced by `trials[]` (one entry per trial index: attempts, final valid attempt or
+    invalid-after-cap) and `attempts[]` (every burst with trial index, attempt number, spread and validity);
+    `trialsRequested` is the number of valid trials asked for; `invalidTrials`, `reruns` and `warmup[]` are added.
+    The job summary / race table show an `Invalid / reruns` column.
   - CI: remove every `RACE_MAX_SPREAD_MS: "20"` from `perf.yml` (Medusa race step; Cal self-test,
     `-001`, `-003`; Documenso races), so the default 5 applies with reruns.
   - README: replace "Raise the env var on noisy CI runners" with the rerun rule.
-- **Files likely touched.** `src/races/types.ts` (histogram/trial fields), `src/races/histogram.ts`,
-  `src/races/run-trials.ts` or a new `src/races/rerun-on-spread.ts` (plan decides; a new module is
-  the standard choice, keeping `runTrials` unchanged), `src/races/env.ts`
-  (`raceMaxSpreadRerunsFromEnv`), `src/medusa/invariants.ts`, `src/medusa/run-case.ts`,
-  `src/cal/invariants.ts`, `src/cal/run-case.ts`, `src/documenso/invariants.ts`,
-  `src/documenso/run-case.ts`, `src/ci/race-table.ts`, `src/ci/playwright-json-summary.ts` (if it
-  reads spread), `.github/workflows/perf.yml`, `README.md`, unit tests
-  `tests/unit/rerun-on-spread.test.ts` (new), `tests/unit/env.test.ts`,
-  `tests/unit/histogram.test.ts`, `tests/unit/race-table.test.ts`,
-  `tests/unit/{medusa,cal,documenso}-invariants.test.ts` (spread cases move to the new test),
-  `tests/unit/documenso-run-case.test.ts`.
+- **Files touched (from the Task 1 probe, plan §2.7).** New `src/races/rerun-on-spread.ts` (`runTrials` stays
+  unchanged) and `tests/unit/rerun-on-spread.test.ts`. Edited: `src/races/{env,types,histogram,trial-record}.ts`,
+  `src/{medusa,cal,documenso}/invariants.ts`, `src/{medusa,cal,documenso}/run-case.ts`, `src/documenso/payloads.ts`
+  (attempt in names), `src/ci/race-table.ts`, `.github/workflows/perf.yml`, `README.md`, `.env.example`; the three
+  self-test specs (`tests/{medusa,cal,documenso}/races/*self-test.spec.ts`, each has its own spread check and trial
+  loop), `tests/cal/races/cal-race-001-identical-slot.spec.ts`, `tests/cal/races/cal-race-003-overlap.spec.ts`,
+  `tests/documenso/races/{doc-race-001-last-recipients,doc-race-002-double-submit}.spec.ts`; unit tests `env`,
+  `histogram`, `trial-record`, `race-table`, `{medusa,cal,documenso}-invariants`, `documenso-payloads`. Not touched:
+  `src/ci/playwright-json-summary.ts`, `tests/unit/documenso-run-case.test.ts` (neither reads spread).
 - **The live probe must confirm.**
   1. The spread distribution per case from the `p6-phase1` release zips (runs A and B and the
      earlier `main` runs): how many trials exceed 5 ms (Task 8 closeout §5.1 table shows a max of
@@ -783,15 +789,16 @@ task's probe" means the task's plan confirms or replaces it after its probe.
 
 - **D1 Order and IDs (agreed).** Tasks 1–9 as in the task table; case IDs as in the master plan;
   X04/X05 become `P6-MED-RACE-008` and `-009`.
-- **D2 Spread comparison (proposed, confirmed by the task's probe).** Valid when `dispatchSpreadMs ≤ RACE_MAX_SPREAD_MS`, invalid
+- **D2 Spread comparison (agreed 2026-10-22).** Valid when `dispatchSpreadMs ≤ RACE_MAX_SPREAD_MS`, invalid
   when `>` (the name says "max"; matches the agreed wording). One shared function decides; the
   per-product `>=` checks are removed and README is updated.
-- **D3 Rerun scope (proposed, confirmed by the task's probe).** Only the spread precondition makes a trial invalid. A product
+- **D3 Rerun scope (agreed 2026-10-22).** Only the spread precondition makes a trial invalid. A product
   invariant violation in any attempt, valid or invalid, is recorded and fails the case (or counts
   towards a `test.fail()` proof). This answers Phase 1 D35's objection.
-- **D4 Histogram accounting (proposed, confirmed by the task's probe).** Top-level `statusCounts` count valid attempts only;
-  invalid attempts keep their own status counts in `perTrial`, plus `invalidTrials` and `reruns`
-  totals, so published rates are never mixed with discarded bursts.
+- **D4 Histogram accounting (agreed 2026-10-22).** Top-level `statusCounts` count valid attempts only;
+  invalid attempts keep their own status counts in `attempts[]` (every burst, with trial index, attempt
+  number, spread and validity; `trials[]` has one entry per trial index), plus `invalidTrials` and `reruns` totals, so
+  published rates are never mixed with discarded bursts.
 - **D5 Gift-card gate (agreed 2026-10-22).** P6 never changes the Medusa fork (shared with P1, same
   `MEDUSA_REF`) to add a gift-card plugin. If the Task 2 gate confirms no gift-card or store-credit
   feature at `MEDUSA_REF`, `P6-MED-RACE-006` moves to "Later" with the evidence; the money
