@@ -47,11 +47,45 @@ It is not the time at which the server received them. A small spread means the c
 the burst together.
 
 - `/health` not HTTP 200 with body `OK` → **PRODUCT BUG** (paste status and body).
-- Spread ≥ `RACE_MAX_SPREAD_MS` (default 5) with successful responses → **TEST BUG** (barrier
-  ran sequentially or was not a gate). Raise the env var on noisy CI runners; do not change the
-  helper.
+- A burst whose spread is above `RACE_MAX_SPREAD_MS` (default 5) is **invalid** and is rerun, not failed
+  (see "Rerun on spread" below). Too many invalid bursts → **TEST BUG** (runner too noisy).
 - Mapped oversell race `P6-MED-RACE-001` writes `results/races/P6-MED-RACE-001.json` when Medusa is
   up with admin credentials set (see below).
+
+### Rerun on spread (all products)
+
+`dispatchSpreadMs` only says how far apart Node started the requests, not when the server received them. A race
+verdict should rest on bursts that really went out together, so the spread is a precondition of a trial, not a
+product check:
+
+- A burst is **valid** when `dispatchSpreadMs <= RACE_MAX_SPREAD_MS` (default 5) and **invalid** when it is above.
+  One function, `isSpreadValid` in `src/races/rerun-on-spread.ts`, makes this decision for every product.
+- An invalid burst is kept in the histogram (`attempts[]`, with `attempt` and `valid: false`) and the trial is run
+  again from scratch (new cart, slot or document, new burst) under the same trial index. A rerun is a new attempt
+  of the same trial, not a retry of a failed assertion.
+- Only the spread makes an attempt invalid. The product oracle runs on every attempt. A product violation in any
+  attempt, valid or invalid, is recorded and fails the case (or counts towards an expected-failure proof). Data of
+  every attempt is cleaned up and leak-checked.
+- Histogram shape: `trialsRequested` is the number of valid trials asked for; `trials[]` has one entry per trial
+  index (`attempts`, `finalAttempt`, `outcome`: `valid`, `invalid-after-cap`, `failed` or `not-run`, and `ok`);
+  `attempts[]` has every burst with its trial index, attempt number, spread and `valid`. Top-level `statusCounts` and
+  `dispatchSpreadMs` count valid attempts only; `invalidDispatchSpreadMs`, `invalidTrials` (attempts rejected for
+  spread) and `reruns` (attempts after the first) report the rest. Counters that decide a bug (double seal, double
+  booking, oversell, 5xx) use every attempt.
+- Limits stop a runner that is too noisy. Reaching the per-trial cap, or spending the per-case budget, fails the case
+  as **TEST BUG: runner too noisy**, with every attempt kept. The budget is
+  `max(RACE_MIN_INVALID_BUDGET, ceil(trials × RACE_MAX_INVALID_SHARE_PCT / 100))` invalid attempts.
+
+| Variable                     | Default | Meaning                                                                                              |
+| ---------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `RACE_MAX_SPREAD_MS`         | 5       | Largest spread, in ms, of a valid burst. Whole number, at least 1.                                   |
+| `RACE_MAX_SPREAD_RERUNS`     | 3       | Reruns allowed per trial index (at most 4 bursts for one index). Whole number, at least 1.           |
+| `RACE_MAX_INVALID_SHARE_PCT` | 20      | Invalid attempts allowed per case, in whole percent of `trials`, rounded up. Whole number, 0 to 100. |
+| `RACE_MIN_INVALID_BUDGET`    | 2       | The budget never falls below this many invalid attempts. Whole number, at least 0.                   |
+
+Negatives, fractions, exponents and junk fail the run with a TEST BUG. The job summary and the race table have an
+`Invalid / reruns` column for each case (zero is a valid result; `n/a` for a histogram from before this feature). CI
+uses the defaults. Evidence for the defaults: `docs/plans/2026-10-22-p6-phase2-task1-rerun-on-spread.md`.
 
 ### Medusa oversell histogram (`P6-MED-RACE-001`)
 
@@ -66,7 +100,8 @@ password; locally copy names from `.env.example`). The oversell spec calls harne
   stock). That is an expected loser, not a failure.
 - Any `"500"` or `"error"` count is a **PRODUCT BUG** (report status and body summary). Do not treat
   it as a stock loser.
-- `dispatchSpreadMs` is still the Node start spread for the burst (see above).
+- `dispatchSpreadMs` is still the Node start spread for the burst (see above). `statusCounts` count valid
+  attempts only (see "Rerun on spread").
 - Trial count: pull requests run 3 trials; `main` (push, schedule or `workflow_dispatch`) runs 50. The extras run 3.
 
 ## Run Cal
@@ -88,7 +123,8 @@ Later `up:cal` runs reuse the Next.js build. The self-test writes `results/races
 (gitignored); the harness log is `results/harness/cal-up.log`.
 
 - `GET /pro/30min` not HTTP 200 → **PRODUCT BUG** (paste status and body start).
-- Spread ≥ `RACE_MAX_SPREAD_MS` with successful responses → **TEST BUG** (barrier).
+- A burst above `RACE_MAX_SPREAD_MS` is invalid and rerun (see "Rerun on spread"); too many → **TEST BUG**
+  (runner too noisy).
 - `up:cal` exits 1, out of memory, a blocked host, Docker or disk errors → **ENV** (paste the last
   40 lines of `cal-up.log`).
 - The Cal database keeps its data between local runs (the harness keeps its Docker volume).
@@ -173,7 +209,7 @@ host the webhook receiver is allowed on). SSRF protection stays on for every oth
 | Label       | When                                                                                                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **PRODUCT** | Health burst not 200; signup not 201; verify not `VERIFIED`; token or API v1 not 200; no confirmation email; webhook delivered not once, secret differs, `WebhookCall` not one `SUCCESS` 200, or body differs |
-| **TEST**    | Spread at or over `RACE_MAX_SPREAD_MS`; SQLSTATE not 25006; leak or cleanup failure                                                                                                                           |
+| **TEST**    | Runner too noisy (rerun cap or invalid-share budget used up); SQLSTATE not 25006; leak or cleanup failure                                                                                                     |
 | **ENV**     | `up` exits 1, Node below 24, out of memory, Docker or disk errors, a missing hosts entry or bypass host (webhook `FAILED` with `responseCode` 0), a 429, or Inbucket API drift                                |
 
 The first two labels need the evidence pasted (HTTP status, body start, counts, SQLSTATE). For ENV,
@@ -210,7 +246,8 @@ Trial counts: 5 on pull requests, 50 on `main`, nightly and `workflow_dispatch`.
 `RACE_TRIALS=5 npm run race:documenso` after `npm run up:documenso`.
 
 The completion races need a serial database: no other write may reach the Documenso database during the run,
-because the `DocumentData` count is a per-trial delta. CI runs one job with `workers: 1` and a fresh
+because the `DocumentData` count is a per-attempt delta (the baseline is read again at the start of every attempt,
+so the rows of an invalid attempt are never counted in the next one). CI runs one job with `workers: 1` and a fresh
 database. Locally, run no other Documenso work while the race runs.
 
 Residue is reported, never asserted and never cleaned via SQL: `softDeletedEnvelopes` and
@@ -218,8 +255,8 @@ Residue is reported, never asserted and never cleaned via SQL: `softDeletedEnvel
 team or user, because account deletion re-owns completed envelopes).
 
 Labels: **PRODUCT BUG** (a completion 4xx or 5xx, a seal or audit count that is not 1, a delta that is not
-2, a duplicate e-mail or webhook, a `WebhookCall` that is not SUCCESS 200); **TEST BUG** (setup, spread,
-cleanup, leak, histogram); **ENV** (a blocked webhook host, a 429, a missing fixture, a stack that is down);
+2, a duplicate e-mail or webhook, a `WebhookCall` that is not SUCCESS 200); **TEST BUG** (setup, runner too
+noisy, cleanup, leak, histogram); **ENV** (a blocked webhook host, a 429, a missing fixture, a stack that is down);
 **TEST BUG (control)** (the sequential control failed). Paste the evidence (status, counts, the violation
 line); never a token.
 
