@@ -68,7 +68,7 @@ Every case must be a cross-domain primitive, not CRUD: **money never goes negati
 winner under contention**, **state-transition exclusivity**, **side-effect exactly-once**, **token
 single use**. Each task below has one line on what it proves and how it transfers to finance and
 healthcare. Extra risky cases found in a source (replay, retry, boundary, error codes) are listed
-as **proposed extras** with a new ID; they are not in scope until the maintainer accepts them.
+as **proposed extras** with a new ID; they are not in scope until the maintainer accepts them (the extras accepted on 2026-10-22 are listed in D12).
 
 ## Already done (not re-planned)
 
@@ -95,56 +95,66 @@ What Phase 2 reuses as-is (extend only where a probe proves a gap):
 
 ## Remaining Phase 2 cases
 
-| Case ID           | Source                                    | Summary                                                                                    | Pri |
-| ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ | --- |
-| —                 | Task 8 closeout §5.5 item 2               | Framework: rerun-on-spread (invalid trial is rerun, capped, recorded) replaces CI `20 ms`  | —   |
-| `P6-MED-RACE-006` | MED07                                     | Gift card balance covers one order; two carts apply it in parallel; balance ≥ 0            | P0  |
-| `P6-MED-RACE-007` | MED08                                     | Captured payment X; N parallel refunds of X; total refunded ≤ X                            | P1  |
-| `P6-MED-RACE-005` | MED06                                     | Campaign budget allows K; N > K carts with the promo complete in parallel; usage ≤ K       | P1  |
-| `P6-MED-RACE-008` | P1 X04 (`tests/medusa/api/races.spec.ts`) | Double cancel of one order: one cancel takes effect, no duplicate side effects             | —   |
-| `P6-MED-RACE-009` | P1 X05 (`tests/medusa/api/races.spec.ts`) | Cancel ‖ fulfil on one order: never `canceled` with an open fulfillment                    | —   |
-| `P6-CAL-RACE-006` | CAL06                                     | Private link `maxUsageCount=1`, N=10 parallel bookings through it: exactly 1 success       | P1  |
-| `P6-CAL-RACE-007` | CAL18                                     | Confirm ‖ cancel on a PENDING booking: one terminal state, never both side-effect sets     | P1  |
-| `P6-OBS-DOC-001`  | README "Known product bugs"; Task 6 §2.11 | Wrong password → 401, wrong CSRF → 400 on sign-in (today 500); `test.fail()` with evidence | low |
-| —                 | master plan §4 Twenty; harness adapter    | Twenty stack in P6: CI job, read-only oracle, self-test, token scan (no race)              | —   |
-| `P6-TW-RACE-001`  | TW01                                      | Two PATCH on the same company name: final ∈ {A, B}, no 5xx                                 | P0  |
-| `P6-TW-RACE-004`  | TW04                                      | N=10 parallel redemptions of one reset token: exactly one success                          | P0  |
-| `P6-TW-RACE-002`  | TW01                                      | Kanban position lost update (only if the Task 7 probe shows it is cheap)                   | P1  |
-| `P6-TW-RACE-003`  | TW02                                      | Concurrent merge of the same pair (only if the Task 7 probe shows it is cheap)             | P2  |
-| `P6-MED-RACE-002` | MED02                                     | Two instances × Redis lock: orders ≤ S (only if Task 8 finds no harness change is needed)  | P1  |
-| `P6-MED-RACE-003` | MED02                                     | Two instances × in-memory lock fails open (characterization; same condition)               | P2  |
+| Case ID           | Source                                    | Summary                                                                                           | Pri |
+| ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------- | --- |
+| —                 | Task 8 closeout §5.5 item 2               | Framework: rerun-on-spread (invalid trial is rerun, capped, recorded) replaces CI `20 ms`         | —   |
+| `P6-MED-RACE-006` | MED07                                     | Gift card balance covers one order; two carts apply it in parallel; balance ≥ 0                   | P0  |
+| `P6-MED-RACE-007` | MED08                                     | Captured payment X; N parallel refunds of X; total refunded ≤ X                                   | P1  |
+| `P6-MED-RACE-010` | MED08 (accepted extra)                    | Concurrent captures on one authorized payment: total captured ≤ authorized (gated)                | —   |
+| `P6-MED-RACE-011` | MED08 (accepted extra)                    | N parallel partial refunds of X/2: exactly two succeed, total refunded = X                        | —   |
+| `P6-MED-RACE-005` | MED06                                     | Campaign budget allows K; N > K carts with the promo complete in parallel; usage ≤ K              | P1  |
+| `P6-MED-RACE-008` | P1 X04 (`tests/medusa/api/races.spec.ts`) | Double cancel of one order: one cancel takes effect, no duplicate side effects                    | —   |
+| `P6-MED-RACE-009` | P1 X05 (`tests/medusa/api/races.spec.ts`) | Cancel ‖ fulfil on one order: never `canceled` with an open fulfillment                           | —   |
+| `P6-MED-RACE-012` | MED06 (accepted extra)                    | Promotion usage limit under N parallel carts: usage ≤ limit (only if the probe shows it is cheap) | —   |
+| `P6-CAL-RACE-006` | CAL06                                     | Private link `maxUsageCount=1`, N=10 parallel bookings through it: exactly 1 success              | P1  |
+| `P6-CAL-RACE-007` | CAL18                                     | Confirm ‖ cancel on a PENDING booking: one terminal state, never both side-effect sets            | P1  |
+| `P6-CAL-RACE-008` | CAL06 (accepted extra)                    | Private link `maxUsageCount=3`, N=10 parallel: exactly 3 bookings, `usageCount = 3`               | —   |
+| `P6-CAL-RACE-009` | CAL18 (accepted extra)                    | Confirm ‖ confirm on a PENDING booking: one ACCEPTED, one webhook delivery                        | —   |
+| `P6-OBS-DOC-001`  | README "Known product bugs"; Task 6 §2.11 | Wrong password → 401, wrong CSRF → 400 or 403 (never 5xx; today 500); `test.fail()` with evidence | low |
+| —                 | master plan §4 Twenty; harness adapter    | Twenty stack in P6: CI job, read-only oracle, self-test, token scan (no race)                     | —   |
+| `P6-TW-RACE-001`  | TW01                                      | Two PATCH on the same company name: final ∈ {A, B}, no 5xx                                        | P0  |
+| `P6-TW-RACE-004`  | TW04                                      | N=10 parallel redemptions of one reset token: exactly one success                                 | P0  |
+| `P6-TW-RACE-002`  | TW01                                      | Kanban position lost update (only if the Task 7 probe shows it is cheap)                          | P1  |
+| `P6-TW-RACE-003`  | TW02                                      | Concurrent merge of the same pair (only if the Task 7 probe shows it is cheap)                    | P2  |
+| `P6-TW-RACE-005`  | TW01 (accepted extra)                     | Disjoint-field PATCHes on one record: both values persist                                         | —   |
+| `P6-TW-RACE-006`  | TW04 (accepted extra)                     | Sequential reset-token replay after a successful redemption is refused                            | —   |
 
 `P6-MED-RACE-008` and `-009` are new IDs continuing the MED sequence. The master plan has no
-priority for them; the Task 3 plan proposes one from the P1 evidence.
+priority for them; the Task 3 plan proposes one from the P1 evidence. The accepted extras
+(`P6-MED-RACE-010`, `-011`, `-012`, `P6-CAL-RACE-008`, `-009`, `P6-TW-RACE-005`, `-006`) keep the
+IDs they were proposed under; their task plan proposes a priority.
+
+`P6-MED-RACE-002` and `-003` (MED02, multi-instance) are **not** Phase 2 cases: they need the
+harness to start and stop a second Medusa instance (D11), so they are the first item of Phase 3.
+Task 8 only writes the input spec for that harness change.
 
 ## Task table
 
-| Task | Title                              | Cases                                                   | Depends on | Branch (date set when the task starts)  | Can be planned in parallel with |
-| ---- | ---------------------------------- | ------------------------------------------------------- | ---------- | --------------------------------------- | ------------------------------- |
-| 1    | Framework: rerun-on-spread         | none (framework; all existing cases re-run under it)    | —          | `feat/<date>-p6-rerun-on-spread`        | 2, 6 (probe + plan only)        |
-| 2    | Medusa money races                 | `P6-MED-RACE-006`, `P6-MED-RACE-007`                    | 1          | `feat/<date>-p6-med-money-races`        | 4, 6                            |
-| 3    | Medusa budget + order-state races  | `P6-MED-RACE-005`, `P6-MED-RACE-008`, `P6-MED-RACE-009` | 2          | `feat/<date>-p6-med-budget-order-races` | 4, 5, 6                         |
-| 4    | Cal state races + shared receiver  | `P6-CAL-RACE-006`, `P6-CAL-RACE-007`                    | 1          | `feat/<date>-p6-cal-state-races`        | 2, 3, 6                         |
-| 5    | Documenso `P6-OBS-DOC-001` CI test | `P6-OBS-DOC-001`                                        | 1          | `test/<date>-p6-doc-obs-001`            | any                             |
-| 6    | Twenty stack in P6                 | none (stack + oracle + self-test + token scan)          | 1          | `feat/<date>-p6-twenty-stack`           | 2, 3, 4, 5                      |
-| 7    | Twenty races                       | `P6-TW-RACE-001`, `P6-TW-RACE-004` (+ `-002`, `-003`?)  | 6          | `feat/<date>-p6-twenty-races`           | 8                               |
-| 8    | Multi-instance Medusa probe        | decides `P6-MED-RACE-002`, `P6-MED-RACE-003`            | 3          | `docs/<date>-p6-med-multi-instance`     | 7                               |
-| 9    | Phase 2 closeout                   | all Phase 2 cases (evidence only)                       | 2–8        | `docs/<date>-p6-phase2-closeout`        | —                               |
+| Task | Title                              | Cases                                                                | Depends on | Branch (date set when the task starts)  | Can be planned in parallel with |
+| ---- | ---------------------------------- | -------------------------------------------------------------------- | ---------- | --------------------------------------- | ------------------------------- |
+| 1    | Framework: rerun-on-spread         | none (framework; all existing cases re-run under it)                 | —          | `feat/<date>-p6-rerun-on-spread`        | 2, 6 (probe + plan only)        |
+| 2    | Medusa money races                 | `P6-MED-RACE-006` (gated), `-007`, `-010` (gated), `-011`            | 1          | `feat/<date>-p6-med-money-races`        | 4, 6                            |
+| 3    | Medusa budget + order-state races  | `P6-MED-RACE-005`, `-008`, `-009` (+ `-012` if cheap)                | 2          | `feat/<date>-p6-med-budget-order-races` | 4, 5, 6                         |
+| 4    | Cal state races + shared receiver  | `P6-CAL-RACE-006`, `-007`, `-008`, `-009`                            | 1          | `feat/<date>-p6-cal-state-races`        | 2, 3, 6                         |
+| 5    | Documenso `P6-OBS-DOC-001` CI test | `P6-OBS-DOC-001`                                                     | 1          | `test/<date>-p6-doc-obs-001`            | any                             |
+| 6    | Twenty stack in P6                 | none (stack + oracle + self-test + token scan)                       | 1          | `feat/<date>-p6-twenty-stack`           | 2, 3, 4, 5                      |
+| 7    | Twenty races                       | `P6-TW-RACE-001`, `-004`, `-005`, `-006` (+ `-002`, `-003` if cheap) | 6          | `feat/<date>-p6-twenty-races`           | 8                               |
+| 8    | Multi-instance Medusa probe        | none (read-only; harness spec for Phase 3 `P6-MED-RACE-002/003`)     | 3          | `docs/<date>-p6-med-multi-instance`     | 7                               |
+| 9    | Phase 2 closeout                   | all Phase 2 cases (evidence only)                                    | 2–8        | `docs/<date>-p6-phase2-closeout`        | —                               |
 
-Task 5 is a `test` branch because it adds a test and no feature code; Task 8 is `docs` unless its
-probe decides that `P6-MED-RACE-002/003` land, in which case the plan renames it `feat/…` before
-the first commit. Only one product stack runs at a time on a cloud VM (memory); probes for two
+Task 5 is a `test` branch because it adds a test and no feature code; Task 8 is `docs` because it
+only writes a probe report (D11: no P6 code for a second instance). Only one product stack runs at a time on a cloud VM (memory); probes for two
 products are never run together.
 
 ```mermaid
 flowchart LR
-  T1["Task 1<br/>rerun-on-spread"] --> T2["Task 2<br/>MED-RACE-006/007"]
-  T2 --> T3["Task 3<br/>MED-RACE-005/008/009"]
-  T1 --> T4["Task 4<br/>CAL-RACE-006/007<br/>+ shared receiver"]
+  T1["Task 1<br/>rerun-on-spread"] --> T2["Task 2<br/>MED-RACE-006/007/010/011"]
+  T2 --> T3["Task 3<br/>MED-RACE-005/008/009 (+012)"]
+  T1 --> T4["Task 4<br/>CAL-RACE-006..009<br/>+ shared receiver"]
   T1 --> T5["Task 5<br/>OBS-DOC-001 test"]
   T1 --> T6["Task 6<br/>Twenty stack"]
-  T6 --> T7["Task 7<br/>TW-RACE-001/004"]
-  T3 --> T8["Task 8<br/>multi-instance probe"]
+  T6 --> T7["Task 7<br/>TW-RACE-001/004/005/006"]
+  T3 --> T8["Task 8<br/>multi-instance probe<br/>(harness spec)"]
   T3 --> T9["Task 9<br/>closeout"]
   T4 --> T9
   T5 --> T9
@@ -177,14 +187,15 @@ changes the order; each is resolved inside the named task):
    `apps/backend/medusa-config.ts` with no plugins) has no loyalty plugin installed, and the
    installed `@medusajs/medusa` 2.21.2 store API has no gift-card or store-credit route (read-only
    listing of `dist/api/store`). Adding the plugin is a product-fork change, which P6 never makes.
-   Task 2 therefore opens with a gate (Task 2 "The live probe must confirm" item 1, D5).
+   Task 2 therefore opens with a gate (Task 2 "The live probe must confirm" item 1, D5, agreed
+   2026-10-22: P6 never changes the fork; `-006` moves to "Later" if the gate confirms).
 5. **Multi-instance Medusa phase.** Master plan §9 puts "multi-instance Medusa" in Phase 4, and the
-   Phase 1 roadmap "Later" says "Phase 4". The agreed order probes it in Phase 2 (Task 8) and, if a
-   harness change is needed, makes it the first item of Phase 3. That moves it earlier than the
-   master plan; the master-plan HTML is not edited (Phase 1 Task 8 rule), README states the move.
+   Phase 1 roadmap "Later" says "Phase 4". The agreed order probes it in Phase 2 (Task 8, read-only)
+   and, with D11 (agreed 2026-10-22: the harness must start the second instance), makes
+   `P6-MED-RACE-002/003` the first item of Phase 3. That moves it earlier than the master plan; the master-plan HTML is not edited (Phase 1 Task 8 rule), README states the move.
 6. **`P6-OBS-DOC-001` expected codes.** Task 6 §2.11 says "401 (credentials) / 400 or 403 (CSRF)";
-   Task 8 closeout §5.5 says "return 401" for both; the agreed text says 401 / 400. Task 5 asserts
-   the agreed 401 / 400 and records the alternatives in the plan (D8).
+   Task 8 closeout §5.5 says "return 401" for both. D8 (agreed 2026-10-22): exactly 401 for a wrong
+   password; 400 or 403 for a bad CSRF token (the probe records which); never 5xx.
 7. **Twenty image tag.** The agreed text says "image 2.44.0". The harness pins the tag `v2.44.0`
    (`twenty-env.ts` `TWENTY_DEFAULT_IMAGE_TAG`, `config.ts` `TWENTY_IMAGE_TAG` default, overlay
    `twentycrm/twenty:${TAG:-v2.44.0}`), and rejects `latest`. The fork's own
@@ -192,7 +203,7 @@ changes the order; each is resolved inside the named task):
    overrides it. Same version, the `v` prefix is part of the tag.
 8. **`P6-TW-RACE-001` as written is a last-write-wins characterization.** "Final value ∈ {A,B}; no
    5xx" holds for any store without a lost-update guard, so on its own it is close to CRUD. Task 7
-   keeps the case as written and proposes `P6-TW-RACE-005` (disjoint fields) as the true lost-update
+   keeps the case as written and adds the accepted extra `P6-TW-RACE-005` (disjoint fields) as the true lost-update
    primitive.
 
 ## Task 1: Framework carry-over, rerun-on-spread
@@ -259,11 +270,13 @@ changes the order; each is resolved inside the named task):
   `DocumentData` delta double-counting an invalid attempt; CI time growth if the 5 ms default
   causes many reruns on `P6-CAL-RACE-001` (cap and probe data decide).
 
-## Task 2: Medusa money races (`P6-MED-RACE-006`, `P6-MED-RACE-007`)
+## Task 2: Medusa money races (`P6-MED-RACE-006`, `-007`, `-010`, `-011`)
 
 - **Goal.** Prove money cannot go negative or be over-returned under contention.
-- **Cases.** `P6-MED-RACE-006` (P0, gift card balance never negative), `P6-MED-RACE-007` (P1,
-  concurrent refunds ≤ captured amount).
+- **Cases.** `P6-MED-RACE-006` (P0, gift card balance never negative; gated, D5),
+  `P6-MED-RACE-007` (P1, concurrent refunds ≤ captured amount), `P6-MED-RACE-010` (accepted extra,
+  concurrent captures ≤ authorized; gated), `P6-MED-RACE-011` (accepted extra, partial-refund
+  boundary).
 - **What it proves / transfers.** "Money never goes negative" and "never refund more than was
   taken": the same invariant as a wallet or prepaid-card double spend in finance and as a
   benefit/claim payout cap in healthcare billing.
@@ -279,23 +292,38 @@ changes the order; each is resolved inside the named task):
     check-then-act window; whether the payment module re-checks under a lock is for the probe.
   - `P6-MED-RACE-006`: per trial, one gift card whose balance covers one order, two carts apply it,
     both complete in parallel. Oracle: at most one order paid by the card; balance ≥ 0. **Gated**
-    on the pinned stack having a gift-card feature (Context note 4, D5).
+    on the pinned stack having a gift-card feature (Context note 4, D5). If the gate confirms there
+    is none, `-006` moves to "Later" with the evidence; the money primitive is then covered by
+    `-007`, `-010` and `-011`. P6 never changes the Medusa fork (shared with P1) to add a plugin.
+  - `P6-MED-RACE-011`: per trial, the same captured payment of X, then N parallel partial refunds
+    of X/2. Oracle: exactly two succeed, the refund rows sum to exactly X, the rest are clean 4xx.
+    It is the boundary of `-007` (the cap is reached by two valid requests, not one).
+  - `P6-MED-RACE-010`: per trial, one authorized but uncaptured payment of X, then N parallel admin
+    captures. Oracle: total captured ≤ authorized, at most one capture succeeds when each asks for
+    X. **Gated** on the probe showing capture is a separate step with the configured payment
+    provider; if capture is automatic at authorization, `-010` moves to "Later" with that
+    evidence.
 - **Files likely touched.** `src/medusa/admin.ts` (capture, refund, gift-card admin calls),
   `src/medusa/store.ts` (apply gift card), `src/medusa/payloads.ts`, `src/medusa/oracle.ts`
   (refund sum, gift-card balance SQL), `src/medusa/invariants.ts`, `src/medusa/run-case.ts` (or a
   `run-money-case.ts` if `run-case.ts` grows past one concern; plan decides),
   `tests/medusa/races/med-race-006-gift-card.spec.ts`,
-  `tests/medusa/races/med-race-007-refunds.spec.ts`, `tests/unit/medusa-{payloads,oracle,invariants}.test.ts`,
+  `tests/medusa/races/med-race-007-refunds.spec.ts`,
+  `tests/medusa/races/med-race-010-captures.spec.ts`,
+  `tests/medusa/races/med-race-011-partial-refunds.spec.ts`,
+  `tests/unit/medusa-{payloads,oracle,invariants}.test.ts`,
   `.github/workflows/perf.yml` (race step), `README.md`.
 - **The live probe must confirm.**
   1. **Gate for `-006`:** does the stack started by `up:medusa` at `MEDUSA_REF` expose any gift-card
-     or store-credit API? If not, record the evidence (route list, `medusa-config.ts`) and stop
-     `-006` there (D5); `-007` continues alone.
+     or store-credit API? If not, record the evidence (route list, `medusa-config.ts`) and move
+     `-006` to "Later" (D5); `-007`, `-010` and `-011` continue.
   2. The route and body for capture and refund on this version (the admin API has a `payments`
      directory in `dist/api/admin`; exact paths and bodies unverified), the provider id, and
-     whether capture is needed or automatic.
-  3. The loser status and body (400 `invalid_data` "You are not allowed to refund more than the
-     captured amount" is the expected text from `refund-payment.js` line 33).
+     **gate for `-010`:** whether capture is a separate step with that provider or automatic at
+     authorization (record the evidence either way).
+  3. The loser status and body for refunds (400 `invalid_data` "You are not allowed to refund more
+     than the captured amount" is the expected text from `refund-payment.js` line 33) and for
+     captures; whether a partial refund of X/2 is accepted and how amounts are rounded.
   4. Tables and columns for the oracle (refund rows, payment `captured_amount`/`refunded_amount` or
      their raw JSON) and that the read-only pool can read them.
   5. Per-trial time (setup includes a full checkout), which sets the full count and the step
@@ -305,27 +333,27 @@ changes the order; each is resolved inside the named task):
   probe above and is a junior-engineer guide (exact file paths, code skeletons per new function and
   test, exact commands, expected outputs, step order) so a weaker model can build it without
   guessing.
-- **Proposed extras (not in scope until accepted).**
-  - `P6-MED-RACE-010` concurrent captures on one authorized payment: total captured ≤ authorized
-    (MED08 is titled "refunds / captures" but defines only the refund case).
-  - `P6-MED-RACE-011` boundary: N parallel partial refunds of X/2 → exactly two succeed and the
-    total equals X.
+- **Extras.** `P6-MED-RACE-010` and `-011` were proposed here (MED08 is titled "refunds /
+  captures" but defines only the refund case) and accepted on 2026-10-22; they are in the Cases
+  above.
 - **CI change.** `medusa-smoke` race step runs the new specs: 3 trials on PRs, full count on `main`,
   nightly and `workflow_dispatch` (Phase 1 D2); full count set by the plan from probe timing.
 - **Done when.** Each landed case passes (or a proven product bug is recorded with `test.fail()` and
   evidence from repeated runs) at the PR count and at full count in one `main` or nightly run;
-  histograms in `race-histograms-medusa`; leak check by prefix; `-006` either lands or is moved to
-  "Later" with the gate evidence in the plan and README; `npm run check` green.
+  histograms in `race-histograms-medusa`; leak check by prefix; `-007` and `-011` land; `-006` and
+  `-010` each either land or are moved to "Later" with their gate evidence in the plan and README;
+  `npm run check` green.
 - **Main risks.** No gift-card feature (gate); the job time grows by a full checkout per trial;
   refund needing a provider that is not configured; decimal amounts (`raw_amount` big numbers)
   compared as floats in the oracle.
 
-## Task 3: Medusa budget + order-state races (`P6-MED-RACE-005`, `-008`, `-009`)
+## Task 3: Medusa budget + order-state races (`P6-MED-RACE-005`, `-008`, `-009`, `-012`)
 
 - **Goal.** Prove a shared budget is not overdrawn and an order cannot take two exclusive
   transitions at once.
 - **Cases.** `P6-MED-RACE-005` (P1, campaign budget not overdrawn); `P6-MED-RACE-008` (P1 X04,
-  double cancel); `P6-MED-RACE-009` (P1 X05, cancel vs fulfil).
+  double cancel); `P6-MED-RACE-009` (P1 X05, cancel vs fulfil); `P6-MED-RACE-012` (accepted extra,
+  promotion usage limit) only if the probe shows it is cheap.
 - **What it proves / transfers.** A capped budget under contention is a credit limit or a daily
   transfer limit in finance and a capped authorisation (visits, units) in healthcare; cancel vs
   fulfil is "cancel vs settle" for a payment and "cancel vs dispense" for a prescription.
@@ -345,39 +373,48 @@ changes the order; each is resolved inside the named task):
     with 1 open fulfillment, both expected failures in P1. If P6 reproduces them, they become
     `test.fail()` cases with P6 evidence. Read-only check: `core-flows` 2.21.2
     `order/workflows/cancel-order.js` and `create-fulfillment.js` contain no `acquireLockStep`.
+  - `P6-MED-RACE-012`: per trial a promotion with a usage `limit` of L (not a campaign budget), N >
+    L carts with the code complete in parallel. Oracle: usage ≤ L, orders with the promotion ≤ L.
+    `promotion-module.js` line 143 names "exceeding a usage limit" as the same race. In scope only
+    if the probe shows it is cheap: the same promotion setup as `-005` and one oracle query;
+    otherwise it moves to "Later" with the probe reason.
   - **Follow-up (not in this PR):** a small P1 PR removes X04/X05 from P1 once they are green (or
     recorded with `test.fail()`) in P6 at full count, and links the P6 run.
 - **Files likely touched.** `src/medusa/admin.ts` (campaign, promotion, cancel, fulfil),
   `src/medusa/payloads.ts`, `src/medusa/oracle.ts`, `src/medusa/invariants.ts`, the Medusa run-case
   module(s), `tests/medusa/races/med-race-005-campaign-budget.spec.ts`,
   `tests/medusa/races/med-race-008-double-cancel.spec.ts`,
-  `tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts`, matching `tests/unit/*.test.ts`,
+  `tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts`,
+  `tests/medusa/races/med-race-012-usage-limit.spec.ts` (if it lands), matching
+  `tests/unit/*.test.ts`,
   `perf.yml`, `README.md`.
 - **The live probe must confirm.** P1's X04/X05 request sequence and assertions (P1 repo, not in
   this repo); whether X04/X05 still reproduce at `MEDUSA_REF` under N parallel requests; the admin
   routes and bodies for campaign + budget (`dist/api/admin/campaigns`, `promotions` exist), cancel
   and fulfil; whether the harness seed promo `QA10` (`medusa-env.ts` `MEDUSA_SEED_PROMO_CODE`) can
   be reused or each trial needs its own campaign (expected: its own, prefixed); the oracle tables
-  (campaign budget `used`/`limit`, `order.status`, `order_change`, fulfillment rows); cleanup and
-  leak check for campaigns and promotions.
+  (campaign budget `used`/`limit`, `order.status`, `order_change`, fulfillment rows); the
+  promotion usage-limit field and its oracle query, and whether `-012` reuses the `-005` setup
+  (the "cheap" test); cleanup and leak check for campaigns and promotions.
 - **Build plan.** `docs/plans/<date>-p6-phase2-task3-med-budget-order-races.md`. Starts with the
   live probe; junior-engineer guide (exact file paths, code skeletons per new function and test,
   exact commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **Proposed extras.** `P6-MED-RACE-012` promotion usage limit (promotion `limit`, not campaign
-  budget) under N parallel carts: usage ≤ limit (`promotion-module.js` line 143 names "exceeding a
-  usage limit" as the same race).
+- **Extras.** `P6-MED-RACE-012` was proposed here and accepted on 2026-10-22, conditional on the
+  probe (in the Cases above).
 - **CI change.** Same `medusa-smoke` race step, PR vs full count (Phase 1 D2).
-- **Done when.** All three cases pass or record a proven bug with `test.fail()` and repeated-run
-  evidence, at the PR count and full count on `main`/nightly; leak check; the P1 follow-up PR is
+- **Done when.** `-005`, `-008` and `-009` pass or record a proven bug with `test.fail()` and
+  repeated-run evidence, at the PR count and full count on `main`/nightly; `-012` lands the same
+  way or is listed under "Later" with the probe reason; leak check; the P1 follow-up PR is
   listed in the Task 9 closeout; `npm run check` green.
 - **Main risks.** X04/X05 behaviour changed between P1's runs and today; budget currency vs usage
   budgets (two budget types); fulfil needing a stock location and shipping option per trial.
 
-## Task 4: Cal state races (`P6-CAL-RACE-006`, `P6-CAL-RACE-007`) + shared webhook receiver
+## Task 4: Cal state races (`P6-CAL-RACE-006` to `-009`) + shared webhook receiver
 
 - **Goal.** Prove a single-use link admits one booking under contention, and confirm vs cancel ends
   in one state with one set of side effects.
-- **Cases.** `P6-CAL-RACE-006` (P1), `P6-CAL-RACE-007` (P1).
+- **Cases.** `P6-CAL-RACE-006` (P1), `P6-CAL-RACE-007` (P1), `P6-CAL-RACE-008` (accepted extra,
+  link cap boundary), `P6-CAL-RACE-009` (accepted extra, double confirm).
 - **What it proves / transfers.** Token single use (a one-time payment link, a single-use
   prescription or referral code) and state-transition exclusivity with side-effect exactly-once
   (approve vs cancel a payment; confirm vs cancel an appointment never notifies the patient both
@@ -406,12 +443,21 @@ changes the order; each is resolved inside the named task):
     seed has one, `scripts/seed.ts`), then confirm ‖ cancel. Oracle: final status ∈ {ACCEPTED,
     CANCELLED}; webhook receiver gets the side effects of one transition only
     (`BOOKING_CONFIRMED`-type vs `BOOKING_CANCELLED`-type, names per probe); DB status history.
+  - `P6-CAL-RACE-008`: the `-006` setup with `maxUsageCount=3` and N=10 parallel bookings on
+    distinct free slots. Oracle: exactly 3 ACCEPTED bookings via the link, `usageCount = 3`. It is
+    the boundary of `-006` (a cap above 1).
+  - `P6-CAL-RACE-009`: the `-007` setup, then confirm ‖ confirm on the same PENDING booking. Oracle:
+    one ACCEPTED booking and exactly one confirmation webhook delivery in the receiver (side-effect
+    exactly-once); the losing confirm is a clean refusal or an idempotent success, as the probe
+    records.
 - **Files likely touched.** `src/receivers/webhook-receiver.ts` (moved), `src/documenso/run-case.ts`,
   `tests/documenso/races/documenso-self-test.spec.ts`, `tests/unit/webhook-receiver.test.ts`
   (moved), `src/cal/api.ts`, `src/cal/payloads.ts`, `src/cal/oracle.ts`, `src/cal/invariants.ts`,
   `src/cal/run-case.ts` (596 lines today; the plan splits new cases into their own module rather
   than growing it), `tests/cal/races/cal-race-006-private-link.spec.ts`,
-  `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`, `tests/unit/cal-*.test.ts`,
+  `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`,
+  `tests/cal/races/cal-race-008-private-link-cap.spec.ts`,
+  `tests/cal/races/cal-race-009-double-confirm.spec.ts`, `tests/unit/cal-*.test.ts`,
   `perf.yml` (`cal-smoke` steps, hosts entry for the receiver like the Documenso job's "Map the
   webhook host"), `README.md`.
 - **The live probe must confirm.**
@@ -429,20 +475,19 @@ changes the order; each is resolved inside the named task):
   5. **Email side effects:** the harness Cal compose (`docker/cal.compose.yml`) runs Postgres only,
      no mail catcher. Whether Cal emails can be observed at all without a harness change; if not,
      `-007` asserts webhook + DB only and the email half is recorded as a gap (D9).
-  6. Free-slot supply for N=10 distinct slots × full count, reusing the Phase 1 allocator
+  6. For `-009`: the status and body of a second confirm on an already ACCEPTED booking, and
+     whether it fires a second webhook.
+  7. Free-slot supply for N=10 distinct slots × full count (`-006` and `-008`), reusing the Phase 1 allocator
      (`tests/unit/cal-allocator.test.ts`), and that PENDING bookings it creates are cleaned (README:
      the allocator treats PENDING as busy).
 - **Build plan.** `docs/plans/<date>-p6-phase2-task4-cal-state-races.md`. Starts with the live
   probe; junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **Proposed extras.**
-  - `P6-CAL-RACE-008` boundary: private link `maxUsageCount=3`, N=10 parallel → exactly 3
-    successes, `usageCount = 3`.
-  - `P6-CAL-RACE-009` confirm ‖ confirm on one PENDING booking → one ACCEPTED, exactly one
-    confirmation webhook (side-effect exactly-once).
-- **CI change.** Two new `cal-smoke` steps (5 trials on PRs; full count from the plan on
+- **Extras.** `P6-CAL-RACE-008` and `-009` were proposed here and accepted on 2026-10-22; they are
+  in the Cases above.
+- **CI change.** New `cal-smoke` steps for the four cases (5 trials on PRs; full count from the plan on
   `main`/nightly/dispatch), receiver host mapping, histograms in `race-histograms-cal`.
-- **Done when.** Receiver refactor merged with Documenso green; both cases pass or record a proven
+- **Done when.** Receiver refactor merged with Documenso green; all four cases pass or record a proven
   bug with `test.fail()` and repeated-run evidence; histograms uploaded; leak check by prefix;
   `npm run check` green.
 - **Main risks.** No scripted link creation (session-only tRPC); webhooks blocked to private
@@ -450,8 +495,9 @@ changes the order; each is resolved inside the named task):
 
 ## Task 5: Documenso `P6-OBS-DOC-001` CI test
 
-- **Goal.** Turn the README-only finding into CI evidence: a wrong password returns **401** and a
-  wrong CSRF token returns **400** on `POST /api/auth/email-password/authorize` (today both 500).
+- **Goal.** Turn the README-only finding into CI evidence: a wrong password returns exactly
+  **401** and a bad CSRF token returns **400 or 403** on `POST /api/auth/email-password/authorize`
+  (today both 500). Never 5xx (D8).
 - **Cases.** `P6-OBS-DOC-001` (low).
 - **What it proves / transfers.** Error-contract correctness on authentication: a client must be
   able to tell "bad credentials" from "server fault" (retry storms, alerting and lockout rules in
@@ -460,7 +506,8 @@ changes the order; each is resolved inside the named task):
 - **Scope.**
   - Setup asserted first: a throwaway user (the `src/documenso/account.ts` signup path), a valid
     CSRF token, and one **correct** sign-in returning success. Only then the two negative calls.
-  - The test asserts the correct behaviour (401 / 400) and is marked `test.fail()` **only** with the
+  - The test asserts the correct behaviour (wrong password: exactly 401; bad CSRF: 400 or 403,
+    both standard; never 5xx) and is marked `test.fail()` **only** with the
     existing evidence attached: Task 6 plan §2.4 (sequential and 20/20 parallel 500) and §2.11 (code
     path: `packages/auth/server/routes/email-password.ts` lines 94, 115, 132; `auth.onError` in
     `packages/auth/server/index.ts` returning `err.statusCode || 500`), linked to the finding ID in
@@ -475,7 +522,8 @@ changes the order; each is resolved inside the named task):
   `package.json` (`test:documenso-api` or similar), `src/documenso/api.ts` (authorize call),
   `perf.yml` (`documenso-smoke`: one step, token scan covers its output), `README.md` (row update),
   `tests/unit/documenso-api.test.ts` if a pure helper is added.
-- **The live probe must confirm.** The 500 still reproduces at `DOCUMENSO_REF` with the exact
+- **The live probe must confirm.** Which of 400 or 403 the CSRF branch is meant to return (the
+  plan records it; the test accepts either, D8); the 500 still reproduces at `DOCUMENSO_REF` with the exact
   bodies (`INVALID_CREDENTIALS`, `INVALID_REQUEST`); the same handler on upstream `main` today; the
   CSRF fetch route (`/api/auth/csrf`, used by the k6 smoke); that the request bodies and responses
   carry no token that the scan would flag; Documenso's issue template file and fields.
@@ -567,10 +615,12 @@ changes the order; each is resolved inside the named task):
   limits on shared runners; memory with server + worker + Postgres + Redis; the seed admin being
   shared state across specs.
 
-## Task 7: Twenty races (`P6-TW-RACE-001`, `P6-TW-RACE-004`)
+## Task 7: Twenty races (`P6-TW-RACE-001`, `-004`, `-005`, `-006`)
 
 - **Goal.** Prove concurrent edits never corrupt a record and a reset token admits one redemption.
-- **Cases.** `P6-TW-RACE-001` (P0), `P6-TW-RACE-004` (P0). `P6-TW-RACE-002` (kanban position, P1)
+- **Cases.** `P6-TW-RACE-001` (P0), `P6-TW-RACE-004` (P0), `P6-TW-RACE-005` (accepted extra,
+  disjoint-field lost update), `P6-TW-RACE-006` (accepted extra, reset-token replay).
+  `P6-TW-RACE-002` (kanban position, P1)
   and `P6-TW-RACE-003` (concurrent merge, P2) only if the probe shows each is cheap (setup through
   the same API client, one oracle query, under about a day); otherwise they go to "Later".
 - **What it proves / transfers.** Token single use (a one-time password-reset or payment-approval
@@ -589,18 +639,29 @@ changes the order; each is resolved inside the named task):
     `findOne` for an unrevoked, unexpired token, and `invalidatePasswordResetToken` (lines
     290–308) is an unconditional update by `userId`. That is a check-then-act window, so more than
     one success is plausible; the probe must confirm before any `test.fail()`.
+  - `P6-TW-RACE-005`: per trial a prefixed company; PATCH field X ‖ PATCH field Y (different
+    fields, one record). Oracle: both new values persist in the DB (the real lost-update primitive;
+    a full-row write would lose one); no 5xx.
+  - `P6-TW-RACE-006`: per trial one fresh reset token for a throwaway user, redeemed once
+    (success), then redeemed again sequentially. Oracle: the replay is refused with a clean 4xx or
+    GraphQL error, the password hash is unchanged by the replay, the token stays revoked. It is the
+    sequential single-use control for `-004`, like the Documenso sequential control.
   - Reset tokens and new passwords are secrets: generated in memory, never in histograms or logs;
     the token scan runs over every artefact.
 - **Files likely touched.** `src/twenty/api.ts`, `src/twenty/payloads.ts`, `src/twenty/oracle.ts`,
   `src/twenty/invariants.ts`, `src/twenty/run-case.ts`, `src/twenty/mailpit.ts` (like
   `src/documenso/inbucket.ts`), `tests/twenty/races/tw-race-001-lost-update.spec.ts`,
-  `tests/twenty/races/tw-race-004-reset-token.spec.ts`, matching `tests/unit/twenty-*.test.ts`,
+  `tests/twenty/races/tw-race-004-reset-token.spec.ts`,
+  `tests/twenty/races/tw-race-005-disjoint-fields.spec.ts`,
+  `tests/twenty/races/tw-race-006-reset-replay.spec.ts`, matching `tests/unit/twenty-*.test.ts`,
   `perf.yml` (`twenty-smoke` race step), `README.md`.
 - **The live probe must confirm.** REST vs GraphQL for update-one and its response shape
   (`common-update-one-query-runner.service.ts` has no version/`If-Match` check, so a conflict
   response is not expected); how a throwaway user is created in single-workspace mode
   (`IS_MULTIWORKSPACE_ENABLED=false` in the overlay: signup, invite, or the seed's other users);
-  the reset request and redemption mutations and their success/loser bodies; the Mailpit message
+  whether a PATCH with one field writes only that field (for `-005`); the reset request and
+  redemption mutations and their success/loser bodies, including the replay refusal (for `-006`);
+  the Mailpit message
   API; where the password hash and the token live (core schema `user`, `appToken`); cleanup:
   Twenty soft-deletes (`deletedAt`), so the plan uses the destroy path and the leak check counts
   soft-deleted rows too; for `-002`/`-003`, the position field and the merge mutation
@@ -608,14 +669,11 @@ changes the order; each is resolved inside the named task):
 - **Build plan.** `docs/plans/<date>-p6-phase2-task7-twenty-races.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **Proposed extras.**
-  - `P6-TW-RACE-005` disjoint-field lost update: PATCH field X ‖ PATCH field Y on one record → both
-    values persist (the real lost-update primitive; a full-row write would lose one).
-  - `P6-TW-RACE-006` reset-token replay: a second redemption after a successful one is refused (the
-    sequential single-use control for `-004`, like the Documenso sequential control).
+- **Extras.** `P6-TW-RACE-005` and `-006` were proposed here and accepted on 2026-10-22; they are
+  in the Cases above.
 - **CI change.** `twenty-smoke` race step: 5 trials on PRs, full count on `main`/nightly/dispatch.
-- **Done when.** Both cases pass or record a proven bug with `test.fail()` and repeated-run
-  evidence; `-002`/`-003` landed or listed under "Later" with the probe reason; histograms
+- **Done when.** `-001`, `-004`, `-005` and `-006` pass or record a proven bug with `test.fail()`
+  and repeated-run evidence; `-002`/`-003` landed or listed under "Later" with the probe reason; histograms
   uploaded after the token scan; leak check by prefix; `npm run check` green.
 - **Main risks.** Throwaway-user creation not possible by API; reset email latency; rate limits on
   auth mutations (a 429 would hide the race, like Documenso before its bypass); a reset token
@@ -623,11 +681,12 @@ changes the order; each is resolved inside the named task):
 
 ## Task 8: Multi-instance Medusa probe (read-only)
 
-- **Goal.** Decide whether `P6-MED-RACE-002` (two instances, Redis lock) and `P6-MED-RACE-003` (two
-  instances, in-memory lock, characterization) need a harness change.
-- **Cases.** Decides `P6-MED-RACE-002`, `P6-MED-RACE-003`. No harness change needed → they land as a
-  Phase 2 extra (own plan and PR, same rules as Task 2). Otherwise they stay the first item of
-  Phase 3.
+- **Goal.** A read-only probe whose report is the input spec for the harness change (harness
+  proposal H3) that lets the harness start and stop a second Medusa instance. `P6-MED-RACE-002`
+  (two instances, Redis lock) and `P6-MED-RACE-003` (two instances, in-memory lock,
+  characterization) then run in Phase 3, as its first item.
+- **Cases.** None in Phase 2. `P6-MED-RACE-002` and `-003` are Phase 3 (D11, agreed 2026-10-22: a
+  P6-side bridge in `scripts/harness.mjs` does not count as "no harness change").
 - **What it proves / transfers.** Whether "single winner" still holds when the app scales out:
   the same question as two payment-service replicas sharing one ledger, or two hospital-system
   nodes sharing one bed register.
@@ -635,24 +694,32 @@ changes the order; each is resolved inside the named task):
 - **Scope (read-only).** Read the harness Medusa adapter and env (`medusa.adapter.ts`,
   `medusa-env.ts`): one backend process from `apps/backend/.medusa/server`, port from
   `MEDUSA_BASE_URL` (default 9000), optional Redis on 6380 with `MEDUSA_REDIS=1`, a gitignored
-  runtime `medusa-config.js` when Redis/Stripe switches are on (harness README). Decide:
-  1. Can a second backend on another port, same DB and Redis, be started without changing the
-     harness package? A P6-side bridge in `scripts/harness.mjs` (like the Cal `LONG_RUNNING`
-     bridge) counts as "no harness change" only if the maintainer agrees (D11).
-  2. Which locking provider each mode uses: the starter's `medusa-config.ts` registers none (so
-     the default in-memory provider is assumed), and whether `MEDUSA_REDIS=1` registers
-     `locking-redis` (the package is installed in the starter's `node_modules`).
-- **Files likely touched.** `docs/plans/<date>-p6-phase2-task8-med-multi-instance.md` only (a probe
-  report with the decision). No code in this task.
-- **The live probe must confirm.** Everything above; plus memory for two Medusa processes on a
-  standard runner, and whether the harness `down` stops a second process.
-- **Build plan.** The probe report itself; if `-002/-003` land, their build plan starts with its own
-  live probe and is a junior-engineer guide (exact file paths, code skeletons per new function and
-  test, exact commands, expected outputs, step order) so a weaker model can build it without
-  guessing.
+  runtime `medusa-config.js` when Redis/Stripe switches are on (harness README). The report
+  specifies, with evidence:
+  1. **Ports:** the second backend's port (and that it clashes with no other stack), how its URL
+     is exposed to P6 (an env name next to `MEDUSA_BASE_URL`), same DB and Redis as the first.
+  2. **Lock provider per mode:** the starter's `medusa-config.ts` registers none (so the default
+     in-memory provider is assumed), and whether `MEDUSA_REDIS=1` registers `locking-redis` (the
+     package is installed in the starter's `node_modules`); what each of `-002` and `-003` needs.
+  3. **Memory:** two Medusa processes plus Postgres and Redis on a standard GitHub-hosted runner
+     and on a cloud VM (measured on the VM as proof only; the runner figure is "the live probe must
+     confirm").
+  4. **Down and cleanup of both processes:** pid tracking, port release, and that `down` leaves
+     neither process nor port behind.
+     P6 builds no bridge for this (D11).
+- **Files likely touched.** `docs/plans/<date>-p6-phase2-task8-med-multi-instance.md` only (the
+  probe report and harness spec). No code in this task; the harness change itself lands in the
+  harness repo, not here.
+- **The live probe must confirm.** Everything in the four spec items above.
+- **Build plan.** The probe report itself, written as a junior-engineer guide (exact file paths,
+  exact commands, expected outputs, step order) so a weaker model can run the probe without
+  guessing. The Phase 3 build plan for `-002/-003` starts with its own live probe against the
+  released harness.
 - **CI change.** None in this task.
-- **Done when.** The report states "harness change needed: yes/no" with evidence; the maintainer
-  decides D11; README "Later" or the Task 9 scope updated accordingly.
+- **Done when.** The report covers ports, the lock provider per mode, memory, and down/cleanup of
+  both processes, each with evidence or marked "the live probe must confirm"; it is usable as the
+  input spec for harness proposal H3; README lists `P6-MED-RACE-002/003` as the first item of
+  Phase 3.
 - **Main risks.** The answer depends on harness internals that a later harness release may change;
   the report pins the harness version it read (`v0.2.11`).
 
@@ -675,7 +742,7 @@ changes the order; each is resolved inside the named task):
   - Upstream issue drafts, each in that product's own issue template, for every new confirmed
     product bug (Medusa `medusajs/medusa`, Cal `calcom/cal.diy`, Twenty `twentyhq/twenty`,
     Documenso `documenso/documenso`), with the checked upstream commit, for the maintainer to file.
-  - Follow-up list: the P1 PR removing X04/X05 (Task 3), any harness change from Task 8.
+  - Follow-up list: the P1 PR removing X04/X05 (Task 3), the harness change H3 specified by Task 8.
 - **Files likely touched.** `README.md`, `docs/releases/p6-phase2.md`,
   `docs/plans/<date>-p6-phase2-task9-closeout.md` (with the upstream drafts as appendices); trial
   counts in `perf.yml` only if a run proves a timeout.
@@ -699,45 +766,54 @@ changes the order; each is resolved inside the named task):
   item 3).
 - `P6-DOC-RACE-003` signing token concurrent reuse.
 - `P6-MED-RACE-004` multi-location reservation bias.
-- `P6-MED-RACE-002`, `P6-MED-RACE-003` if Task 8 finds a harness change is needed (first item of
-  Phase 3).
+- `P6-MED-RACE-002`, `P6-MED-RACE-003`: first item of Phase 3, after the harness can start and
+  stop a second Medusa instance (harness proposal H3, specified by the Task 8 report; D11).
+- `P6-MED-RACE-006` if the Task 2 gate confirms the pinned Medusa has no gift-card or store-credit
+  feature (D5), with that evidence.
+- `P6-MED-RACE-010` if the Task 2 probe shows capture is automatic with the configured provider.
+- `P6-MED-RACE-012` if the Task 3 probe finds it not cheap.
 - `P6-TW-RACE-002`, `P6-TW-RACE-003` if the Task 7 probe finds them not cheap.
 - All k6 LOAD work (`P6-*-LOAD-*`, baselines, `baseline.json`, dashboards, `P6-RULE-001/002`):
   Phase 3 to 5, per the agreed Phase 3–4 proposal.
-- Proposed extras the maintainer has not accepted: `P6-MED-RACE-010`, `-011`, `-012`,
-  `P6-CAL-RACE-008`, `-009`, `P6-TW-RACE-005`, `-006`.
 
 ## Decisions (2026-10-22)
 
-Numbered for this roadmap. "Agreed" means given by the maintainer in the Phase 2 task order;
-"Proposed" means the task's plan confirms or replaces it after its probe.
+Numbered for this roadmap. "Agreed" means given by the maintainer; "proposed, confirmed by the
+task's probe" means the task's plan confirms or replaces it after its probe.
 
 - **D1 Order and IDs (agreed).** Tasks 1–9 as in the task table; case IDs as in the master plan;
   X04/X05 become `P6-MED-RACE-008` and `-009`.
-- **D2 Spread comparison (proposed).** Valid when `dispatchSpreadMs ≤ RACE_MAX_SPREAD_MS`, invalid
+- **D2 Spread comparison (proposed, confirmed by the task's probe).** Valid when `dispatchSpreadMs ≤ RACE_MAX_SPREAD_MS`, invalid
   when `>` (the name says "max"; matches the agreed wording). One shared function decides; the
   per-product `>=` checks are removed and README is updated.
-- **D3 Rerun scope (proposed).** Only the spread precondition makes a trial invalid. A product
+- **D3 Rerun scope (proposed, confirmed by the task's probe).** Only the spread precondition makes a trial invalid. A product
   invariant violation in any attempt, valid or invalid, is recorded and fails the case (or counts
   towards a `test.fail()` proof). This answers Phase 1 D35's objection.
-- **D4 Histogram accounting (proposed).** Top-level `statusCounts` count valid attempts only;
+- **D4 Histogram accounting (proposed, confirmed by the task's probe).** Top-level `statusCounts` count valid attempts only;
   invalid attempts keep their own status counts in `perTrial`, plus `invalidTrials` and `reruns`
   totals, so published rates are never mixed with discarded bursts.
-- **D5 Gift-card gate (proposed).** If the Task 2 probe finds no gift-card or store-credit feature
-  at `MEDUSA_REF`, `P6-MED-RACE-006` moves to "Later" with the evidence, and the maintainer decides
-  separately whether the Medusa fork (shared with P1, same `MEDUSA_REF`) should gain the plugin.
-  P6 does not add it.
+- **D5 Gift-card gate (agreed 2026-10-22).** P6 never changes the Medusa fork (shared with P1, same
+  `MEDUSA_REF`) to add a gift-card plugin. If the Task 2 gate confirms no gift-card or store-credit
+  feature at `MEDUSA_REF`, `P6-MED-RACE-006` moves to "Later" with the evidence; the money
+  primitive is covered by `P6-MED-RACE-007`, `-010` and `-011`.
 - **D6 Trial counts (agreed, Phase 1 D2).** Small on PRs (Medusa 3, others 5), full count on
   `main`, nightly and dispatch; each task's plan sets the full count from probe timing, with
   master plan §1's N ≥ 50 as the target.
-- **D7 Non-race tests get their own project (proposed).** `P6-OBS-DOC-001` lives in a
+- **D7 Non-race tests get their own project (proposed, confirmed by the task's probe).** `P6-OBS-DOC-001` lives in a
   `documenso-api` Playwright project (`tests/documenso/api/`), not in `documenso-race`.
-- **D8 `P6-OBS-DOC-001` expected codes (agreed).** 401 for a wrong password, 400 for a wrong CSRF
-  token; the plan records that Task 6 §2.11 also allowed 403 for CSRF.
-- **D9 Cal email side effects (proposed).** If the Task 4 probe finds no way to observe Cal email
+- **D8 `P6-OBS-DOC-001` expected codes (agreed 2026-10-22).** A wrong password returns exactly 401. A bad CSRF token returns 400 or 403 (both standard); the Task 5 plan records which one the
+  probe sees. Never 5xx.
+- **D9 Cal email side effects (proposed, confirmed by the task's probe).** If the Task 4 probe finds no way to observe Cal email
   without a harness change, `P6-CAL-RACE-007` asserts webhook + DB only and the email gap is
   recorded as a harness follow-up, not worked around.
-- **D10 Twenty clone (proposed).** Prefer a sparse clone of `packages/twenty-docker/` at
+- **D10 Twenty clone (proposed, confirmed by the task's probe).** Prefer a sparse clone of `packages/twenty-docker/` at
   `TWENTY_REF` if the probe shows the full clone is slow; the plan states which.
-- **D11 Second Medusa instance (open, maintainer).** Whether a P6-side bridge in
-  `scripts/harness.mjs` counts as "no harness change" for Task 8.
+- **D11 Second Medusa instance (agreed 2026-10-22).** A P6-side bridge in `scripts/harness.mjs`
+  does **not** count as "no harness change". A second Medusa instance must be started and stopped
+  by the harness (harness proposal H3). So `P6-MED-RACE-002/003` are the first item of Phase 3.
+  Task 8 stays a read-only probe whose report is the input spec for that harness change (ports,
+  lock provider per mode, memory, down/cleanup of both processes).
+- **D12 Accepted extras (agreed 2026-10-22).** In scope with their proposed IDs: Task 2
+  `P6-MED-RACE-011` and `P6-MED-RACE-010` (gated on capture being a separate step); Task 3
+  `P6-MED-RACE-012` (only if cheap); Task 4 `P6-CAL-RACE-008`, `-009`; Task 7 `P6-TW-RACE-005`,
+  `-006`.
