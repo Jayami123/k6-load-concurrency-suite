@@ -3,9 +3,16 @@ import {
   raceMaxSpreadMsFromEnv,
   raceMaxSpreadRerunsFromEnv,
   raceMinInvalidBudgetFromEnv,
+  raceWarmupBurstsFromEnv,
 } from "./env.ts";
 import { aggregateDispatchSpread, mergeStatusCounts } from "./histogram.ts";
-import type { RaceAttemptResult, RaceHistogram, RaceTrialSummary, SpreadPolicy } from "./types.ts";
+import type {
+  RaceAttemptResult,
+  RaceHistogram,
+  RaceTrialSummary,
+  SpreadPolicy,
+  WarmupRecord,
+} from "./types.ts";
 
 export function spreadPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): SpreadPolicy {
   return {
@@ -13,6 +20,7 @@ export function spreadPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): Sprea
     maxReruns: raceMaxSpreadRerunsFromEnv(env),
     maxInvalidSharePct: raceMaxInvalidSharePctFromEnv(env),
     minInvalidBudget: raceMinInvalidBudgetFromEnv(env),
+    warmupBursts: raceWarmupBurstsFromEnv(env),
   };
 }
 
@@ -53,7 +61,12 @@ export type AttemptFn = (attempt: number) => Promise<RaceAttemptResult>;
 export interface RerunRunner {
   /** Plug into runTrials(trials, (trial) => runner.runTrial(trial, attemptFn)). Resolves with the valid record. */
   runTrial(trial: number, attemptFn: AttemptFn): Promise<RaceAttemptResult>;
-  /** Every burst that was fired (valid and invalid), in firing order. */
+  /**
+   * Fires the untimed warm-up burst(s) before trial 1. Call it before runTrials, with an attempt function that
+   * uses trial index 0. Never throws, never reruns, never counts as a trial: the record goes to histogram.warmup.
+   */
+  warmup(attemptFn: AttemptFn): Promise<void>;
+  /** Every burst that was fired for a trial (valid and invalid), in firing order. Warm-ups are not in it. */
   readonly attempts: readonly RaceAttemptResult[];
   /** Attempts that threw before a burst record existed. Never counted as invalid trials. */
   readonly stubs: readonly RaceAttemptResult[];
@@ -83,6 +96,7 @@ export function createRerunRunner(policy: SpreadPolicy, trials: number): RerunRu
   const attempts: RaceAttemptResult[] = [];
   const stubs: RaceAttemptResult[] = [];
   const summaries: RaceTrialSummary[] = [];
+  const warmups: WarmupRecord[] = [];
   const violations: string[] = [];
   let invalidCount = 0;
   let abortMessage: string | null = null;
@@ -148,9 +162,38 @@ export function createRerunRunner(policy: SpreadPolicy, trials: number): RerunRu
     return last;
   }
 
+  async function warmup(attemptFn: AttemptFn): Promise<void> {
+    for (let attempt = 1; attempt <= policy.warmupBursts; attempt++) {
+      try {
+        const r = await attemptFn(attempt);
+        warmups.push({
+          attempt,
+          dispatchSpreadMs: r.dispatchSpreadMs,
+          statusCounts: r.statusCounts,
+          ok: r.ok,
+          invariantViolations: r.invariantViolations,
+          ...(r.error === undefined ? {} : { error: r.error }),
+        });
+      } catch (err) {
+        // Setup or cleanup is broken: the same would break the trials, so say so (TEST BUG), do not hide it.
+        const message = err instanceof Error ? err.message : String(err);
+        warmups.push({
+          attempt,
+          dispatchSpreadMs: 0,
+          statusCounts: {},
+          ok: false,
+          invariantViolations: [message],
+          error: message,
+        });
+        violations.push(`TEST BUG: warm-up burst ${attempt} failed: ${message.slice(0, 200)}`);
+      }
+    }
+  }
+
   function applyTo(histogram: RaceHistogram): void {
     const valid = attempts.filter((a) => a.valid);
     const invalid = attempts.filter((a) => !a.valid);
+    histogram.warmup = [...warmups];
     histogram.trials = [...summaries].sort((a, b) => a.trial - b.trial);
     histogram.attempts = [...attempts, ...stubs].sort(
       (a, b) => a.trial - b.trial || a.attempt - b.attempt,
@@ -167,5 +210,5 @@ export function createRerunRunner(policy: SpreadPolicy, trials: number): RerunRu
     histogram.invariantViolations.push(...violations);
   }
 
-  return { runTrial, attempts, stubs, violations, applyTo };
+  return { runTrial, warmup, attempts, stubs, violations, applyTo };
 }

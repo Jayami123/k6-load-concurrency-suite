@@ -486,6 +486,10 @@ export async function runCompletionCase(input: {
       }
     };
 
+    // The sequential control fires no concurrent burst, so there is nothing to warm up.
+    if (input.mode !== "sequential-control") {
+      await runner.warmup((attempt) => runAttempt(0, attempt));
+    }
     await runTrials(input.trials, (trial) =>
       runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
     );

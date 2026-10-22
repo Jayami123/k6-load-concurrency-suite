@@ -48,35 +48,38 @@ test("cal self-test (unmapped): 20 concurrent GET /pro/30min plus oracle", async
     histogram.oracle.bookingCountBefore = before;
     const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
 
-    const trialResults = await runTrials(trials, (trial) =>
-      runner.runTrial(trial, async () => {
-        const fired = await fireTogether(
-          CONCURRENCY,
-          async () => {
+    // One burst = fire, record, validate. Trial index 0 is the warm-up (left out of every verdict and count).
+    const burst = async (trial: number) => {
+      const fired = await fireTogether(
+        CONCURRENCY,
+        async () => {
+          const res = await fetch(`${base}${HEALTH_PATH}`);
+          return { status: res.status, body: await res.text() };
+        },
+        {
+          warm: async () => {
             const res = await fetch(`${base}${HEALTH_PATH}`);
-            return { status: res.status, body: await res.text() };
+            await res.text();
           },
-          {
-            warm: async () => {
-              const res = await fetch(`${base}${HEALTH_PATH}`);
-              await res.text();
-            },
-          },
-        );
+        },
+      );
 
-        // Record first so perTrial and statusCounts keep the real statuses even when validation fails.
-        const record = recordTrial(trial, fired, () => {
-          for (const req of fired.requests) {
-            if (req.status !== 200) {
-              throw new Error(
-                `PRODUCT BUG: GET ${HEALTH_PATH} HTTP ${req.status} ${req.bodySummary}`,
-              );
-            }
+      // Record first so perTrial and statusCounts keep the real statuses even when validation fails.
+      const record = recordTrial(trial, fired, () => {
+        for (const req of fired.requests) {
+          if (req.status !== 200) {
+            throw new Error(
+              `PRODUCT BUG: GET ${HEALTH_PATH} HTTP ${req.status} ${req.bodySummary}`,
+            );
           }
-        });
+        }
+      });
 
-        return record;
-      }),
+      return record;
+    };
+    await runner.warmup(() => burst(0));
+    const trialResults = await runTrials(trials, (trial) =>
+      runner.runTrial(trial, () => burst(trial)),
     );
 
     runner.applyTo(histogram);

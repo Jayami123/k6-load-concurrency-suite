@@ -21,6 +21,19 @@ export interface SpreadPolicy {
   maxInvalidSharePct: number;
   /** Invalid attempts a case may always spend (the budget never falls below this). */
   minInvalidBudget: number;
+  /** Warm-up bursts fired before trial 1 (0 disables). Not trials: no verdict, no counts. */
+  warmupBursts: number;
+}
+
+/** What the evidence keeps of one warm-up burst. */
+export interface WarmupRecord {
+  attempt: number;
+  dispatchSpreadMs: number;
+  statusCounts: Record<string, number>;
+  /** False when the warm-up burst broke an invariant or threw. Recorded, never part of the verdict. */
+  ok: boolean;
+  invariantViolations: string[];
+  error?: string;
 }
 
 /** One burst: fresh setup, one fireTogether, the product oracle. A trial index may have several (reruns). */
@@ -78,6 +91,8 @@ export interface RaceHistogram {
   trials: RaceTrialSummary[];
   /** Every attempt (valid, invalid, and attempts that threw), ordered by trial then attempt. */
   attempts: RaceAttemptResult[];
+  /** Warm-up bursts fired before trial 1. Not trials: excluded from statusCounts, spread aggregates and the verdict. */
+  warmup: WarmupRecord[];
   oracle: Record<string, RaceOracleValue>;
   /** Valid attempts only. */
   dispatchSpreadMs: { min: number; max: number; mean: number };

@@ -52,41 +52,42 @@ test("framework self-test (unmapped): 20 concurrent GET /health plus oracle", as
     const before = await snapshot(pool);
     const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
 
-    const trialResults = await runTrials(trials, (trial) =>
-      runner.runTrial(trial, async () => {
-        // Raw bodies by request index: the exact "OK" check uses these, while
-        // bodySummary stays diagnostics-only.
-        const rawBodies: Array<string | undefined> = Array.from({ length: CONCURRENCY });
-        const fired = await fireTogether(
-          CONCURRENCY,
-          async (index) => {
+    // One burst = fire, record, validate. Trial index 0 is the warm-up (left out of every verdict and count).
+    const burst = async (trial: number) => {
+      // Raw bodies by request index: the exact "OK" check uses these, while
+      // bodySummary stays diagnostics-only.
+      const rawBodies: Array<string | undefined> = Array.from({ length: CONCURRENCY });
+      const fired = await fireTogether(
+        CONCURRENCY,
+        async (index) => {
+          const res = await fetch(`${base}/health`);
+          const body = await res.text();
+          rawBodies[index] = body;
+          return { status: res.status, body };
+        },
+        {
+          warm: async () => {
             const res = await fetch(`${base}/health`);
-            const body = await res.text();
-            rawBodies[index] = body;
-            return { status: res.status, body };
+            await res.text();
           },
-          {
-            warm: async () => {
-              const res = await fetch(`${base}/health`);
-              await res.text();
-            },
-          },
-        );
+        },
+      );
 
-        // Record first so perTrial and statusCounts keep the real statuses even
-        // when validation fails.
-        const record = recordTrial(trial, fired, () => {
-          for (const req of fired.requests) {
-            if (req.status !== 200 || rawBodies[req.index] !== "OK") {
-              throw new Error(
-                `PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`,
-              );
-            }
+      // Record first so perTrial and statusCounts keep the real statuses even
+      // when validation fails.
+      const record = recordTrial(trial, fired, () => {
+        for (const req of fired.requests) {
+          if (req.status !== 200 || rawBodies[req.index] !== "OK") {
+            throw new Error(`PRODUCT BUG: GET /health HTTP ${req.status} body=${req.bodySummary}`);
           }
-        });
+        }
+      });
 
-        return record;
-      }),
+      return record;
+    };
+    await runner.warmup(() => burst(0));
+    const trialResults = await runTrials(trials, (trial) =>
+      runner.runTrial(trial, () => burst(trial)),
     );
 
     runner.applyTo(histogram);

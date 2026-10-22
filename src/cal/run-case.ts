@@ -175,7 +175,7 @@ export async function runIdenticalSlotCase(input: {
           if (r.status !== null && r.status >= 200 && r.status < 300 && r.uid)
             winnerUids.push(r.uid);
         }
-        allResponses.push(...responses);
+        if (trial > 0) allResponses.push(...responses); // trial 0 is the warm-up: not part of any verdict
 
         const accepted = await readSlotAccepted(
           input.pool,
@@ -235,6 +235,9 @@ export async function runIdenticalSlotCase(input: {
         }
       }
     };
+
+    // Untimed warm-up burst(s): trial index 0, own slot and cleanup, left out of the verdict and every count.
+    await runner.warmup((attempt) => runAttempt(0, attempt));
 
     const trialResults = await runTrials(input.trials, (trial) =>
       runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
@@ -474,8 +477,11 @@ export async function runOverlapPairCase(input: {
           skippedWindowEvidence: skippedEvidence(window.skipped),
         };
 
-        guardViolations.push(...guards.map((g) => `${tag}: ${g}`));
-        pairsByAttempt.push(pairs.length);
+        if (trial > 0) {
+          // trial 0 is the warm-up: its bursts are not part of any verdict
+          guardViolations.push(...guards.map((g) => `${tag}: ${g}`));
+          pairsByAttempt.push(pairs.length);
+        }
 
         return record;
       } finally {
@@ -484,6 +490,11 @@ export async function runOverlapPairCase(input: {
         for (const row of live) await cancelQuietly(row.uid, cancelled);
       }
     };
+
+    // The sequential control fires no concurrent burst, so there is nothing to warm up.
+    if (input.mode === "race") {
+      await runner.warmup((attempt) => runAttempt(0, attempt));
+    }
 
     const trialResults = await runTrials(input.trials, (trial) =>
       runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),

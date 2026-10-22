@@ -19,6 +19,7 @@ describe("createHistogram", () => {
     assert.equal(typed.verdict, "fail");
     assert.deepEqual(typed.trials, []);
     assert.deepEqual(typed.attempts, []);
+    assert.deepEqual(typed.warmup, []);
     assert.deepEqual(typed.invariantViolations, []);
     assert.deepEqual(typed.statusCounts, {});
     assert.deepEqual(typed.dispatchSpreadMs, { min: 0, max: 0, mean: 0 });

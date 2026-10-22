@@ -57,6 +57,11 @@ export function raceMinInvalidBudgetFromEnv(env: NodeJS.ProcessEnv = process.env
   return intFromEnv(env, "RACE_MIN_INVALID_BUDGET", 2, 0);
 }
 
+/** Untimed warm-up bursts fired before trial 1 and left out of every verdict and count. 0 disables. */
+export function raceWarmupBurstsFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  return intFromEnv(env, "RACE_WARMUP_BURSTS", 1, 0);
+}
+
 export function medusaBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   const raw = env.MEDUSA_BASE_URL?.trim();
   return (raw && raw.length > 0 ? raw : "http://127.0.0.1:9000").replace(/\/$/, "");

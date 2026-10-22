@@ -18,6 +18,7 @@ const POLICY: SpreadPolicy = {
   maxReruns: 3,
   maxInvalidSharePct: 20,
   minInvalidBudget: 2,
+  warmupBursts: 1,
 };
 
 /** What an attemptFn returns: the record recordTrial builds. attempt and valid are set by the runner. */
@@ -98,18 +99,19 @@ describe("attemptTag", () => {
 });
 
 describe("spreadPolicyFromEnv", () => {
-  it("defaults to 5 ms, 3 reruns, 20 percent, minimum budget 2", () => {
+  it("defaults to 5 ms, 3 reruns, 20 percent, minimum budget 2, one warm-up burst", () => {
     assert.deepEqual(spreadPolicyFromEnv({}), POLICY);
   });
-  it("reads the four variables", () => {
+  it("reads the five variables", () => {
     assert.deepEqual(
       spreadPolicyFromEnv({
         RACE_MAX_SPREAD_MS: "8",
         RACE_MAX_SPREAD_RERUNS: "2",
         RACE_MAX_INVALID_SHARE_PCT: "30",
         RACE_MIN_INVALID_BUDGET: "0",
+        RACE_WARMUP_BURSTS: "0",
       }),
-      { limitMs: 8, maxReruns: 2, maxInvalidSharePct: 30, minInvalidBudget: 0 },
+      { limitMs: 8, maxReruns: 2, maxInvalidSharePct: 30, minInvalidBudget: 0, warmupBursts: 0 },
     );
   });
 });
@@ -334,5 +336,95 @@ describe("helpers", () => {
     assert.equal(sumOracle([a, b, c], "acceptedCount"), 2);
     assert.equal(sumOracle(validAttempts([a, b, c]), "acceptedCount"), 1);
     assert.equal(sumOracle([c], "missing"), 0);
+  });
+});
+
+describe("createRerunRunner.warmup", () => {
+  it("fires RACE_WARMUP_BURSTS bursts with attempt numbers 1.., before any trial", async () => {
+    const runner = createRerunRunner({ ...POLICY, warmupBursts: 2 }, 3);
+    const calls: number[] = [];
+    await runner.warmup(async (attempt) => {
+      calls.push(attempt);
+      return record(0, 9);
+    });
+    assert.deepEqual(calls, [1, 2]);
+  });
+
+  it("fires nothing when RACE_WARMUP_BURSTS is 0", async () => {
+    const runner = createRerunRunner({ ...POLICY, warmupBursts: 0 }, 3);
+    let calls = 0;
+    await runner.warmup(async () => {
+      calls += 1;
+      return record(0, 1);
+    });
+    assert.equal(calls, 0);
+    const h = histogramFor(3);
+    runner.applyTo(h);
+    assert.deepEqual(h.warmup, []);
+  });
+
+  it("is recorded with its spread and is left out of statusCounts, trials, attempts, spread and the verdict", async () => {
+    const runner = createRerunRunner(POLICY, 2);
+    await runner.warmup(async () => record(0, 9, { statusCounts: { "200": 7 } })); // above the limit: no rerun
+    await runTrials(2, (trial) => runner.runTrial(trial, script(trial, [1]).fn));
+    const h = histogramFor(2);
+    runner.applyTo(h);
+    assert.deepEqual(h.warmup, [
+      {
+        attempt: 1,
+        dispatchSpreadMs: 9,
+        statusCounts: { "200": 7 },
+        ok: true,
+        invariantViolations: [],
+      },
+    ]);
+    assert.deepEqual(h.statusCounts, { "200": 2, "400": 2 }); // two valid trials only
+    assert.equal(h.trials.length, 2);
+    assert.equal(h.attempts.length, 2);
+    assert.equal(h.invalidTrials, 0);
+    assert.equal(h.reruns, 0);
+    assert.deepEqual(h.dispatchSpreadMs, { min: 1, max: 1, mean: 1 });
+    assert.deepEqual(h.invariantViolations, []);
+  });
+
+  it("does not use up the invalid-attempt budget", async () => {
+    const runner = createRerunRunner({ ...POLICY, warmupBursts: 3, minInvalidBudget: 1 }, 1);
+    await runner.warmup(async () => record(0, 9));
+    const got = await runner.runTrial(1, script(1, [9, 1]).fn); // one invalid attempt is within the budget of 1
+    assert.equal(got.valid, true);
+  });
+
+  it("a violation inside a warm-up is recorded but is not part of the verdict", async () => {
+    const runner = createRerunRunner(POLICY, 1);
+    await runner.warmup(async () =>
+      record(0, 1, {
+        ok: false,
+        error: "PRODUCT BUG: x",
+        invariantViolations: ["PRODUCT BUG: x"],
+      }),
+    );
+    await runner.runTrial(1, script(1, [1]).fn);
+    const h = histogramFor(1);
+    runner.applyTo(h);
+    assert.equal(h.warmup[0]?.ok, false);
+    assert.deepEqual(h.warmup[0]?.invariantViolations, ["PRODUCT BUG: x"]);
+    assert.deepEqual(h.invariantViolations, []);
+    assert.deepEqual(h.trials, [
+      { trial: 1, attempts: 1, finalAttempt: 1, outcome: "valid", ok: true },
+    ]);
+  });
+
+  it("a warm-up that throws is recorded and fails the case as a TEST BUG, without throwing", async () => {
+    const runner = createRerunRunner(POLICY, 1);
+    await runner.warmup(async () => {
+      throw new Error("TEST BUG: POST /admin/products HTTP 400");
+    });
+    const h = histogramFor(1);
+    runner.applyTo(h);
+    assert.equal(h.warmup[0]?.ok, false);
+    assert.equal(h.warmup[0]?.error, "TEST BUG: POST /admin/products HTTP 400");
+    assert.deepEqual(h.invariantViolations, [
+      "TEST BUG: warm-up burst 1 failed: TEST BUG: POST /admin/products HTTP 400",
+    ]);
   });
 });

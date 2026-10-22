@@ -281,6 +281,9 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
       }
     };
 
+    // Untimed warm-up burst(s): trial index 0, own setup and cleanup, left out of the verdict and every count.
+    await runner.warmup((attempt) => runAttempt(0, attempt));
+
     const trialResults = await runTrials(input.trials, (trial) =>
       runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
     );

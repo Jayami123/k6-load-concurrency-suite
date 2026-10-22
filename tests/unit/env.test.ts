@@ -11,6 +11,7 @@ import {
   raceMaxSpreadMsFromEnv,
   raceMaxSpreadRerunsFromEnv,
   raceMinInvalidBudgetFromEnv,
+  raceWarmupBurstsFromEnv,
   raceTrialsFromEnv,
 } from "../../src/races/env.ts";
 
@@ -111,6 +112,22 @@ describe("env", () => {
       assert.throws(
         () => raceMinInvalidBudgetFromEnv({ RACE_MIN_INVALID_BUDGET: raw }),
         /TEST BUG: RACE_MIN_INVALID_BUDGET must be an integer >= 0/,
+        raw,
+      );
+    }
+  });
+
+  it("defaults RACE_WARMUP_BURSTS to 1 and parses 0 (disabled), 1 and 3", () => {
+    assert.equal(raceWarmupBurstsFromEnv({}), 1);
+    assert.equal(raceWarmupBurstsFromEnv({ RACE_WARMUP_BURSTS: "0" }), 0);
+    assert.equal(raceWarmupBurstsFromEnv({ RACE_WARMUP_BURSTS: " 3 " }), 3);
+  });
+
+  it("rejects negatives, fractions, exponents and junk in RACE_WARMUP_BURSTS", () => {
+    for (const raw of ["-1", "abc", "1.5", "1e1", "+1", "00", "0x1"]) {
+      assert.throws(
+        () => raceWarmupBurstsFromEnv({ RACE_WARMUP_BURSTS: raw }),
+        /TEST BUG: RACE_WARMUP_BURSTS must be an integer >= 0/,
         raw,
       );
     }
