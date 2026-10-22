@@ -365,6 +365,19 @@ first full-count Actions run.
 
 ## Task 3: Medusa budget + order-state races (`P6-MED-RACE-005`, `-008`, `-009`, `-012`)
 
+**Status (2026-10-22, build on `feat/2026-10-22-p6-med-budget-order-races`).** Build plan:
+[2026-10-22-p6-phase2-task3-med-budget-order-races.md](2026-10-22-p6-phase2-task3-med-budget-order-races.md). All four
+cases land; `-012` was cheap (same setup as `-005`, one oracle field) and is in scope (plan D44). `-005` holds at the probe
+and PR counts. `-012`'s usage counter holds, but a losing checkout can leave an unpaid order carrying the promotion
+(F-M2, suspected). X04 (`-008`) and X05 (`-009`) reproduce at `MEDUSA_REF`, and a losing cancel or fulfil restores a
+canceled order's reservation (F-M3, suspected). Suspected signals are annotated until the owner labels them from three
+full-count `workflow_dispatch` runs; labelled X04 and F-M3 then get `test.fail()` in this PR (plan D54, D64), and
+`-009`'s PR trial count is set from the measured rate so a PR run misses under 1 % (D65). CI (plan D60, D66): `-008`
+and `-009` run in the `medusa-smoke` race step; `-005` and `-012` run in a new job `medusa-order-races`; both race steps
+have step timeouts. Accepted extras for a follow-up task: `P6-MED-RACE-013` (N=10 cancels, F-M3) and `P6-MED-RACE-014`
+(captured-order cancels, F-M4); `P6-MED-RACE-015` (spend budget) is in "Later" (plan D57). Priorities: `-008` P1,
+`-009` P1, `-012` P2 (plan D58).
+
 - **Goal.** Prove a shared budget is not overdrawn and an order cannot take two exclusive
   transitions at once.
 - **Cases.** `P6-MED-RACE-005` (P1, campaign budget not overdrawn); `P6-MED-RACE-008` (P1 X04,
@@ -787,7 +800,7 @@ first full-count Actions run.
 - `P6-MED-RACE-006` if the Task 2 gate confirms the pinned Medusa has no gift-card or store-credit
   feature (D5), with that evidence.
 - `P6-MED-RACE-010` if the Task 2 probe shows capture is automatic with the configured provider.
-- `P6-MED-RACE-012` if the Task 3 probe finds it not cheap.
+- `P6-MED-RACE-015` spend budget (EUR) under N parallel carts (Task 3 plan D57; held 3 of 3 in the probe).
 - `P6-TW-RACE-002`, `P6-TW-RACE-003` if the Task 7 probe finds them not cheap.
 - All k6 LOAD work (`P6-*-LOAD-*`, baselines, `baseline.json`, dashboards, `P6-RULE-001/002`):
   Phase 3 to 5, per the agreed Phase 3–4 proposal.
