@@ -4,7 +4,7 @@ import {
   medusaAdminEmailFromEnv,
   medusaAdminPasswordFromEnv,
 } from "../races/env.ts";
-import { productCreateBody, prefixedHandle } from "./payloads.ts";
+import { captureBody, productCreateBody, prefixedHandle, refundBody } from "./payloads.ts";
 
 export interface MedusaCatalog {
   token: string;
@@ -227,4 +227,39 @@ export async function deleteCustomersByEmail(token: string, email: string): Prom
       }
     }
   }
+}
+
+export type MoneyResult = { status: number; body: string };
+
+/**
+ * Raced money call: never throws on 5xx, so fireTogether records the real status and body.
+ * The admin base path is the same as adminJson's.
+ */
+async function moneyPost(path: string, token: string, body: unknown): Promise<MoneyResult> {
+  const res = await fetch(`${medusaBaseUrlFromEnv()}/admin${path}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.text() };
+}
+
+export function capturePayment(token: string, paymentId: string, amount: number) {
+  return moneyPost(`/payments/${paymentId}/capture`, token, captureBody(amount));
+}
+
+export function refundPayment(token: string, paymentId: string, amount: number) {
+  return moneyPost(`/payments/${paymentId}/refund`, token, refundBody(amount));
+}
+
+/**
+ * Confirms the pending order change of an order (live, §2.5b candidate A: 200, pending to confirmed).
+ * Called only when the database shows a pending change.
+ */
+export function confirmPendingOrderChange(token: string, orderId: string) {
+  return moneyPost(`/order-edits/${orderId}/confirm`, token, {});
 }

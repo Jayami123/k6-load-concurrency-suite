@@ -92,3 +92,13 @@ export function cleanupFailure(kind: string, key: string, err: unknown): string 
   const message = err instanceof Error ? err.message : String(err);
   return `TEST BUG: ${kind} cleanup failed for ${key}: ${message.slice(0, 200)}`;
 }
+
+/** Body of POST /admin/payments/:id/capture. Live (§2.5 P2): { amount } returns 200 on success. */
+export function captureBody(amount: number) {
+  return { amount };
+}
+
+/** Body of POST /admin/payments/:id/refund. Live (§2.5 P2): { amount } returns 200 on success. */
+export function refundBody(amount: number) {
+  return { amount };
+}
