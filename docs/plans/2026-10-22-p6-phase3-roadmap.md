@@ -116,16 +116,19 @@ balance audit, the Phase 2 money oracles (Task 6 here). See "Notes on the propos
 | `P6-X-LOAD-004`   | proposal                              | Measurement validity guard: generator saturation marks a run INVALID with reasons                        | P0  |
 | `P6-RULE-003`     | proposal                              | Absolute numbers are environment-bound: `run-meta.json` on every published number                        | —   |
 | `P6-RULE-005`     | proposal                              | Invalid runs are not results: excluded from medians and README                                           | —   |
-| `P6-X-LOAD-002`   | proposal                              | Outside-only telemetry sampler + one correlated HTML chart; gap > 2 intervals → INVALID                  | P0  |
+| `P6-X-LOAD-002`   | proposal                              | Outside-only telemetry sampler + one correlated HTML chart; gap > 2 intervals or clock skew → INVALID    | P0  |
+| `P6-X-LOAD-006`   | accepted extra (2026-10-22)           | Sampler overhead: stub self-test with and without the sampler; k6 metrics within the probe's margin      | —   |
 | `P6-X-LOAD-005`   | proposal                              | Post-load reconciliation after every LOAD run, reusing Phase 1/2 oracles; fail = PRODUCT BUG             | P0  |
 | `P6-CAL-LOAD-001` | proposal (replaces master plan's)     | Journey smoke: getSchedule → book, unique attendee; checks == 1; booking ACCEPTED in DB                  | —   |
 | `P6-MED-LOAD-001` | proposal (replaces master plan's)     | Journey smoke: browse → cart → complete; one order; stock −1                                             | —   |
 | `P6-DOC-LOAD-001` | proposal                              | Journey smoke: create → distribute → both recipients sign; COMPLETED, one seal                           | —   |
 | `P6-MED-LOAD-002` | proposal (master plan MED35 reshaped) | Inventory conservation under constant-arrival-rate checkouts vs stock S; orders ≤ S; clean 400; no 5xx   | P0  |
 | `P6-DOC-LOAD-002` | proposal                              | Async pipeline lag at a steady rate; per-document stage times; backlog drains after load (drain time)    | P0  |
+| `P6-DOC-LOAD-008` | accepted extra (2026-10-22)           | Webhook retry exactly-once: first delivery fails, Documenso's retry gives one accepted delivery (gated)  | —   |
 | `P6-CAL-LOAD-007` | proposal                              | Retry storm: same booking body retried after a short client timeout; one ACCEPTED, one side effect       | —   |
 | `P6-MED-LOAD-006` | proposal                              | Retry storm: cart complete with low timeout + retries; one order, stock −1 once, one payment             | P0  |
 | `P6-DOC-LOAD-007` | proposal                              | Retry storm: completeDocumentWithToken retries; one SIGNED, rest ALREADY_SIGNED, one seal, one email set | —   |
+| `P6-CAL-LOAD-009` | accepted extra (2026-10-22)           | Retry storm through a single-use private link: one booking per link (gated on Phase 2 `P6-CAL-RACE-006`) | —   |
 | `P6-RULE-001`     | master plan X-P6-RULES                | baseline.json exists before thresholds are enforced (checked at closeout)                                | P0  |
 | `P6-RULE-002`     | master plan X-P6-RULES                | README numbers match the latest artefact; no ideation figure as a result (checked at closeout)           | P0  |
 
@@ -135,19 +138,19 @@ in this phase: a small **fixed** rate chosen by the case's probe, well below sat
 
 ## Task table
 
-| Task | Title                                  | Cases                                                      | Depends on                 | Branch (date set when the task starts)                                                  | Can run in parallel with |
-| ---- | -------------------------------------- | ---------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------- | ------------------------ |
-| 1    | Harness H3 release + P6 pin bump       | none (harness: second Medusa instance)                     | Phase 2 Task 8 report      | harness `feat/<date>-harness-medusa-second-instance`; P6 `chore/<date>-p6-harness-bump` | 3, 4, 5, 6               |
-| 2    | Multi-instance Medusa races            | `P6-MED-RACE-002`, `P6-MED-RACE-003`                       | 1; Phase 2 Task 1 (spread) | `feat/<date>-p6-med-multi-instance`                                                     | 3, 4, 5, 6               |
-| 3    | Load foundation: one k6 + workload lib | `P6-X-LOAD-001`                                            | —                          | `feat/<date>-p6-load-foundation`                                                        | 1, 2                     |
-| 4    | Run validity + metadata                | `P6-X-LOAD-004`, `P6-RULE-003`, `P6-RULE-005`              | 3                          | `feat/<date>-p6-load-validity`                                                          | 1, 2, 5                  |
-| 5    | Telemetry sampler + correlated chart   | `P6-X-LOAD-002`                                            | 3                          | `feat/<date>-p6-load-telemetry`                                                         | 1, 2, 4                  |
-| 6    | Post-load reconciliation               | `P6-X-LOAD-005`                                            | 3                          | `feat/<date>-p6-load-reconciliation`                                                    | 1, 2, 4, 5               |
-| 7    | Journey smokes                         | `P6-CAL-LOAD-001`, `P6-MED-LOAD-001`, `P6-DOC-LOAD-001`    | 4, 5, 6                    | `feat/<date>-p6-journey-smokes`                                                         | —                        |
-| 8    | Inventory conservation under load      | `P6-MED-LOAD-002`                                          | 7                          | `feat/<date>-p6-med-load-conservation`                                                  | 9                        |
-| 9    | Documenso pipeline lag                 | `P6-DOC-LOAD-002`                                          | 7                          | `feat/<date>-p6-doc-load-pipeline-lag`                                                  | 8                        |
-| 10   | Retry storms                           | `P6-CAL-LOAD-007`, `P6-MED-LOAD-006`, `P6-DOC-LOAD-007`    | 7 (8 for the Medusa setup) | `feat/<date>-p6-retry-storms`                                                           | 9                        |
-| 11   | Phase 3 closeout                       | all Phase 3 cases (evidence only); `P6-RULE-001/002` check | 2, 8, 9, 10                | `docs/<date>-p6-phase3-closeout`                                                        | —                        |
+| Task | Title                                  | Cases                                                                              | Depends on                 | Branch (date set when the task starts)                                                  | Can run in parallel with |
+| ---- | -------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------- | ------------------------ |
+| 1    | Harness H3 release + P6 pin bump       | none (harness: second Medusa instance + Cal up/down fix; P6 bridge deleted)        | Phase 2 Task 8 report      | harness `feat/<date>-harness-medusa-second-instance`; P6 `chore/<date>-p6-harness-bump` | 3, 4, 5, 6               |
+| 2    | Multi-instance Medusa races            | `P6-MED-RACE-002`, `P6-MED-RACE-003`                                               | 1; Phase 2 Task 1 (spread) | `feat/<date>-p6-med-multi-instance`                                                     | 3, 4, 5, 6               |
+| 3    | Load foundation: one k6 + workload lib | `P6-X-LOAD-001`                                                                    | —                          | `feat/<date>-p6-load-foundation`                                                        | 1, 2                     |
+| 4    | Run validity + metadata                | `P6-X-LOAD-004`, `P6-RULE-003`, `P6-RULE-005`                                      | 3                          | `feat/<date>-p6-load-validity`                                                          | 1, 2, 5                  |
+| 5    | Telemetry sampler + correlated chart   | `P6-X-LOAD-002`, `P6-X-LOAD-006`                                                   | 3                          | `feat/<date>-p6-load-telemetry`                                                         | 1, 2, 4                  |
+| 6    | Post-load reconciliation               | `P6-X-LOAD-005`                                                                    | 3                          | `feat/<date>-p6-load-reconciliation`                                                    | 1, 2, 4, 5               |
+| 7    | Journey smokes (health smokes retired) | `P6-CAL-LOAD-001`, `P6-MED-LOAD-001`, `P6-DOC-LOAD-001`                            | 4, 5, 6                    | `feat/<date>-p6-journey-smokes`                                                         | —                        |
+| 8    | Inventory conservation under load      | `P6-MED-LOAD-002`                                                                  | 7                          | `feat/<date>-p6-med-load-conservation`                                                  | 9                        |
+| 9    | Documenso pipeline lag                 | `P6-DOC-LOAD-002`, `P6-DOC-LOAD-008` (gated)                                       | 7                          | `feat/<date>-p6-doc-load-pipeline-lag`                                                  | 8                        |
+| 10   | Retry storms                           | `P6-CAL-LOAD-007`, `P6-MED-LOAD-006`, `P6-DOC-LOAD-007`, `P6-CAL-LOAD-009` (gated) | 7 (8 for the Medusa setup) | `feat/<date>-p6-retry-storms`                                                           | 9                        |
+| 11   | Phase 3 closeout                       | all Phase 3 cases (evidence only); `P6-RULE-001/002` check                         | 2, 8, 9, 10                | `docs/<date>-p6-phase3-closeout`                                                        | —                        |
 
 "Can run in parallel" means the probe, plan and build can proceed while the other task is in
 progress. PRs that edit `.github/workflows/perf.yml` merge one at a time and rebase on each other.
@@ -159,7 +162,7 @@ flowchart LR
   P2T8["Phase 2 Task 8<br/>probe report"] --> T1["Task 1<br/>harness H3 release<br/>+ pin bump"]
   T1 --> T2["Task 2<br/>MED-RACE-002/003"]
   T3["Task 3<br/>pinned k6 + k6/lib<br/>X-LOAD-001"] --> T4["Task 4<br/>X-LOAD-004<br/>RULE-003/005"]
-  T3 --> T5["Task 5<br/>X-LOAD-002<br/>telemetry"]
+  T3 --> T5["Task 5<br/>X-LOAD-002/006<br/>telemetry"]
   T3 --> T6["Task 6<br/>X-LOAD-005<br/>reconciliation"]
   T4 --> T7["Task 7<br/>journey smokes"]
   T5 --> T7
@@ -223,8 +226,9 @@ each is resolved inside the named task):
 ## Task 1: Harness H3 release + P6 pin bump
 
 - **Goal.** The harness can start and stop a **second Medusa backend** on its own port, sharing
-  the first one's Postgres and (optionally) Redis, with a lock provider chosen per mode. P6 bumps
-  `qa-portfolio-harness` to the new tag and keeps every existing job green.
+  the first one's Postgres and (optionally) Redis, with a lock provider chosen per mode, and its Cal
+  `up`/`down` are fixed. P6 bumps `qa-portfolio-harness` to the new tag, deletes its Cal bridge, and
+  keeps every existing job green.
 - **Cases.** None mapped (infrastructure for `P6-MED-RACE-002/003`).
 - **What it proves / transfers.** Infrastructure only: scale-out is started by the same audited
   tool as every other stack, so a "two replicas, one ledger" claim in finance or a "two nodes, one
@@ -242,30 +246,48 @@ each is resolved inside the named task):
     `package-lock.json` with `npm install`, never by hand; update every `h0.2.11` cache-key suffix in
     `perf.yml` (Medusa, Cal, Documenso build caches); README harness version line; prove all three
     product jobs green on the bump PR.
-  - **Optional, maintainer decides (D4):** the same release may carry the Phase 1 roadmap's harness
-    backlog item (Cal `up` returns when healthy, `down` stops the web), which would let P6 delete the
-    Cal `LONG_RUNNING` bridge in `scripts/harness.mjs` ("TEMPORARY BRIDGE" comment).
-- **Files likely touched.** Harness: `src/adapters/medusa.adapter.ts`, `medusa-env.ts`,
-  `medusa-backend-pid.ts` and their tests, `README.md`, `CHANGELOG.md` (the probe must confirm the
-  file exists in the harness repo; the installed package lists none). P6: `package.json`,
-  `package-lock.json`, `.github/workflows/perf.yml` (cache keys), `README.md`, `.env.example` (new
-  env names only, e.g. a second base URL), `src/races/env.ts` (second-instance URL getter), and
-  `scripts/harness.mjs` only if D4 removes the bridge.
+  - **Cal `up`/`down` fix, a separate harness PR under the same version tag (D4):** the Phase 1
+    roadmap's harness backlog item: Cal `up` returns once Cal is healthy, `down` stops the Cal web
+    process, the seed check uses `users`, and no seed credentials appear in logs. Own branch (e.g.
+    `fix/<date>-harness-cal-up-down`), own PR and CHANGELOG entry; both PRs merge before the tag is
+    cut, so one version carries both.
+  - **P6 pin-bump PR deletes the Cal bridge:** the `LONG_RUNNING` map, `upLongRunning`, `stopGroup`
+    and the `results/harness/cal.pgid` handling in `scripts/harness.mjs` ("TEMPORARY BRIDGE"
+    comment), plus the README sentence that describes the bridge ("Run Cal" section). Task 5's Cal
+    process discovery then reads the harness's own Cal process record instead of `cal.pgid` (the
+    probe confirms its name).
+- **Files likely touched.** Harness, PR 1 (second instance): `src/adapters/medusa.adapter.ts`,
+  `medusa-env.ts`, `medusa-backend-pid.ts` and their tests. Harness, PR 2 (Cal fix):
+  `src/adapters/cal.adapter.ts` and its tests (the harness `scripts/up.mjs`/`down.mjs` if the fix
+  needs them). Both: `README.md`, `CHANGELOG.md` (the probe must confirm the file exists in the
+  harness repo; the installed package lists none). P6: `package.json`, `package-lock.json`,
+  `.github/workflows/perf.yml` (cache keys), `scripts/harness.mjs` (bridge deleted), `README.md`,
+  `.env.example` (new env names only, e.g. a second base URL), `src/races/env.ts`
+  (second-instance URL getter).
 - **The live probe must confirm.** The Phase 2 Task 8 report's values on the current harness `main`
   (not only `v0.2.11`); the env names and defaults for the second instance; that `down medusa`
   stops both processes and frees both ports; that the bump changes no existing behaviour (all three
-  jobs green); that this session can reach the harness repo (it is not in this session's GitHub
-  scope today; the build adds it).
+  jobs green); that Cal `up` returns on its own when healthy and `down` leaves nothing on :3000
+  without the P6 bridge (the Phase 1 Task 3 probe found `up.mjs` never returned and `down()` left
+  `next start` running, per the `scripts/harness.mjs` comment); that the harness Cal logs carry no
+  seed credentials; that this session can reach the harness repo (it is not in this session's
+  GitHub scope today; the build adds it).
 - **Build plan.** Two plans, both starting with a live probe and written as junior-engineer
   guides (exact file paths, code skeletons per new function and test, exact commands, expected
   outputs, step order) so a weaker model can build them without guessing: the harness plan (in the
-  harness repo's docs) and `docs/plans/<date>-p6-phase3-task1-harness-h3-bump.md`.
+  harness repo's docs, covering both harness PRs) and
+  `docs/plans/<date>-p6-phase3-task1-harness-h3-bump.md`.
 - **CI change.** Cache-key suffix bump in `perf.yml`; nothing else.
-- **Done when.** Harness PR merged and tagged with a CHANGELOG entry; P6 bump PR green in all three
-  jobs on the PR and once on `main`; README states the new harness version; `npm run check` green.
+- **Done when.** Both harness PRs (second instance; Cal `up`/`down` fix) merged, each with a
+  CHANGELOG entry, under one new tag; the P6 bump PR deletes the Cal bridge from
+  `scripts/harness.mjs` and is green in all three jobs on the PR and once on `main` (Cal up/down
+  through the harness alone); README states the new harness version and no longer describes the
+  bridge; `npm run check` green.
 - **Main risks.** A harness change breaking P1 (P1 pins the harness too; the harness PR runs P1's
-  smoke or states why not); memory for two Medusa processes on a shared runner; cache invalidation
-  making the first `main` run slow.
+  smoke or states why not); the Cal fix not covering every case the bridge handled (an `up` while
+  Cal is already starting, a dead leader with live children), so the P6 PR keeps the bridge's checks
+  as probe steps before deleting it; memory for two Medusa processes on a shared runner; cache
+  invalidation making the first `main` run slow.
 
 ## Task 2: Multi-instance Medusa races (`P6-MED-RACE-002`, `P6-MED-RACE-003`)
 
@@ -369,7 +391,9 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
 - **Done when.** One k6 version in CI and in both cloud setups (documented, checksum-verified),
   `npm run check` fails on a mismatch; library unit tests green; the stub self-test shows open model
   holding the rate with `dropped_iterations` reported and closed model with fewer requests and lower
-  p95, in CI on the PR and once on `main`; all existing smokes green on the new version.
+  p95, in CI on the PR and once on `main`; all existing smokes green on the new version; every new
+  k6 script (`k6/selftest/*`, and any `k6/lib` example) also runs standalone with `k6 run`, inputs
+  through env or a JSON file, with the exact command documented (D6).
 - **Main risks.** A k6 major-version change breaking the smokes; the cloud network policies
   blocking the download host; the stub's relation flipping on a noisy runner (the probe sets
   margins and the run is marked INVALID by Task 4 rather than failed).
@@ -396,7 +420,13 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
     product's capacity.
   - A single **LOAD runner** (Node, TypeScript, e.g. `scripts/load/run-load.ts`) that every LOAD
     case uses: setup → sampler start → k6 → drain → reconciliation → cleanup → token scan → verdict
-    (D6). Task 4 builds its skeleton with the validity step; Tasks 5 and 6 plug in.
+    (D6). Task 4 builds its skeleton with the validity step; Tasks 5 and 6 plug in. The runner
+    passes inputs to k6 only through env vars or a JSON file, never through code only the runner
+    knows, so every k6 script stays runnable with plain `k6 run`.
+  - **Readiness preflight** (replaces the health smokes, D10): before k6 starts, the runner checks
+    the product's health URL (Medusa `/health`, Cal `/pro/30min`, Documenso `/signin` and
+    `/api/auth/csrf`, the routes the current smokes hit) and the race leak check result (D5); a
+    failed preflight stops the run as ENV or TEST BUG with evidence, never as a LOAD result.
 - **Files likely touched.** `src/load/validity.ts`, `src/load/run-meta.ts`, `src/load/types.ts`,
   `scripts/load/run-load.ts`, `src/ci/race-table.ts` or a new `src/ci/load-table.ts` (job
   summary), `scripts/write-ci-job-summary.ts`, `tests/unit/load-validity.test.ts`,
@@ -413,7 +443,9 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
   right reason) and once normally (expects VALID).
 - **Done when.** Unit tests green; the deliberate-saturation run is INVALID with reasons and the
   normal run is VALID, in CI on the PR and once on `main`; `run-meta.json` uploaded with every run
-  and passes the token scan; `npm run check` green.
+  and passes the token scan; the LOAD runner orchestrates k6, and the k6 script it runs still works
+  standalone with `k6 run` (inputs via env/JSON; documented command) for debugging (D6); `npm run
+check` green.
 - **Main risks.** Shared-runner noise flipping verdicts (the probe sets margins); measuring k6 CPU
   perturbing k6; INVALID being used to hide a failure (only generator/telemetry reasons may make a
   run INVALID, never a correctness result, mirroring Phase 2 D3).
@@ -422,7 +454,7 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
 
 - **Goal.** Outside-only telemetry beside every LOAD run, on the k6 clock, with one correlated
   HTML chart.
-- **Cases.** `P6-X-LOAD-002` (P0).
+- **Cases.** `P6-X-LOAD-002` (P0), `P6-X-LOAD-006` (accepted extra, sampler overhead).
 - **What it proves / transfers.** Bottleneck attribution without touching the product: the same
   evidence an incident review needs in a bank or hospital (was it the database, locks, the app or
   the load tool?) when the system under test cannot be instrumented.
@@ -438,12 +470,19 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
   - Output: CSV/JSON keyed on epoch ms aligned with k6's JSON output timestamps; one self-contained
     HTML chart (arrival rate, rolling p95, error rate, `dropped_iterations`, pg active/waiting, lock
     waits, app CPU/RSS, probe latency). No CDN dependency in the artefact (D8).
-  - Self-test: no gap > 2 intervals, or the run is INVALID (reason fed to Task 4's guard).
+  - Self-test: no gap > 2 intervals, or the run is INVALID (reason fed to Task 4's guard). The same
+    self-test checks **clock skew**: the sampler and k6 timestamps are cross-checked against a
+    marker request at start and end; skew beyond one interval marks the run INVALID (folded in
+    from the dropped extra, D14).
+  - `P6-X-LOAD-006` sampler overhead: the stub self-test runs with and without the sampler; the k6
+    metrics (request count, p95, `dropped_iterations`) must stay within a margin the probe sets
+    and the plan records.
   - **No harness telemetry** in this phase: no `pg_stat_statements`, no `auto_explain`, no
     event-loop preload (harness H1 and H2 are Phase 5, D2).
 - **Files likely touched.** `src/load/telemetry/{sampler,pg-stats,proc-stats,docker-stats,log-grep}.ts`,
   `src/load/chart/render-chart.ts` (or `scripts/load/render-chart.ts`), `tests/unit/telemetry-*.test.ts`,
-  `tests/unit/render-chart.test.ts`, `scripts/load/run-load.ts`, `perf.yml` (artefact upload after
+  `tests/unit/render-chart.test.ts`, `tests/unit/telemetry-skew.test.ts`,
+  `k6/selftest/sampler-overhead.js`, `scripts/load/run-load.ts`, `perf.yml` (artefact upload after
   the token scan), `README.md` ("How to read the chart").
 - **The live probe must confirm.**
   1. Whether the harness DB users can read other sessions' rows in `pg_stat_activity` and
@@ -453,8 +492,10 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
   2. The DB container names per compose project, and `docker stats --no-stream` cost per sample.
   3. Process-tree discovery from each pid/pgid record (the app may run children, e.g. Next.js under
      Cal), and `/proc` access on GitHub-hosted runners and both clouds.
-  4. The sampler's own overhead (CPU, one extra DB connection) at the chosen interval.
-  5. Clock alignment between k6 JSON output and the sampler (both epoch ms on one host).
+  4. The sampler's own overhead (CPU, one extra DB connection) at the chosen interval, and the
+     `P6-X-LOAD-006` margin that separates noise from real perturbation on a shared runner.
+  5. Clock alignment between k6 JSON output and the sampler (both epoch ms on one host), and a
+     marker request k6 and the sampler can both timestamp for the skew check.
   6. Which product log lines to grep, and that the grep output carries no token.
 - **Build plan.** `docs/plans/<date>-p6-phase3-task5-load-telemetry.md`. Starts with the live
   probe; junior-engineer guide (exact file paths, code skeletons per new function and test, exact
@@ -463,7 +504,8 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
   the pg series is shown as absent, not as zero); artefacts uploaded after the token scan.
 - **Done when.** Unit tests green (gap detection, deltas, chart rendering from fixtures); the
   self-test run's telemetry has no gap > 2 intervals and a chart artefact, in CI on the PR and once
-  on `main`; a forced gap marks the run INVALID; `npm run check` green.
+  on `main`; a forced gap and a forced clock skew each mark the run INVALID; `P6-X-LOAD-006` shows
+  the with/without-sampler metrics within the recorded margin; `npm run check` green.
 - **Main risks.** Read-only roles not seeing other sessions; the sampler perturbing the measurement;
   `docker stats` latency causing gaps; chart size.
 
@@ -523,17 +565,20 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
     (inventory oracle).
   - `P6-DOC-LOAD-001`: create → distribute → both recipients sign; envelope COMPLETED; one seal.
   - Each at a small fixed rate set by its probe, labelled "functional load, not capacity" (D1).
-  - **Old health smokes** (`k6/smoke/*-health.js`, `smoke:*` scripts, the CI "k6 smoke" steps): the
-    plan decides whether they are retired or kept as a preflight, with the reason (D10). If retired,
-    `AGENTS.md` ("run `npm run smoke:medusa`") and README "Run the smoke check locally" are updated
-    in the same PR.
+  - **Old health smokes retired (D10):** delete `k6/smoke/medusa-health.js`, `cal-health.js`,
+    `documenso-health.js`, the `smoke:medusa`, `smoke:cal`, `smoke:documenso` scripts in
+    `package.json` and the three CI "k6 smoke" steps and their `k6-summary-*-health` artefact uploads
+    in `perf.yml`. The LOAD runner's readiness preflight (Task 4) replaces them. In the same PR:
+    `AGENTS.md` (the Cursor line "run `npm run smoke:medusa`") and README ("Run the smoke check
+    locally", "Run Cal", "Run Documenso" command blocks) point at the journey smokes instead.
   - Auth: Documenso's API token and user are minted per run in the runner's setup (as the Phase 1
     self-test does through `src/documenso/account.ts`), handed to k6 through the environment, never
     as a CLI argument, never logged.
-- **Files likely touched.** `k6/journeys/{cal-book,med-checkout,doc-sign}.js` (master plan §2 names
-  `k6/products/{cal-book,med-checkout,doc-sign}.js`; the plan picks one name and flags it, D11),
-  `k6/lib/*`, `scripts/load/run-load.ts`, `package.json` (`load:cal`, `load:medusa`,
-  `load:documenso`), `perf.yml`, `README.md`, `AGENTS.md`, `tests/unit/*` for any pure helper.
+- **Files likely touched.** `k6/journeys/{cal-book,med-checkout,doc-sign}.js` (D11; master plan §2
+  sketched `k6/products/`), `k6/cases/*.js`, `k6/lib/*`, `scripts/load/run-load.ts`, `package.json`
+  (`load:cal`, `load:medusa`, `load:documenso`; `smoke:*` removed), `k6/smoke/*-health.js`
+  (deleted), `perf.yml`, `README.md`, `AGENTS.md`, `tests/unit/*` for any pure helper.
+  `k6/probe/health-load.js` is cited by the Phase 0 feasibility report and stays.
 - **The live probe must confirm.** The Cal getSchedule route and parameters on `CAL_REF` (Phase 1
   books through `POST /api/book/event`; the slots route is unverified); free-slot supply for the
   fixed rate × duration (Phase 1 allocator); the Medusa browse/cart/complete calls k6 must make
@@ -544,12 +589,13 @@ test:unit` covers them; k6 glue is covered by `k6 inspect`, `tsc` (`checkJs`, `@
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
 - **CI change.** Each product job runs its journey through the LOAD runner after its races (one
-  stack start per job, D5): a short duration on PRs, the full fixed-rate duration on `main`,
+  stack start per job, D5); the LOAD step starts only if the race leak check passed: a short duration on PRs, the full fixed-rate duration on `main`,
   nightly and dispatch. Artefacts: k6 summary, k6 JSON, telemetry, chart, `run-meta.json`, audit,
   all after the token scan.
 - **Done when.** All three journeys VALID and green with their audits on the PR and once on `main`;
-  every run ships summary + telemetry + chart + audit; health-smoke decision recorded; `npm run
-check` green.
+  every run ships summary + telemetry + chart + audit; the health smokes, `smoke:*` scripts and CI
+  "k6 smoke" steps are gone and the readiness preflight runs instead; `AGENTS.md` and README
+  updated; each journey also runs standalone with `k6 run` (D6); `npm run check` green.
 - **Main risks.** k6 cannot easily reuse the TS clients (journeys are re-written in k6 JS; the
   oracle stays in TS); slot supply; Documenso sealing per iteration slowing the job; job timeouts.
 
@@ -584,7 +630,8 @@ check` green.
 
 - **Goal.** Measure and bound the async pipeline: every completed document is sealed, webhooked and
   emailed, and the backlog drains after load stops.
-- **Cases.** `P6-DOC-LOAD-002` (P0).
+- **Cases.** `P6-DOC-LOAD-002` (P0), `P6-DOC-LOAD-008` (accepted extra, webhook retry
+  exactly-once; gated).
 - **What it proves / transfers.** "A queue that fills must drain": the same check as settlement
   jobs after a payments spike, or lab-result notifications after a clinic's morning peak.
 - **Depends on.** Task 7 (Documenso journey).
@@ -595,29 +642,38 @@ check` green.
   drain; drain time recorded. Oracle: every document reaches every stage exactly once (known
   `P6-OBS-DOC-002` is a parallel-completion bug and must not appear with sequential completions; if
   it does, that is new evidence, labelled with the ID).
-- **Files likely touched.** `k6/journeys/doc-sign.js`, a case config, `src/load/reconcile/documenso.ts`,
+- **`P6-DOC-LOAD-008`** (gated): at the same fixed rate, the receiver answers 5xx (or stalls past
+  Documenso's timeout) for the first delivery of each document. Oracle: Documenso retries, and
+  exactly one delivery per event is accepted by the receiver; `WebhookCall` rows show the failed
+  and the successful attempt. **Gate:** the probe must show Documenso retries a failed delivery at
+  `DOCUMENSO_REF`; if it does not, `-008` moves to "Later" with that evidence.
+- **Files likely touched.** `k6/journeys/doc-sign.js`, a case config (`k6/cases/doc-load-002.js`,
+  `k6/cases/doc-load-008.js`), a failing mode in the receiver, `src/load/reconcile/documenso.ts`,
   `src/load/pipeline-lag.ts` (stage timing join), `tests/unit/pipeline-lag.test.ts`, the receiver
   (`src/receivers/webhook-receiver.ts` after Phase 2 Task 4), `perf.yml`, `README.md`.
 - **The live probe must confirm.** The fixed rate that keeps the run VALID and the backlog bounded;
   timestamps available per stage (job rows, `WebhookCall`, receiver, Inbucket message time) and
   their clocks; a drain timeout that is a contract, not a guess (set from probe data, recorded in
   the plan); whether the webhook receiver must run in the LOAD runner process (it does in Phase 1
-  Playwright tests).
+  Playwright tests); **gate for `-008`:** whether Documenso retries a failed webhook delivery, after
+  how long and how many times, and how `WebhookCall` records each attempt.
 - **Build plan.** `docs/plans/<date>-p6-phase3-task9-doc-load-pipeline-lag.md`. Starts with the
   live probe; junior-engineer guide (exact file paths, code skeletons per new function and test,
   exact commands, expected outputs, step order) so a weaker model can build it without guessing.
 - **CI change.** `documenso-smoke` LOAD step: short on PRs, full on `main`/nightly/dispatch; stage
   times and drain time in the job summary.
 - **Done when.** VALID runs where every document reaches every stage once and the backlog drains
-  within the recorded contract, on the PR and once on `main`; artefacts shipped; `npm run check`
-  green.
+  within the recorded contract, on the PR and once on `main`; `-008` either lands the same way
+  (exactly one accepted delivery per event) or is listed under "Later" with the gate evidence;
+  artefacts shipped; `npm run check` green.
 - **Main risks.** In-process jobs competing with request handling (that is a finding, not a test
   bug); Inbucket timestamps; drain time longer than the job timeout.
 
 ## Task 10: Retry storms (`P6-CAL-LOAD-007`, `P6-MED-LOAD-006`, `P6-DOC-LOAD-007`)
 
 - **Goal.** Prove client retries after timeouts never create a second effect.
-- **Cases.** `P6-CAL-LOAD-007`, `P6-MED-LOAD-006` (P0), `P6-DOC-LOAD-007`.
+- **Cases.** `P6-CAL-LOAD-007`, `P6-MED-LOAD-006` (P0), `P6-DOC-LOAD-007`, `P6-CAL-LOAD-009`
+  (accepted extra; gated on Phase 2 `P6-CAL-RACE-006` having landed).
 - **What it proves / transfers.** Side-effect exactly-once under retries: a retried payment must
   not charge twice; a retried prescription submit must not dispense twice.
 - **Depends on.** Task 7 (journeys); Task 8 for the Medusa checkout setup and oracle.
@@ -633,22 +689,29 @@ check` green.
   - `P6-DOC-LOAD-007`: `completeDocumentWithToken` retried. Oracle: one SIGNED, the rest
     ALREADY_SIGNED, one seal, one email set (the Phase 1 `P6-DOC-RACE-002` contract: duplicates are
     200 `ALREADY_SIGNED` by design).
+  - `P6-CAL-LOAD-009` (gated): retry storm through a `maxUsageCount=1` private link, reusing the
+    Phase 2 `P6-CAL-RACE-006` link setup. Oracle: one booking per link, `usageCount = 1`, however
+    many retries. **Gate:** Phase 2 `P6-CAL-RACE-006` has landed on `main` (it owns scripted link
+    creation); otherwise `-009` moves to "Later".
   - Logical-request id per iteration (prefix + counter) so the audit joins retries to one intent.
 - **Files likely touched.** `k6/lib/retry.js` (+ `tests/unit/k6-lib-retry.test.ts` for its pure
-  backoff/timeout logic), the three journeys, case configs, `src/load/reconcile/*`, `perf.yml`,
+  backoff/timeout logic), the three journeys, case configs (`k6/cases/*`, incl.
+  `cal-load-009.js` if it lands), `src/cal/*` link helpers from Phase 2, `src/load/reconcile/*`, `perf.yml`,
   `README.md`.
 - **The live probe must confirm.** The client timeout that makes the server finish **after** the
   client gives up (the retry storm needs that overlap; too short and nothing reaches the server);
-  the Cal retry status (the prompt's "retry status to verify"); whether Medusa's payment is created
+  the Cal retry status (the prompt's "retry status to verify"); for `-009`, whether Phase 2
+  `P6-CAL-RACE-006` is on `main` and its link setup is reusable from the LOAD runner; whether Medusa's payment is created
   once or per attempt (payment rows per cart); Documenso email count per retry; whether k6's
   request `timeout` aborts the connection in a way the server sees.
 - **Build plan.** `docs/plans/<date>-p6-phase3-task10-retry-storms.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
 - **CI change.** One LOAD step per product job: short on PRs, full on `main`/nightly/dispatch.
-- **Done when.** All three VALID and green (or a proven product bug recorded with repeated
-  evidence; known `P6-OBS-CAL-001` counted under its ID) on the PR and once on `main`; artefacts
-  shipped; `npm run check` green.
+- **Done when.** `CAL-LOAD-007`, `MED-LOAD-006` and `DOC-LOAD-007` VALID and green (or a proven product bug recorded with repeated
+  evidence; known `P6-OBS-CAL-001` counted under its ID) on the PR and once on `main`;
+  `P6-CAL-LOAD-009` lands the same way or is listed under "Later" because its gate failed;
+  artefacts shipped; `npm run check` green.
 - **Main risks.** Timeouts too short to reach the server (no storm) or too long (no retries);
   retries amplifying load into saturation (INVALID); Cal slot supply consumed by retries.
 
@@ -703,6 +766,10 @@ check` green.
   `P6-MED-LOAD-007`, `P6-MED-LOAD-008`, `P6-MED-LOAD-009`.
 - `P6-X-LOAD-003` A/A, then the A/B gate; `P6-RULE-004`, `P6-RULE-006`.
 - Dashboard.
+- Soaks get their **own scheduled workflow** (D5), not the Phase 3 product jobs.
+- Gated Phase 3 extras that fail their gate: `P6-DOC-LOAD-008` (Documenso does not retry a failed
+  webhook delivery) and `P6-CAL-LOAD-009` (Phase 2 `P6-CAL-RACE-006` has not landed), each with
+  its evidence.
 
 **Phase 5:**
 
@@ -714,26 +781,15 @@ check` green.
 **Superseded / dropped (kept marked, not deleted):** `P6-TW-LOAD-001`, `P6-TW-LOAD-002`,
 `P6-TW-LOAD-003` (master plan X-P6-LOAD; superseded); `P6-TW-LOAD-007` (dropped).
 
-**Proposed extras (not accepted):** `P6-X-LOAD-006`, `P6-X-LOAD-007`, `P6-DOC-LOAD-008`,
-`P6-CAL-LOAD-009` (see below).
-
-### Proposed extras (new IDs, not in scope until the maintainer accepts them)
-
-- **`P6-X-LOAD-006` sampler-overhead check.** Run the stub self-test with and without the sampler;
-  the k6 metrics must not differ beyond the probe's margin. Proves the telemetry does not perturb
-  the measurement (boundary of `P6-X-LOAD-002`).
-- **`P6-X-LOAD-007` clock-skew guard.** The sampler and k6 timestamps are cross-checked against a
-  marker request at start and end; skew beyond one interval marks the run INVALID.
-- **`P6-DOC-LOAD-008` webhook retry exactly-once.** The receiver answers 5xx or stalls for the first
-  delivery of each document; Documenso's retry must produce exactly one accepted delivery per
-  event (replay / retry under load).
-- **`P6-CAL-LOAD-009` private-link single use under retries.** Retry storm through a
-  `maxUsageCount=1` link (Phase 2 `P6-CAL-RACE-006` setup): one booking per link even with retries.
+**Extras decided 2026-10-22:** `P6-X-LOAD-006` is in Task 5; `P6-DOC-LOAD-008` is in Task 9
+(gated); `P6-CAL-LOAD-009` is in Task 10 (gated); the clock-skew check is part of the
+`P6-X-LOAD-002` self-test and has no ID of its own (D14).
 
 ## Decisions (2026-10-22)
 
-Numbered for this roadmap. "Agreed 2026-10-22" means given by the maintainer; "proposed, confirmed
-by the task's probe" means the task's plan confirms or replaces it after its probe.
+Numbered for this roadmap. "Agreed 2026-10-22" means given by the maintainer. All of D1–D14 are
+agreed; values inside them that a probe sets (rates, margins, timeouts) are still recorded in each
+task's plan.
 
 - **D1 Rate sizing (agreed 2026-10-22).** Steady = 50% and spike = 150% of the measured knee, but
   the knee is a Phase 4 case. In Phase 3 every LOAD case runs at a small **fixed** rate chosen by
@@ -750,29 +806,39 @@ by the task's probe" means the task's plan confirms or replaces it after its pro
 - **D4 Second Medusa instance via a harness release (agreed 2026-10-22).** Phase 2 D11: the harness
   starts and stops it, not a P6 bridge. Task 1 is a harness release (own branch, tag, CHANGELOG)
   built from the Phase 2 Task 8 report, then the P6 pin bump. Named "harness H3"; the older
-  Phase 1 Task 6 item is "the Documenso API-token note". **Open, maintainer:** whether the same
-  release also ships the Cal `up`/`down` fix so P6 can delete its `scripts/harness.mjs` bridge.
-- **D5 Shared GitHub-hosted runners only (agreed 2026-10-22).** k6, product and Postgres share one
-  runner; every number is environment-bound (`P6-RULE-003`). **Proposed, confirmed by the task's
-  probe:** LOAD steps run inside the existing product jobs after the races (one stack start per
-  job); the alternative, a separate `load.yml` workflow as master plan §6 sketches (`p6-load.yml`),
-  costs a second stack start per product.
-- **D6 One LOAD runner (proposed, confirmed by the task's probe).** A Node/TypeScript runner owns
-  setup, sampler, k6, drain, reconciliation, cleanup, token scan and verdict, so LOAD cases reuse
-  the TS oracles and clients. The k6-native alternative (`setup()`/`teardown()` only) cannot reuse
-  `src/**/oracle.ts`; it is the more common layout, so the choice is flagged.
-- **D7 Medusa balance audit (proposed, confirmed by the task's probe).** `P6-X-LOAD-005` reconciles
+  Phase 1 Task 6 item is "the Documenso API-token note". The same version tag also ships the Cal
+  `up`/`down` fix (up returns when healthy, down stops the web, seed check uses `users`, no seed
+  credentials in logs) as a **separate harness PR**; the P6 pin-bump PR then deletes the Cal bridge
+  in `scripts/harness.mjs`.
+- **D5 Shared GitHub-hosted runners; LOAD steps in the product jobs (agreed 2026-10-22).** k6,
+  product and Postgres share one runner; every number is environment-bound (`P6-RULE-003`). In
+  Phase 3, LOAD steps run inside the existing product jobs after the races, and the race leak check
+  must pass before the LOAD step starts. Phase 4 soaks get their own scheduled workflow (see
+  "Later"); master plan §6's separate `p6-load.yml` is not used in Phase 3.
+- **D6 One LOAD runner, k6 scripts still standalone (agreed 2026-10-22).** A Node/TypeScript
+  runner orchestrates k6 and owns setup, preflight, sampler, drain, reconciliation, cleanup, token
+  scan and verdict, so LOAD cases reuse the TS oracles and clients. Every k6 script must still run
+  standalone with `k6 run` (inputs via env/JSON) for debugging; Tasks 3 and 4 make that a
+  done-when.
+- **D7 Medusa balance audit (agreed 2026-10-22).** `P6-X-LOAD-005` reconciles
   "balances ≥ 0" on the money oracles Phase 2 lands; if none has landed, the clause is recorded as
   pending, not dropped.
-- **D8 Self-contained chart (proposed, confirmed by the task's probe).** The correlated chart is one
+- **D8 Self-contained chart (agreed 2026-10-22).** The correlated chart is one
   HTML file with inline SVG/JS and no CDN, so the evidence release renders offline.
-- **D9 RULE-001 scope (proposed, confirmed by the task's probe).** RULE-001 applies to latency and
+- **D9 RULE-001 scope (agreed 2026-10-22).** RULE-001 applies to latency and
   throughput thresholds; correctness thresholds (`checks`, non-conflict errors) are allowed from the
   start, as the existing smokes do.
-- **D10 Health smokes (proposed, confirmed by the task's probe).** Task 7's plan retires them or
-  keeps them as a preflight, with the reason; either way `AGENTS.md` and README stay accurate.
-- **D11 k6 folder names (proposed, confirmed by the task's probe).** Master plan §2 sketches
-  `k6/lib/`, `k6/scenarios/`, `k6/products/`; this roadmap uses `k6/lib/`, `k6/journeys/`,
-  `k6/cases/`, `k6/selftest/`. Task 3's plan picks one layout and keeps it.
+- **D10 Health smokes retired (agreed 2026-10-22).** `k6/smoke/*-health.js`, the `smoke:*`
+  scripts and the CI "k6 smoke" steps are retired in Task 7; the LOAD runner does a readiness
+  preflight instead (Task 4). `AGENTS.md` and README are updated in Task 7.
+- **D11 k6 folder names (agreed 2026-10-22).** `k6/lib/`, `k6/journeys/`, `k6/cases/`,
+  `k6/selftest/`. Master plan §2's `k6/scenarios/` and `k6/products/` are not used (README notes it
+  at closeout).
 - **D12 Nightly soak and A/B gates (agreed 2026-10-22).** Phase 4, not Phase 3.
 - **D13 Twenty load (agreed 2026-10-22).** Phase 5.
+- **D14 Extras (agreed 2026-10-22).** `P6-X-LOAD-006` (sampler overhead) is accepted into Task 5.
+  The clock-skew guard is not a separate case: it is folded into the `P6-X-LOAD-002` sampler
+  self-test and its proposed ID is withdrawn. `P6-DOC-LOAD-008` (webhook retry exactly-once) is
+  accepted into Task 9, gated on the probe showing Documenso retries a failed delivery, otherwise
+  "Later" with evidence. `P6-CAL-LOAD-009` (retry storm via a single-use private link) is accepted
+  into Task 10, gated on Phase 2 `P6-CAL-RACE-006` having landed, otherwise "Later".
