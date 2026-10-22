@@ -1,5 +1,10 @@
 # Phase N closeout (YYYY-MM-DD)
 
+- Model:
+- Branch:
+- Head SHA:
+- CI status: (with run link)
+
 Copy this file to `docs/plans/<YYYY-MM-DD>-p6-phaseN-closeout.md` and fill in every section. Write
 "none" rather than deleting a section.
 
