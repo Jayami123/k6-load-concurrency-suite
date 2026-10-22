@@ -25,20 +25,20 @@ file in this repo, the pinned harness, a pinned product source or a CI run; open
 - **What Phase 5 builds on** (none of it exists on `main` at `d33e775`; each item is named by the
   task that creates it):
 
-| Needed by Phase 5                                                                     | Set by                        |
-| ------------------------------------------------------------------------------------- | ----------------------------- |
-| Twenty stack in P6 (`up:twenty`, `src/twenty/env.ts`, `src/twenty/oracle.ts`, CI job) | Phase 2 Task 6                |
-| Twenty races `P6-TW-RACE-001/004/005/006`, `src/twenty/{api,payloads,mailpit}.ts`     | Phase 2 Task 7                |
-| Harness H3 release process (second Medusa instance + Cal fix) and pin-bump pattern    | Phase 3 Task 1                |
-| Pinned k6, `k6/lib/`, stub self-test                                                  | Phase 3 Task 3                |
-| LOAD runner `scripts/load/run-load.ts`, validity, `run-meta.json`, preflight          | Phase 3 Task 4                |
-| Outside-only sampler + chart (`src/load/telemetry/*`), overhead and clock-skew checks | Phase 3 Task 5                |
-| Post-load reconciliation `src/load/reconcile/*` (Cal, Medusa, Documenso)              | Phase 3 Task 6                |
-| Evidence-release extension allowlist                                                  | Phase 3 Task 11 (Phase 4 D14) |
-| Soak workflow `soak.yml` (nightly 30 min, weekly 2 h Sunday)                          | Phase 4 Task 7                |
-| Production-like limiter profile pattern (Documenso)                                   | Phase 4 Task 6 (Phase 4 D12)  |
-| `k6/thresholds/`, A/A + A/B gate (`gate.yml`)                                         | Phase 4 Tasks 11–12           |
-| GitHub Pages dashboard (`pages.yml`, `scripts/dashboard/build-site.ts`)               | Phase 4 Task 13               |
+| Needed by Phase 5                                                                                     | Set by                                       |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Twenty stack in P6 (`up:twenty`, `src/twenty/env.ts`, `src/twenty/oracle.ts`, CI job)                 | Phase 2 Task 6                               |
+| Twenty races `P6-TW-RACE-001/004/005/006`, `src/twenty/{api,payloads,mailpit}.ts`                     | Phase 2 Task 7                               |
+| Harness H3 release process (second Medusa instance + Cal fix) and pin-bump pattern                    | Phase 3 Task 1                               |
+| Pinned k6, `k6/lib/`, stub self-test                                                                  | Phase 3 Task 3                               |
+| LOAD runner `scripts/load/run-load.ts`, validity, `run-meta.json`, preflight                          | Phase 3 Task 4                               |
+| Outside-only sampler + chart (`src/load/telemetry/*`), overhead and clock-skew checks                 | Phase 3 Task 5                               |
+| Post-load reconciliation `src/load/reconcile/*` (Cal, Medusa, Documenso)                              | Phase 3 Task 6                               |
+| Evidence-release extension allowlist                                                                  | Phase 3 Task 11 (Phase 4 D14)                |
+| Soak workflow `soak.yml` (nightly 30 min, weekly 2 h Sunday) + weekly `p6-soak-<yyyy>-w<ww>` releases | Phase 4 Task 7 (releases: owner backlog, D8) |
+| Production-like limiter profile pattern (Documenso)                                                   | Phase 4 Task 6 (Phase 4 D12)                 |
+| `k6/thresholds/`, A/A + A/B gate (`gate.yml`)                                                         | Phase 4 Tasks 11–12                          |
+| GitHub Pages dashboard (`pages.yml`, `scripts/dashboard/build-site.ts`)                               | Phase 4 Task 13                              |
 
 ### Facts checked for this roadmap (read-only)
 
@@ -119,7 +119,8 @@ Every case is a cross-domain primitive, not CRUD: **no lost update** (concurrent
 survive or conflict visibly), **token single use**, **overload is refused cleanly and recovers**,
 **a long-running process does not grow without bound**, **telemetry must not perturb what it
 measures**. Each task has one line on what it proves and how it transfers to finance and healthcare.
-Extras are **proposed** with new IDs and are not in scope until the owner accepts them.
+Extras are **proposed** with new IDs and are not in scope until the owner accepts them; the extras
+accepted on 2026-10-22 are listed in D11.
 
 ## Phase 5 cases
 
@@ -127,10 +128,16 @@ Extras are **proposed** with new IDs and are not in scope until the owner accept
 | ---------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
 | —                | harness H1                   | Opt-in Postgres flags in harness DB containers: `pg_stat_statements` (`shared_preload_libraries`), `auto_explain` / `log_min_duration_statement`; default off      | —   |
 | —                | harness H2                   | Opt-in extra app env (e.g. `NODE_OPTIONS=--require <preload>` with `perf_hooks.monitorEventLoopDelay`); default off                                                | —   |
+| —                | harness H4                   | Opt-in passthrough of `API_RATE_LIMITING_*` only (explicit allowlist, no arbitrary env), default off; enables the functional profile (D3, D6)                      | —   |
 | —                | P6 sampler rows              | `P6-X-LOAD-002` gains top-query rows (`pg_stat_statements` deltas) and true event-loop-delay rows; the 1 Hz health-probe series stays, labelled as the proxy       | —   |
+| `P6-X-LOAD-009`  | accepted extra               | Harness-tier overhead: flags on vs off within the Phase 4 A/A tolerance                                                                                            | —   |
 | `P6-TW-LOAD-004` | in scope                     | Lost update under sustained edits: variant A (different fields) both survive; variant B (same field) conflict or recorded silent overwrite; overwrite rate vs load | P0  |
 | `P6-TW-LOAD-005` | in scope                     | One-time token under load: many reset tokens, each redeemed N times in parallel inside steady load; one success per token; hash changed once                       | P1  |
 | `P6-TW-LOAD-006` | in scope                     | Rate-limit contract: below / at / above the limit, then idle; above → 429 (headers to verify), never 500; below → no 429; recovery time                            | P1  |
+| `P6-TW-LOAD-008` | accepted extra (gated)       | Twenty knee on the functional profile (Phase 4 breakpoint method); gated on H4 raising the limits                                                                  | —   |
+| `P6-TW-LOAD-009` | accepted extra (gated)       | Limiter fairness: a flooding client must not starve a low-rate client; gated on the limiter keying per token/workspace                                             | —   |
+| `P6-TW-LOAD-010` | accepted extra (gated)       | Worker queue drains after a write burst; gated on job state readable from outside without writes                                                                   | —   |
+| `P6-TW-LOAD-011` | accepted extra (gated)       | Reset-token expiry boundary: before expiry one success, after refused, never both; gated on expiry ≤ 15 min real time                                              | —   |
 | —                | in scope                     | Long soak trend: weekly 2 h soak results accumulated per product (RSS, fds, connections, p95 slope) on the Pages dashboard                                         | —   |
 | `P6-TW-LOAD-001` | **retired** (owner decision) | Master plan "k6 smoke GraphQL people list": superseded by `-004`..`-006`                                                                                           | —   |
 | `P6-TW-LOAD-002` | **retired** (owner decision) | Master plan "k6 ramp create people": superseded                                                                                                                    | —   |
@@ -141,16 +148,16 @@ Retired IDs stay listed and are never reused.
 
 ## Task table
 
-| Task | Title                                      | Cases                                  | Depends on (exact)                                                  | Branch                                       | Parallel with |
-| ---- | ------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------- | ------------- |
-| 1    | Harness telemetry release (H1 + H2, + H4?) | none (harness)                         | Phase 3 Task 1 (release pattern)                                    | harness `feat/<date>-harness-telemetry-tier` | 3, 7          |
-| 2    | P6 pin bump + flags on + new sampler rows  | sampler rows; `P6-X-LOAD-009`? (extra) | 1; Phase 3 Task 5; Phase 4 Task 7 (`soak.yml`)                      | `chore/<date>-p6-harness-telemetry-bump`     | 3, 7          |
-| 3    | Twenty load foundation                     | none (foundation)                      | Phase 2 Tasks 6–7; Phase 3 Tasks 3–6; Task 1 for H4 (D6)            | `feat/<date>-p6-twenty-load-foundation`      | 1, 2, 7       |
-| 4    | Lost update under sustained edits          | `P6-TW-LOAD-004`                       | 3; Phase 2 Task 7 (`P6-TW-RACE-001`, `-005`)                        | `feat/<date>-p6-tw-load-lost-update`         | 5             |
-| 5    | One-time token under load                  | `P6-TW-LOAD-005`                       | 3; Phase 2 Task 7 (`P6-TW-RACE-004`, `-006`)                        | `feat/<date>-p6-tw-load-reset-token`         | 4             |
-| 6    | Rate-limit contract (limiter profile)      | `P6-TW-LOAD-006`                       | 3; Task 1 (H4, D6); Phase 4 Task 6 (profile pattern)                | `feat/<date>-p6-tw-load-rate-limit`          | 7             |
-| 7    | Long soak trend                            | soak trend                             | Phase 4 Tasks 7 and 13; capture can start before Tasks 1–6 (Note 4) | `feat/<date>-p6-soak-trend`                  | 1–6           |
-| 8    | Phase 5 closeout                           | all (evidence only)                    | 1–7                                                                 | `docs/<date>-p6-phase5-closeout`             | —             |
+| Task | Title                                     | Cases                                              | Depends on (exact)                                                                | Branch                                       | Parallel with |
+| ---- | ----------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------- | ------------- |
+| 1    | Harness telemetry release (H1 + H2 + H4)  | none (harness)                                     | Phase 3 Task 1 (release pattern)                                                  | harness `feat/<date>-harness-telemetry-tier` | 3, 7          |
+| 2    | P6 pin bump + flags on + new sampler rows | sampler rows; `P6-X-LOAD-009`                      | 1; Phase 3 Task 5; Phase 4 Task 7 (`soak.yml`)                                    | `chore/<date>-p6-harness-telemetry-bump`     | 3, 7          |
+| 3    | Twenty load foundation                    | `P6-TW-LOAD-010` (gated), `P6-TW-LOAD-008` (gated) | Phase 2 Tasks 6–7; Phase 3 Tasks 3–6; Task 1 (H4) for the functional profile only | `feat/<date>-p6-twenty-load-foundation`      | 1, 2, 7       |
+| 4    | Lost update under sustained edits         | `P6-TW-LOAD-004`                                   | 3; Phase 2 Task 7 (`P6-TW-RACE-001`, `-005`)                                      | `feat/<date>-p6-tw-load-lost-update`         | 5             |
+| 5    | One-time token under load                 | `P6-TW-LOAD-005`, `P6-TW-LOAD-011` (gated)         | 3; Phase 2 Task 7 (`P6-TW-RACE-004`, `-006`)                                      | `feat/<date>-p6-tw-load-reset-token`         | 4             |
+| 6    | Rate-limit contract (production-like)     | `P6-TW-LOAD-006`, `P6-TW-LOAD-009` (gated)         | 3; Phase 4 Task 6 (profile pattern)                                               | `feat/<date>-p6-tw-load-rate-limit`          | 7             |
+| 7    | Long soak trend (view)                    | soak trend                                         | Phase 4 Task 7 (weekly releases), Phase 4 Task 13 (Pages)                         | `feat/<date>-p6-soak-trend`                  | 1–6           |
+| 8    | Phase 5 closeout                          | all (evidence only)                                | 1–7                                                                               | `docs/<date>-p6-phase5-closeout`             | —             |
 
 ```mermaid
 flowchart LR
@@ -160,37 +167,35 @@ flowchart LR
   P4D["Phase 4 Task 13<br/>Pages dashboard"] --> T7
   T1["Task 1<br/>harness H1 + H2 (+ H4)"] --> T2["Task 2<br/>pin bump + sampler rows"]
   T1 -. "H4: limiter env" .-> T3["Task 3<br/>Twenty load foundation"]
-  T1 -. "H4" .-> T6
-  T3 --> T4["Task 4<br/>TW-LOAD-004"]
+    T3 --> T4["Task 4<br/>TW-LOAD-004"]
   T3 --> T5["Task 5<br/>TW-LOAD-005"]
   T3 --> T6["Task 6<br/>TW-LOAD-006"]
-  T7["Task 7<br/>soak trend<br/>(capture starts first)"] --> T8["Task 8<br/>closeout"]
+  T7["Task 7<br/>soak trend view<br/>(points captured since Phase 4 Task 7)"] --> T8["Task 8<br/>closeout"]
   T2 --> T8
   T4 --> T8
   T5 --> T8
   T6 --> T8
 ```
 
-### Notes on the suggested order (D2, challenged where the analysis says so)
+### Notes on the order (D2, agreed 2026-10-22)
 
 The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load foundation →
-`-004` → `-005` → `-006` → soak trend → closeout. Kept as task numbers, with four changes to
-**when** work starts (no ID or scope change):
+`-004` → `-005` → `-006` → soak trend → closeout. Kept as task numbers; the owner confirmed the
+start-time changes below (H4 rides in Task 1; Task 3 in parallel with Tasks 1–2 except the
+limiter profile; soak-trend capture first):
 
 1. **Twenty's limiter appears to be ON by default, and P6 cannot change it today.** The fork's
    defaults are a short window of 100 requests per 1 s and a long window of 100 per 60 s
    (config-variables.ts lines 1713–1739), and neither the harness overlay nor the fork compose sets
    `API_RATE_LIMITING_*`. If the image matches the fork, every Twenty run (Phase 2 races, Phase 5
-   load) is limited at about 100 requests/minute on whatever key the limiter uses. That contradicts
-   D3's premise that "every other Twenty run keeps the CI setting" as an unlimited setting: the CI
-   setting **is** the limiter. Two consequences:
-   - A **functional profile** (limits raised for load, or the limiter off if a switch exists) needs
-     env passed into the Twenty containers, which the harness cannot do today. Proposed **harness
-     H4** (D6): opt-in Twenty env passthrough for `API_RATE_LIMITING_*`, in the **same** harness
-     release as H1/H2 (Task 1). Then Task 3 depends on Task 1 for the profile, not only Task 2.
-   - `P6-TW-LOAD-006` may need no special start for "limiter ON" (the default may already be the
-     production-like profile); it needs a **known** limit, which again needs H4 or reading the
-     defaults from the running image (Task 6 probe).
+   load) is limited at about 100 requests/minute on whatever key the limiter uses. Resolution (D3,
+   D6, agreed): two Twenty profiles.
+   - **Functional:** limits raised through **harness H4** (opt-in `API_RATE_LIMITING_*` allowlist
+     passthrough in the Task 1 release) to values set by the Task 3 probe, so the limiter never
+     shapes the result. Used by `P6-TW-LOAD-004`, `-005` and any Twenty knee (`-008`).
+   - **Production-like:** image defaults, nothing set. Used by `P6-TW-LOAD-006` and `-009`.
+   - Phase 2 Twenty races keep the image defaults and must count 429s (tracked in the owner's
+     backlog; this branch does not edit the Phase 2 roadmap).
 2. **Task 3 can start in parallel with Tasks 1–2** for everything except the limiter profile:
    `k6/lib` Twenty auth, the background journey, container telemetry and Twenty reconciliation do
    not need H1/H2.
@@ -201,19 +206,19 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
    No product code or image change. The preload's output must leave the container (a mounted
    directory or stdout lines the sampler reads).
 4. **The soak trend needs wall-clock weeks, so capture starts first.** ≥ 3 weekly points take ≥ 3
-   weeks after `soak.yml` (Phase 4 Task 7) is live, and Actions artefacts expire after 14 days. Task
-   7's **capture** (persist each weekly summary, D8) should land as early as possible, in parallel
-   with Task 1; the dashboard trend view can come later. Left last, the exit would wait ≥ 3 extra
-   weeks.
-5. **"Master plan updated" at closeout conflicts with an earlier rule.** Phase 1 Task 8 and the
-   Phase 3/4 roadmaps say the master-plan HTML is not edited (README notes changes). D9 asks the
-   owner which applies.
+   weeks, and Actions artefacts expire after 14 days. D8 (agreed): each weekly soak publishes a
+   token-scanned release `p6-soak-<yyyy>-w<ww>`, **starting in Phase 4 Task 7** (set by Phase 4
+   Task 7; tracked in the owner's backlog). Task 7 here builds only the trend view from points
+   already captured.
+5. **The master plan is not edited at closeout** (D9, agreed): README records changes; the only
+   master-plan edit is one owner-approved fold-in revision after all phase roadmaps are reviewed,
+   as its own docs PR, outside this phase.
 
-## Task 1: Harness telemetry release (H1 + H2, proposed H4)
+## Task 1: Harness telemetry release (H1 + H2 + H4)
 
 - **Goal.** One `qa-portfolio-harness` release with opt-in, default-off flags: H1 Postgres
-  statistics/explain flags, H2 extra app env for an event-loop preload, and (if the owner accepts D6)
-  H4 Twenty env passthrough. P1 and other users see no change.
+  statistics/explain flags, H2 extra app env for an event-loop preload, and H4 Twenty limiter env
+  passthrough (D6). P1 and other users see no change.
 - **Cases.** None mapped (infrastructure).
 - **What it proves / transfers.** Deeper attribution without touching product code: query-level and
   event-loop evidence of the kind a bank's or hospital's performance review asks for, kept opt-in so
@@ -224,7 +229,8 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
     `HARNESS_PG_STATS=1`) that starts each harness-owned Postgres with
     `shared_preload_libraries=pg_stat_statements` (and `auto_explain` + `log_min_duration_statement`
     when a second flag is set) and runs `CREATE EXTENSION IF NOT EXISTS pg_stat_statements` once
-    after start (P6's oracle is read-only and must never run DDL). Covers Medusa and Documenso
+    after start: the harness only creates the extension; P6's oracle is read-only, never runs DDL
+    and never calls `pg_stat_statements_reset()` (D7). Covers Medusa and Documenso
     (`postgres:15` overlays), Twenty (`db` service via the overlay) and Cal (its fork compose DB
     through `docker/cal.compose.yml`; feasibility to verify).
   - **H2:** an opt-in extra-env mechanism per product that **appends** to existing `NODE_OPTIONS`
@@ -232,8 +238,9 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
     backend (today env comes only from its `.env`), and for Twenty adds env + a read-only preload
     mount to `server` and `worker` (Note 3). The preload file is supplied by the caller (P6), not
     shipped as product code.
-  - **H4 (proposed, D6):** opt-in passthrough of `API_RATE_LIMITING_*` (and only those) to the
-    Twenty server and worker.
+  - **H4 (D6, agreed):** opt-in passthrough of `API_RATE_LIMITING_*` variables **only**, through an
+    explicit allowlist of names (no arbitrary env injection), to the Twenty server and worker;
+    default off, so an unset flag leaves the image defaults (the production-like profile).
   - Unit tests in the harness for each flag's default-off behaviour; CHANGELOG entry; one new tag.
     Separate harness PRs per concern under one tag are allowed (as Phase 3 D4 did).
 - **Files likely touched (harness repo).** `docker/{medusa,documenso,twenty,cal}.compose.yml`,
@@ -242,23 +249,24 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
 - **Probe items (to verify).**
   1. Postgres images accept `-c shared_preload_libraries=…` via compose `command:` (`postgres:15`,
      `postgres:16`), and the Cal fork's DB service can be overridden from the harness overlay.
-  2. The role used for `CREATE EXTENSION` and who may read `pg_stat_statements` and call
-     `pg_stat_statements_reset()` (superuser or `pg_read_all_stats`).
+  2. The role used for `CREATE EXTENSION` and whether P6's read-only role may read
+     `pg_stat_statements` (superuser or `pg_read_all_stats`).
   3. `auto_explain` / `log_min_duration_statement` log volume per run.
   4. On the `v2.44.0` image (inspected without starting a stack, e.g. `docker image inspect` and
      reading `/app` files): `CMD`, `ENTRYPOINT`, absence of runtime `NODE_OPTIONS`, Node version for
      `perf_hooks.monitorEventLoopDelay`, and that the worker's node inherits `NODE_OPTIONS`.
   5. Whether `buildDocumensoAppEnv` forwards extra env.
-  6. Twenty limiter env names and defaults **in the image** (the fork pin's values are known), and
-     whether a "disable" switch exists.
+  6. Twenty limiter env names and defaults **in the image** (the fork pin's values are known), the
+     exact allowlist for H4, and whether a "disable" switch exists (H4 raises limits; it does not
+     need one).
   7. That every flag off reproduces `v0.2.11` behaviour (P1's suite passes on the new tag).
 - **Build plan.** Harness-repo plan + `docs/plans/<date>-p6-phase5-task1-harness-telemetry.md`
   (P6 side: what P6 needs). Both start with a live probe and are junior-engineer guides (exact file
   paths, code skeletons per new function and test, exact commands, expected outputs, step order).
 - **CI change.** None in P6.
 - **Done when.** Harness PR(s) merged under one new tag with CHANGELOG; all flags default off;
-  harness tests green; P1 green on the tag (or its owner confirms no impact); the D6 decision on H4
-  recorded.
+  harness tests green, including a test that a non-allowlisted variable is not passed (H4); P1
+  green on the tag (or its owner confirms no impact).
 - **Main risks.** P1 regressions; `CREATE EXTENSION` timing on a reused volume; preload output
   leaving tokens in logs (the preload writes numbers only).
 
@@ -266,8 +274,8 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
 
 - **Goal.** P6 uses the new harness tag, turns H1/H2 on for perf and soak jobs only, and the sampler
   gains top-query and event-loop-delay rows.
-- **Cases.** `P6-X-LOAD-002` extension (no new mapped ID); proposed extra `P6-X-LOAD-009`
-  (overhead of the harness tier).
+- **Cases.** `P6-X-LOAD-002` extension (no new mapped ID); accepted extra `P6-X-LOAD-009`
+  (harness-tier overhead).
 - **What it proves / transfers.** Which query and which event-loop stall explain a saturation,
   measured without product changes, and shown not to distort the measurement.
 - **Depends on.** Task 1; Phase 3 Task 5 (`src/load/telemetry/*`); Phase 4 Task 7 (`soak.yml`).
@@ -277,36 +285,41 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
   - Flags on **only** in the LOAD steps of `perf.yml` and in `soak.yml`; race steps and PR runs keep
     them off.
   - Sampler rows: **top queries** from `pg_stat_statements` as **deltas** between a start and an
-    end snapshot (D7: no reset by default; reset only if the harness owns it), top-N by total time,
+    end snapshot (D7: no reset, ever; the oracle stays read-only), top-N by total time,
     query text normalised (no literals by design of `pg_stat_statements`) and still token-scanned;
     **true event-loop delay** (p50/p99/max per interval from the preload). The 1 Hz health-probe
     latency stays and is labelled "event-loop proxy" on the chart.
   - The chart (Phase 3 Task 5) gains the two series; README "How to read the chart" updated.
+  - `P6-X-LOAD-009`: the same steady case with the harness flags on vs off (A/A style); every metric
+    must stay within the Phase 4 A/A tolerance in `k6/thresholds/` (set by Phase 4 Task 11). A
+    breach is recorded and the tier stays off for that metric's evidence until explained.
 - **Files likely touched.** `package.json`, `package-lock.json`, `.github/workflows/perf.yml`,
   `.github/workflows/soak.yml`, `src/load/telemetry/{pg-top-queries,event-loop}.ts`,
   `src/load/telemetry/preload/el-delay.cjs` (the preload P6 supplies), `src/load/chart/*`,
   `tests/unit/telemetry-top-queries.test.ts`, `tests/unit/telemetry-event-loop.test.ts`, `README.md`.
 - **Probe items (to verify).** Snapshot cost of `pg_stat_statements` at the sampler interval; that
   the read-only role can read it; preload output path per product (host process vs container);
-  overhead with flags on vs off (`P6-X-LOAD-009`, if accepted); that query text carries no secrets.
+  arms and duration for `P6-X-LOAD-009`; that query text carries no secrets.
 - **Build plan.** `docs/plans/<date>-p6-phase5-task2-telemetry-bump.md`; starts with a live probe;
   junior-engineer guide.
 - **CI change.** Flags on in LOAD and soak steps only.
 - **Done when.** All jobs green on the bump PR and once on `main`; a nightly LOAD run and a soak run
-  ship top-query and event-loop rows in telemetry and chart; the proxy series is labelled; token
-  scan passes; `npm run check` green.
+  ship top-query and event-loop rows in telemetry and chart; the proxy series is labelled;
+  `P6-X-LOAD-009` within tolerance (or the breach recorded); token scan passes; `npm run check`
+  green.
 - **Main risks.** Overhead changing results (measure it); `pg_stat_statements` text size.
 
 ## Task 3: Twenty load foundation
 
 - **Goal.** Twenty can be load-tested through the same LOAD runner: auth in `k6/lib`, a background
   journey, container telemetry, Twenty reconciliation and a functional limiter profile.
-- **Cases.** None mapped (foundation).
+- **Cases.** Foundation; accepted extras `P6-TW-LOAD-010` (worker queue drain, gated) and
+  `P6-TW-LOAD-008` (Twenty knee, gated).
 - **What it proves / transfers.** The fourth product joins the load pipeline with the same validity,
   telemetry and audit rules: a CRM is the same shape as a customer-record system in banking or a
   patient-record system in healthcare.
 - **Depends on.** Phase 2 Tasks 6–7 (Twenty stack, `src/twenty/*`, races); Phase 3 Tasks 3–6
-  (lib, runner, telemetry, reconciliation); Task 1 for H4 if D6 is accepted (Note 1).
+  (lib, runner, telemetry, reconciliation); Task 1 (H4) only for the functional profile (D2).
 - **Scope.**
   - `k6/lib/twenty-auth.js`: per-run credentials minted by the runner (Phase 2 Task 6 decides the
     mechanism: harness `authenticate()` or a per-run API key), passed through env/JSON (Phase 3 D6),
@@ -318,24 +331,36 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
     than a host pid file; DB telemetry on port 5434 read-only.
   - `src/load/reconcile/twenty.ts`: post-load audit (no leaked prefixed records incl. soft-deleted,
     `deletedAt`; token rows revoked; counts match the run's intents).
-  - **Functional limiter profile** for all Twenty LOAD runs except `-006`: limits raised (or the
-    limiter off) via H4, recorded in `run-meta.json`. Without H4, the runs stay under the default
-    limit and say so (D3, D6).
+  - **Functional profile** (D3): limits raised through H4 to values set by this task's probe so the
+    limiter never shapes the result; used by `-004`, `-005` and `-008`; values recorded in
+    `run-meta.json`. Every run states its profile (functional or production-like).
+  - **`P6-TW-LOAD-010` (gated):** after a write burst on the background journey, the worker's backlog
+    (pending jobs over time) must drain; drain time recorded. **Gate:** the probe shows job state is
+    readable from outside **without writes** (e.g. a read-only DB view or a read-only queue inspect
+    the harness exposes); otherwise `-010` goes to "Later" with the evidence.
+  - **`P6-TW-LOAD-008` (gated):** the Phase 4 breakpoint method (Phase 4 Task 1) on `tw-background`
+    on the functional profile, reported as a step range (`P6-RULE-006`). **Gate:** H4 raises the
+    limits enough that the stop rule, not the limiter, ends the run; otherwise "Later" with the
+    evidence.
   - CI: a LOAD step in the Twenty job (Phase 2 Task 6's `twenty-smoke`) after the races and their
     leak check (Phase 3 D5 pattern).
 - **Files likely touched.** `k6/lib/twenty-auth.js`, `k6/journeys/tw-background.js`,
-  `k6/cases/tw-background.js`, `src/load/reconcile/twenty.ts`, `src/load/telemetry/docker-stats.ts`,
+  `k6/cases/tw-background.js`, `k6/cases/tw-load-008.js` and `k6/cases/tw-load-010.js` (if their
+  gates pass), `src/load/reconcile/twenty.ts`, `src/load/telemetry/docker-stats.ts`,
   `scripts/load/run-load.ts`, `tests/unit/reconcile-twenty.test.ts`, `.github/workflows/perf.yml`,
   `README.md`.
-- **Probe items (to verify).** What the limiter keys on and whether the background journey alone
-  hits it at the chosen rate; REST vs GraphQL paths for the journey; container process visibility on
+- **Probe items (to verify).** The functional-profile values (limits high enough that no 429
+  appears at the chosen rate, recorded with evidence); what the limiter keys on;
+  how worker job state can be read without writes (gate for `-010`); whether the functional limits
+  leave room for a knee (gate for `-008`); REST vs GraphQL paths for the journey; container process visibility on
   GitHub-hosted runners; Twenty job time with seed (Phase 2 Task 6 measures first boot).
 - **Build plan.** `docs/plans/<date>-p6-phase5-task3-twenty-load-foundation.md`; live probe first;
   junior-engineer guide with the exact commands Phase 2 Task 6 defines (`npm run up:twenty`,
   `npm run down:twenty`, `race:twenty`; names set by Phase 2 Task 6).
 - **CI change.** Twenty LOAD step (short on PRs, full on `main`/nightly/dispatch).
 - **Done when.** The background journey runs VALID with telemetry, chart and a clean Twenty audit on
-  the PR and once on `main`; the active limiter profile is recorded per run; `npm run check` green.
+  the PR and once on `main`; the active limiter profile is recorded per run; `-010` and `-008` each
+  land (≥ 3 VALID runs) or are listed under "Later" with their gate evidence; `npm run check` green.
 - **Main risks.** The default limiter turning every run into a 429 count; seed time; container
   telemetry gaps.
 
@@ -372,7 +397,7 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
 ## Task 5: One-time token under load (`P6-TW-LOAD-005`)
 
 - **Goal.** Each reset token admits exactly one redemption while the system is busy.
-- **Cases.** `P6-TW-LOAD-005` (P1).
+- **Cases.** `P6-TW-LOAD-005` (P1); accepted extra `P6-TW-LOAD-011` (expiry boundary, gated).
 - **What it proves / transfers.** Token single use under load: one-time payment-approval codes or
   record-access links must not be redeemable twice when servers are busy.
 - **Depends on.** Task 3 (background journey); Phase 2 Task 7 (`P6-TW-RACE-004` parallel redemption,
@@ -381,18 +406,25 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
   requested, read from Mailpit, and each redeemed N times in parallel. Oracle: exactly one success
   per token; the user's password hash changed exactly once (pg oracle); token rows revoked; any 5xx
   a PRODUCT BUG. If Phase 2 proved a multi-winner bug in `-004`, this case counts it under the same
-  finding ID and records the rate vs load.
+  finding ID and records the rate vs load. Runs on the functional profile (D3).
+  - **`P6-TW-LOAD-011` (gated):** under the same load, redemptions just before and just after a
+    token's expiry: before → one success, after → refused, never both. **Gate:** the token expiry
+    (from `generatePasswordResetToken`, `reset-password.service.ts` line 117, and its config) is
+    ≤ 15 min of real time, with no clock tampering and no DB writes; otherwise "Later" with the
+    evidence.
 - **Files likely touched.** `k6/cases/tw-load-005.js`, `src/twenty/mailpit.ts` (Phase 2 Task 7),
   `src/twenty/oracle.ts` (hash-change and token queries), `src/load/reconcile/twenty.ts`, `perf.yml`,
   `README.md`.
 - **Probe items (to verify).** Reset email throughput through Mailpit; whether auth mutations have
   a stricter limit than the API limiter; how to detect "hash changed once" without reading the hash
-  value into logs (compare hashes inside SQL, return booleans/counts only); throwaway-user cleanup.
+  value into logs (compare hashes inside SQL, return booleans/counts only); throwaway-user cleanup;
+  the reset-token expiry at the image's defaults (gate for `-011`).
 - **Build plan.** `docs/plans/<date>-p6-phase5-task5-tw-load-reset-token.md`; live probe first;
   junior-engineer guide.
 - **CI change.** Nightly + dispatch.
 - **Done when.** ≥ 3 VALID nightly runs with one success per token and one hash change per user (or
-  a recorded product bug with repeated evidence); no token or hash in any artefact (scan);
+  a recorded product bug with repeated evidence); `-011` lands or is in "Later" with its gate
+  evidence; no token or hash in any artefact (scan);
   `npm run check` green.
 - **Main risks.** Tokens leaking into k6 output (redemption bodies must not be logged); email
   latency making tokens expire mid-run.
@@ -400,19 +432,25 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
 ## Task 6: Rate-limit contract (`P6-TW-LOAD-006`)
 
 - **Goal.** Twenty refuses overload with 429 and recovers when the window resets.
-- **Cases.** `P6-TW-LOAD-006` (P1).
+- **Cases.** `P6-TW-LOAD-006` (P1); accepted extra `P6-TW-LOAD-009` (limiter fairness, gated).
 - **What it proves / transfers.** Backpressure contract: an open-banking or patient-API client must
   get a clear 429 (never a 500) above the limit, none below it, and service back after the window.
-- **Depends on.** Task 3; Task 1 (H4, if accepted) to set a known limit; Phase 4 Task 6 (the
-  production-like limiter profile pattern, Phase 4 D12).
-- **Scope.** On the **production-like limiter profile** (D3): a separate Twenty start whose limiter
-  values are known and recorded (defaults, or set through H4). Arrival rate below, at and above the
-  limit, then idle until the window resets. Above: 429 with a body and the headers the probe finds,
-  never 500; below: no 429; **recovery time** after reset recorded. Every other Twenty run keeps the
-  functional profile (Task 3).
-- **Files likely touched.** `k6/cases/tw-load-006.js`, `src/load/recovery.ts` (Phase 4 Task 6),
+- **Depends on.** Task 3; Phase 4 Task 6 (the production-like limiter profile pattern, Phase 4 D12).
+  No H4: the production-like profile sets nothing.
+- **Scope.** On the **production-like profile** (D3): a separate Twenty start with the image
+  defaults, nothing set; the defaults read by the probe are recorded in `run-meta.json`. Arrival rate
+  below, at and above the limit, then idle until the window resets. Above: 429 with a body and the
+  headers the probe finds, never 500; below: no 429; **recovery time** after reset recorded. Twenty
+  LOAD runs other than `-006` and `-009` use the functional profile (Task 3).
+  - **`P6-TW-LOAD-009` (gated):** on the same profile, one client floods above the limit while a
+    second client sends at a low rate; the low-rate client must not get 429. **Gate:** the probe shows
+    the limiter keys per token or workspace; if it keys per IP or globally, `-009` goes to "Later"
+    with the evidence (and the keying is recorded as a finding for the README).
+- **Files likely touched.** `k6/cases/tw-load-006.js`, `k6/cases/tw-load-009.js` (if its gate
+  passes), `src/load/recovery.ts` (Phase 4 Task 6),
   `perf.yml` (separate start step with its own down), `README.md`.
-- **Probe items (to verify).** The guarded routes; the limiter key; the 429 body and headers
+- **Probe items (to verify).** The image's default limiter values; the guarded routes; the limiter
+  key (gate for `-009`); a second credential for `-009` that is a separate key; the 429 body and headers
   (`Retry-After`, rate-limit headers); short vs long window interaction (100/1 s and 100/60 s at the
   fork pin); whether the limiter state lives in Redis (shared across server restarts) and must be
   flushed between runs by the harness (P6 never writes to Redis).
@@ -420,37 +458,41 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
   junior-engineer guide.
 - **CI change.** Dispatch + weekly Saturday (Phase 4 D16 pattern) on its own Twenty start.
 - **Done when.** ≥ 3 VALID runs with the below/at/above verdicts, 429 contract and recovery time; the
-  profile values in `run-meta.json`; `npm run check` green.
+  profile values in `run-meta.json`; `-009` lands (≥ 3 VALID runs) or is in "Later" with its gate
+  evidence; `npm run check` green.
 - **Main risks.** Limiter state carried between runs; generator timing at the window edge.
 
-## Task 7: Long soak trend
+## Task 7: Long soak trend (view)
 
 - **Goal.** Weekly 2 h soak results become a per-product trend on the Pages dashboard.
 - **Cases.** Long soak trend (no mapped ID; proposal "Phase 5").
 - **What it proves / transfers.** Slow degradation across releases is visible over weeks, not only
   within one run: the trend a payments platform or an EHR interface team watches between upgrades.
-- **Depends on.** Phase 4 Task 7 (`soak.yml`, slopes), Phase 4 Task 13 (`pages.yml`,
-  `build-site.ts`). **Capture should start first** (Note 4).
+- **Depends on.** Phase 4 Task 7 (`soak.yml` and the weekly `p6-soak-<yyyy>-w<ww>` releases; set
+  by Phase 4 Task 7, tracked in the owner's backlog), Phase 4 Task 13 (`pages.yml`,
+  `build-site.ts`).
 - **Scope.**
-  - **Capture:** after each weekly 2 h soak, a small summary per product (RSS, fds, connections, p95
-    slope, plateau verdict, VALID/INVALID, run id, product SHA, harness tag, k6 version) is
-    persisted outside the 14-day artefact window (D8).
+  - **Capture is not built here** (D8): each weekly 2 h soak already publishes a token-scanned release
+    `p6-soak-<yyyy>-w<ww>` holding a small summary per product (RSS, fds, connections, p95 slope,
+    plateau verdict, VALID/INVALID, run id, product SHA, harness tag, k6 version).
+  - **Read:** at dashboard build time, `build-site.ts` lists those releases through the GitHub
+    releases API (read-only, the workflow's `GITHUB_TOKEN`) and downloads the summaries.
   - **View:** the dashboard plots each metric per week with run links; INVALID weeks are shown as
     gaps, never as points; a product SHA or harness change is marked on the axis.
   - No trend threshold or gate (measure-only).
-- **Files likely touched.** `.github/workflows/soak.yml` (summary + persist step),
-  `src/load/soak/trend.ts`, `scripts/dashboard/build-site.ts`, `tests/unit/soak-trend.test.ts`,
-  the D8 store (a release asset per week, or a data branch), `README.md`.
-- **Probe items (to verify).** Which store is free and append-safe (weekly evidence release
-  `p6-soak-<yyyy>-w<ww>` via `evidence-release.yml`, or a `data` branch written by the workflow with
-  `contents: write`); token scan on summaries; how Pages reads past weeks.
+- **Files likely touched.** `src/load/soak/trend.ts`, `scripts/dashboard/build-site.ts`,
+  `.github/workflows/pages.yml` (`contents: read` for the releases API),
+  `tests/unit/soak-trend.test.ts`, `README.md`.
+- **Probe items (to verify).** That the weekly releases exist with the summary file name and schema
+  Phase 4 Task 7 chose; releases-API pagination and rate limits for the workflow token; that the
+  downloaded summaries pass the token scan again before the site is published.
 - **Build plan.** `docs/plans/<date>-p6-phase5-task7-soak-trend.md`; live probe first;
   junior-engineer guide.
-- **CI change.** `soak.yml` weekly job persists its summary; `pages.yml` reads the store.
+- **CI change.** `pages.yml` reads the weekly releases at build time; `soak.yml` is unchanged here.
 - **Done when.** ≥ 3 weekly VALID points per product on the dashboard with links; `npm run check`
   green.
-- **Main risks.** Weeks lost to INVALID soaks; store permissions (a workflow with write access must
-  stay limited to the store).
+- **Main risks.** Weeks lost to INVALID soaks; a summary schema change between weeks (the view
+  reads a versioned schema).
 
 ## Task 8: Phase 5 closeout
 
@@ -459,11 +501,12 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
 - **Depends on.** Tasks 1–7.
 - **Scope.** Exit (D5); evidence release `p6-phase5` through `evidence-release.yml` (allowlist set
   by Phase 3 Task 11); README final numbers (Twenty load results, harness tier, trend) with medians
-  of ≥ 3 VALID runs and environment labels; retired and Later IDs listed; the master-plan question
-  (D9) resolved; upstream issue drafts in Twenty's own template for any new confirmed product bug
+  of ≥ 3 VALID runs and environment labels; retired and Later IDs listed; README records every
+  change against the master plan (D9: the closeout never edits `docs/master-plan.html`); upstream
+  issue drafts in Twenty's own template for any new confirmed product bug
   (e.g. a multi-winner reset token).
 - **Files likely touched.** `README.md`, `docs/releases/p6-phase5.md`,
-  `docs/plans/<date>-p6-phase5-task8-closeout.md`, and `docs/master-plan.html` only if D9 says so.
+  `docs/plans/<date>-p6-phase5-task8-closeout.md`. Not `docs/master-plan.html` (D9).
 - **Probe items (to verify).** Run ids and verdicts; Twenty's issue template; release size.
 - **Build plan.** `docs/plans/<date>-p6-phase5-task8-closeout.md`; junior-engineer guide.
 - **Done when.** Exit met; release exists; README cites only VALID Actions runs; `npm run check`
@@ -476,35 +519,21 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
   P1 (owner decision).
 - Retired, kept marked, never reused: `P6-TW-LOAD-001`, `-002`, `-003` (superseded by
   `-004`..`-006`); `P6-X-LOAD-007` (withdrawn in Phase 3).
-- A Twenty knee (`P6-TW-LOAD-008`, proposed extra) unless the owner accepts it into Phase 5.
+- Gated Phase 5 extras that fail their gate, each with its evidence: `P6-TW-LOAD-008` (H4 cannot
+  raise the limits enough), `P6-TW-LOAD-009` (limiter keys per IP or globally), `P6-TW-LOAD-010`
+  (job state not readable without writes), `P6-TW-LOAD-011` (expiry > 15 min real time).
+- The one owner-approved master-plan fold-in revision (D9): its own docs PR, after all phase
+  roadmaps are reviewed, outside Phase 5.
 - A/B gate coverage of `TWENTY_IMAGE_TAG` bumps (the Phase 4 gate triggers name only `CAL_REF`,
   `MEDUSA_REF`, `DOCUMENSO_REF`).
 
-### Proposed extras (new IDs, not in scope until the owner accepts them)
-
-- **`P6-X-LOAD-009` harness-tier overhead.** Run a steady case with H1/H2 on and off (A/A style);
-  metrics must stay within the Phase 4 A/A tolerance. Reason: telemetry must not perturb what it
-  measures (the Phase 3 `P6-X-LOAD-006` rule, applied to the new tier).
-- **`P6-TW-LOAD-008` Twenty knee (D4).** Breakpoint method (Phase 4 Task 1) on `tw-background`.
-  Cheap only if H4 can raise the limiter; otherwise the knee is just the limit. Reason: the other
-  three products have knees; without H4 a Twenty knee would measure the limiter, not the system.
-- **`P6-TW-LOAD-009` limiter fairness.** Two credentials, one flooding above the limit, one at a low
-  rate: the low-rate client must not get 429 if the limiter is per key (or the finding is recorded
-  if it is per IP / global). Reason: tenant isolation under overload is a cross-domain primitive
-  (one noisy bank partner or clinic must not starve others). Depends on the limiter key (Task 6
-  probe).
-- **`P6-TW-LOAD-010` worker queue drains.** Twenty's worker (`yarn worker:prod`, Redis-backed) must
-  drain its backlog after a write burst (pending jobs over time, drain time). Reason: "a queue that
-  fills must drain", as `P6-DOC-LOAD-002`; observable only if job state is readable from outside
-  (to verify).
-- **`P6-TW-LOAD-011` reset-token expiry boundary.** Redemptions just before and just after the
-  token's expiry under load: before → one success, after → refused, never both. Reason: boundary of
-  token single use; expiry comes from `generatePasswordResetToken` (`reset-password.service.ts`
-  line 117 computes `expiresAt`).
+**Extras accepted 2026-10-22 (D11):** `P6-X-LOAD-009` (Task 2), `P6-TW-LOAD-008` and
+`P6-TW-LOAD-010` (Task 3, gated), `P6-TW-LOAD-011` (Task 5, gated), `P6-TW-LOAD-009` (Task 6, gated).
 
 ## Decisions (2026-10-22)
 
-"Agreed 2026-10-22" means given by the owner; "proposed" means open.
+"Agreed 2026-10-22" means given by the owner. All of D1–D11 are agreed; values a probe sets
+(profile limits, margins, gates) are recorded in each task's plan.
 
 - **D1 Harness tier (agreed 2026-10-22).** H1 + H2 as one harness release in
   `Jayami123/qa-portfolio-harness`, opt-in, default off; this branch never edits the harness. A P6
@@ -512,26 +541,35 @@ The owner's order is H1/H2 release → pin bump + sampler rows → Twenty load f
   top-query (`pg_stat_statements` deltas) and true event-loop-delay rows; the 1 Hz health-probe
   series stays, labelled as the proxy. Twenty can take H2 in principle (Note 3; to verify on the
   image).
-- **D2 Order (agreed 2026-10-22, with start-time changes).** Task numbers follow the owner's order;
-  Notes 1, 2 and 4 move start times (H4 inside Task 1; Task 3 in parallel with 1–2; soak-trend
-  capture first).
-- **D3 Twenty limiter profile (agreed 2026-10-22, premise to verify).** `P6-TW-LOAD-006` runs on a
-  separate start with a known, production-like limiter; every other Twenty run keeps the CI
-  setting. Today the harness sets no limiter env at all, so the CI setting is Twenty's built-in
-  default, which appears to be ON (Note 1).
-- **D4 Fixed functional rates (agreed 2026-10-22).** A Twenty knee only as the proposed extra
-  `P6-TW-LOAD-008`.
+- **D2 Order (agreed 2026-10-22).** Task numbers follow the owner's order. Confirmed start-time
+  changes: H4 rides in Task 1; Task 3 runs in parallel with Tasks 1–2 except the limiter profile;
+  soak-trend capture starts first (in Phase 4 Task 7, D8).
+- **D3 Two Twenty profiles (agreed 2026-10-22).** **Functional:** limits raised through H4 to
+  values set by the Task 3 probe so the limiter never shapes the result; used by `P6-TW-LOAD-004`,
+  `-005` and any Twenty knee (`-008`). **Production-like:** image defaults, nothing set; used by
+  `P6-TW-LOAD-006` and `-009`. Phase 2 Twenty races keep the image defaults and must count 429s
+  (tracked in the owner's backlog; the Phase 2 roadmap is not edited from this branch).
+- **D4 Fixed functional rates (agreed 2026-10-22).** A Twenty knee only as the accepted extra
+  `P6-TW-LOAD-008`, gated on the H4 functional profile (D11).
 - **D5 Exit (agreed 2026-10-22).** As in Context.
-- **D6 Harness H4 Twenty env passthrough (proposed).** Add opt-in `API_RATE_LIMITING_*` passthrough
-  to the same release as H1/H2. Without it, Twenty load runs under the default limit and
-  `P6-TW-LOAD-006` uses the image defaults read by the probe.
-- **D7 Top-query deltas without reset (proposed).** Snapshot `pg_stat_statements` at run start and
-  end and subtract; `pg_stat_statements_reset()` only if the harness owns it. Standard practice and
-  keeps P6's oracle read-only; the owner's "reset per run" stays possible via the harness.
-- **D8 Trend store (proposed).** A weekly evidence release (`p6-soak-<yyyy>-w<ww>`, immutable,
-  scanned) is the default; a `data` branch is the alternative (simpler reads, but a workflow with
-  write access to the repo).
-- **D9 Master plan at closeout (proposed).** Either keep the rule (README records changes; the HTML
-  stays as written) or allow one closeout edit that marks phases done and points to the roadmaps.
+- **D6 Harness H4 (agreed 2026-10-22).** In the Task 1 release: opt-in passthrough of
+  `API_RATE_LIMITING_*` variables only, via an explicit allowlist (no arbitrary env injection),
+  default off.
+- **D7 Top-query deltas, no reset (agreed 2026-10-22).** Top queries come from start/end snapshot
+  deltas of `pg_stat_statements`, with no reset; the harness only creates the extension; the P6
+  oracle stays read-only.
+- **D8 Trend store (agreed 2026-10-22).** Weekly releases `p6-soak-<yyyy>-w<ww>`, token-scanned;
+  the dashboard reads past weeks through the GitHub releases API at build time. Publishing starts
+  in Phase 4 Task 7 (set by Phase 4 Task 7; tracked in the owner's backlog), so Task 7 here builds
+  the trend view from points already captured.
+- **D9 Master plan (agreed 2026-10-22).** Phase closeouts never edit `docs/master-plan.html`;
+  README records changes. The only master-plan edit is one owner-approved fold-in revision after
+  all phase roadmaps are reviewed, as its own docs PR, outside this phase.
 - **D10 Retired and Later IDs (agreed 2026-10-22).** `P6-TW-LOAD-001..003` retired as superseded;
   `P6-TW-LOAD-007` Later, out of P6.
+- **D11 Extras (agreed 2026-10-22).** `P6-X-LOAD-009` (harness-tier overhead) in Task 2;
+  `P6-TW-LOAD-008` (Twenty knee) gated on the H4 functional profile; `P6-TW-LOAD-009` (limiter
+  fairness) in Task 6, gated on per-token/workspace keying; `P6-TW-LOAD-010` (worker queue drain)
+  decided by the Task 3 probe, gated on job state readable without writes; `P6-TW-LOAD-011`
+  (reset-token expiry boundary) in Task 5, gated on expiry ≤ 15 min real time with no clock
+  tampering and no DB writes. Each failed gate moves its case to "Later" with evidence.
