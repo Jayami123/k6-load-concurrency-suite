@@ -1,0 +1,63 @@
+# Agent rules
+
+These rules apply to every agent task in this repository. Read them before planning or building.
+
+## A. Git and PRs
+
+1. Branch names follow `<type>/<YYYY-MM-DD>-p6-<topic>`, where type is one of `feat`, `fix`,
+   `docs`, `chore`, `ci` or `test`. Never use `claude/...` branches; if the session starts on one,
+   create the correct branch before the first commit.
+2. Use Conventional Commits with a lowercase subject. Stage with `git add <path>` only, never
+   `git add -A` or `git add .`.
+3. No `Co-Authored-By`, `Claude-Session`, "Generated with/by Claude Code" lines or any other AI
+   attribution anywhere: commits, PR bodies, PR comments, review replies. Check
+   `git log -1 --format=%B` and the PR body before reporting.
+4. No personal names in code, comments, docs, commits or PR text; say "the owner" or "the
+   maintainer". Repo URLs are fine.
+5. Keep the environment's git identity; never rewrite authors. Never force-push or amend pushed
+   commits. If a destructive git step is needed, stop and ask the owner.
+6. One PR per task. Merge only when the owner says "merge", always as a merge commit. Plan branches
+   (`plan/...`) never get a PR and are never deleted.
+
+## B. Planning
+
+7. Read the phase roadmap and the previous task's plan before planning. Run a live probe (start the
+   product, test the real routes, stop it, with exit codes) BEFORE writing the plan, and record the
+   real statuses and outputs.
+8. Write the plan as a junior-engineer guide: exact file paths, code skeletons, exact commands,
+   expected outputs and the unit-test count after each step.
+9. List contradictions with the roadmap, proposed extras (not in scope until accepted) and open
+   questions. Decide routine questions yourself and give the reason; stop and ask only for
+   product-bug labels, scope changes, or anything that weakens a check.
+10. Commit the plan alone and push it, with no PR. Stop for review if the task changes a shared
+    runner, a CI workflow or a harness pin, or labels a product bug; otherwise continue to the
+    build.
+
+## C. Building and testing
+
+11. Follow the plan step by step, one commit per step. After each step run `npm run check` and the
+    unit tests; if the count differs from the plan, stop and explain. Never edit the expected
+    number to match.
+12. Never weaken, skip or loosen an assertion to get green. Root-cause failures. A known product bug
+    uses `test.fail()` with a comment linking the finding.
+13. Product bug labels: SUSPECTED until repeated full-count CI runs reproduce it; then PRODUCT BUG.
+    Setup errors are TEST BUG and are never rerun.
+14. Never edit product forks or `node_modules/qa-portfolio-harness`. No secrets in code, docs,
+    `.env.example` or logs; `.env` stays gitignored.
+15. Read CI once after pushing; do not poll. Report real output only; never claim something was
+    done without the command output.
+
+## D. Reviews
+
+16. Triage each CodeRabbit comment: is it true in the current code? Is it a real failure or style?
+    Does it fit these rules? What is the cost against the risk? Fix valid ones in small commits;
+    for skipped ones, reply with a one-line reason.
+17. A PR is ready when CI is green, CodeRabbit is complete with nothing actionable left, and rules
+    3 and 4 are checked.
+
+## E. Reports
+
+18. Every report starts with: model used, branch, head SHA, CI status.
+19. At the end of each phase, write `docs/plans/<YYYY-MM-DD>-p6-phaseN-closeout.md` from
+    [`docs/templates/phase-closeout.md`](templates/phase-closeout.md), commit it on its own `docs/`
+    branch with a PR, and report it to the owner.
