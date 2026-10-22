@@ -1,9 +1,12 @@
-# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 2)
+# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 3)
 
 This is the implementation plan a weaker model will build from. The owner reviewed revision 1 (rule 10: this task adds
 a CI job and proposes product-bug labels, §11 and §10) and **agreed to every proposed answer in §21 on 2026-10-22**.
-Revision 2 records those answers (D54 to D59). **The build has not started:** the owner said not to build yet, so no
-code is written until the owner says to start.
+Revision 2 records those answers (D54 to D59). Revision 3 answers the owner's review of revision 2: the labelling
+contradiction (§21 contradiction 5, open questions 7 and 8), a redone time budget with the rerun allowance and setup
+(§11, §12, proposal D60), the `moneyPost` rename kept inside `admin.ts` (§8.2), full skeletons for the new checks and
+both attempt bodies (§8.5, §8.6), and exact commands per build step (§14). D60 to D63 are **proposals, not agreed**.
+**The build has not started** and does not start until the owner answers §21 questions 7 and 8.
 
 Structure follows [2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). The
 source of this task is [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md), section "Task 3: Medusa budget +
@@ -209,14 +212,16 @@ record it with repeated-run evidence and the right label; never hide it and neve
 - Admin client calls for campaign, promotion, cancel, fulfil, reservation delete; the store call to apply a code.
 - Pure payloads and invariants with unit tests; oracle SQL for promotion and order state, and the leak checks.
 - Two run modules: `run-promo-case.ts` (`-005`, `-012`) and `run-order-case.ts` (`-008`, `-009`).
-- A new CI job `medusa-order-races` (§11, D50) and README rows.
+- CI: `-008`/`-009` in the `medusa-smoke` race step and a new job `medusa-order-races` for `-005`/`-012` (§11,
+  proposal D60), and README rows.
 
 **Out:**
 
 - Changes to `runTrials`, `fireTogether`, `src/races/rerun-on-spread.ts`, `src/oracles/pg.ts`, `run-case.ts`,
-  `run-money-case.ts`, the harness, the fork.
+  `run-money-case.ts`, the harness, the fork. The private `moneyPost` in `src/medusa/admin.ts` is renamed inside that
+  file only (§8.2); `run-money-case.ts` does not import it and is not touched.
 - The extras of §5 (`-013` and `-014` are a follow-up task, `-015` is "Later"), the P1 follow-up PR (listed for Task 9), spend budgets beyond the probe
-  note, any `test.fail()` before the owner accepts a label (§10, D47).
+  note, any `test.fail()` before the owner labels a signal (§10, D47; the proposed final step is §14 Step 13).
 
 ## 4. Test-case mapping
 
@@ -241,23 +246,23 @@ Each case fires the Task 1 untimed warm-up burst first (D28), with its own setup
 
 ## 6. Architecture (every file touched, one responsibility each)
 
-| File                                                                                                               | Change  | Responsibility                                                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/medusa/payloads.ts`                                                                                           | edit    | `promoCode`, `campaignCreateBody`, `promotionCreateBody`, `fulfillmentBody` (pure).                                                                                                                                                                                           |
-| `src/medusa/admin.ts`                                                                                              | edit    | `createCampaign`, `createPromotion`, `deletePromotion`, `deleteCampaign`, `cancelOrder` (raced), `createFulfillment` (raced), `cancelFulfillment`, `deleteReservation`, `archiveOrder`.                                                                                       |
-| `src/medusa/store.ts`                                                                                              | edit    | `prepareReadyCart` gets an optional `promoCode`, applied right after the line item (`applyPromoCode`).                                                                                                                                                                        |
-| `src/medusa/oracle.ts`                                                                                             | edit    | `PROMO_SNAPSHOT_SQL`, `ORDER_STATE_SQL`, `LIVE_ORDERS_FOR_EMAIL_SQL`, `ORDER_RESERVATIONS_SQL`, `OPEN_FULFILLMENTS_SQL`, `PHANTOM_RESERVED_SQL`, `LEAK_PROMOTIONS_SQL`, `LEAK_CAMPAIGNS_SQL`; `readPromoSnapshot`, `readOrderState`, `promoLeakCheck`, `orderStateLeakCheck`. |
-| `src/medusa/invariants.ts`                                                                                         | edit    | `checkPromoCap`, `checkGhostOrders`, `checkSingleCancel`, `checkCancelFulfilExclusive`, `checkReservationDrift`.                                                                                                                                                              |
-| `src/medusa/run-promo-case.ts`                                                                                     | **new** | Trial body for `-005`/`-012`: campaign/promo, N carts, burst, oracle, sweep cleanup, leak check.                                                                                                                                                                              |
-| `src/medusa/run-order-case.ts`                                                                                     | **new** | Trial body for `-008`/`-009`: one order, burst, oracle, cleanup, leak check with F-M3 residue reported.                                                                                                                                                                       |
-| `tests/medusa/races/med-race-005-campaign-budget.spec.ts`                                                          | **new** | `P6-MED-RACE-005`.                                                                                                                                                                                                                                                            |
-| `tests/medusa/races/med-race-012-usage-limit.spec.ts`                                                              | **new** | `P6-MED-RACE-012`.                                                                                                                                                                                                                                                            |
-| `tests/medusa/races/med-race-008-double-cancel.spec.ts`                                                            | **new** | `P6-MED-RACE-008`.                                                                                                                                                                                                                                                            |
-| `tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts`                                                         | **new** | `P6-MED-RACE-009`.                                                                                                                                                                                                                                                            |
-| `tests/unit/medusa-payloads.test.ts`, `medusa-admin.test.ts`, `medusa-oracle.test.ts`, `medusa-invariants.test.ts` | edit    | §13.                                                                                                                                                                                                                                                                          |
-| `.github/workflows/perf.yml`                                                                                       | edit    | `medusa-smoke` race step excludes the four cases; new job `medusa-order-races` runs them (§11).                                                                                                                                                                               |
-| `README.md`                                                                                                        | edit    | Case rows, suspected bugs F-M2 to F-M4 and X04/X05 status, leaked-data note (§17).                                                                                                                                                                                            |
-| `docs/plans/2026-10-22-p6-phase2-roadmap.md`                                                                       | edit    | Task 3 status line, `-012` lands, proposed extras (§14 Step 10).                                                                                                                                                                                                              |
+| File                                                                                                               | Change  | Responsibility                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/medusa/payloads.ts`                                                                                           | edit    | `promoCode`, `campaignCreateBody`, `promotionCreateBody`, `fulfillmentBody` (pure).                                                                                                                                                                                                                  |
+| `src/medusa/admin.ts`                                                                                              | edit    | `createCampaign`, `createPromotion`, `deletePromotion`, `deleteCampaign`, `cancelOrder` (raced), `createFulfillment` (raced), `cancelFulfillment`, `deleteReservation`, `archiveOrder`; private `moneyPost` renamed `rawPost` in this file only.                                                     |
+| `src/medusa/store.ts`                                                                                              | edit    | `prepareReadyCart` gets an optional `promoCode`, applied right after the line item (`applyPromoCode`).                                                                                                                                                                                               |
+| `src/medusa/oracle.ts`                                                                                             | edit    | `PROMO_SNAPSHOT_SQL`, `ORDER_STATE_SQL`, `LIVE_ORDERS_FOR_EMAIL_SQL`, `ORDER_RESERVATIONS_SQL`, `OPEN_FULFILLMENTS_SQL`, `PHANTOM_RESERVED_SQL`, `LEAK_PROMOTIONS_SQL`, `LEAK_CAMPAIGNS_SQL`, `ORDER_LINE_ITEM_SQL`; `readPromoSnapshot`, `readOrderState`, `promoLeakCheck`, `orderStateLeakCheck`. |
+| `src/medusa/invariants.ts`                                                                                         | edit    | `checkPromoCap`, `checkGhostOrders`, `checkSingleCancel`, `checkCancelFulfilExclusive`, `checkReservationDrift`, `classifyFindings`.                                                                                                                                                                 |
+| `src/medusa/run-promo-case.ts`                                                                                     | **new** | Trial body for `-005`/`-012`: campaign/promo, N carts, burst, oracle, sweep cleanup, leak check.                                                                                                                                                                                                     |
+| `src/medusa/run-order-case.ts`                                                                                     | **new** | Trial body for `-008`/`-009`: one order, burst, oracle, cleanup, leak check with F-M3 residue reported.                                                                                                                                                                                              |
+| `tests/medusa/races/med-race-005-campaign-budget.spec.ts`                                                          | **new** | `P6-MED-RACE-005`.                                                                                                                                                                                                                                                                                   |
+| `tests/medusa/races/med-race-012-usage-limit.spec.ts`                                                              | **new** | `P6-MED-RACE-012`.                                                                                                                                                                                                                                                                                   |
+| `tests/medusa/races/med-race-008-double-cancel.spec.ts`                                                            | **new** | `P6-MED-RACE-008`.                                                                                                                                                                                                                                                                                   |
+| `tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts`                                                         | **new** | `P6-MED-RACE-009`.                                                                                                                                                                                                                                                                                   |
+| `tests/unit/medusa-payloads.test.ts`, `medusa-admin.test.ts`, `medusa-oracle.test.ts`, `medusa-invariants.test.ts` | edit    | §13.                                                                                                                                                                                                                                                                                                 |
+| `.github/workflows/perf.yml`                                                                                       | edit    | `medusa-smoke` race step keeps `-008`/`-009`, excludes `-005`/`-012`, gets a step timeout; new job `medusa-order-races` runs `-005`/`-012` (§11, D60).                                                                                                                                               |
+| `README.md`                                                                                                        | edit    | Case rows, suspected bugs F-M2 to F-M4 and X04/X05 status, leaked-data note (§17).                                                                                                                                                                                                                   |
+| `docs/plans/2026-10-22-p6-phase2-roadmap.md`                                                                       | edit    | Task 3 status line, `-012` lands, proposed extras (§14 Step 10).                                                                                                                                                                                                                                     |
 
 Unchanged: `src/races/*`, `src/oracles/pg.ts`, `src/medusa/run-case.ts`, `src/medusa/run-money-case.ts`,
 `playwright.config.ts` (the specs stay in `tests/medusa/races`, project `medusa-race`), `scripts/harness.mjs`, the fork.
@@ -316,7 +321,8 @@ The words "PRODUCT BUG" appear only for a counter overdraw, which no probe run s
 ## 8. Code skeletons
 
 Skeletons only. The build writes the full code, with Prettier and typecheck green after each file. Copy the shapes of the
-Task 2 code (`run-money-case.ts`, `moneyPost`, `moneyLeakCheck`) rather than inventing new ones.
+Task 2 code (`run-money-case.ts`, the private `moneyPost` helper of `admin.ts`, `moneyLeakCheck`) rather than inventing
+new ones.
 
 ### 8.1 `src/medusa/payloads.ts` (edit)
 
@@ -358,33 +364,56 @@ export function fulfillmentBody(itemId: string, quantity: number, locationId: st
 
 ### 8.2 `src/medusa/admin.ts` (edit)
 
+**Rename first, in this file only.** `moneyPost` is a private (not exported) function at `src/medusa/admin.ts:238`, and
+its only callers are `capturePayment` (line 252), `refundPayment` (line 256) and `confirmPendingOrderChange` (line 264),
+all in the same file. Rename it to `rawPost` (it is no longer money-only) and update those three call sites. Keep the
+exported type `MoneyResult` as it is (its name is public; no other file imports it today, `grep -rn MoneyResult src
+tests scripts` shows only `admin.ts`). No other file changes for the rename: `src/medusa/run-money-case.ts` imports
+`capturePayment`, `refundPayment` and `confirmPendingOrderChange`, never `moneyPost`.
+
 ```ts
+/** Raced or cleanup POST: never throws on 4xx/5xx, so fireTogether records the real status and body. */
+async function rawPost(path: string, token: string, body: unknown): Promise<MoneyResult> {
+  // body of today's moneyPost, unchanged
+}
+
 export async function createCampaign(
   token: string,
   identifier: string,
   limit: number,
 ): Promise<string> {
-  // adminJson("/campaigns", POST, campaignCreateBody). Non-200 → throw "TEST BUG: POST /admin/campaigns HTTP <s>".
-  // Returns json.campaign.id.
+  const res = await adminJson("/campaigns", token, {
+    method: "POST",
+    body: campaignCreateBody(identifier, limit),
+  });
+  const id = (res.json as { campaign?: { id?: string } }).campaign?.id;
+  if (res.status !== 200 || !id)
+    throw new Error(`TEST BUG: POST /admin/campaigns HTTP ${res.status}`);
+  return id;
 }
+
 export async function createPromotion(
   token: string,
   code: string,
   cap: { campaignId: string } | { limit: number },
 ): Promise<string> {
-  // adminJson("/promotions", POST, promotionCreateBody). Non-200 → TEST BUG. Returns json.promotion.id.
-}
-export async function deletePromotion(token: string, id: string): Promise<void> {
-  /* DELETE /promotions/:id, 200 else TEST BUG */
-}
-export async function deleteCampaign(token: string, id: string): Promise<void> {
-  /* DELETE /campaigns/:id, 200 else TEST BUG */
+  // Same shape as createCampaign: POST /promotions with promotionCreateBody(code, cap); returns json.promotion.id;
+  // non-200 or no id → "TEST BUG: POST /admin/promotions HTTP <status>".
 }
 
-/** Raced. Never throws on 4xx/5xx (same rule as moneyPost). */
-export function cancelOrder(token: string, orderId: string) {
-  return moneyPost(`/orders/${orderId}/cancel`, token, {});
+export async function deletePromotion(token: string, id: string): Promise<void> {
+  // DELETE /promotions/:id; 200 else "TEST BUG: DELETE promotion <id> HTTP <status>" (the deleteProduct shape).
 }
+
+export async function deleteCampaign(token: string, id: string): Promise<void> {
+  // DELETE /campaigns/:id; 200 else TEST BUG. The budget row stays (live §2.1 Q7); that is expected.
+}
+
+/** Raced. */
+export function cancelOrder(token: string, orderId: string) {
+  return rawPost(`/orders/${orderId}/cancel`, token, {});
+}
+
 /** Raced. */
 export function createFulfillment(
   token: string,
@@ -392,24 +421,21 @@ export function createFulfillment(
   itemId: string,
   locationId: string,
 ) {
-  return moneyPost(
-    `/orders/${orderId}/fulfillments`,
-    token,
-    fulfillmentBody(itemId, 1, locationId),
-  );
+  return rawPost(`/orders/${orderId}/fulfillments`, token, fulfillmentBody(itemId, 1, locationId));
 }
+
 export function cancelFulfillment(token: string, orderId: string, fulfillmentId: string) {
-  return moneyPost(`/orders/${orderId}/fulfillments/${fulfillmentId}/cancel`, token, {});
+  return rawPost(`/orders/${orderId}/fulfillments/${fulfillmentId}/cancel`, token, {});
 }
+
 export async function archiveOrder(token: string, orderId: string): Promise<void> {
-  /* POST /orders/:id/archive, 200 else TEST BUG */
+  // POST /orders/:id/archive with {}; 200 else "TEST BUG: archive order <id> HTTP <status>".
 }
+
 export async function deleteReservation(token: string, id: string): Promise<number> {
-  /* DELETE /reservations/:id; returns status */
+  // DELETE /reservations/:id; returns the status (live 200). The caller decides what a non-200 means.
 }
 ```
-
-`moneyPost` is renamed `rawPost` (it is no longer money-only) in the same commit; its two money callers change with it.
 
 ### 8.3 `src/medusa/store.ts` (edit)
 
@@ -429,7 +455,7 @@ Callers that pass no `promoCode` are unchanged (the oversell and money cases).
 ### 8.4 `src/medusa/oracle.ts` (edit)
 
 ```ts
-/** $1 promotion id, $2 campaign id ('' for -012), $3 attempt email LIKE. Live §2.2. */
+/** $1 promotion id, $2 campaign id ('' for -012). Live §2.2. */
 export const PROMO_SNAPSHOT_SQL = `
 SELECT
   (SELECT p.used FROM promotion p WHERE p.id = $1)::int AS promotion_used,
@@ -460,24 +486,272 @@ SELECT o.status,
   (SELECT oi.fulfilled_quantity::text FROM order_item oi WHERE oi.order_id = $1 AND oi.deleted_at IS NULL ORDER BY oi.version DESC LIMIT 1) AS fulfilled_quantity
 FROM "order" o WHERE o.id = $1
 `;
-// ORDER_RESERVATIONS_SQL: SELECT ri.id FROM reservation_item ri WHERE ri.inventory_item_id = $1 AND ri.deleted_at IS NULL
-// OPEN_FULFILLMENTS_SQL:  fulfillment ids of $1 with canceled_at IS NULL (shape of the subquery above)
-// PHANTOM_RESERVED_SQL:   products of a LIKE prefix whose inventory_level.reserved_quantity > live reservation sum
-// LEAK_PROMOTIONS_SQL:    SELECT COUNT(*)::int AS n FROM promotion WHERE code LIKE $1 AND deleted_at IS NULL
-// LEAK_CAMPAIGNS_SQL:     SELECT COUNT(*)::int AS n FROM promotion_campaign WHERE campaign_identifier LIKE $1 AND deleted_at IS NULL
-//                         (budget rows are NOT checked: a campaign delete keeps them, §2.1 Q7)
+
+/** $1 order id. The line item id the fulfil body needs (latest order version). */
+export const ORDER_LINE_ITEM_SQL = `
+SELECT oi.item_id FROM order_item oi
+WHERE oi.order_id = $1 AND oi.deleted_at IS NULL
+ORDER BY oi.version DESC LIMIT 1
+`;
+
+/** $1 inventory item id. Live reservations the cleanup deletes (live: DELETE /admin/reservations/:id → 200). */
+export const ORDER_RESERVATIONS_SQL = `
+SELECT ri.id FROM reservation_item ri
+WHERE ri.inventory_item_id = $1 AND ri.deleted_at IS NULL
+`;
+
+/** $1 order id. Open fulfillments the cleanup cancels while the order is not canceled. */
+export const OPEN_FULFILLMENTS_SQL = `
+SELECT f.id FROM order_fulfillment ofl JOIN fulfillment f ON f.id = ofl.fulfillment_id
+WHERE ofl.order_id = $1 AND ofl.deleted_at IS NULL AND f.deleted_at IS NULL AND f.canceled_at IS NULL
+`;
+
+/** $1 handle LIKE. Live products whose reserved_quantity exceeds their live reservations (F-M3 residue, D49). */
+export const PHANTOM_RESERVED_SQL = `
+SELECT p.id FROM product p
+JOIN product_variant pv ON pv.product_id = p.id AND pv.deleted_at IS NULL
+JOIN product_variant_inventory_item pvi ON pvi.variant_id = pv.id
+JOIN inventory_level il ON il.inventory_item_id = pvi.inventory_item_id AND il.deleted_at IS NULL
+WHERE p.handle LIKE $1 AND p.deleted_at IS NULL
+  AND il.reserved_quantity > (SELECT COALESCE(SUM(ri.quantity), 0) FROM reservation_item ri
+                              WHERE ri.inventory_item_id = il.inventory_item_id AND ri.deleted_at IS NULL)
+`;
+
+/** Budget rows are NOT checked: a campaign delete keeps them (§2.1 Q7). */
+export const LEAK_PROMOTIONS_SQL = `
+SELECT COUNT(*)::int AS n FROM promotion WHERE code LIKE $1 AND deleted_at IS NULL
+`;
+export const LEAK_CAMPAIGNS_SQL = `
+SELECT COUNT(*)::int AS n FROM promotion_campaign WHERE campaign_identifier LIKE $1 AND deleted_at IS NULL
+`;
+
+export type PromoSnapshot = { promotionUsed: number; budgetUsed: number; ordersWithPromo: number };
+
+export async function readPromoSnapshot(
+  pool: pg.Pool,
+  promotionId: string,
+  campaignId: string,
+): Promise<PromoSnapshot> {
+  const [row] = await selectRows<{
+    promotion_used: number | null;
+    budget_used: string | null;
+    orders_with_promo: number;
+  }>(pool, PROMO_SNAPSHOT_SQL, [promotionId, campaignId]);
+  if (!row) throw new Error("TEST BUG: promotion snapshot returned no row");
+  return {
+    promotionUsed: Number(row.promotion_used ?? 0),
+    budgetUsed: row.budget_used === null ? 0 : parseWholeAmount(row.budget_used, "budget used"),
+    ordersWithPromo: Number(row.orders_with_promo),
+  };
+}
+
+export type OrderState = {
+  status: string;
+  openFulfillments: number;
+  pendingChanges: number;
+  creditLines: number;
+  liveReservations: number;
+  liveReservationQty: number;
+  reservedQuantity: number;
+  fulfilledQuantity: number;
+};
+
+export async function readOrderState(
+  pool: pg.Pool,
+  orderId: string,
+  inventoryItemId: string,
+  locationId: string,
+): Promise<OrderState> {
+  const [row] = await selectRows<{
+    status: string;
+    open_fulfillments: number;
+    pending_changes: number;
+    credit_lines: number;
+    live_reservations: number;
+    live_reservation_qty: string;
+    reserved_quantity: string | null;
+    fulfilled_quantity: string | null;
+  }>(pool, ORDER_STATE_SQL, [orderId, inventoryItemId, locationId]);
+  if (!row) throw new Error(`TEST BUG: order ${orderId} not found`);
+  return {
+    status: row.status,
+    openFulfillments: Number(row.open_fulfillments),
+    pendingChanges: Number(row.pending_changes),
+    creditLines: Number(row.credit_lines),
+    liveReservations: Number(row.live_reservations),
+    liveReservationQty: parseWholeAmount(row.live_reservation_qty, "live reservation qty"),
+    reservedQuantity: parseWholeAmount(row.reserved_quantity ?? "0", "reserved quantity"),
+    fulfilledQuantity: parseWholeAmount(row.fulfilled_quantity ?? "0", "fulfilled quantity"),
+  };
+}
+
+/** Leak check for -005 / -012 (the moneyLeakCheck shape). Every leftover is a TEST BUG. */
+export async function promoLeakCheck(pool: pg.Pool, likePrefix: string): Promise<string[]> {
+  const [products, customers, orders, promotions, campaigns] = await Promise.all([
+    selectRows<{ n: number }>(pool, LEAK_PRODUCTS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_CUSTOMERS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_LIVE_ORDERS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_PROMOTIONS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_CAMPAIGNS_SQL, [likePrefix]),
+  ]);
+  const rows: Array<[string, Array<{ n: number }>]> = [
+    ["products", products],
+    ["customers", customers],
+    ["live orders", orders],
+    ["promotion", promotions],
+    ["campaign", campaigns],
+  ];
+  return rows
+    .filter(([, r]) => Number(r[0]?.n ?? 0) !== 0)
+    .map(([kind]) => `TEST BUG: leak ${kind} LIKE ${likePrefix}`);
+}
+
+/** Leak check for -008 / -009. A live product that PHANTOM_RESERVED_SQL lists and the run reported is leaked data (D49). */
+export async function orderStateLeakCheck(
+  pool: pg.Pool,
+  likePrefix: string,
+  reportedProductIds: readonly string[],
+): Promise<{ violations: string[]; reportedLeaked: string[] }> {
+  const [products, phantom, customers, orders] = await Promise.all([
+    selectRows<{ id: string }>(
+      pool,
+      `SELECT id FROM product WHERE handle LIKE $1 AND deleted_at IS NULL`,
+      [likePrefix],
+    ),
+    selectRows<{ id: string }>(pool, PHANTOM_RESERVED_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_CUSTOMERS_SQL, [likePrefix]),
+    selectRows<{ n: number }>(pool, LEAK_LIVE_ORDERS_SQL, [likePrefix]),
+  ]);
+  const phantomIds = new Set(phantom.map((row) => row.id));
+  const reported = new Set(reportedProductIds);
+  const violations: string[] = [];
+  const reportedLeaked: string[] = [];
+  for (const product of products) {
+    if (phantomIds.has(product.id) && reported.has(product.id)) reportedLeaked.push(product.id);
+    else violations.push(`TEST BUG: leak product ${product.id} handle LIKE ${likePrefix}`);
+  }
+  if (Number(customers[0]?.n ?? 0) !== 0)
+    violations.push(`TEST BUG: leak customers email LIKE ${likePrefix}`);
+  if (Number(orders[0]?.n ?? 0) !== 0)
+    violations.push(`TEST BUG: leak live orders email LIKE ${likePrefix}`);
+  return { violations, reportedLeaked };
+}
 ```
+
+The inline product query in `orderStateLeakCheck` is a constant in the build (`LEAK_PRODUCT_IDS_SQL`, added to test 10's
+`assertSelectOnly` list). `runOrderCase` passes the bare product ids it reported (it keeps a separate
+`reportedProductIds` array next to the `reportedLeaked` text lines of §8.6).
 
 Inventory is read by `inventory_item_id` (the attempt's own product), not through `order_item` joins: the probe's first
 join through `order_item` double counted rows across order versions.
 
-`promoLeakCheck(pool, like)` returns violations for products, customers, live orders, promotions and campaigns of the
-prefix (the `moneyLeakCheck` shape). `orderStateLeakCheck(pool, like, reportedPhantomProductIds)` reports a live product
-that `PHANTOM_RESERVED_SQL` lists and the run reported as leaked data; any other leftover is a TEST BUG.
-
 ### 8.5 `src/medusa/invariants.ts` (edit)
 
+Every check is pure and returns label-prefixed lines. Tags in brackets (`X04`, `X05`, `F-M2`, `F-M3`) name the signal, so
+`classifyFindings` can route a line without parsing the rest of it.
+
 ```ts
+/** -005 / -012. The counter and the HTTP count are asserted (PRODUCT BUG); the order count is a suspected signal. */
+export function checkPromoCap(input: {
+  cap: number;
+  counterUsed: number;
+  ordersWithPromo: number;
+  httpSuccesses: number;
+  label: string;
+}): string[] {
+  const out: string[] = [];
+  if (input.counterUsed > input.cap) {
+    out.push(`PRODUCT BUG: ${input.label}: usage counter ${input.counterUsed} of cap ${input.cap}`);
+  }
+  if (input.httpSuccesses > input.cap) {
+    out.push(
+      `PRODUCT BUG: ${input.label}: ${input.httpSuccesses} checkouts returned 200, cap ${input.cap}`,
+    );
+  }
+  if (input.ordersWithPromo > input.cap) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.label}: ${input.ordersWithPromo} orders carry the promotion, cap ${input.cap} (F-M2)`,
+    );
+  }
+  return out;
+}
+
+/** -005 / -012. Every live order of the attempt must be one a checkout returned with 200. */
+export function checkGhostOrders(input: {
+  liveOrderIds: readonly string[];
+  httpOrderIds: readonly string[];
+}): string[] {
+  const returned = new Set(input.httpOrderIds);
+  return input.liveOrderIds
+    .filter((id) => !returned.has(id))
+    .map((id) => `SUSPECTED PRODUCT BUG: order ${id} exists but no checkout returned it (F-M2)`);
+}
+
+/** -008. One of two cancels takes effect, once. */
+export function checkSingleCancel(input: {
+  status: string;
+  httpSuccesses: number;
+  pendingChanges: number;
+  creditLines: number;
+}): string[] {
+  const out: string[] = [];
+  if (input.status !== "canceled") {
+    out.push(
+      `SUSPECTED PRODUCT BUG: order status ${input.status} after two cancels, expected canceled (X04)`,
+    );
+  }
+  if (input.httpSuccesses !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.httpSuccesses} cancels returned 200, expected 1 (X04)`,
+    );
+  }
+  if (input.pendingChanges !== 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.pendingChanges} pending order change(s) left after cancel (X04)`,
+    );
+  }
+  if (input.creditLines !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.creditLines} credit lines after cancel, expected 1 (X04)`,
+    );
+  }
+  return out;
+}
+
+/** -009. Cancel and fulfil are exclusive: exactly one takes effect, and never "canceled with an open fulfillment". */
+export function checkCancelFulfilExclusive(input: {
+  status: string;
+  openFulfillments: number;
+  fulfilledQuantity: number;
+  cancelStatus: number | null;
+  fulfilStatus: number | null;
+}): string[] {
+  const out: string[] = [];
+  if (input.status === "canceled" && input.openFulfillments > 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: order canceled with ${input.openFulfillments} open fulfillment(s) (X05)`,
+    );
+  }
+  const wins = [input.cancelStatus, input.fulfilStatus].filter((s) => s === 200).length;
+  if (wins !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${wins} of cancel ‖ fulfil returned 200, expected exactly 1 (X05)`,
+    );
+  }
+  if (wins === 1 && input.fulfilStatus === 200 && input.fulfilledQuantity !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: fulfil won but fulfilled_quantity is ${input.fulfilledQuantity} (X05)`,
+    );
+  }
+  if (wins === 1 && input.cancelStatus === 200 && input.fulfilledQuantity !== 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: cancel won but fulfilled_quantity is ${input.fulfilledQuantity} (X05)`,
+    );
+  }
+  return out;
+}
+
+/** -008 / -009. Stock bookkeeping after the burst (F-M3). */
 export function checkReservationDrift(input: {
   status: string;
   liveReservations: number;
@@ -497,23 +771,362 @@ export function checkReservationDrift(input: {
   }
   return out;
 }
+
+/**
+ * Splits finding lines. `labelled` holds the signal tags the owner has labelled (empty until §14 Step 13): a SUSPECTED
+ * line with a labelled tag is promoted to "PRODUCT BUG" and asserted. Everything else keeps its label.
+ */
+export function classifyFindings(
+  lines: readonly string[],
+  labelled: readonly string[],
+): { violations: string[]; suspected: string[] } {
+  const violations: string[] = [];
+  const suspected: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("SUSPECTED PRODUCT BUG:")) {
+      violations.push(line);
+      continue;
+    }
+    const tag = /\(([A-Z0-9-]+)\)$/.exec(line)?.[1];
+    if (tag && labelled.includes(tag)) {
+      violations.push(line.replace("SUSPECTED PRODUCT BUG:", "PRODUCT BUG:"));
+    } else {
+      suspected.push(line);
+    }
+  }
+  return { violations, suspected };
+}
 ```
 
-The other four follow the same shape and the rules of §7.4.
+`classifyFindings` is the one place a label changes; it adds two unit tests (§13.4, tests 28 and 29).
 
 ### 8.6 `src/medusa/run-promo-case.ts` (new) and `run-order-case.ts` (new)
 
-Shape: copy `runMoneyCase`. `runPromoCase({ pool, token, catalog, runPrefix, caseId, title, mode: "budget" | "limit",
-n, cap, trials })` and `runOrderCase({ ..., mode: "double-cancel" | "cancel-vs-fulfil", trials })`. Both build the
-runner with `createRerunRunner(spreadPolicyFromEnv(), trials)`, run `runner.warmup`, then `runTrials`, then the leak
-check, write the histogram in `finally`, and return `{ histogram, suspected: string[], reportedLeaked: string[] }`.
+Shape: copy `runMoneyCase` (histogram, `createRerunRunner(spreadPolicyFromEnv(), trials)`, `runner.warmup`, `runTrials`,
+`runner.applyTo`, leak check, histogram written in `finally`). The return value is
+`{ histogram, suspected: string[], reportedLeaked: string[] }`. Copy the private `orderIdOf` and `messageOf` helpers
+from `run-money-case.ts` (do not export them from there; that file stays untouched).
 
-How a violation is used (D47, agreed as D54):
+**Suspected lines never enter `invariantViolations`.** The rule that makes the warm-up safe:
 
-- Strings starting `PRODUCT BUG` or `TEST BUG` go through `recordTrial`'s throw → the trial fails → verdict `fail`.
-- Strings starting `SUSPECTED PRODUCT BUG` go into `record.oracle.suspectedBug` and the run's `suspected` list; the spec
-  annotates them (`type: "suspected-bug"`), exactly as `-011` does for F-M1. They do not change the verdict until the
-  owner labels them.
+- `recordTrial(trial, fired, validate)` gets a `validate` that throws **only** the `violations` of `classifyFindings`.
+  So `record.ok` is `false` only for a `PRODUCT BUG` or `TEST BUG` line.
+- The suspected lines go into `record.oracle.suspectedBug` (joined with `" | "`) and into the run-level `suspected`
+  array, which the spec turns into `suspected-bug` annotations. They are not in `record.invariantViolations`.
+- `runner.warmup` (`src/races/rerun-on-spread.ts` lines 167 to 200) copies a warm-up record's `invariantViolations` into
+  the runner's violations whenever `r.ok` is false, and `applyTo` puts them into `histogram.invariantViolations`, which
+  fails the verdict. Because suspected lines keep `ok` true, **a suspected signal seen during warm-up cannot fail the
+  case**; it is annotated with `trial 0` like any other.
+- **A `PRODUCT BUG` found during warm-up fails the case.** That is the runner's existing rule (Task 1 D28): the line is
+  tagged `[warmup N]` and the verdict is `fail`. Nothing in this task changes it.
+
+Attempt body of `runPromoCase` (`mode: "budget" | "limit"`, `n` = 10, `cap` = 3, `labelled: readonly string[]`):
+
+```ts
+const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+  const leaf = attemptTag(trial, attempt);
+  const emailLike = likeLiteralPrefix(`${dataPrefix}-${leaf}-`); // "-t1-" never matches "-t10-"
+  const code = promoCode(dataPrefix, leaf);
+  const emails = Array.from({ length: input.n }, (_, i) =>
+    prefixedEmail(dataPrefix, `${leaf}-c${String(i).padStart(2, "0")}`),
+  );
+  let productId = "";
+  let promotionId = "";
+  let campaignId = "";
+  try {
+    // 1. Setup, not raced. Any throw is a TEST BUG (D37): runTrial rethrows it, it is never rerun.
+    const stocked = await createStockedVariant({
+      token: input.token,
+      catalog: input.catalog,
+      prefix: dataPrefix,
+      leaf: `${leaf}-product`,
+      s: 50,
+      onCreated: (ids) => {
+        if (ids.productId) productId = ids.productId;
+      },
+    });
+    if (input.mode === "budget") {
+      campaignId = await createCampaign(input.token, `${dataPrefix}-${leaf}-camp`, input.cap);
+    }
+    promotionId = await createPromotion(
+      input.token,
+      code,
+      input.mode === "budget" ? { campaignId } : { limit: input.cap },
+    );
+    const carts = await prepareReadyCarts(input.n, (i) => ({
+      publishableKey: input.catalog.publishableKey,
+      regionId: input.catalog.regionId,
+      salesChannelId: input.catalog.salesChannelId,
+      variantId: stocked.variantId,
+      email: emails[i]!,
+      quantity: 1,
+      promoCode: code,
+    }));
+    for (const cart of carts) {
+      const err = setupStepError("add line item", cart.lineItemStatus);
+      if (err) throw new Error(err);
+    }
+
+    // 2. Burst.
+    const bodies: string[] = [];
+    const fired = await fireTogether(
+      input.n,
+      async (i) => {
+        const res = await completeCart(input.catalog.publishableKey, carts[i]!.cartId);
+        bodies[i] = res.body;
+        return res;
+      },
+      { warm: async () => (await fetch(`${base}/health`)).text() },
+    );
+
+    // 3. Oracle.
+    const httpOrderIds = bodies.map(orderIdOf).filter((id): id is string => id !== null);
+    const snapshot = await readPromoSnapshot(input.pool, promotionId, campaignId);
+    const live = await selectRows<{ id: string }>(input.pool, LIVE_ORDERS_FOR_EMAIL_SQL, [
+      emailLike,
+    ]);
+    const losers = fired.requests.filter((r) => r.status !== 200);
+    const lines = [
+      ...checkPromoCap({
+        cap: input.cap,
+        counterUsed: input.mode === "budget" ? snapshot.budgetUsed : snapshot.promotionUsed,
+        ordersWithPromo: snapshot.ordersWithPromo,
+        httpSuccesses: fired.requests.length - losers.length,
+        label: input.caseId,
+      }),
+      ...checkGhostOrders({ liveOrderIds: live.map((o) => o.id), httpOrderIds }),
+      ...checkLoserStatuses(losers.map((r) => r.status)),
+    ];
+    const { violations, suspected } = classifyFindings(lines, input.labelled);
+
+    // 4. Record. Only violations reach recordTrial's throw; suspected lines stay out of invariantViolations.
+    const record = recordTrial(trial, fired, () => {
+      if (violations.length > 0) throw new Error(violations.join("; "));
+    });
+    record.oracle = {
+      mode: input.mode,
+      n: input.n,
+      cap: input.cap,
+      httpSuccesses: fired.requests.length - losers.length,
+      counterUsed: input.mode === "budget" ? snapshot.budgetUsed : snapshot.promotionUsed,
+      ordersWithPromo: snapshot.ordersWithPromo,
+      liveOrders: live.length,
+      loserMessage: messageOf(bodies[fired.requests.findIndex((r) => r.status !== 200)]),
+      suspectedBug: suspected.join(" | "),
+    };
+    for (const line of suspected) runSuspected.push(`trial ${trial} attempt ${attempt}: ${line}`);
+    return record;
+  } finally {
+    // 5. Cleanup, §9 order: live orders by email prefix (ghosts included), product, promotion, campaign, customers.
+    const live = await selectRows<{ id: string }>(input.pool, LIVE_ORDERS_FOR_EMAIL_SQL, [
+      emailLike,
+    ]);
+    for (const order of live) {
+      try {
+        await cancelAndArchive(input.token, order.id);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("order", order.id, err));
+      }
+    }
+    if (productId) {
+      try {
+        await deleteProduct(input.token, productId);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("product", productId, err));
+      }
+    }
+    if (promotionId) {
+      try {
+        await deletePromotion(input.token, promotionId);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("promotion", promotionId, err));
+      }
+    }
+    if (campaignId) {
+      try {
+        await deleteCampaign(input.token, campaignId);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("campaign", campaignId, err));
+      }
+    }
+    for (const email of emails) {
+      try {
+        await deleteCustomersByEmail(input.token, email);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("customer", email, err));
+      }
+    }
+  }
+};
+```
+
+`readPromoSnapshot` and `readOrderState` are the §8.4 readers.
+
+Attempt body of `runOrderCase` (`mode: "double-cancel" | "cancel-vs-fulfil"`, N = 2, `labelled: readonly string[]`):
+
+```ts
+const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+  const leaf = attemptTag(trial, attempt);
+  const email = prefixedEmail(dataPrefix, `${leaf}-c00`);
+  let productId = "";
+  let inventoryItemId = "";
+  let orderId = "";
+  try {
+    // 1. Setup: one product, one checkout order (authorised, not captured), its line item id.
+    const stocked = await createStockedVariant({
+      token: input.token,
+      catalog: input.catalog,
+      prefix: dataPrefix,
+      leaf: `${leaf}-product`,
+      s: 50,
+      onCreated: (ids) => {
+        if (ids.productId) productId = ids.productId;
+        if (ids.inventoryItemId) inventoryItemId = ids.inventoryItemId;
+      },
+    });
+    const [cart] = await prepareReadyCarts(1, () => ({
+      publishableKey: input.catalog.publishableKey,
+      regionId: input.catalog.regionId,
+      salesChannelId: input.catalog.salesChannelId,
+      variantId: stocked.variantId,
+      email,
+      quantity: 1,
+    }));
+    const lineError = setupStepError("add line item", cart?.lineItemStatus ?? 0);
+    if (lineError || !cart) throw new Error(lineError ?? "TEST BUG: add line item missing");
+    const done = await completeCart(input.catalog.publishableKey, cart.cartId);
+    const completeError = setupStepError("complete", done.status);
+    if (completeError) throw new Error(completeError);
+    orderId = orderIdOf(done.body) ?? "";
+    if (!orderId) throw new Error("TEST BUG: checkout returned no order");
+    const [item] = await selectRows<{ item_id: string }>(input.pool, ORDER_LINE_ITEM_SQL, [
+      orderId,
+    ]);
+    if (!item) throw new Error(`TEST BUG: no line item for order ${orderId}`);
+
+    // 2. Burst: index 0 cancels; index 1 cancels (-008) or fulfils (-009).
+    const bodies: string[] = [];
+    const fired = await fireTogether(
+      2,
+      async (i) => {
+        const res =
+          i === 1 && input.mode === "cancel-vs-fulfil"
+            ? await createFulfillment(input.token, orderId, item.item_id, input.catalog.locationId)
+            : await cancelOrder(input.token, orderId);
+        bodies[i] = res.body;
+        return res;
+      },
+      { warm: async () => (await fetch(`${base}/health`)).text() },
+    );
+
+    // 3. Oracle.
+    const state = await readOrderState(
+      input.pool,
+      orderId,
+      inventoryItemId,
+      input.catalog.locationId,
+    );
+    const statuses = fired.requests.map((r) => r.status);
+    const lines = [
+      ...(input.mode === "double-cancel"
+        ? checkSingleCancel({
+            status: state.status,
+            httpSuccesses: statuses.filter((s) => s === 200).length,
+            pendingChanges: state.pendingChanges,
+            creditLines: state.creditLines,
+          })
+        : checkCancelFulfilExclusive({
+            status: state.status,
+            openFulfillments: state.openFulfillments,
+            fulfilledQuantity: state.fulfilledQuantity,
+            cancelStatus: statuses[0] ?? null,
+            fulfilStatus: statuses[1] ?? null,
+          })),
+      ...checkReservationDrift(state),
+      ...checkLoserStatuses(statuses.filter((s) => s !== 200)),
+    ];
+    const { violations, suspected } = classifyFindings(lines, input.labelled);
+
+    // 4. Record (same rule as runPromoCase: suspected lines never reach invariantViolations).
+    const record = recordTrial(trial, fired, () => {
+      if (violations.length > 0) throw new Error(violations.join("; "));
+    });
+    record.oracle = {
+      mode: input.mode,
+      status: state.status,
+      openFulfillments: state.openFulfillments,
+      pendingChanges: state.pendingChanges,
+      creditLines: state.creditLines,
+      liveReservations: state.liveReservations,
+      reservedQuantity: state.reservedQuantity,
+      fulfilledQuantity: state.fulfilledQuantity,
+      loserMessage: messageOf(bodies[statuses.findIndex((s) => s !== 200)]),
+      suspectedBug: suspected.join(" | "),
+    };
+    for (const line of suspected) runSuspected.push(`trial ${trial} attempt ${attempt}: ${line}`);
+    return record;
+  } finally {
+    // 5. Cleanup, §9 order. A route that the product state blocks is leaked data (D49), not a failure.
+    if (orderId) {
+      const status = (
+        await readOrderState(input.pool, orderId, inventoryItemId, input.catalog.locationId)
+      ).status;
+      const open = await selectRows<{ id: string }>(input.pool, OPEN_FULFILLMENTS_SQL, [orderId]);
+      for (const f of open) {
+        if (status === "canceled") {
+          reportedLeaked.push(`fulfillment ${f.id} of canceled order ${orderId} (X05, D49)`);
+          continue;
+        }
+        const res = await cancelFulfillment(input.token, orderId, f.id);
+        if (res.status !== 200)
+          cleanupViolations.push(cleanupFailure("fulfillment", f.id, res.body));
+      }
+      if (status !== "canceled") {
+        const res = await cancelOrder(input.token, orderId);
+        if (res.status !== 200)
+          cleanupViolations.push(cleanupFailure("order cancel", orderId, res.body));
+      }
+      try {
+        await archiveOrder(input.token, orderId);
+      } catch (err) {
+        cleanupViolations.push(cleanupFailure("order archive", orderId, err));
+      }
+    }
+    if (inventoryItemId) {
+      const rows = await selectRows<{ id: string }>(input.pool, ORDER_RESERVATIONS_SQL, [
+        inventoryItemId,
+      ]);
+      for (const row of rows) {
+        const status = await deleteReservation(input.token, row.id);
+        if (status !== 200)
+          cleanupViolations.push(cleanupFailure("reservation", row.id, `HTTP ${status}`));
+      }
+    }
+    if (productId) {
+      try {
+        await deleteProduct(input.token, productId);
+      } catch (err) {
+        const phantom = await selectRows<{ id: string }>(input.pool, PHANTOM_RESERVED_SQL, [
+          leakPrefix,
+        ]);
+        if (phantom.some((row) => row.id === productId))
+          reportedLeaked.push(`product ${productId} (F-M3, D49)`);
+        else cleanupViolations.push(cleanupFailure("product", productId, err));
+      }
+    }
+    try {
+      await deleteCustomersByEmail(input.token, email);
+    } catch (err) {
+      cleanupViolations.push(cleanupFailure("customer", email, err));
+    }
+  }
+};
+```
+
+Both runners, after `runTrials`: `runner.applyTo(histogram)`; then the leak check (`promoLeakCheck` or
+`orderStateLeakCheck` with the reported product ids); `histogram.invariantViolations.push(...cleanupViolations,
+...leak.violations)`; verdict `pass` only when every trial is ok and `invariantViolations` is empty. `runSuspected`,
+`cleanupViolations` and `reportedLeaked` are arrays declared once per case, above `runAttempt`, as `runMoneyCase` does.
 
 ### 8.7 Spec skeleton (`-008`; the other three differ only in the runner, mode and title)
 
@@ -607,38 +1220,92 @@ test.describe("Medusa double cancel", () => {
 **This plan does not apply `PRODUCT BUG` or `test.fail()` to anything.** Rule 13 needs repeated full-count CI runs;
 rule 9 needs the owner for any product-bug label. Agreed rule (D54): until then, suspected signals are annotations and do
 not change the verdict. After 3 full-count CI runs the owner labels X04, X05, F-M2 and F-M3; each labelled signal then
-becomes an asserted invariant under `test.fail()` with the run links (a separate commit, never in this PR's build steps).
+becomes an asserted invariant under `test.fail()` with the run links. Where that commit lands is the open contradiction
+§21 item 5: the proposal is a final step of this PR (§14 Step 13), after 3 full-count `workflow_dispatch` runs.
 
-## 11. CI (`.github/workflows/perf.yml`) — agreed by the owner (D55)
+## 11. CI (`.github/workflows/perf.yml`) — revised proposal D60 (not agreed)
 
-- **Why a new job (D50).** `medusa-smoke` already uses 17 min 36 s of its 45-min timeout on `main` (run 39829474241;
-  race step 16 min 01 s). The four new cases at 50 trials need about 26 to 30 min of race time on the probe's per-attempt
-  numbers (§12). Together they would exceed 45 min. D39 forbids cutting trials and Task 1 D24 forbids raising the
-  timeout, so the cases get their own job.
-- **`medusa-smoke` race step:** `npm run race:medusa -- --grep-invert "P6-MED-RACE-0(05|08|09|12)"`. Step name becomes
-  "Race medusa (P6-MED-RACE-001, money cases, extras)" (unchanged).
-- **New job `medusa-order-races`:** a copy of `medusa-smoke` steps 1 to 17 (checkouts, `MEDUSA_REF` verify, harness
-  roots, Node, P6 install, k6, pnpm cache restore, Medusa install, build cache restore, admin password, `up:medusa`, k6
-  smoke) with the same pins and env. Then one step "Race medusa order races (P6-MED-RACE-005, -008, -009, -012)" running
-  `npm run race:medusa -- --grep "P6-MED-RACE-0(05|08|09|12)"` with `RACE_TRIALS` = 3 on `pull_request`, else 50, and
-  `P6_PLAYWRIGHT_JSON: results/playwright/medusa-order-races.json`. Then the job summary, the artefact
-  `race-histograms-medusa-order` (14 days), `down:medusa` with `always()`. No cache **save** steps (only `medusa-smoke`
-  saves; this job only restores). `timeout-minutes: 45`. No check step (`npm run check` runs once in `medusa-smoke`).
-- The README race table and `scripts/write-ci-job-summary.ts` already read any `results/races/*.json`; no script change
-  is expected. If the summary script hard-codes the Medusa artefact name, the build stops and reports (no silent edit).
+D55 accepted one new job for all four cases. The redone budget (§12) shows `-008`/`-009` are small (≈ 6 min at 50
+trials) and fit `medusa-smoke`; only `-005`/`-012` need the new job. **Proposal D60** replaces the D55 layout; it needs
+the owner's agreement (§21 question 9). The numbers below are the §12 numbers.
 
-## 12. Trial counts and time budget
+- **`medusa-smoke` race step** (existing step "Race medusa (P6-MED-RACE-001, money cases, extras)"): renamed "Race
+  medusa (P6-MED-RACE-001, money, order-state, extras)"; command
+  `npm run race:medusa -- --grep-invert "P6-MED-RACE-0(05|12)"`, so it runs `-001`, the money cases, `-008` and `-009`.
+  New step timeout, in the Cal/Documenso form:
+  `timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 30 }}` (estimate: PR 3.1 min, full 22.1 min). The
+  job's `timeout-minutes: 45` is unchanged (Task 1 D24).
+- **New job `medusa-order-races`:** a copy of `medusa-smoke` steps "Run actions/checkout" to "k6 smoke (GET /health)"
+  and the k6-summary upload (checkouts, `MEDUSA_REF` verify, harness roots stub, Node, P6 install, k6, corepack, pnpm
+  cache restore, Medusa install, build cache restore, admin password, `up:medusa`, k6 smoke), same pins and env, **no**
+  "Check" step (it runs once in `medusa-smoke`) and **no** cache save steps (only `medusa-smoke` saves). Then:
+  - "Race medusa budget (P6-MED-RACE-005, -012)": `npm run race:medusa -- --grep "P6-MED-RACE-0(05|12)"`,
+    `RACE_TRIALS: ${{ github.event_name == 'pull_request' && '3' || '50' }}`,
+    `P6_PLAYWRIGHT_JSON: results/playwright/medusa-budget-races.json`,
+    `timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 40 }}` (estimate: PR 3.4 min, full 32.5 min).
+  - Job summary (`node scripts/write-ci-job-summary.ts`), artefact `race-histograms-medusa-budget` (14 days),
+    "Stop Medusa (harness down)" with `always()`.
+  - `timeout-minutes: 45` for the job (estimate: full 33.9 min).
+- `scripts/write-ci-job-summary.ts` and the token scan read `results/races/*.json` and the Playwright JSON named by
+  `P6_PLAYWRIGHT_JSON`. If the summary script hard-codes the Medusa artefact or JSON name, the build stops and reports
+  (no silent edit).
+- **Stop rule.** If a full-count step takes more than 80 % of its step timeout (24 min in `medusa-smoke`, 32 min in
+  `medusa-order-races`), the build stops and reports the step time. The proposed fix is a further job split, never fewer
+  trials (D39).
 
-- **Full count 50** on `main`, nightly and dispatch; **3** on PRs (D6). No reduction (D39).
-- Per attempt (probe VM, proof only): `-005`/`-012` 13.0 to 15.9 s; `-008`/`-009` 2.1 to 2.9 s; one warm-up attempt each.
-- Estimate at 50 trials on the new job: `-005` 51 × 15.9 s ≈ 13.5 min; `-012` ≈ 13.5 min; `-008` 51 × 2.9 s ≈ 2.5 min;
-  `-009` ≈ 2.5 min; spread reruns up to 20 % more (Task 1 budget). **Race step ≈ 32 min worst case**; plus ≈ 2 min of
-  setup (the cached `up:medusa` took 41 s on `main`). **≈ 34 min of the 45-min timeout.** At 3 trials on PRs: ≈ 2 min.
-- If the first full-count run exceeds 40 min, the build stops and reports; the proposed fix is to split `-005` and
-  `-012` into a third job (D50), not to cut trials.
-- Per-test timeouts: `-005`/`-012` `60_000 + trials * 30_000` (as the money specs), `-008`/`-009`
-  `60_000 + trials * 10_000`.
-- No new environment variable. `.env.example` is unchanged.
+## 12. Trial counts and time budget (the arithmetic behind §11)
+
+**Inputs (all cited):**
+
+| Input                                       | Value                                                    | Source                                                                        |
+| ------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Full / PR trial count                       | 50 / 3                                                   | D6, D39                                                                       |
+| Attempts per case                           | trials + 1 warm-up + invalid budget                      | Task 1 D28; `invalidBudget` (`src/races/rerun-on-spread.ts` line 36)          |
+| Invalid budget (20 % rerun allowance)       | `max(2, ceil(trials × 20 / 100))`: full **10**, PR **2** | `RACE_MAX_INVALID_SHARE_PCT` 20, `RACE_MIN_INVALID_BUDGET` 2 (`.env.example`) |
+| Attempts per case                           | full 50 + 1 + 10 = **61**; PR 3 + 1 + 2 = **6**          | the two rows above (worst case: every allowed rerun is used)                  |
+| Time per attempt, `-005` / `-012`           | **15.9 s** (max of 16 probe runs)                        | §2.2 (probe VM, proof only)                                                   |
+| Time per attempt, `-008` / `-009`           | **2.9 s** (max of 13 probe runs)                         | §2.3 (probe VM, proof only)                                                   |
+| Per-spec setup (`seedAndLogin`, catalog)    | **6 s** per spec (seed 1.25 s live; rounded up)          | §2.6 seed log                                                                 |
+| `medusa-smoke` before the race step         | **1 min 26 s** (includes the 13 s "Check" step)          | `main` run 39829474241 (18:13:39 → 18:15:05); PR run 39828439018 the same     |
+| `medusa-smoke` existing race step           | full **16 min 01 s**; PR **2 min 15 s**                  | runs 39829474241 and 39828439018                                              |
+| After the race step (summary, upload, down) | **9 s**                                                  | both runs                                                                     |
+
+**`medusa-smoke` with `-008` and `-009` added (D60):**
+
+```text
+full:  -008  61 × 2.9 s + 6 s = 182.9 s
+       -009  61 × 2.9 s + 6 s = 182.9 s
+       new specs                = 365.8 s = 6 min 06 s
+       race step   16:01 + 6:06               = 22 min 07 s   (step timeout 30 → 74 %; stop rule 24 min)
+       job         1:26 + 22:07 + 0:09        = 23 min 42 s   (job timeout 45 → 53 %)
+PR:    -008/-009   2 × (6 × 2.9 s + 6 s) = 46.8 s
+       race step   2:15 + 0:47                = 3 min 02 s    (step timeout 10)
+       job         1:26 + 3:02 + 0:09         = 4 min 37 s
+```
+
+**New job `medusa-order-races` with `-005` and `-012` (D60):**
+
+```text
+full:  -005  61 × 15.9 s + 6 s = 975.9 s
+       -012  61 × 15.9 s + 6 s = 975.9 s
+       race step   1951.8 s                   = 32 min 32 s   (step timeout 40 → 81 % worst case; stop rule 32 min)
+       job         1:13 + 32:32 + 0:09        = 33 min 54 s   (1:13 = 1:26 minus the 13 s Check step; job timeout 45)
+PR:    race step   2 × (6 × 15.9 s + 6 s)     = 202.8 s = 3 min 23 s   (step timeout 10)
+       job         1:13 + 3:23 + 0:09         = 4 min 45 s
+```
+
+The worst case assumes all 10 reruns are used in each case; Task 2's `main` run used none (the race step time above
+includes its actual reruns). The per-attempt times come from the probe VM; the first full-count run on CI is the record
+(§11 stop rule).
+
+**If question 8 picks "raise `-009`'s PR count to 25" (§21):** `-009` on PRs becomes 25 + 1 + `max(2, ceil(5))` = 31
+attempts × 2.9 s + 6 s = 95.9 s, so the `medusa-smoke` PR race step becomes 2:15 + (17.4 + 6) s + 95.9 s = **4 min 14
+s** (job 5 min 49 s); still inside the 10-minute PR step timeout. Full counts are unchanged.
+
+- Per-test timeouts: `-005`/`-012` `60_000 + trials * 30_000` (as the money specs; 61 × 15.9 s = 970 s fits in
+  60 + 1500 s), `-008`/`-009` `60_000 + trials * 10_000` (61 × 2.9 s = 177 s fits in 60 + 500 s).
+- No new environment variable. `.env.example` is unchanged (a `-009` PR override, if chosen, is in the spec, as the
+  oversell extras cap themselves with `Math.min(raceTrialsFromEnv(), 3)` in `med-race-001-oversell.spec.ts`).
 
 ## 13. Unit tests (exact counts; baseline 354)
 
@@ -657,13 +1324,14 @@ HTTP 400` on 400. 8. `cancelOrder` on a 400 resolves `{ status: 400, body }` and
 
 ### 13.3 `tests/unit/medusa-oracle.test.ts` (+5 → 367)
 
-9. `assertSelectOnly` passes for `PROMO_SNAPSHOT_SQL`, `LIVE_ORDERS_FOR_EMAIL_SQL`, `ORDER_STATE_SQL`. 10. The same for
-   `ORDER_RESERVATIONS_SQL`, `OPEN_FULFILLMENTS_SQL`, `PHANTOM_RESERVED_SQL`, `LEAK_PROMOTIONS_SQL`, `LEAK_CAMPAIGNS_SQL`.
-10. `promoLeakCheck` with all counts 0 → no violation. 12. `promoLeakCheck` with one live promotion → one `TEST BUG`
-    violation naming `promotion`. 13. `orderStateLeakCheck` with one phantom product that was reported → no violation, one
-    reported id.
+- **Test 9.** `assertSelectOnly` passes for `PROMO_SNAPSHOT_SQL`, `LIVE_ORDERS_FOR_EMAIL_SQL`, `ORDER_STATE_SQL`.
+- **Test 10.** The same for `ORDER_LINE_ITEM_SQL`, `ORDER_RESERVATIONS_SQL`, `OPEN_FULFILLMENTS_SQL`,
+  `PHANTOM_RESERVED_SQL`, `LEAK_PROMOTIONS_SQL`, `LEAK_CAMPAIGNS_SQL`, `LEAK_PRODUCT_IDS_SQL`.
+- **Test 11.** `promoLeakCheck` with all counts 0 → no violation.
+- **Test 12.** `promoLeakCheck` with one live promotion → one `TEST BUG` violation naming `promotion`.
+- **Test 13.** `orderStateLeakCheck` with one phantom product that was reported → no violation, one reported id.
 
-### 13.4 `tests/unit/medusa-invariants.test.ts` (+14 → 381)
+### 13.4 `tests/unit/medusa-invariants.test.ts` (+16 → 383)
 
 14–15. `checkPromoCap`: at the cap → `[]`; counter cap+1 → one `PRODUCT BUG`. 16. `checkPromoCap`: orders cap+1 with
 counter at cap → one `SUSPECTED PRODUCT BUG` containing `F-M2`. 17–18. `checkGhostOrders`: equal sets → `[]`; one extra
@@ -671,107 +1339,279 @@ live order → one `SUSPECTED` with its id. 19–20. `checkSingleCancel`: one 20
 `SUSPECTED` containing `X04`. 21. `checkSingleCancel`: status `pending` → `SUSPECTED` naming the status. 22–24.
 `checkCancelFulfilExclusive`: canceled + 0 open + fulfil 400 → `[]`; fulfilled + not canceled + cancel 400 → `[]`;
 canceled + 1 open → `SUSPECTED` containing `X05`. 25. `checkCancelFulfilExclusive`: both 200 → `SUSPECTED`. 26–27.
-`checkReservationDrift`: consistent → `[]`; reserved 6 vs 0 → `SUSPECTED` containing `F-M3`.
+`checkReservationDrift`: consistent → `[]`; reserved 6 vs 0 → `SUSPECTED` containing `F-M3`. 28. `classifyFindings`
+with `labelled = []`: a `SUSPECTED ... (X04)` line goes to `suspected`, a `PRODUCT BUG` line to `violations`. 29.
+`classifyFindings` with `labelled = ["X04"]`: the same `(X04)` line goes to `violations`, relabelled `PRODUCT BUG:`; an
+`(X05)` line stays in `suspected`.
+
+### 13.5 Test skeletons (one per file; every other test in §13.1 to §13.4 follows the same shape)
+
+```ts
+// tests/unit/medusa-payloads.test.ts — test 3 (tests 1, 2, 4, 5: the same describe, one assert each as §13.1 says)
+it("campaignCreateBody has a usage budget and no currency", () => {
+  assert.deepEqual(campaignCreateBody("id", 3), {
+    name: "id",
+    campaign_identifier: "id",
+    budget: { type: "usage", limit: 3 },
+  });
+});
+
+// tests/unit/medusa-admin.test.ts — tests 6 to 8 reuse the file's stubFetch and afterEach(realFetch)
+it("createCampaign throws a TEST BUG on 400", async () => {
+  stubFetch({ "POST /admin/campaigns": { status: 400, body: { message: "bad" } } });
+  await assert.rejects(createCampaign("t", "id", 3), /TEST BUG: POST \/admin\/campaigns HTTP 400/);
+});
+it("cancelOrder resolves a 400 instead of throwing", async () => {
+  stubFetch({ "POST /admin/orders/o1/cancel": { status: 400, body: { message: "x" } } });
+  const res = await cancelOrder("t", "o1");
+  assert.equal(res.status, 400);
+});
+
+// tests/unit/medusa-oracle.test.ts — tests 9 to 13 reuse the file's fakePool shape
+it("promoLeakCheck names a leaked promotion", async () => {
+  const counts = new Map([[LEAK_PROMOTIONS_SQL, 1]]);
+  const violations = await promoLeakCheck(fakePool(counts, []), "p6-qa-x-%");
+  assert.deepEqual(violations, ["TEST BUG: leak promotion LIKE p6-qa-x-%"]);
+});
+
+// tests/unit/medusa-invariants.test.ts — tests 14 to 29
+it("checkSingleCancel flags two successful cancels as X04", () => {
+  const out = checkSingleCancel({
+    status: "canceled",
+    httpSuccesses: 2,
+    pendingChanges: 1,
+    creditLines: 2,
+  });
+  assert.ok(out.some((l) => l.startsWith("SUSPECTED PRODUCT BUG:") && l.endsWith("(X04)")));
+});
+it("classifyFindings promotes a labelled tag", () => {
+  const line = "SUSPECTED PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)";
+  const out = classifyFindings([line], ["X04"]);
+  assert.deepEqual(out, {
+    violations: ["PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)"],
+    suspected: [],
+  });
+});
+```
+
+`orderStateLeakCheck` (test 13) needs rows of ids, not counts: give `fakePool` an optional `rows` map keyed by SQL so the
+product and phantom queries return `[{ id: "prod_1" }]`, and keep the count map for the rest.
 
 ## 14. Build steps (repo root; one commit each; on any differing output stop and paste it)
 
 Before every command: `export PATH="/usr/local/bin:$PATH"`. Admin credentials come from the environment (§1), never typed
-into a file in the repo.
+into a file in the repo. Every step formats its own files, runs the full check and commits only its own paths (rule 2:
+`git add <path>`, never `-A` or `.`; no trailer lines, rule 3). "Check output" below is
+`npm run check 2>&1 | grep -E '^# (tests|pass|fail)'` plus the exit code; any other count stops the build (rule 11).
 
 ### Step 0. Baseline gate (no commit)
 
 ```bash
-npm run check                  # expect: "# tests 354", "# pass 354", "# fail 0"
+npm run check                  # expect exit 0 and: # tests 354 / # pass 354 / # fail 0
 npm run up:medusa              # expect exit 0 and "Medusa backend is up at http://127.0.0.1:9000"
 npm run smoke:medusa           # expect exit 0
 npm run down:medusa            # expect exit 0; curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/health → 000
+npx playwright test --list --project=medusa-race | tail -1   # note the total; Step 9 compares against it
 ```
 
-### Step 1. Payloads — `feat(medusa): add promotion, campaign and fulfillment payloads`
-
-Files: `src/medusa/payloads.ts`, `tests/unit/medusa-payloads.test.ts` (§8.1, §13.1).
+### Step 1. Payloads
 
 ```bash
-npm run check                  # expect "# tests 359", "# pass 359", "# fail 0"
+npx prettier --write src/medusa/payloads.ts tests/unit/medusa-payloads.test.ts
+npm run check                  # exit 0; # tests 359 / # pass 359 / # fail 0
 git add src/medusa/payloads.ts tests/unit/medusa-payloads.test.ts
 git commit -m "feat(medusa): add promotion, campaign and fulfillment payloads"
 ```
 
-### Step 2. Admin and store clients — `feat(medusa): add promotion and order-state admin calls`
+### Step 2. Admin and store clients (§8.2, §8.3, §13.2)
 
-Files: `src/medusa/admin.ts`, `src/medusa/store.ts`, `src/medusa/run-money-case.ts` (rename `moneyPost` → `rawPost` only),
-`tests/unit/medusa-admin.test.ts` (§8.2, §8.3, §13.2). Expect **362** tests.
-
-### Step 3. Oracle — `feat(medusa): add promotion and order-state oracle`
-
-Files: `src/medusa/oracle.ts`, `tests/unit/medusa-oracle.test.ts` (§8.4, §13.3). Expect **367** tests.
-
-### Step 4. Invariants — `feat(medusa): add budget and order-state invariants`
-
-Files: `src/medusa/invariants.ts`, `tests/unit/medusa-invariants.test.ts` (§8.5, §13.4). Expect **381** tests.
-
-### Step 5. Promotion runner and `-005` — `feat(races): add medusa campaign budget race P6-MED-RACE-005`
-
-Files: `src/medusa/run-promo-case.ts`, `tests/medusa/races/med-race-005-campaign-budget.spec.ts`. Expect **381** tests.
-Proof run on the VM (never published):
+`moneyPost` → `rawPost` inside `src/medusa/admin.ts` only (three call sites in the same file). `run-money-case.ts` is
+**not** touched.
 
 ```bash
-npm run up:medusa
-RACE_TRIALS=3 npx playwright test --project=medusa-race -g "P6-MED-RACE-005"   # expect 1 passed
-npm run down:medusa
+grep -rn "moneyPost" src tests scripts   # after the edit: no output
+npx prettier --write src/medusa/admin.ts src/medusa/store.ts tests/unit/medusa-admin.test.ts
+npm run check                  # exit 0; # tests 362 / # pass 362 / # fail 0
+git add src/medusa/admin.ts src/medusa/store.ts tests/unit/medusa-admin.test.ts
+git commit -m "feat(medusa): add promotion and order-state admin calls"
 ```
 
-Paste the histogram verdict, `invalidTrials`, `reruns`, the per-attempt `budgetUsed`/`ordersWithPromo`, and the leak
-result. Expected from the probe: pass, budget used 3, orders 3.
+### Step 3. Oracle (§8.4, §13.3)
 
-### Step 6. `-012` — `feat(races): add medusa promotion usage limit race P6-MED-RACE-012`
+```bash
+npx prettier --write src/medusa/oracle.ts tests/unit/medusa-oracle.test.ts
+npm run check                  # exit 0; # tests 367 / # pass 367 / # fail 0
+git add src/medusa/oracle.ts tests/unit/medusa-oracle.test.ts
+git commit -m "feat(medusa): add promotion and order-state oracle"
+```
 
-File: `tests/medusa/races/med-race-012-usage-limit.spec.ts`. **381** tests. Proof run as Step 5 with `-g
-"P6-MED-RACE-012"`. Expected: counters pass; F-M2 may show as a `suspected-bug` annotation (2 of 8 in the probe).
+### Step 4. Invariants (§8.5, §13.4)
 
-### Step 7. Order runner and `-008` — `feat(races): add medusa double cancel race P6-MED-RACE-008`
+```bash
+npx prettier --write src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+git add src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts
+git commit -m "feat(medusa): add budget and order-state invariants"
+```
 
-Files: `src/medusa/run-order-case.ts`, `tests/medusa/races/med-race-008-double-cancel.spec.ts`. **381** tests. Proof run
-with `-g "P6-MED-RACE-008"`. Expected: X04 `suspected-bug` annotations on most trials; verdict `pass` unless a counter, 5xx or
-setup check fails (D54).
+### Step 5. Promotion runner and `-005` (§8.6, §8.7)
 
-### Step 8. `-009` — `feat(races): add medusa cancel vs fulfil race P6-MED-RACE-009`
+```bash
+npx prettier --write src/medusa/run-promo-case.ts tests/medusa/races/med-race-005-campaign-budget.spec.ts
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+npm run up:medusa
+RACE_TRIALS=3 npx playwright test --project=medusa-race -g "P6-MED-RACE-005"   # expect "1 passed"
+npm run down:medusa            # exit 0
+git add src/medusa/run-promo-case.ts tests/medusa/races/med-race-005-campaign-budget.spec.ts
+git commit -m "feat(races): add medusa campaign budget race P6-MED-RACE-005"
+```
 
-File: `tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts`. **381** tests. Proof run with `-g "P6-MED-RACE-009"`.
+Paste (proof only, never published) the histogram verdict, `invalidTrials`, `reruns`, per-attempt `counterUsed` and
+`ordersWithPromo`, and the leak result. Expected from the probe: pass, counter 3, orders 3.
 
-### Step 9. CI and README — `ci(races): run the medusa budget and order-state races`
+### Step 6. `-012`
 
-Files: `.github/workflows/perf.yml` (§11), `README.md` (§17). **381** tests. `npm run check` includes actionlint; expect
-exit 0. `npx playwright test --list --project=medusa-race | tail -1` before Step 5 and after Step 8: the total grows by
-exactly 4.
+```bash
+npx prettier --write tests/medusa/races/med-race-012-usage-limit.spec.ts
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+npm run up:medusa
+RACE_TRIALS=3 npx playwright test --project=medusa-race -g "P6-MED-RACE-012"   # expect "1 passed"
+npm run down:medusa            # exit 0
+git add tests/medusa/races/med-race-012-usage-limit.spec.ts
+git commit -m "feat(races): add medusa promotion usage limit race P6-MED-RACE-012"
+```
 
-### Step 10. Roadmap sync — `docs(plans): sync the phase 2 roadmap with task 3`
+Expected: counters pass; F-M2 may show as a `suspected-bug` annotation (2 of 8 in the probe).
 
-File: `docs/plans/2026-10-22-p6-phase2-roadmap.md`: Task 3 status line (plan link, `-012` lands, suspected bugs, new job),
-`-013` and `-014` as accepted extras for a follow-up task, `-015` under "Later", the priorities of D58. **381** tests.
+### Step 7. Order runner and `-008`
 
-### Step 11. Push and PR
+```bash
+npx prettier --write src/medusa/run-order-case.ts tests/medusa/races/med-race-008-double-cancel.spec.ts
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+npm run up:medusa
+RACE_TRIALS=3 npx playwright test --project=medusa-race -g "P6-MED-RACE-008"   # expect "1 passed"
+npm run down:medusa            # exit 0
+git add src/medusa/run-order-case.ts tests/medusa/races/med-race-008-double-cancel.spec.ts
+git commit -m "feat(races): add medusa double cancel race P6-MED-RACE-008"
+```
+
+Expected: X04 `suspected-bug` annotations on most trials; verdict `pass` unless a counter, 5xx or setup check fails (D54).
+
+### Step 8. `-009`
+
+```bash
+npx prettier --write tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+npm run up:medusa
+RACE_TRIALS=3 npx playwright test --project=medusa-race -g "P6-MED-RACE-009"   # expect "1 passed"
+npm run down:medusa            # exit 0
+git add tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts
+git commit -m "feat(races): add medusa cancel vs fulfil race P6-MED-RACE-009"
+```
+
+### Step 9. CI and README (§11 as agreed under §21 question 9, §17)
+
+```bash
+npx prettier --write .github/workflows/perf.yml README.md
+npm run check                  # exit 0 (actionlint included); # tests 383 / # pass 383 / # fail 0
+npx playwright test --list --project=medusa-race | tail -1   # Step 0 total + 4
+git add .github/workflows/perf.yml README.md
+git commit -m "ci(races): run the medusa budget and order-state races"
+```
+
+### Step 10. Roadmap sync
+
+Task 3 status line (plan link, `-012` lands, suspected bugs, the CI layout), `-013` and `-014` as accepted extras for a
+follow-up task, `-015` under "Later", the priorities of D58.
+
+```bash
+npx prettier --write docs/plans/2026-10-22-p6-phase2-roadmap.md
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+git add docs/plans/2026-10-22-p6-phase2-roadmap.md
+git commit -m "docs(plans): sync the phase 2 roadmap with task 3"
+```
+
+### Step 11. Push the branch (no PR yet; proposal D61)
 
 ```bash
 git push -u origin feat/2026-10-22-p6-med-budget-order-races
+```
+
+### Step 12. Three full-count runs on the branch (proposal D61; needs §21 question 7)
+
+```bash
+gh workflow run perf.yml --ref feat/2026-10-22-p6-med-budget-order-races   # three times, one after the other finishes
+```
+
+`workflow_dispatch` uses `RACE_TRIALS` 50 (perf.yml: anything but `pull_request`). It also runs `cal-smoke` and
+`documenso-smoke`; that cost is accepted. Read each run once when it finishes (rule 15). If `gh` is missing, the owner
+starts the three runs. Report per case: verdict, the count of trials that showed each signal (X04, X05, F-M2, F-M3), the
+step times (§11 stop rule) and the run links. **Stop for the owner's labels** (rule 9, rule 13).
+
+### Step 13. Labelled signals under `test.fail()` (proposal D62; only for what the owner labels)
+
+For each labelled signal, its spec passes the tag in `labelled` (for example `-008`: `["X04", "F-M3"]`) and gets the
+two-test shape below, so the case's other checks stay strict while the known bug is expected to fail:
+
+```ts
+test.describe.serial("P6-MED-RACE-008 double cancel", () => {
+  let result: Awaited<ReturnType<typeof runOrderCase>>;
+  test.beforeAll(async () => {
+    result = await runOrderCase({ /* as §8.7 */ labelled: [] });
+  });
+  test("P6-MED-RACE-008 guards: no unlabelled violation", () => {
+    expect(result.histogram.invariantViolations.filter((v) => !/\((X04|F-M3)\)/.test(v))).toEqual(
+      [],
+    );
+  });
+  // PRODUCT BUG X04 and F-M3, labelled <date> after runs <link 1>, <link 2>, <link 3>.
+  test("P6-MED-RACE-008 known bug: X04 and F-M3 reproduce", () => {
+    test.fail();
+    expect(result.suspected.filter((s) => /\((X04|F-M3)\)/.test(s))).toEqual([]);
+  });
+});
+```
+
+The `test.fail()` test fails (and so passes as expected) as long as the bug reproduces in at least one trial; if the bug
+stops reproducing, it turns red, which is the signal to remove `test.fail()`. The runner keeps `labelled: []` here so
+the labelled signals stay out of the guards' verdict and are counted in `suspected`; `classifyFindings` with a
+non-empty `labelled` is used only if the owner prefers the single-test form.
+
+```bash
+npx prettier --write tests/medusa/races/med-race-008-double-cancel.spec.ts README.md   # plus -009 if question 8 says so
+npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
+npx playwright test --list --project=medusa-race | tail -1   # Step 9 total + 1 per spec given the two-test shape
+git add tests/medusa/races/med-race-008-double-cancel.spec.ts README.md
+git commit -m "test(races): mark the labelled medusa order-state bugs as expected failures"
+git push
+```
+
+README moves each labelled signal from "suspected" to "Known product bugs" with the run links.
+
+### Step 14. PR
+
+```bash
 gh pr create --title "feat: add medusa budget and order-state races" --body-file <path outside the repo>
 ```
 
-`gh` only (rule 3). If `gh` is missing, report the title and body and stop. Read CI once (rule 15).
+`gh` only (rule 3). If `gh` is missing, report the title and body and stop. Read the PR CI once (rule 15).
 
 ## 15. Verification gate (paste real output before the PR is ready)
 
-- `npm run check` (all five parts; 381 tests, 0 fail).
+- `npm run check` (all five parts; 383 tests, 0 fail).
 - `npx playwright test --list` count before and after.
-- Green PR run (3 trials) for both Medusa jobs, then one full-count run (`main`, nightly or dispatch) with the
-  `medusa-order-races` step time (§12).
+- The three full-count `workflow_dispatch` runs of Step 12 with their links, step times and signal counts.
+- Green PR run (3 trials) for both Medusa jobs after Step 13.
 - Every histogram: verdict, `trialsRequested`, `invalidTrials`, `reruns`, `warmup[]`, violations, suspected signals with
   counts, and leaked-data records.
 
 ## 16. Commit plan
 
 1. `docs(plans): add the phase 2 task 3 med-budget-order-races plan` (this file only).
-2. to 11. As §14 Steps 1 to 10.
+2. `docs(plans): record the owner's answers in the task 3 plan` (revision 2).
+3. `docs(plans): revise the task 3 plan after review` (revision 3).
+4. to 13. As §14 Steps 1 to 10.
+5. `test(races): mark the labelled medusa order-state bugs as expected failures` (§14 Step 13, if agreed).
 
 ## 17. Docs (README)
 
@@ -783,22 +1623,24 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 ## 18. Will NOT do
 
 - No fork or harness change; no SQL writes; no `retries`; no sleeps; no `test.fail()` without the owner's label (§10).
-- No reduction of trials, no timeout change (D39, Task 1 D24).
-- No change to `runTrials`, `fireTogether`, the rerun policy, `run-case.ts` or the money logic.
+- No reduction of trials and no job timeout change (D39, Task 1 D24). The two step timeouts in §11 are new and proposed
+  (D60).
+- No change to `runTrials`, `fireTogether`, the rerun policy, `run-case.ts`, `run-money-case.ts` or the money logic.
+  The `moneyPost` → `rawPost` rename stays inside `src/medusa/admin.ts` (§8.2).
 - No work on `-013` or `-014` in this PR (follow-up task, D57) and none on `-015` ("Later"); no P1 repo change (follow-up only).
 - No publication of probe timings.
 
 ## 19. Risks
 
-| Risk                                                                    | Mitigation                                                                                                                                                             |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The new job's time exceeds the estimate (setup is 10 carts per attempt) | First full-count run decides; split `-005`/`-012` into a third job (D50). Never cut trials.                                                                            |
-| F-M3 products pile up in a long-lived local DB                          | Each is prefixed and reported; CI databases are throwaway. Local: `npm run down:medusa` keeps volumes, so the leftovers stay until the volume is removed (documented). |
-| X05 is intermittent (1 of 5): a 3-trial PR run may not show it          | It is a suspected signal, not an assertion, until labelled (D54). Full count gives ≈ 1 − 0.8⁵⁰ chance to see it.                                                       |
-| `lock_timeout = '3s'` in `registerUsage` could give 5xx under load      | Not seen live (burst ≤ 2.8 s). A 5xx is a PRODUCT BUG with the body.                                                                                                   |
-| A ghost order (F-M2) blocks the product delete                          | The cleanup sweeps orders by email prefix first (§9), proven live.                                                                                                     |
-| The P1 X04/X05 sequence differs from the reference text                 | P1 is out of reach here; the P6 reference text is the agreed source (D56). The P6 cases stand on their own probe evidence.                                             |
-| `order_promotion` join counts a soft-deleted link                       | The SQL filters `op.deleted_at IS NULL AND o.deleted_at IS NULL` (live: losers' links are soft deleted).                                                               |
+| Risk                                                               | Mitigation                                                                                                                                                             |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A job's time exceeds the estimate (setup is 10 carts per attempt)  | §11 stop rule (80 % of a step timeout); split further. Never cut trials.                                                                                               |
+| F-M3 products pile up in a long-lived local DB                     | Each is prefixed and reported; CI databases are throwaway. Local: `npm run down:medusa` keeps volumes, so the leftovers stay until the volume is removed (documented). |
+| X05 is intermittent (1 of 5): a 3-trial PR run may not show it     | Open question 8 (§21): raise `-009`'s PR count or keep X05 annotation-only.                                                                                            |
+| `lock_timeout = '3s'` in `registerUsage` could give 5xx under load | Not seen live (burst ≤ 2.8 s). A 5xx is a PRODUCT BUG with the body.                                                                                                   |
+| A ghost order (F-M2) blocks the product delete                     | The cleanup sweeps orders by email prefix first (§9), proven live.                                                                                                     |
+| The P1 X04/X05 sequence differs from the reference text            | P1 is out of reach here; the P6 reference text is the agreed source (D56). The P6 cases stand on their own probe evidence.                                             |
+| `order_promotion` join counts a soft-deleted link                  | The SQL filters `op.deleted_at IS NULL AND o.deleted_at IS NULL` (live: losers' links are soft deleted).                                                               |
 
 ## 20. Decisions (2026-10-22; numbering continues from Task 2's D41)
 
@@ -833,6 +1675,16 @@ Owner answers to revision 1 (agreed 2026-10-22; each closes the §21 question of
 - **D59 Upstream issues (Q6).** X04, X05, F-M2 and F-M3 are filed upstream only after the D54 labels, as for the Phase 1
   findings.
 
+Proposals of revision 3 (**not agreed**; each names the §21 question that decides it):
+
+- **D60 CI layout (Q9).** `-008`/`-009` run in the `medusa-smoke` race step; only `-005`/`-012` get the new job
+  `medusa-order-races`; both race steps get step timeouts (§11, §12). Replaces the D55 layout if agreed.
+- **D61 Labelling runs inside this task (Q7).** Push without a PR, run 3 full-count `workflow_dispatch` runs on the branch,
+  stop for the owner's labels (§14 Steps 11 and 12).
+- **D62 `test.fail()` in this PR for labelled X04 and F-M3 (Q7).** Two-test shape per spec so the other checks stay strict
+  (§14 Step 13).
+- **D63 `-009` and X05 (Q8).** Open: see question 8.
+
 ## 21. Contradictions with the roadmap, and open questions (answered)
 
 **Contradictions:**
@@ -844,6 +1696,13 @@ Owner answers to revision 1 (agreed 2026-10-22; each closes the §21 question of
    P6 reference text (§2.1 Q1).
 4. Rule 10 says a plan goes on a `plan/...` branch; the owner's instruction for this task says to commit the plan on
    `feat/2026-10-22-p6-med-budget-order-races`. The owner's instruction was followed (Task 2 did the same).
+5. **D54 leaves `-008`/`-009` green while X04 reproduces.** Under D54 the suspected signals only annotate, so `-008`
+   passes in CI although X04 reproduced in 7 of 8 probe runs. But roadmap D3 says a product invariant violation "is
+   recorded and fails the case (or counts towards a `test.fail()` proof)", and the roadmap's Task 3 "Done when" says
+   "`-005`, `-008` and `-009` pass or record a proven bug with `test.fail()` and repeated-run evidence". A green `-008`
+   with X04 in its annotations meets neither. Proposed resolution (D61, D62): before the PR is ready, run 3 full-count
+   `workflow_dispatch` runs on this branch (§14 Step 12); the owner labels; then a final step of this PR (§14 Step 13)
+   adds `test.fail()` for the labelled X04 and F-M3 with the run links. Question 7 asks for agreement.
 
 **Open questions (all answered by the owner on 2026-10-22; the answers are D54 to D59):**
 
@@ -860,7 +1719,31 @@ Owner answers to revision 1 (agreed 2026-10-22; each closes the §21 question of
 6. **Upstream issues.** Proposed: file X04, X05, F-M2, F-M3 upstream only after the labels of question 1, as for the
    Phase 1 findings. **Agreed (D59).**
 
-No open questions remain. The next step is the owner's word to start the build (§14 Step 0).
+**Open questions of revision 3 (not agreed):**
+
+7. **Labelling inside this task (contradiction 5).** Proposed (D61, D62): push without a PR, 3 full-count
+   `workflow_dispatch` runs, the owner labels, then `test.fail()` for X04 and F-M3 in this PR (§14 Steps 11 to 13). In
+   `-008`, X04 makes the expected failure stable: with a probe rate of 7 of 8 per trial, a 3-trial PR run misses X04 with
+   probability (1/8)³ ≈ 0.2 %, so F-M3 (2 of 13 per trial) can share the same `test.fail()` without making it flaky.
+   Agree, or say where the `test.fail()` commit should go instead.
+8. **`-009` and X05 under `test.fail()`.** X05 showed in 1 of 5 probe runs (a small sample). `test.fail()` fails the
+   check when the bug does **not** reproduce, so at 3 PR trials with a per-trial rate of 0.2 it would be red on about
+   0.8³ ≈ 51 % of PR runs; adding F-M3 in `-009` (1 of 5) gives a combined rate of about 0.36 and still ≈ 26 % red PRs.
+   Two ways to avoid random failures:
+   - **(a) Raise `-009`'s PR count.** The spec sets `trials = Math.max(raceTrialsFromEnv(), 25)` on PR runs (the
+     `med-race-001` extras already set their own count). At a rate of 0.2, 25 trials miss X05 with probability 0.8²⁵ ≈
+     0.4 %. The rate is re-measured from the 150 trials of Step 12, and the PR count is set to the smallest count with a
+     miss probability ≤ 1 % (`ceil(ln 0.01 / ln(1 − rate))`; 21 at 0.2, 44 at 0.1). Cost: +1 min 12 s on the PR race step
+     (§12). `test.fail()` then covers X05 and F-M3 in `-009`.
+   - **(b) Keep X05 annotation-only.** `-009` stays green with X05 and F-M3 as `suspected-bug` annotations and histogram
+     counts. It does not meet the roadmap "Done when" for X05; the README and the Task 9 closeout say so.
+
+   Which one? (No answer is assumed; D63 stays open.)
+
+9. **CI layout (D60).** Agree to `-008`/`-009` in the `medusa-smoke` race step, `-005`/`-012` alone in
+   `medusa-order-races`, and the two step timeouts of §11? This replaces the D55 layout.
+
+The build starts only after questions 7, 8 and 9 are answered.
 
 ## Closeout notes
 
