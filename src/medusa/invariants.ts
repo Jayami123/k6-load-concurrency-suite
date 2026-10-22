@@ -155,3 +155,48 @@ export function checkOversellInvariants(input: {
 
   return violations;
 }
+
+/** Refunds of one payment may not add up to more than was captured (money never over-returned). */
+export function checkRefundCap(input: { capturedSum: number; refundedSum: number }): string[] {
+  return input.refundedSum > input.capturedSum
+    ? [`PRODUCT BUG: refunded ${input.refundedSum} of ${input.capturedSum} captured`]
+    : [];
+}
+
+/** Captures of one authorised payment may not add up to more than was authorised. */
+export function checkCaptureCap(input: {
+  authorizedAmount: number;
+  capturedSum: number;
+}): string[] {
+  return input.capturedSum > input.authorizedAmount
+    ? [`PRODUCT BUG: captured ${input.capturedSum} of ${input.authorizedAmount} authorised`]
+    : [];
+}
+
+/**
+ * HTTP success count against the expected count. A difference is a SUSPECTED PRODUCT BUG (D40): the caller
+ * records it and annotates the test, it does not fail the case. Returns null when the counts agree.
+ */
+export function checkSuccessCount(input: {
+  successes: number;
+  expected: number;
+  label: string;
+}): string | null {
+  if (input.successes === input.expected) return null;
+  return `SUSPECTED PRODUCT BUG: ${input.label}: ${input.successes} HTTP success(es), expected ${input.expected} (F-M1, D40)`;
+}
+
+/** Every loser must be a clean 4xx. A 5xx is a product fault under contention; a missing status is a test fault. */
+export function checkLoserStatuses(statuses: Array<number | null>): string[] {
+  const violations: string[] = [];
+  for (const status of statuses) {
+    if (status === null) {
+      violations.push("TEST BUG: a racing money request threw before it got a status");
+    } else if (status >= 500) {
+      violations.push(`PRODUCT BUG: 5xx on a racing money request: ${status}`);
+    } else if (status !== 200 && (status < 400 || status >= 500)) {
+      violations.push(`PRODUCT BUG: unexpected status on a racing money request: ${status}`);
+    }
+  }
+  return violations;
+}

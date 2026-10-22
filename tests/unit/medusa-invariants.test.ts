@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { checkOversellInvariants } from "../../src/medusa/invariants.ts";
+import {
+  checkCaptureCap,
+  checkLoserStatuses,
+  checkOversellInvariants,
+  checkRefundCap,
+  checkSuccessCount,
+} from "../../src/medusa/invariants.ts";
 
 function base(overrides: Partial<Parameters<typeof checkOversellInvariants>[0]>) {
   return {
@@ -207,5 +213,44 @@ describe("checkOversellInvariants", () => {
       base({ mode: "mixed", n: 5, reserved: 4, available: 1, reservationQty: 5 }),
     );
     assert.ok(v.some((x) => x.includes("PRODUCT BUG") && x.includes("reservation_item sum")));
+  });
+});
+
+describe("money invariants", () => {
+  it("checkRefundCap: refunds equal to the capture pass, one unit more is a PRODUCT BUG", () => {
+    assert.deepEqual(checkRefundCap({ capturedSum: 1010, refundedSum: 1010 }), []);
+    assert.deepEqual(checkRefundCap({ capturedSum: 1010, refundedSum: 505 }), []);
+    assert.deepEqual(checkRefundCap({ capturedSum: 1010, refundedSum: 1011 }), [
+      "PRODUCT BUG: refunded 1011 of 1010 captured",
+    ]);
+  });
+
+  it("checkCaptureCap: captures equal to the authorised amount pass, more is a PRODUCT BUG", () => {
+    assert.deepEqual(checkCaptureCap({ authorizedAmount: 1010, capturedSum: 1010 }), []);
+    assert.deepEqual(checkCaptureCap({ authorizedAmount: 1010, capturedSum: 2020 }), [
+      "PRODUCT BUG: captured 2020 of 1010 authorised",
+    ]);
+  });
+
+  it("checkSuccessCount: agreement is null, a difference is a suspected bug in both directions", () => {
+    assert.equal(checkSuccessCount({ successes: 2, expected: 2, label: "x" }), null);
+    assert.equal(
+      checkSuccessCount({ successes: 1, expected: 2, label: "refund X/2" }),
+      "SUSPECTED PRODUCT BUG: refund X/2: 1 HTTP success(es), expected 2 (F-M1, D40)",
+    );
+    assert.match(checkSuccessCount({ successes: 3, expected: 2, label: "x" }) ?? "", /SUSPECTED/);
+  });
+
+  it("checkLoserStatuses: clean 4xx losers pass; a 5xx, a missing status or a 3xx is a violation", () => {
+    assert.deepEqual(checkLoserStatuses([400, 400, 409]), []);
+    assert.deepEqual(checkLoserStatuses([400, 500]), [
+      "PRODUCT BUG: 5xx on a racing money request: 500",
+    ]);
+    assert.deepEqual(checkLoserStatuses([null]), [
+      "TEST BUG: a racing money request threw before it got a status",
+    ]);
+    assert.deepEqual(checkLoserStatuses([302]), [
+      "PRODUCT BUG: unexpected status on a racing money request: 302",
+    ]);
   });
 });

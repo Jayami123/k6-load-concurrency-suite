@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  captureBody,
   caseLeakPattern,
+  refundBody,
   casePrefix,
   cleanupFailure,
   likeLiteralPrefix,
@@ -103,5 +105,13 @@ describe("medusa payloads", () => {
     );
     const long = cleanupFailure("customer", "a@qa.local", "x".repeat(300));
     assert.equal(long, `TEST BUG: customer cleanup failed for a@qa.local: ${"x".repeat(200)}`);
+  });
+
+  it("captureBody carries only the amount", () => {
+    assert.deepEqual(captureBody(1010), { amount: 1010 });
+  });
+
+  it("refundBody carries only the amount", () => {
+    assert.deepEqual(refundBody(505), { amount: 505 });
   });
 });

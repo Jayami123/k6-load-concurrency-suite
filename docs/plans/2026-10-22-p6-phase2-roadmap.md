@@ -98,7 +98,7 @@ What Phase 2 reuses as-is (extend only where a probe proves a gap):
 | Case ID           | Source                                    | Summary                                                                                           | Pri |
 | ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------- | --- |
 | —                 | Task 8 closeout §5.5 item 2               | Framework: rerun-on-spread (invalid trial is rerun, capped, recorded) replaces CI `20 ms`         | —   |
-| `P6-MED-RACE-006` | MED07                                     | Gift card balance covers one order; two carts apply it in parallel; balance ≥ 0                   | P0  |
+| `P6-MED-RACE-006` | MED07                                     | Gift card balance covers one order (**Later**, D34: no gift-card route at `MEDUSA_REF`)           | —   |
 | `P6-MED-RACE-007` | MED08                                     | Captured payment X; N parallel refunds of X; total refunded ≤ X                                   | P1  |
 | `P6-MED-RACE-010` | MED08 (accepted extra)                    | Concurrent captures on one authorized payment: total captured ≤ authorized (gated)                | —   |
 | `P6-MED-RACE-011` | MED08 (accepted extra)                    | N parallel partial refunds of X/2: exactly two succeed, total refunded = X                        | —   |
@@ -277,6 +277,16 @@ changes the order; each is resolved inside the named task):
   causes many reruns on `P6-CAL-RACE-001` (cap and probe data decide).
 
 ## Task 2: Medusa money races (`P6-MED-RACE-006`, `-007`, `-010`, `-011`)
+
+**Status (2026-10-22, build PR "feat: add medusa money race cases").** Build plan:
+[2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). `P6-MED-RACE-006` moved to
+"Later" (D34: no gift-card or store-credit route at `MEDUSA_REF`, live 404). `P6-MED-RACE-010` stays (D35: checkout does not
+auto-capture). Local probe runs of `P6-MED-RACE-007`, `-010` and `-011` pass; CI results are pending. `P6-MED-RACE-011`
+asserts the database invariants and records F-M1 as a **suspected product bug** (D40): the label PRODUCT BUG waits for
+full-count CI runs to reproduce it. A pending order change is cleared by `POST /admin/order-edits/:id/confirm` before
+cancel (D41); a stuck order is reported as leaked data, not a failure. The full count (50 on `main`, nightly and dispatch,
+3 on PRs) is provisional. The local estimate is about 7 minutes at 50 trials; the separate-job decision (D39) awaits the
+first full-count Actions run.
 
 - **Goal.** Prove money cannot go negative or be over-returned under contention.
 - **Cases.** `P6-MED-RACE-006` (P0, gift card balance never negative; gated, D5),
