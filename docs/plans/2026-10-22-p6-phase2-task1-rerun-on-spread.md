@@ -2113,8 +2113,8 @@ Rules, in words:
   runner keeps out of `attempts`.
 - A warm-up whose setup **throws** is recorded (`ok: false`, `error`) and adds `TEST BUG: warm-up burst N failed: ...`
   to `invariantViolations`, so the case fails: the same broken setup would break the trials, and hiding it would be
-  wrong. A **product violation** seen only in a warm-up is recorded in `warmup[]` and is not part of the verdict
-  (owner decision). It would also appear in the trials.
+  wrong. A **product violation** in a warm-up also fails the case (amended in build commit 10, §8.13): each line goes to
+  the top-level `invariantViolations`, tagged `[warmup N]`.
 - The sequential controls (`extra-overlap-sequential`, `extra-doc-sequential-control`) fire no concurrent burst, so
   they do not warm up.
 
@@ -2627,6 +2627,89 @@ list from the probe.
    `MEDUSA_REF`) to add a gift-card plugin. If the Task 2 gate confirms no gift-card or store-credit
 ```
 
+### 8.13 Build commit 10: a violation in a warm-up fails the case (amendment)
+
+The diffs in §8.11, §13.1 and §17.2 show commit 8 as built; this amendment replaces the "recorded but not part of the
+verdict" rule. Rule: a warm-up's **spread and status counts** stay out of the verdict and every histogram count; any
+**violation** (`ok === false`) is added to the runner's violations, so `applyTo` puts it in the top-level
+`invariantViolations`, tagged `[warmup N]` **after** the label so `PRODUCT BUG` lines keep their prefix. Unit tests: `# tests 338`
+(337 + 1: one test rewritten, one added).
+
+```diff
+--- a/src/races/rerun-on-spread.ts
++++ b/src/races/rerun-on-spread.ts
+@@ -65,4 +65,6 @@ export interface RerunRunner {
+    * Fires the untimed warm-up burst(s) before trial 1. Call it before runTrials, with an attempt function that
+    * uses trial index 0. Never throws, never reruns, never counts as a trial: the record goes to histogram.warmup.
++   * Its spread and status counts stay out of the verdict and every count, but a product violation in it fails the
++   * case: each violation line is added to the runner's violations, tagged "[warmup N]".
+    */
+   warmup(attemptFn: AttemptFn): Promise<void>;
+@@ -175,4 +177,11 @@ export function createRerunRunner(policy: SpreadPolicy, trials: number): RerunRu
+           ...(r.error === undefined ? {} : { error: r.error }),
+         });
++        if (!r.ok) {
++          // The tag goes last so a "PRODUCT BUG: ..." line keeps its label prefix (callers split on it).
++          const lines = r.invariantViolations.length
++            ? r.invariantViolations
++            : [r.error ?? "TEST BUG: warm-up burst not ok"];
++          for (const line of lines) violations.push(`${line} [warmup ${attempt}]`);
++        }
+       } catch (err) {
+         // Setup or cleanup is broken: the same would break the trials, so say so (TEST BUG), do not hide it.
+--- a/tests/unit/rerun-on-spread.test.ts
++++ b/tests/unit/rerun-on-spread.test.ts
+@@ -395,11 +395,12 @@ describe("createRerunRunner.warmup", () => {
+   });
+
+-  it("a violation inside a warm-up is recorded but is not part of the verdict", async () => {
++  it("a product violation inside a warm-up fails the case, tagged warmup, but its counts stay out", async () => {
+     const runner = createRerunRunner(POLICY, 1);
+     await runner.warmup(async () =>
+-      record(0, 1, {
++      record(0, 9, {
+         ok: false,
+         error: "PRODUCT BUG: x",
+-        invariantViolations: ["PRODUCT BUG: x"],
++        statusCounts: { "500": 3 },
++        invariantViolations: ["PRODUCT BUG: x", "PRODUCT BUG: y"],
+       }),
+     );
+@@ -408,6 +409,15 @@ describe("createRerunRunner.warmup", () => {
+     runner.applyTo(h);
+     assert.equal(h.warmup[0]?.ok, false);
+-    assert.deepEqual(h.warmup[0]?.invariantViolations, ["PRODUCT BUG: x"]);
+-    assert.deepEqual(h.invariantViolations, []);
++    assert.deepEqual(h.warmup[0]?.invariantViolations, ["PRODUCT BUG: x", "PRODUCT BUG: y"]);
++    // top level: every line, tagged, label prefix kept (Documenso splits product and test lines on it)
++    assert.deepEqual(h.invariantViolations, [
++      "PRODUCT BUG: x [warmup 1]",
++      "PRODUCT BUG: y [warmup 1]",
++    ]);
++    assert.ok(h.invariantViolations.every((v) => v.startsWith("PRODUCT BUG")));
++    // spread and status counts of the warm-up are still excluded
++    assert.deepEqual(h.statusCounts, { "200": 1, "400": 1 });
++    assert.deepEqual(h.dispatchSpreadMs, { min: 1, max: 1, mean: 1 });
++    assert.equal(h.invalidTrials, 0);
+     assert.deepEqual(h.trials, [
+       { trial: 1, attempts: 1, finalAttempt: 1, outcome: "valid", ok: true },
+@@ -415,4 +425,12 @@ describe("createRerunRunner.warmup", () => {
+   });
+
++  it("a warm-up with ok false and no violation line still fails the case", async () => {
++    const runner = createRerunRunner(POLICY, 1);
++    await runner.warmup(async () => record(0, 1, { ok: false, error: "TEST BUG: y" }));
++    const h = histogramFor(1);
++    runner.applyTo(h);
++    assert.deepEqual(h.invariantViolations, ["TEST BUG: y [warmup 1]"]);
++  });
++
+   it("a warm-up that throws is recorded and fails the case as a TEST BUG, without throwing", async () => {
+     const runner = createRerunRunner(POLICY, 1);
+```
+
+README: the warm-up bullet now says a product violation fails the case (tagged), instead of "not part of the verdict".
+
 ## 9. Data isolation, cleanup and leak check
 
 - **Names.** `attemptTag(trial, attempt)` is `t<trial>` for attempt 1 (today's name, so nothing existing changes) and
@@ -2743,7 +2826,7 @@ Nothing changes. No new package, no new host, no setup-script change, nothing pa
 |                       | fires nothing when `RACE_WARMUP_BURSTS` is 0                                                 | D28              |
 |                       | recorded with its spread; left out of statusCounts, trials, attempts, spread and verdict     | D28              |
 |                       | does not use up the invalid-attempt budget                                                   | D28              |
-|                       | a violation inside a warm-up is recorded but not part of the verdict                         | D28              |
+|                       | a product violation inside a warm-up fails the case, tagged warmup (commit 10)               | D28              |
 |                       | a warm-up that throws is recorded and fails the case as a TEST BUG, without throwing         | D28              |
 
 Each test builds its records with `record(trial, spreadMs, over)` and plays spreads back with `script(trial, spreads)`;
@@ -3861,6 +3944,8 @@ Build commits:
    `src/{medusa,cal,documenso}/run-case.ts`, the three `*self-test.spec.ts`,
    `tests/unit/{rerun-on-spread,env,histogram}.test.ts`, `README.md`, `.env.example`.
 9. `docs(plans): sync the phase 2 roadmap with task 1`: `docs/plans/2026-10-22-p6-phase2-roadmap.md`.
+10. `fix(races): fail the case on a product violation seen in a warm-up burst`: `src/races/rerun-on-spread.ts`,
+    `tests/unit/rerun-on-spread.test.ts`, `README.md`, this plan (R11, D28, §8.11, §8.13).
 
 Environment identity (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`) is kept. No co-author, tool-attribution or session trailer
 lines (AGENTS.md), in commits or in the PR body. `git status --short` before each commit lists only that commit's
@@ -4066,9 +4151,14 @@ Replace the three "Spread ≥" bullets, the label row and the Documenso baseline
   old shape breaks. The in-repo readers (`src/ci/race-table.ts` and the specs) are updated here, and the race table
   still reads old histograms.
 - **R10 Old histograms.** The release zips lack the new fields. The race table treats them as valid and shows `n/a`.
-- **R11 The warm-up hides a product violation.** A violation seen only in a warm-up is recorded in `warmup[]` and not in
-  the verdict (owner decision). A real bug would also appear in the trials; a bug that only a first call shows would
-  not, which is the price of the decision. The warm-up record keeps `ok` and the violation lines so it can be seen.
+- **R11 A violation in a warm-up (amended, build commit 10).** Revision 2 left a product violation seen only in a
+  warm-up out of the verdict, which could hide a bug that only a first call shows. Commit 10 closes that: any
+  violation in a warm-up fails the case and appears in the top-level `invariantViolations`, tagged `[warmup N]` after its
+  label (so Documenso's split on the `PRODUCT BUG` prefix still works, and a `test.fail()` proof such as
+  `P6-DOC-RACE-001` still sees the line as a product violation). Only the warm-up's spread and status counts stay out of
+  the verdict and the histogram counts. Residual risk: a `test.fail()` case that reproduces its bug in every burst
+  (`P6-DOC-RACE-001`, `P6-CAL-RACE-003`) now also lists the warm-up's line; the proof counters (`doubleSealTrials`,
+  `overlapPairs`) still count trials and attempts only.
 - **R12 Warm-up cost.** One extra burst per concurrent case: about 1.2 s on Cal, at most 16.5 s on Medusa
   `P6-MED-RACE-001`, about 7 s on Documenso. Inside every existing timeout (D24).
 - **R13 Warm-up data on Cal.** A warm-up booking consumes one slot from the allocator and is cancelled in `finally`;
@@ -4130,7 +4220,7 @@ Replace the three "Spread ≥" bullets, the label row and the Documenso baseline
   with trial index 0; its own fresh setup and cleanup exactly like a trial (it is the same attempt function); excluded
   from the verdict, `statusCounts`, the spread aggregates, `trials[]`, `attempts[]`, the invalid counters and the
   budget; recorded in `warmup[]` with its spread; never rerun; a warm-up that throws fails the case (TEST BUG), a
-  violation seen only in a warm-up does not (owner decision, R11). Rerun-on-spread stays the backstop. Its own step and
+  product violation in a warm-up also fails the case, tagged `[warmup N]` (amended in build commit 10, R11). Rerun-on-spread stays the backstop. Its own step and
   commit after the core change (Step 8), with unit tests. Standard: this is the benchmarking "warm-up iteration".
   Rejected: counting the warm-up as trial 1 (it would hide the cold burst inside the verdict); rerunning a warm-up.
 - **D29 The build PR syncs the roadmap (owner, Q4).** D2 to D4 become "agreed 2026-10-22", the Task 1 file list is the

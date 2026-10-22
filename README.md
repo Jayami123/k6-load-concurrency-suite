@@ -74,12 +74,14 @@ product check:
   booking, oversell, 5xx) use every attempt.
 - **Warm-up.** The first burst of a run is the slowest: on `P6-CAL-RACE-001` 9 of 13 slow bursts were trial 1 (plan
   §2.3). Before trial 1 each case fires `RACE_WARMUP_BURSTS` (default 1) untimed warm-up burst(s): trial index 0,
-  its own fresh setup and cleanup exactly like a trial, never rerun. A warm-up is **not** a trial: it is left out of
-  the verdict, `statusCounts`, the spread aggregates, `trials[]`, `attempts[]` and the invalid budget. The evidence
-  keeps it in `warmup[]` (attempt, `dispatchSpreadMs`, `statusCounts`, `ok`, violations). A warm-up whose setup throws
-  fails the case as a TEST BUG; a product violation seen only in a warm-up is recorded in `warmup[]` but is not part of
-  the verdict. The sequential controls (`extra-overlap-sequential`, `extra-doc-sequential-control`) fire no burst and
-  have no warm-up. Rerun-on-spread stays as the backstop for a trial that is still too wide.
+  its own fresh setup and cleanup exactly like a trial, never rerun. A warm-up is **not** a trial: its spread and
+  status counts are left out of `statusCounts`, the spread aggregates, `trials[]`, `attempts[]` and the invalid budget,
+  and the spread never makes it invalid. The evidence keeps it in `warmup[]` (attempt, `dispatchSpreadMs`,
+  `statusCounts`, `ok`, violations). **A product invariant violation seen in a warm-up fails the case**: each line is
+  added to the top-level `invariantViolations`, tagged `[warmup N]` after its label (for example
+  `PRODUCT BUG: ... [warmup 1]`). A warm-up whose setup throws also fails the case, as a TEST BUG. The sequential
+  controls (`extra-overlap-sequential`, `extra-doc-sequential-control`) fire no burst and have no warm-up.
+  Rerun-on-spread stays as the backstop for a trial that is still too wide.
 - Limits stop a runner that is too noisy. Reaching the per-trial cap, or spending the per-case budget, fails the case
   as **TEST BUG: runner too noisy**, with every attempt kept. The budget is
   `max(RACE_MIN_INVALID_BUDGET, ceil(trials × RACE_MAX_INVALID_SHARE_PCT / 100))` invalid attempts.

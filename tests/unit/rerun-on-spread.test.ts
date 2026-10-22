@@ -394,24 +394,42 @@ describe("createRerunRunner.warmup", () => {
     assert.equal(got.valid, true);
   });
 
-  it("a violation inside a warm-up is recorded but is not part of the verdict", async () => {
+  it("a product violation inside a warm-up fails the case, tagged warmup, but its counts stay out", async () => {
     const runner = createRerunRunner(POLICY, 1);
     await runner.warmup(async () =>
-      record(0, 1, {
+      record(0, 9, {
         ok: false,
         error: "PRODUCT BUG: x",
-        invariantViolations: ["PRODUCT BUG: x"],
+        statusCounts: { "500": 3 },
+        invariantViolations: ["PRODUCT BUG: x", "PRODUCT BUG: y"],
       }),
     );
     await runner.runTrial(1, script(1, [1]).fn);
     const h = histogramFor(1);
     runner.applyTo(h);
     assert.equal(h.warmup[0]?.ok, false);
-    assert.deepEqual(h.warmup[0]?.invariantViolations, ["PRODUCT BUG: x"]);
-    assert.deepEqual(h.invariantViolations, []);
+    assert.deepEqual(h.warmup[0]?.invariantViolations, ["PRODUCT BUG: x", "PRODUCT BUG: y"]);
+    // top level: every line, tagged, label prefix kept (Documenso splits product and test lines on it)
+    assert.deepEqual(h.invariantViolations, [
+      "PRODUCT BUG: x [warmup 1]",
+      "PRODUCT BUG: y [warmup 1]",
+    ]);
+    assert.ok(h.invariantViolations.every((v) => v.startsWith("PRODUCT BUG")));
+    // spread and status counts of the warm-up are still excluded
+    assert.deepEqual(h.statusCounts, { "200": 1, "400": 1 });
+    assert.deepEqual(h.dispatchSpreadMs, { min: 1, max: 1, mean: 1 });
+    assert.equal(h.invalidTrials, 0);
     assert.deepEqual(h.trials, [
       { trial: 1, attempts: 1, finalAttempt: 1, outcome: "valid", ok: true },
     ]);
+  });
+
+  it("a warm-up with ok false and no violation line still fails the case", async () => {
+    const runner = createRerunRunner(POLICY, 1);
+    await runner.warmup(async () => record(0, 1, { ok: false, error: "TEST BUG: y" }));
+    const h = histogramFor(1);
+    runner.applyTo(h);
+    assert.deepEqual(h.invariantViolations, ["TEST BUG: y [warmup 1]"]);
   });
 
   it("a warm-up that throws is recorded and fails the case as a TEST BUG, without throwing", async () => {

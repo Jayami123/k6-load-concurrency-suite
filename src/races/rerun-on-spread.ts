@@ -64,6 +64,8 @@ export interface RerunRunner {
   /**
    * Fires the untimed warm-up burst(s) before trial 1. Call it before runTrials, with an attempt function that
    * uses trial index 0. Never throws, never reruns, never counts as a trial: the record goes to histogram.warmup.
+   * Its spread and status counts stay out of the verdict and every count, but a product violation in it fails the
+   * case: each violation line is added to the runner's violations, tagged "[warmup N]".
    */
   warmup(attemptFn: AttemptFn): Promise<void>;
   /** Every burst that was fired for a trial (valid and invalid), in firing order. Warm-ups are not in it. */
@@ -174,6 +176,13 @@ export function createRerunRunner(policy: SpreadPolicy, trials: number): RerunRu
           invariantViolations: r.invariantViolations,
           ...(r.error === undefined ? {} : { error: r.error }),
         });
+        if (!r.ok) {
+          // The tag goes last so a "PRODUCT BUG: ..." line keeps its label prefix (callers split on it).
+          const lines = r.invariantViolations.length
+            ? r.invariantViolations
+            : [r.error ?? "TEST BUG: warm-up burst not ok"];
+          for (const line of lines) violations.push(`${line} [warmup ${attempt}]`);
+        }
       } catch (err) {
         // Setup or cleanup is broken: the same would break the trials, so say so (TEST BUG), do not hide it.
         const message = err instanceof Error ? err.message : String(err);
