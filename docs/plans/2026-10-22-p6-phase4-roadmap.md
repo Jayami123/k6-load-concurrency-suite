@@ -114,7 +114,7 @@ single use**, and for load: **a measurement is valid only if the generator was n
 long-running process does not grow without bound**, and **a regression is called only above the
 measured noise**. Each task has one line on what it proves and how it transfers to finance and
 healthcare. Extras found in a source are listed as **proposed extras** with a new ID; they are not
-in scope until the maintainer accepts them.
+in scope until the maintainer accepts them (the extras accepted on 2026-10-22 are in D17).
 
 ## Already done / assumed from Phases 2–3
 
@@ -129,36 +129,41 @@ in scope until the maintainer accepts them.
 
 ## Phase 4 cases
 
-| Case ID           | Group                   | Summary                                                                                                      | Pri |
-| ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ | --- |
-| `P6-RULE-006`     | rule                    | Knees are step ranges with the stop rule and run IDs, never a single "max RPS"                               | —   |
-| `P6-CAL-LOAD-005` | knee                    | Cal booking-journey knee: held ramping-arrival-rate steps; step range; first saturated resource              | P0  |
-| `P6-MED-LOAD-004` | knee                    | Medusa checkout-journey knee; high stock so stock-out never ends the run                                     | P0  |
-| `P6-DOC-LOAD-005` | knee                    | Documenso signing-journey knee, plus seal-lag growth per step                                                | P1  |
-| `P6-CAL-LOAD-003` | steady baseline         | Cal constant-arrival-rate journey at 50% of the knee; p50/p95/p99, errors, drops, telemetry; overlap audit   | —   |
-| `P6-MED-LOAD-002` | steady (re-run)         | Phase 3 conservation case re-run at 50% of the Medusa knee                                                   | P0  |
-| `P6-CAL-LOAD-004` | backpressure + recovery | Spike to 150% of the knee and back; no 5xx storm; refusals 4xx with a body; recovery time (characterisation) | —   |
-| `P6-MED-LOAD-003` | backpressure + recovery | Same contract on checkout; post-spike stock invariant holds                                                  | —   |
-| `P6-DOC-LOAD-004` | backpressure + recovery | Limiter-covered routes 429 (never 500); others no 5xx storm; recovery time; links to `P6-OBS-DOC-001`        | —   |
-| `P6-CAL-LOAD-008` | soak                    | RSS / fds / pg connections slope; p95 drift first vs last window; DB growth tracked separately               | —   |
-| `P6-MED-LOAD-005` | soak                    | Same, plus Redis / event-bus backlog if present                                                              | —   |
-| `P6-DOC-LOAD-006` | soak                    | Web-process RSS / fds slope (it runs the jobs); pending-job backlog stays bounded                            | —   |
-| `P6-CAL-LOAD-002` | invariant under load    | Arrival-rate burst on one free slot inside steady load: exactly one ACCEPTED                                 | P0  |
-| `P6-CAL-LOAD-006` | invariant under load    | Stale read: after a booking's 2xx, `getSchedule` never offers the slot again (cache to verify)               | P1  |
-| `P6-DOC-LOAD-003` | invariant under load    | Exactly-once seal / audit / webhook / email under load; parallel pairs counted under `P6-OBS-DOC-002`        | P1  |
-| `P6-MED-LOAD-007` | invariant under load    | Two-instance conservation: orders ≤ stock across instances; no duplicate order per cart                      | P1  |
-| `P6-MED-LOAD-008` | invariant under load    | Ledger conservation with promo / gift card on a share of carts, on the money oracles that landed             | P1  |
-| `P6-MED-LOAD-009` | invariant under load    | Double cancel and cancel-vs-fulfil fired inside steady load: one terminal transition                         | P2  |
-| `P6-RULE-004`     | rule                    | No A/B gate until an A/A run set exists; the tolerance cites its run IDs                                     | —   |
-| `P6-X-LOAD-003`   | gate                    | Noise-aware regression gate: A/A, then interleaved A/B (≥ 3 each), ratio of medians vs A/A-derived tolerance | P1  |
-| —                 | publish                 | Dashboard publish + README with measured numbers                                                             | —   |
+| Case ID           | Group                         | Summary                                                                                                                | Pri |
+| ----------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --- |
+| `P6-RULE-006`     | rule                          | Knees are step ranges with the stop rule and run IDs, never a single "max RPS"                                         | —   |
+| `P6-CAL-LOAD-005` | knee                          | Cal booking-journey knee: held ramping-arrival-rate steps; step range; first saturated resource                        | P0  |
+| `P6-MED-LOAD-004` | knee                          | Medusa checkout-journey knee; high stock so stock-out never ends the run                                               | P0  |
+| `P6-DOC-LOAD-005` | knee                          | Documenso signing-journey knee, plus seal-lag growth per step                                                          | P1  |
+| `P6-CAL-LOAD-003` | steady baseline               | Cal constant-arrival-rate journey at 50% of the knee; p50/p95/p99, errors, drops, telemetry; overlap audit             | —   |
+| `P6-MED-LOAD-002` | steady (re-run)               | Phase 3 conservation case re-run at 50% of the Medusa knee                                                             | P0  |
+| `P6-CAL-LOAD-004` | backpressure + recovery       | Spike to 150% of the knee and back; no 5xx storm; refusals 4xx with a body; recovery time (characterisation)           | —   |
+| `P6-MED-LOAD-003` | backpressure + recovery       | Same contract on checkout; post-spike stock invariant holds                                                            | —   |
+| `P6-DOC-LOAD-004` | backpressure + recovery       | Limiter-covered routes 429 (never 500); others no 5xx storm; recovery time; links to `P6-OBS-DOC-001`                  | —   |
+| `P6-DOC-LOAD-009` | backpressure (accepted extra) | 429 body + headers on every limiter-covered route, on the production-like limiter profile (D12)                        | —   |
+| `P6-MED-LOAD-010` | recovery (accepted extra)     | Post-spike reservation release: abandoned spike carts leave no reservation that blocks stock                           | —   |
+| `P6-CAL-LOAD-010` | recovery (accepted extra)     | Post-spike slot-hold release: no held reservation keeps a free slot unavailable (gated on `reserveSlot`)               | —   |
+| `P6-CAL-LOAD-008` | soak                          | RSS / fds / pg connections slope; p95 drift first vs last window; DB growth tracked separately                         | —   |
+| `P6-MED-LOAD-005` | soak                          | Same, plus Redis / event-bus backlog if present                                                                        | —   |
+| `P6-DOC-LOAD-006` | soak                          | Web-process RSS / fds slope (it runs the jobs); pending-job backlog stays bounded                                      | —   |
+| `P6-CAL-LOAD-002` | invariant under load          | Arrival-rate burst on one free slot inside steady load: exactly one ACCEPTED                                           | P0  |
+| `P6-CAL-LOAD-006` | invariant under load          | Stale read: after commit, slot never offered again, or offered at most cache TTL + margin if the cache is active (D15) | P1  |
+| `P6-DOC-LOAD-003` | invariant under load          | Exactly-once seal / audit / webhook / email under load; parallel pairs counted under `P6-OBS-DOC-002`                  | P1  |
+| `P6-MED-LOAD-007` | invariant under load          | Two-instance conservation: orders ≤ stock across instances; no duplicate order per cart                                | P1  |
+| `P6-MED-LOAD-008` | invariant under load          | Ledger conservation with promo / gift card on a share of carts, on the money oracles that landed                       | P1  |
+| `P6-MED-LOAD-009` | invariant under load          | Double cancel and cancel-vs-fulfil fired inside steady load: one terminal transition                                   | P2  |
+| `P6-RULE-004`     | rule                          | No A/B gate until an A/A run set exists; the tolerance cites its run IDs                                               | —   |
+| `P6-X-LOAD-003`   | gate                          | Noise-aware regression gate: A/A, then interleaved A/B (≥ 3 each), ratio of medians vs A/A-derived tolerance           | P1  |
+| `P6-X-LOAD-008`   | gate (accepted extra)         | Gate self-test: fails on a deliberately slowed candidate, passes on an unchanged one                                   | —   |
+| —                 | publish                       | Dashboard publish on GitHub Pages + README with measured numbers; three showcases (D9, D10)                            | —   |
 
 "—" in Pri: the source gives none; the task's plan proposes one.
 
-## Phase 4 is too big for one phase: proposed split (D11)
+## Phase 4 is split into 4a and 4b (D11, agreed 2026-10-22)
 
 Fourteen tasks, three knees that each need ≥ 3 valid runs, a new scheduled workflow, a two-ref gate
-and a dashboard. The proposal is to keep every ID and split into two sub-phases with their own exit:
+and a dashboard are too much for one phase. Every ID and task number is kept; the two sub-phases
+have their own exit:
 
 - **Phase 4a — limits** (Tasks 1–6): breakpoint method + `P6-RULE-006`, the three knees, steady
   baselines at 50%, spikes at 150%. Exit: knee ranges for 3 products from ≥ 3 valid runs; baselines
@@ -168,28 +173,30 @@ and a dashboard. The proposal is to keep every ID and split into two sub-phases 
   invariants-under-load cases, A/A + `P6-RULE-004`, the A/B gate, dashboard, closeout. Exit: the
   proposal's Phase 4 exit (A/A noise measured; gate live) and the final release `p6-phase4`.
 
-Whether to split is the maintainer's call (D11). The task numbers below are the same either way.
+Phase 4a closes with its own interim release before Phase 4b starts its exit work; Phase 4b's
+closeout (Task 14) cites both releases.
 
 ## Task table
 
-| Task | Title                                | Cases                                                   | Depends on (exact)                                                         | Branch                                 | Parallel with |
-| ---- | ------------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------- | ------------- |
-| 1    | Breakpoint method + knee report      | `P6-RULE-006` (method self-tested on the stub)          | Phase 3 Tasks 3, 4, 5, 6                                                   | `feat/<date>-p6-breakpoint-method`     | —             |
-| 2    | Cal knee                             | `P6-CAL-LOAD-005`                                       | 1; Phase 3 Task 7 (`P6-CAL-LOAD-001`), Task 11 (smoke p95 median)          | `feat/<date>-p6-cal-knee`              | 3, 4          |
-| 3    | Medusa knee                          | `P6-MED-LOAD-004`                                       | 1; Phase 3 Task 7 (`P6-MED-LOAD-001`), Task 11                             | `feat/<date>-p6-med-knee`              | 2, 4          |
-| 4    | Documenso knee + seal lag            | `P6-DOC-LOAD-005`                                       | 1; Phase 3 Task 7 (`P6-DOC-LOAD-001`), Task 9 (`pipeline-lag.ts`), Task 11 | `feat/<date>-p6-doc-knee`              | 2, 3          |
-| 5    | Steady baselines at 50%              | `P6-CAL-LOAD-003`, `P6-MED-LOAD-002` (re-run)           | 2, 3; Phase 3 Task 8 (`P6-MED-LOAD-002`)                                   | `feat/<date>-p6-steady-baselines`      | 6 (Documenso) |
-| 6    | Spikes at 150% + recovery            | `P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004` | 2, 3, 4, 5 (baseline band)                                                 | `feat/<date>-p6-spike-recovery`        | 7             |
-| 7    | Soak workflow + soaks                | `P6-CAL-LOAD-008`, `P6-MED-LOAD-005`, `P6-DOC-LOAD-006` | 2, 3, 4 (rate below knee)                                                  | `feat/<date>-p6-soak-workflow`         | 6, 8, 9, 10   |
-| 8    | Cal invariants under load            | `P6-CAL-LOAD-002`, `P6-CAL-LOAD-006`                    | 5 (`P6-CAL-LOAD-003` steady rate)                                          | `feat/<date>-p6-cal-load-invariants`   | 7, 9, 10      |
-| 9    | Documenso exactly-once under load    | `P6-DOC-LOAD-003`                                       | 4 (steady rate from the knee); Phase 3 Task 9                              | `feat/<date>-p6-doc-load-exactly-once` | 7, 8, 10      |
-| 10   | Medusa invariants under load         | `P6-MED-LOAD-007`, `P6-MED-LOAD-008`, `P6-MED-LOAD-009` | 5; Phase 3 Tasks 1–2; Phase 2 Tasks 2–3                                    | `feat/<date>-p6-med-load-invariants`   | 7, 8, 9       |
-| 11   | A/A noise + tolerance                | `P6-RULE-004` (A/A half of `P6-X-LOAD-003`)             | 5                                                                          | `feat/<date>-p6-aa-noise`              | 7–10          |
-| 12   | A/B regression gate                  | `P6-X-LOAD-003`                                         | 11                                                                         | `feat/<date>-p6-ab-gate`               | 13            |
-| 13   | Dashboard (GitHub Pages) + showcases | dashboard publish                                       | 2–12 (data); Pages setting by hand                                         | `feat/<date>-p6-dashboard`             | 12            |
-| 14   | Phase 4 closeout                     | all Phase 4 cases (evidence only)                       | 1–13                                                                       | `docs/<date>-p6-phase4-closeout`       | —             |
+| Task | Title                                | Cases                                                                                                                    | Depends on (exact)                                                         | Branch                                 | Parallel with |
+| ---- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------- | ------------- |
+| 1    | Breakpoint method + knee report      | `P6-RULE-006` (method self-tested on the stub)                                                                           | Phase 3 Tasks 3, 4, 5, 6                                                   | `feat/<date>-p6-breakpoint-method`     | —             |
+| 2    | Cal knee                             | `P6-CAL-LOAD-005`                                                                                                        | 1; Phase 3 Task 7 (`P6-CAL-LOAD-001`), Task 11 (smoke p95 median)          | `feat/<date>-p6-cal-knee`              | 3, 4          |
+| 3    | Medusa knee                          | `P6-MED-LOAD-004`                                                                                                        | 1; Phase 3 Task 7 (`P6-MED-LOAD-001`), Task 11                             | `feat/<date>-p6-med-knee`              | 2, 4          |
+| 4    | Documenso knee + seal lag            | `P6-DOC-LOAD-005`                                                                                                        | 1; Phase 3 Task 7 (`P6-DOC-LOAD-001`), Task 9 (`pipeline-lag.ts`), Task 11 | `feat/<date>-p6-doc-knee`              | 2, 3          |
+| 5    | Steady baselines at 50%              | `P6-CAL-LOAD-003`, `P6-MED-LOAD-002` (re-run)                                                                            | 2, 3; Phase 3 Task 8 (`P6-MED-LOAD-002`)                                   | `feat/<date>-p6-steady-baselines`      | 6 (Documenso) |
+| 6    | Spikes at 150% + recovery            | `P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`, `P6-DOC-LOAD-009`, `P6-MED-LOAD-010`, `P6-CAL-LOAD-010` (gated) | 2, 3, 4, 5 (baseline band)                                                 | `feat/<date>-p6-spike-recovery`        | 7             |
+| 7    | Soak workflow + soaks                | `P6-CAL-LOAD-008`, `P6-MED-LOAD-005`, `P6-DOC-LOAD-006`                                                                  | 2, 3, 4 (rate below knee)                                                  | `feat/<date>-p6-soak-workflow`         | 6, 8, 9, 10   |
+| 8    | Cal invariants under load            | `P6-CAL-LOAD-002`, `P6-CAL-LOAD-006`                                                                                     | 5 (`P6-CAL-LOAD-003` steady rate)                                          | `feat/<date>-p6-cal-load-invariants`   | 7, 9, 10      |
+| 9    | Documenso exactly-once under load    | `P6-DOC-LOAD-003`                                                                                                        | 4 (steady rate from the knee); Phase 3 Task 9                              | `feat/<date>-p6-doc-load-exactly-once` | 7, 8, 10      |
+| 10   | Medusa invariants under load         | `P6-MED-LOAD-007`, `P6-MED-LOAD-008`, `P6-MED-LOAD-009`                                                                  | 5; Phase 3 Tasks 1–2; Phase 2 Tasks 2–3                                    | `feat/<date>-p6-med-load-invariants`   | 7, 8, 9       |
+| 11   | A/A noise + tolerance                | `P6-RULE-004` (A/A half of `P6-X-LOAD-003`)                                                                              | 5                                                                          | `feat/<date>-p6-aa-noise`              | 7–10          |
+| 12   | A/B regression gate                  | `P6-X-LOAD-003`, `P6-X-LOAD-008`                                                                                         | 11                                                                         | `feat/<date>-p6-ab-gate`               | 13            |
+| 13   | Dashboard (GitHub Pages) + showcases | dashboard publish, three showcases                                                                                       | 2–12 (data); Pages setting by hand                                         | `feat/<date>-p6-dashboard`             | 12            |
+| 14   | Phase 4 closeout (4b)                | all Phase 4 cases (evidence only); release `p6-phase4`                                                                   | 1–13                                                                       | `docs/<date>-p6-phase4-closeout`       | —             |
 
-PRs that edit a workflow merge one at a time and rebase on each other. Only one product stack runs
+Phase 4a = Tasks 1–6 (closes with the interim release `p6-phase4a`, Task 6's done-when); Phase 4b
+= Tasks 7–14. PRs that edit a workflow merge one at a time and rebase on each other. Only one product stack runs
 at a time on a cloud VM.
 
 ```mermaid
@@ -220,13 +227,23 @@ flowchart LR
   T9 --> T14
   T10 --> T14
   T13 --> T14
-  subgraph p4a["Phase 4a (if split)"]
+  subgraph p4a["Phase 4a: release p6-phase4a"]
     T1
     T2
     T3
     T4
     T5
     T6
+  end
+  subgraph p4b["Phase 4b: release p6-phase4"]
+    T7
+    T8
+    T9
+    T10
+    T11
+    T12
+    T13
+    T14
   end
 ```
 
@@ -250,20 +267,24 @@ kept. Points from the sources that bear on it:
    headroom at 150% on a shared runner, or the spike is reduced and the plan says why.
 5. **Documenso's limiter is off in every P6 start.** `scripts/harness.mjs` line 33 forces
    `DANGEROUS_BYPASS_RATE_LIMITS=true` unless already set. `P6-DOC-LOAD-004`'s 429 assertions need a
-   Documenso start with the bypass off (D12), in its own step, because the races and journeys need
-   it on.
+   Documenso start with the bypass off, in its own step, because the races and journeys need it on.
+   D12 (agreed) names that start the **production-like limiter profile**: a configuration profile,
+   not a workaround.
 6. **Cal has no offline limiter.** `rateLimit.ts` lines 34–41 disable it without `UNKEY_ROOT_KEY`,
    and Unkey is a hosted service, so `P6-CAL-LOAD-004` is a characterisation (as the proposal
    expected), not a 429 contract.
 7. **`P6-CAL-LOAD-006` and the slot cache.** If the Redis slot cache (`util.ts` line 79, TTL
    2000 ms) is active in the harness stack, a stale offer within the TTL is by design and "never
-   offered again after commit" would be the wrong assertion. D15 sets the contract after the probe.
+   offered again after commit" would be the wrong assertion. D15 (agreed) sets both contracts; the
+   Task 8 probe records which applies.
 8. **The evidence release drops non-JSON artefacts.** `evidence-release.yml` "Check each run, then
    download its artefacts" deletes every file that is not `*.json` or `*.log`, so HTML charts,
-   CSV telemetry and k6 output in other formats never reach the release. Phase 3 Task 11's probe
-   already checks this; if Phase 3 does not fix it, Task 14 must (D14).
-9. **Threshold file location.** The proposal says the tolerance lives in `thresholds/`; master plan
-   §2 names `k6/thresholds/baseline.json`. D13 picks one.
+   CSV telemetry and k6 output in other formats never reach the release. D14 (agreed): the filter is
+   widened in **Phase 3 Task 11** to an explicit extension allowlist (tracked in the maintainer's
+   backlog; this branch does not edit the Phase 3 roadmap); Phase 4 only verifies it (Task 6 for
+   `p6-phase4a`, Task 14 for `p6-phase4`).
+9. **Threshold file location.** The proposal says `thresholds/`; master plan §2 names
+   `k6/thresholds/baseline.json`. D13 (agreed): `k6/thresholds/`.
 10. **Master-plan Phase 4 items:** "multi-instance Medusa" moved to Phase 3; "stress/spike" and
     "dashboard publish" stay here; master plan's `P6-*-LOAD-003/004` names ("ramp to baseline RPS",
     "stress then spike") are redefined by the proposal (Phase 3 roadmap Note 5 pattern).
@@ -325,7 +346,7 @@ check` green.
   post-load audit (no overlapping ACCEPTED pairs, `HOST_OVERLAP_SQL`; `P6-OBS-CAL-002` counted under
   its ID); ≥ 3 valid runs; the knee range, its spread across runs and the first saturated resource.
 - **Files likely touched.** `k6/cases/cal-load-005.js`, `src/load/reconcile/cal.ts` (Phase 3 Task 6),
-  `.github/workflows/perf.yml` (or the dispatch-only knee workflow, D16), `README.md`.
+  `.github/workflows/perf.yml` (or a dispatch + weekly-Saturday knee workflow, D16), `README.md`.
 - **The live probe must confirm.** Slot supply for the whole ramp (each booking consumes a slot;
   Phase 1 allocator, and the README note that PENDING bookings count as busy); whether the
   `BotDetectionService` in `event.ts` lines 30–35 refuses k6 traffic; step plan that reaches the
@@ -333,8 +354,8 @@ check` green.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task2-cal-knee.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **CI change.** Knee runs are `workflow_dispatch` (and optionally weekly) only, never on PRs; PRs
-  run the stub self-test of Task 1 (D16).
+- **CI change.** Knee runs are `workflow_dispatch` plus a weekly Saturday schedule on `main`, never
+  on PRs (soaks own Sunday); PRs run the stub self-test of Task 1 (D16).
 - **Done when.** ≥ 3 VALID dispatch runs on `main` each with a knee range, stop reason, first
   saturated resource and a clean audit (or a recorded product bug); the ranges and their spread in
   the job summary; `npm run check` green.
@@ -362,7 +383,7 @@ check` green.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task3-med-knee.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **CI change.** Dispatch-only knee step (D16).
+- **CI change.** Knee step on `workflow_dispatch` plus weekly Saturday (D16).
 - **Done when.** ≥ 3 VALID runs with a knee range, stop reason, first saturated resource and a clean
   audit (or a recorded product bug); `npm run check` green.
 - **Main risks.** Checkout setup cost dominating the step; the lock mode changing the knee (the
@@ -388,7 +409,7 @@ check` green.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task4-doc-knee.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **CI change.** Dispatch-only knee step (D16).
+- **CI change.** Knee step on `workflow_dispatch` plus weekly Saturday (D16).
 - **Done when.** ≥ 3 VALID runs with a knee range, per-step seal lag, stop reason, first saturated
   resource, drained backlog and a clean audit; `npm run check` green.
 - **Main risks.** Seal work per document making steps slow; drain longer than the job allows.
@@ -419,10 +440,12 @@ check` green.
 - **Main risks.** The knee spread making 50% land near saturation on a slow runner (INVALID, not
   fail); nightly time.
 
-## Task 6: Spikes at 150% + recovery (`P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`)
+## Task 6: Spikes at 150% + recovery (`P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`, extras)
 
 - **Goal.** Overload is refused cleanly and the system comes back.
-- **Cases.** `P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`.
+- **Cases.** `P6-CAL-LOAD-004`, `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`; accepted extras
+  `P6-DOC-LOAD-009` (429 contract on every covered route), `P6-MED-LOAD-010` (post-spike
+  reservation release), `P6-CAL-LOAD-010` (post-spike slot-hold release; gated).
 - **What it proves / transfers.** Backpressure and recovery: under a burst a trading API or a
   patient portal must refuse with a clear 4xx (or 429), never crash, and return to normal in a
   measured time.
@@ -434,12 +457,24 @@ check` green.
     band; post-spike audit (`P6-X-LOAD-005`).
   - `P6-CAL-LOAD-004`: characterisation (Note 6): no limiter can run offline.
   - `P6-MED-LOAD-003`: post-spike stock invariant holds; no built-in limiter (to verify).
-  - `P6-DOC-LOAD-004`: a separate Documenso start with the limiter on (D12). Covered routes answer
+  - `P6-DOC-LOAD-004`: on the **production-like limiter profile** (D12): a separate Documenso
+    start with `DANGEROUS_BYPASS_RATE_LIMITS=false`, a configuration profile, not a workaround; all
+    other Documenso runs keep the bypass. Covered routes answer
     429, never 500 (`Retry-After` / rate-limit headers asserted only if the probe sees them; the
     Phase 1 429 body was `{"code":"UNKNOWN_ERROR","message":"","statusCode":429}`); other routes: no
     5xx storm; recovery time. Any 500 on the sign-in route links to `P6-OBS-DOC-001` (wrong password
     / CSRF → 500), counted under that ID.
-- **Files likely touched.** `k6/cases/{cal-load-004,med-load-003,doc-load-004}.js`,
+  - `P6-DOC-LOAD-009` (same profile): for **every** limiter-covered route the probe finds, the 429
+    body and the rate-limit headers it sends are asserted (an error-code contract), not only the
+    sign-in route.
+  - `P6-MED-LOAD-010`: after the spike, abandoned carts leave no reservation that blocks stock
+    (`RESERVATION_QTY_SQL` vs live orders, `INVENTORY_LEVEL_SQL`); the release rule (expiry, cart
+    deletion) is what the probe finds, stated in the plan.
+  - `P6-CAL-LOAD-010` (gated): after the spike, no slot hold keeps a free slot unavailable. **Gate:**
+    the Cal journey (Phase 3 Task 7) uses `reserveSlot`
+    (`packages/trpc/server/routers/viewer/slots/reserveSlot.handler.ts` at `CAL_REF`); if it does
+    not, `-010` moves to "Later" with that evidence.
+- **Files likely touched.** `k6/cases/{cal-load-004,med-load-003,doc-load-004,doc-load-009,med-load-010,cal-load-010}.js`,
   `src/load/recovery.ts` (band comparison), `tests/unit/recovery.test.ts`, `perf.yml` (dispatch /
   weekly), `README.md`.
 - **The live probe must confirm.**
@@ -448,18 +483,26 @@ check` green.
   3. Documenso: the rate-limit middleware's location and route coverage at `DOCUMENSO_REF`
      (the proposal's `packages/lib/server-only/rate-limit` is from a local snapshot); whether
      setting `DANGEROUS_BYPASS_RATE_LIMITS=false` before `up:documenso` turns the limiter on
-     (`scripts/harness.mjs` uses `||=`, so a pre-set value wins); the 429 headers.
+     (`scripts/harness.mjs` uses `||=`, so a pre-set value wins); the 429 body and headers per
+     covered route (for `-009`).
   4. Cal: that `UNKEY_ROOT_KEY` is unset in the harness Cal env (`bootstrap.sh` writes the product
      `.env`), and what `BotDetectionService` does under a spike.
   5. The window length for recovery and the 5xx-storm definition.
+  6. Medusa reservation release after abandoned carts (`-010`): which rule frees them and when.
+  7. **Gate for `P6-CAL-LOAD-010`:** whether the Cal journey calls `reserveSlot`, and how a hold is
+     read from the DB.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task6-spike-recovery.md`. Starts with the live
   probe; junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
-- **CI change.** Dispatch and weekly on `main` (D16); the Documenso limiter-on start is its own step
-  with its own `down`.
+- **CI change.** `workflow_dispatch` plus weekly Saturday on `main` (D16); the production-like
+  limiter profile is its own Documenso start with its own `down`.
 - **Done when.** ≥ 3 VALID runs per case with contract results, recovery time and a clean audit (or
-  a recorded product bug / characterisation); Cal labelled characterisation; `npm run check` green.
-- **Main risks.** Generator saturation; the Documenso limiter-on start leaking into other steps;
+  a recorded product bug / characterisation); Cal labelled characterisation; `-009` and `-010`
+  (Medusa) land; `P6-CAL-LOAD-010` lands or is in "Later" with its gate evidence. **Phase 4a
+  closes here:** knee ranges for 3 products from ≥ 3 valid runs, baselines and spikes evidenced, the
+  widened release filter verified (D14), and the interim release `p6-phase4a` published through
+  `evidence-release.yml` with `docs/releases/p6-phase4a.md`; `npm run check` green.
+- **Main risks.** Generator saturation; the limiter profile leaking into other Documenso steps;
   recovery never reached inside the job (recorded, not hidden).
 
 ## Task 7: Soak workflow + soaks (`P6-CAL-LOAD-008`, `P6-MED-LOAD-005`, `P6-DOC-LOAD-006`)
@@ -513,12 +556,16 @@ check` green.
     (`P6-OBS-CAL-003`, [#30376](https://github.com/calcom/cal.diy/issues/30376)) counted as a
     collision-rate-vs-load characterisation.
   - `P6-CAL-LOAD-006`: under journey load, book S; after the 2xx, poll `getSchedule`; record the
-    stale-offer count and time-to-disappear. Contract per D15 (depends on whether the slot cache is
-    active).
+    stale-offer count and time-to-disappear. Contract (D15): if the slot cache is **active**,
+    bounded staleness: S is offered for at most the cache TTL (`DEFAULT_SLOTS_CACHE_TTL = 2000`,
+    `util.ts` line 79) plus a margin set from probe data, and any booking attempt on a stale offer is
+    refused (never a second ACCEPTED). If **inactive**: S is never offered again after commit. The
+    plan and README record which contract applied.
 - **Files likely touched.** `k6/cases/{cal-load-002,cal-load-006}.js`, `src/load/reconcile/cal.ts`,
   a log-grep rule for `Booking_uid_key` (Phase 3 Task 5 log-grep), `perf.yml`, `README.md`.
-- **The live probe must confirm.** Whether `withSlotsCache` (`util.ts` line 104) is active in the
-  harness Cal stack (a real Redis client or a no-op); the `getSchedule` call k6 makes (Phase 3 Task 7
+- **The live probe must confirm.** Whether the `getSchedule` slot cache (`withSlotsCache`,
+  `util.ts` line 104, 2000 ms TTL) is active in the harness Cal stack (a real Redis client or a
+  no-op), recorded with evidence; if active, the margin above the TTL from probe data; the `getSchedule` call k6 makes (Phase 3 Task 7
   defines it); burst size and timing inside steady load; that the Cal web log carries the P2002 line
   without tokens.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task8-cal-load-invariants.md`. Starts with the live
@@ -526,9 +573,10 @@ check` green.
   commands, expected outputs, step order) so a weaker model can build it without guessing.
 - **CI change.** Nightly + dispatch in `cal-smoke` (after the races and leak check).
 - **Done when.** ≥ 3 VALID runs each: `-002` exactly one ACCEPTED per burst with known bugs counted
-  under their IDs; `-006` stale-offer data recorded against its D15 contract; `npm run check` green.
-- **Main risks.** Burst and background competing for slots; a cache making `-006` a design
-  characterisation rather than a bug.
+  under their IDs; `-006` passes the D15 contract that applies (bounded staleness with no second
+  ACCEPTED, or never offered), with the applied contract recorded; `npm run check` green.
+- **Main risks.** Burst and background competing for slots; the cache margin chosen too tight on a
+  slow runner (set from probe data, never tuned to pass).
 
 ## Task 9: Documenso exactly-once under load (`P6-DOC-LOAD-003`)
 
@@ -543,12 +591,15 @@ check` green.
   (`DOCUMENT_COMPLETED_AUDIT_SQL`), webhook (`readWebhookCalls` + receiver) and email set
   (`readCompletedEmailCount`) per document. A share of concurrent last-recipient pairs → known
   `P6-OBS-DOC-002` ([documenso/documenso#3187](https://github.com/documenso/documenso/issues/3187))
-  counted separately; the case turns green for that share if the upstream fix (PR #3353, named by the
-  maintainer; not verified here) lands and the fork pin moves.
+  counted separately. Upstream
+  [documenso/documenso PR #3353](https://github.com/documenso/documenso/pull/3353) is still open
+  (checked 2026-10-22) and only adds a terminal-status entry guard, which may not make concurrent
+  sealing single-winner. So the pair share turns green **only when this test shows exactly one seal
+  per document after a pin move**, not merely because #3353 merges.
 - **Files likely touched.** `k6/cases/doc-load-003.js`, `src/load/reconcile/documenso.ts`,
   `perf.yml`, `README.md`.
 - **The live probe must confirm.** The share of concurrent pairs that keeps the run VALID; the
-  status of documenso/documenso PR #3353; email counting under load (Inbucket, by document id, as
+  status of documenso/documenso PR #3353 on the day the task starts (open on 2026-10-22); email counting under load (Inbucket, by document id, as
   Phase 1 does).
 - **Build plan.** `docs/plans/<date>-p6-phase4-task9-doc-load-exactly-once.md`. Starts with the live
   probe; junior-engineer guide (exact file paths, code skeletons per new function and test, exact
@@ -603,7 +654,7 @@ check` green.
 - **Scope.** Same runner, same job: the steady case run repeatedly on the current pinned ref (≥ 3
   arms, interleaved as A A A …); per metric the A/A spread of medians; the **tolerance** derived from
   it by a documented rule; stored with its source run IDs in the threshold file (D13). No gate yet.
-- **Files likely touched.** `k6/thresholds/` (or `thresholds/`, D13) tolerance file,
+- **Files likely touched.** `k6/thresholds/` tolerance file (D13),
   `src/load/gate/{aa-noise,tolerance}.ts`, `tests/unit/gate-*.test.ts`, a gate workflow (e.g.
   `.github/workflows/gate.yml`, dispatch), `README.md`.
 - **The live probe must confirm.** Arm duration and count that fit one job (stack restarts between
@@ -621,7 +672,7 @@ check` green.
 ## Task 12: A/B regression gate (`P6-X-LOAD-003`)
 
 - **Goal.** A live, noise-aware gate that fails only on repeated regression.
-- **Cases.** `P6-X-LOAD-003` (P1).
+- **Cases.** `P6-X-LOAD-003` (P1); accepted extra `P6-X-LOAD-008` (gate self-test).
 - **What it proves / transfers.** Upgrades and code changes are gated on evidence, not on one noisy
   number: a dependency bump in a payments service or an EHR release is blocked only by a real,
   repeated slowdown.
@@ -635,11 +686,16 @@ check` green.
     `main`, B = PR head.
   - Correctness is never traded: each arm still runs its post-load audit; a failing audit is a
     PRODUCT/TEST BUG, not a gate result.
+  - **`P6-X-LOAD-008` gate self-test:** the gate runs against a candidate with a deliberate, known
+    slowdown (the Phase 3 stub, or a P6 test build) and must **fail**, and against an unchanged
+    candidate and must **pass**. Proves the gate can fail (the "a test that cannot fail is not
+    accepted" rule, applied to the gate).
   - **Cal two-ref build:** A/B with two refs doubles the Cal `next build`; the probe measures it and
     the gate reuses the Phase 1 Cal build cache keyed on ref (`cal-next-${CAL_REF}-h…` in
     `perf.yml`).
 - **Files likely touched.** `.github/workflows/gate.yml` (path and ref-bump triggers),
-  `src/load/gate/{ab-gate,ratio}.ts`, `tests/unit/gate-ab.test.ts`, the tolerance file,
+  `src/load/gate/{ab-gate,ratio}.ts`, `tests/unit/gate-ab.test.ts`, `k6/selftest/gate-slowdown.js`,
+  the tolerance file in `k6/thresholds/`,
   `scripts/bootstrap.sh` (checkout of a second ref, if needed), `README.md` ("How the gate works").
 - **The live probe must confirm.** Job time for 6 arms per product including stack switches (each
   arm on a different ref needs a stack restart, or two stacks side by side if memory allows) under
@@ -652,9 +708,9 @@ check` green.
 - **CI change.** `gate.yml` runs on the triggers; it becomes a required check only if the
   maintainer decides so (repo settings, by hand).
 - **Done when.** The gate runs on one real trigger of each kind (a P6 k6 change, and a ref bump on a
-  probe branch) and passes on an unchanged B; a deliberately slowed candidate is caught (see
-  proposed extra `P6-X-LOAD-008`, if accepted); history stored for the dashboard; `npm run check`
-  green.
+  probe branch) and passes on an unchanged B; `P6-X-LOAD-008` fails on the deliberately slowed
+  candidate and passes on the unchanged one, in CI; history stored for the dashboard; `npm run
+check` green.
 - **Main risks.** Job time; cache misses on the B ref; the gate flaking (the A/A tolerance and the
   "repeated" rule are the defence).
 
@@ -665,31 +721,31 @@ check` green.
 - **What it proves / transfers.** Evidence is published with its environment and run links, readable
   by a reviewer without CI access, as an audit pack would be.
 - **Depends on.** Tasks 2–12 (data); the Pages setting by hand.
-- **Scope (proposed, D9).**
+- **Scope (D9, agreed 2026-10-22; the repo is public).**
   - A static site on GitHub Pages, built by Actions from evidence artefacts; self-contained HTML (no
     CDN, Phase 3 D8): knee charts with the first saturated resource, soak slopes, gate history; every
     number linked to its run and `run-meta.json`; INVALID runs listed, not plotted as results.
-  - Token scan (and gitleaks, as `evidence-release.yml` does) before every publish.
-  - **Alternative:** evidence release only (no Pages). Tradeoffs: Pages is browsable and linkable
-    and always shows the latest, but is public, needs a repo setting and a publish workflow, and
-    adds a second place where a secret could leak; release-only is simpler and already guarded,
-    but readers must download zips.
-  - **Showcases (proposed, D10):** three highlights, each with a "what this proves" note: (1) a knee
-    chart with the bottleneck explained; (2) a soak leak check (slope + plateau verdict); (3) the
-    two-instance Medusa oversell / conservation result (`P6-MED-RACE-002/003`, `P6-MED-LOAD-007`).
+  - The token scan (`scripts/evidence-token-scan.mjs`, and gitleaks as `evidence-release.yml` does)
+    runs over the **built site** before deploy; a hit stops the deploy.
+  - **Showcases (D10, agreed 2026-10-22),** each with a "what this proves" note on the dashboard
+    **and** in README: (a) a knee chart with the first saturated resource named; (b) the soak leak
+    check (slope + plateau verdict); (c) two-instance Medusa conservation (`P6-MED-RACE-002` +
+    `P6-MED-LOAD-007`).
 - **Files likely touched.** `.github/workflows/pages.yml`, `scripts/dashboard/build-site.ts`,
   `tests/unit/build-site.test.ts`, `README.md` (link).
-- **Repo / environment steps.** By hand (maintainer): Settings → Pages → Source "GitHub Actions".
-  Automatic from the repo: `pages.yml`. No Cursor Cloud or Claude Code cloud change.
-- **The live probe must confirm.** That the repo is public (Pages is free for public repos; the
-  visibility is not read here); site size; that the token scan covers the built site.
+- **Repo / environment steps.** The one manual step for the maintainer: **Settings → Pages →
+  Source "GitHub Actions"**. Automatic from the repo: `pages.yml`. No Cursor Cloud or Claude Code
+  cloud change.
+- **The live probe must confirm.** Site size; that the token scan and gitleaks read every file of
+  the built site; the Pages deploy action versions (pinned by SHA, as the other workflows pin
+  actions).
 - **Build plan.** `docs/plans/<date>-p6-phase4-task13-dashboard.md`. Starts with the live probe;
   junior-engineer guide (exact file paths, code skeletons per new function and test, exact
   commands, expected outputs, step order) so a weaker model can build it without guessing.
 - **CI change.** `pages.yml` on `main` after a successful evidence step (or dispatch).
-- **Done when.** The site builds from artefacts, passes the scans, publishes, and shows the three
-  showcases with links; or, if the maintainer picks release-only, the README links the release
-  instead; `npm run check` green.
+- **Done when.** The site builds from artefacts, the scans pass over the built site, it deploys to
+  Pages, and it shows the three showcases with their "what this proves" notes and run links; README
+  carries the same three notes and links the site; `npm run check` green.
 - **Main risks.** Publishing something the scan misses (two scanners; nothing raw, only derived
   summaries); stale pages.
 
@@ -700,16 +756,17 @@ check` green.
 - **Depends on.** Tasks 1–13.
 - **Scope.**
   - Exit: knee ranges for 3 products from ≥ 3 valid runs; A/A noise measured; gate live.
-  - Evidence release `p6-phase4` (and `p6-phase4a` earlier if split) through
-    `evidence-release.yml`; the workflow must keep HTML charts, CSV telemetry and k6 output, which
-    it deletes today (Note 8, D14).
+  - Final evidence release `p6-phase4` through `evidence-release.yml` (Phase 4a's `p6-phase4a`
+    was published at Task 6). This task only **verifies** that the release keeps HTML charts, CSV
+    telemetry and k6 output under the allowlist widened in Phase 3 Task 11 (D14); it does not change
+    the filter.
   - README "Phase 4 results": knee ranges with stop rule and run IDs (`P6-RULE-006`); baselines,
     spikes, soaks and invariants with medians of ≥ 3 VALID runs and environment labels; INVALID runs
     listed; the master-plan Phase 4 replacement stated.
   - Upstream issue drafts in each product's own template for any new confirmed product bug.
 - **Files likely touched.** `README.md`, `docs/releases/p6-phase4.md`,
-  `docs/plans/<date>-p6-phase4-task14-closeout.md`, `.github/workflows/evidence-release.yml` (file
-  filter, if not already fixed in Phase 3).
+  `docs/plans/<date>-p6-phase4-task14-closeout.md`. If the D14 allowlist is missing on `main`, that
+  is a blocker reported to the maintainer (it is Phase 3 Task 11's change), not a fix here.
 - **The live probe must confirm.** Run ids and verdicts; release size with telemetry and charts;
   each product's issue template.
 - **Build plan.** `docs/plans/<date>-p6-phase4-task14-closeout.md`. Starts with that probe;
@@ -732,28 +789,19 @@ check` green.
 **Superseded / dropped (kept marked, not deleted):** `P6-TW-LOAD-001`, `P6-TW-LOAD-002`,
 `P6-TW-LOAD-003` (master plan X-P6-LOAD; superseded); `P6-TW-LOAD-007` (dropped).
 
+**Gated Phase 4 extra that fails its gate:** `P6-CAL-LOAD-010` (the Cal journey does not use
+`reserveSlot`), with that evidence.
+
 **Withdrawn ID:** `P6-X-LOAD-007` (clock skew, folded into `P6-X-LOAD-002`, Phase 3 D14) is not
 reused.
 
-### Proposed extras (new IDs, not in scope until the maintainer accepts them)
-
-- **`P6-X-LOAD-008` gate can fail.** The A/B gate run against a stub (or a P6 test build) with a
-  deliberate, known slowdown must fail, and an unchanged B must pass. Proves the gate is not a
-  rubber stamp (the "a test that cannot fail is not accepted" rule, applied to the gate).
-- **`P6-MED-LOAD-010` post-spike reservation leak.** After the spike, abandoned carts must not leave
-  reservations that block stock (`RESERVATION_QTY_SQL` vs live orders); boundary of
-  `P6-MED-LOAD-003`.
-- **`P6-CAL-LOAD-010` slot-hold leak under spike.** Cal has a slot-reservation path
-  (`packages/trpc/server/routers/viewer/slots/reserveSlot.handler.ts` at `CAL_REF`); after a spike,
-  no held reservation keeps a free slot unavailable. Only if the journey uses `reserveSlot` (probe).
-- **`P6-DOC-LOAD-009` 429 contract on every covered route.** If `P6-DOC-LOAD-004`'s probe finds the
-  limiter on several routes, assert the 429 body and headers on each (error-code contract), not
-  only the sign-in route.
+**Extras accepted 2026-10-22 (D17):** `P6-X-LOAD-008` in Task 12; `P6-MED-LOAD-010`,
+`P6-CAL-LOAD-010` (gated) and `P6-DOC-LOAD-009` in Task 6.
 
 ## Decisions (2026-10-22)
 
-Numbered for this roadmap. "Agreed 2026-10-22" means given by the maintainer; "proposed" means the
-maintainer has not decided; the task's probe supplies the evidence.
+Numbered for this roadmap. "Agreed 2026-10-22" means given by the maintainer. All of D1–D17 are
+agreed; values a probe sets (step plans, margins, windows) are recorded in each task's plan.
 
 - **D1 Order inside Phase 4 (agreed 2026-10-22).** Knees first, then steady baselines at 50%, then
   spikes at 150%, soaks and invariants under load, then A/A → A/B gate, then closeout. Flags: the
@@ -772,25 +820,34 @@ maintainer has not decided; the task's probe supplies the evidence.
   (`P6-RULE-003`); invalid runs excluded (`P6-RULE-005`).
 - **D7 Telemetry outside-only (agreed 2026-10-22).** Harness H1/H2 are Phase 5.
 - **D8 Twenty load (agreed 2026-10-22).** Phase 5.
-- **D9 Dashboard on GitHub Pages (proposed).** Static, self-contained, built by Actions from
-  evidence artefacts; alternative: evidence release only (Task 13 lists the tradeoffs).
-- **D10 Showcases (proposed).** Knee chart with the bottleneck explained; soak leak check;
-  two-instance Medusa oversell / conservation.
-- **D11 Split into 4a / 4b (proposed).** 4a = Tasks 1–6 (limits), release `p6-phase4a`; 4b = Tasks
-  7–14, release `p6-phase4`. All IDs kept.
-- **D12 Documenso limiter-on start for `P6-DOC-LOAD-004` (proposed).** A separate `up:documenso`
-  with `DANGEROUS_BYPASS_RATE_LIMITS` set off before start (the probe confirms the value Documenso
-  reads as off), in its own step with its own `down`; every other Documenso step keeps the bypass.
-- **D13 Threshold file location (proposed).** `k6/thresholds/` (master plan §2's
-  `k6/thresholds/baseline.json`) rather than a top-level `thresholds/`; it holds the A/A tolerance
-  and its run IDs, and any baseline file `P6-RULE-001` requires.
-- **D14 Evidence release keeps load artefacts (proposed).** `evidence-release.yml` keeps `*.html`,
-  `*.csv` and k6 output files in addition to `*.json` / `*.log`, with the same scans; fixed in Phase
-  3 Task 11 if possible, else in Task 14.
-- **D15 `P6-CAL-LOAD-006` contract (proposed).** If the slot cache is inactive in the harness stack,
-  assert "never offered after commit"; if active, assert disappearance within the cache TTL read
-  from `util.ts` and record stale offers as by-design characterisation. The probe decides which.
-- **D16 Where heavy runs live (proposed).** Knees and spikes run on `workflow_dispatch` (and
-  optionally a weekly schedule) on `main`, never on PRs; steady baselines and invariants run nightly
-  in the product jobs; soaks in `soak.yml`; A/A and A/B in `gate.yml`. PRs run only the Phase 3
-  journeys and the product-free self-tests.
+- **D9 Dashboard on GitHub Pages (agreed 2026-10-22).** The repo is public. A static,
+  self-contained site built by Actions from evidence artefacts; the token scan (and gitleaks) runs
+  over the built site before deploy. One manual step: Settings → Pages → Source "GitHub Actions".
+- **D10 Showcases (agreed 2026-10-22).** (a) Knee chart with the first saturated resource named;
+  (b) soak leak check; (c) two-instance Medusa conservation (`P6-MED-RACE-002` + `P6-MED-LOAD-007`).
+  Each has a "what this proves" note on the dashboard and in README.
+- **D11 Split into 4a / 4b (agreed 2026-10-22).** Phase 4a = Tasks 1–6, interim release
+  `p6-phase4a`; Phase 4b = Tasks 7–14, final release `p6-phase4`. Task numbers and IDs kept.
+- **D12 Production-like limiter profile (agreed 2026-10-22).** `P6-DOC-LOAD-004` and
+  `P6-DOC-LOAD-009` run on a separate Documenso start with `DANGEROUS_BYPASS_RATE_LIMITS=false`,
+  documented as a "production-like limiter profile" (a configuration profile, not a workaround),
+  in its own step with its own `down`. All other Documenso runs keep the bypass.
+- **D13 Threshold file location (agreed 2026-10-22).** `k6/thresholds/`. It holds the A/A tolerance
+  with its source run IDs, and any baseline file `P6-RULE-001` requires.
+- **D14 Evidence-release filter (agreed 2026-10-22).** Widened in **Phase 3 Task 11** to an explicit
+  allowlist of extensions (e.g. `json`, `log`, `csv.gz`, `html`, `txt`), with the token scan and
+  gitleaks unchanged. Tracked in the maintainer's backlog; this branch does not edit the Phase 3
+  roadmap. Phase 4 only verifies it (Task 6 for `p6-phase4a`, Task 14 for `p6-phase4`).
+- **D15 `P6-CAL-LOAD-006` contract (agreed 2026-10-22).** The Task 8 probe checks whether the
+  `getSchedule` slot cache (`util.ts`, 2000 ms TTL) is active in the harness stack. If active:
+  bounded staleness: after the booking commits, S is offered for at most the cache TTL plus a margin
+  set from probe data, and any booking attempt on a stale offer is refused (never a second
+  ACCEPTED). If inactive: "never offered again after commit". The plan and README record which.
+- **D16 Where heavy runs live (agreed 2026-10-22).** Knees and spikes run on `workflow_dispatch`
+  plus a weekly schedule on **Saturday** on `main`, never on PRs (soaks own Sunday); steady
+  baselines and invariants run nightly in the product jobs; soaks in `soak.yml`; A/A and A/B in
+  `gate.yml`. PRs run only the Phase 3 journeys and the product-free self-tests.
+- **D17 Extras (agreed 2026-10-22).** `P6-X-LOAD-008` (gate self-test) in Task 12; `P6-MED-LOAD-010`
+  (post-spike reservation release), `P6-CAL-LOAD-010` (post-spike slot-hold release, gated on the
+  journey using `reserveSlot`, otherwise "Later" with evidence) and `P6-DOC-LOAD-009` (429 body +
+  headers on every limiter-covered route, on the D12 profile) in Task 6.
