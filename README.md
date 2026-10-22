@@ -411,6 +411,34 @@ committed match the captured amount, but the HTTP side shows one success where t
 store-credit route (`GET` on `/admin/gift-cards`, `/store/gift-cards`, `/admin/store-credits`, `/store/store-credits`
 returns 404), and the database has no gift-card table. P6 never changes the Medusa fork (D5, D34).
 
+### Medusa budget and order-state races (Phase 2)
+
+Plan: [2026-10-22-p6-phase2-task3-med-budget-order-races.md](docs/plans/2026-10-22-p6-phase2-task3-med-budget-order-races.md).
+
+| Case              | Burst                                                       | Asserted (fails the case)                                         | Suspected signals (annotated only, plan D54) | CI job               |
+| ----------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- | -------------------- |
+| `P6-MED-RACE-005` | N=10 carts complete with a promotion in a usage budget K=3  | budget `used ≤ K`, HTTP 200s `≤ K`, losers 4xx, setup, cleanup    | F-M2                                         | `medusa-order-races` |
+| `P6-MED-RACE-012` | N=10 carts complete with a promotion with a usage limit L=3 | `promotion.used ≤ L`, HTTP 200s `≤ L`, losers 4xx, setup, cleanup | F-M2                                         | `medusa-order-races` |
+| `P6-MED-RACE-008` | two parallel cancels of one order (P1 X04)                  | no 5xx, setup, cleanup                                            | X04, F-M3                                    | `medusa-smoke`       |
+| `P6-MED-RACE-009` | one cancel ‖ one fulfil of one order (P1 X05)               | no 5xx, setup, cleanup                                            | X05, F-M3                                    | `medusa-smoke`       |
+
+**Suspected product bugs (not yet labelled; probe evidence, plan §2).** Each becomes a `PRODUCT BUG` with `test.fail()`
+only after the owner labels it from three full-count CI runs (plan D54, D64, D65):
+
+- **X04** (`-008`): both cancels return 200 and leave a second, pending `credit_line` order change (7 of 8 probe runs).
+- **X05** (`-009`): the order ends `canceled` with an open fulfillment that can no longer be canceled (1 of 5).
+- **F-M2** (`-012`): a checkout that returned 400 still leaves an unpaid order carrying the promotion, so more orders
+  carry it than its limit (2 of 8). The usage counter itself stays at the limit.
+- **F-M3** (`-008`, `-009`): a losing cancel or fulfil restores the stock reservation of a canceled order; bursts of 10
+  leave `reserved_quantity` above the live reservations.
+- **F-M4** (probe note, accepted follow-up `P6-MED-RACE-014`): parallel cancels of a captured order double the order's
+  `refunded_total` while the payment holds one refund.
+
+**Leaked data.** A product whose `reserved_quantity` was left above its reservations (F-M3) cannot be deleted through
+the admin API, and an open fulfillment on a canceled order (X05) cannot be canceled. Both are reported as leaked data in
+the histogram and the test annotations, never as a failure (plan D49). Locally, `npm run down:medusa` keeps the
+database volume, so such rows stay until the volume is removed.
+
 ### Known product bugs
 
 Each bug is listed with its evidence. Where a `test.fail()` test exists, it turns red
