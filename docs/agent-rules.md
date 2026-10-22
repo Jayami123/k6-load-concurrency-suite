@@ -66,3 +66,13 @@ These rules apply to every agent task in this repository. Read them before plann
 19. At the end of each phase, write `docs/plans/<YYYY-MM-DD>-p6-phaseN-closeout.md` from
     [`docs/templates/phase-closeout.md`](templates/phase-closeout.md), commit it on its own `docs/`
     branch with a PR, and report it to the owner.
+
+## F. Plan self-check
+
+20. Before committing any plan, self-check and list the results in the report: (a) every roadmap
+    "Done when" item is met, or the gap is listed in the open-questions section; (b) every file and
+    function the plan names exists at that path (grep it); (c) the CI time estimate includes reruns
+    and setup, matches across sections, and stays under the job timeout with 10 min of margin;
+    (d) every new function and test has a code skeleton, and every step has exact `git add` paths,
+    the commit command and the expected `npm run check` output; (e) never record owner answers the
+    owner did not give in this session.
