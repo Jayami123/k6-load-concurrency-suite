@@ -1,13 +1,9 @@
 import { fireTogether } from "../races/fire-together.ts";
 import { runTrials } from "../races/run-trials.ts";
-import {
-  aggregateDispatchSpread,
-  createHistogram,
-  mergeStatusCounts,
-  writeHistogram,
-} from "../races/histogram.ts";
+import { createHistogram, writeHistogram } from "../races/histogram.ts";
+import { attemptTag, createRerunRunner, spreadPolicyFromEnv } from "../races/rerun-on-spread.ts";
 import { recordTrial } from "../races/trial-record.ts";
-import { medusaBaseUrlFromEnv, raceMaxSpreadMsFromEnv } from "../races/env.ts";
+import { medusaBaseUrlFromEnv } from "../races/env.ts";
 import type { RaceHistogram, RaceAttemptResult } from "../races/types.ts";
 import type pg from "pg";
 import {
@@ -58,7 +54,6 @@ export type RunOversellCaseInput = {
 };
 
 export async function runOversellCase(input: RunOversellCaseInput): Promise<RaceHistogram> {
-  const spreadLimit = raceMaxSpreadMsFromEnv();
   const base = medusaBaseUrlFromEnv();
   const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const histogram = createHistogram({
@@ -69,15 +64,15 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     trials: input.trials,
   });
 
-  const spreads: number[] = [];
-  const perTrial: RaceAttemptResult[] = [];
+  const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const inventoryItemIds: string[] = [];
   const cleanupViolations: string[] = [];
   const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
 
   try {
-    const trialResults = await runTrials(input.trials, async (trial) => {
-      const trialLeaf = `t${trial}`;
+    // One attempt = fresh product, fresh carts, one burst, oracle, cleanup. The runner decides about reruns.
+    const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
+      const trialLeaf = attemptTag(trial, attempt);
       const productLeaf = `${trialLeaf}-product`;
       const orderIds: string[] = [];
       const customerEmails: string[] = [];
@@ -235,8 +230,6 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
             loserTypes,
             loserMessages,
             loserQuantities,
-            dispatchSpreadMs: fired.dispatchSpreadMs,
-            spreadLimit,
           });
           if (violations.length > 0) {
             throw new Error(violations.join("; "));
@@ -262,13 +255,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           record.oracle.lineItemType = "not_allowed";
         }
 
-        perTrial.push(record);
-        spreads.push(record.dispatchSpreadMs);
-        mergeStatusCounts(histogram.statusCounts, record.statusCounts);
-
-        if (!record.ok) {
-          throw new Error(record.error);
-        }
+        return record;
       } finally {
         for (const orderId of [...new Set(orderIds)]) {
           try {
@@ -292,27 +279,13 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           }
         }
       }
-    });
+    };
 
-    const recorded = new Set(perTrial.map((t) => t.trial));
-    for (const failed of trialResults.filter((t) => !t.ok && !recorded.has(t.trial))) {
-      perTrial.push({
-        trial: failed.trial,
-        attempt: 1,
-        valid: false,
-        ok: false,
-        statuses: [],
-        statusCounts: {},
-        dispatchSpreadMs: 0,
-        oracle: {},
-        invariantViolations: failed.error ? [failed.error] : [],
-        error: failed.error,
-      });
-    }
+    const trialResults = await runTrials(input.trials, (trial) =>
+      runner.runTrial(trial, (attempt) => runAttempt(trial, attempt)),
+    );
 
-    histogram.attempts = perTrial.sort((a, b) => a.trial - b.trial);
-    histogram.dispatchSpreadMs = aggregateDispatchSpread(spreads);
-
+    runner.applyTo(histogram);
     histogram.invariantViolations.push(
       ...cleanupViolations,
       ...(await leakCheck(input.pool, leakPrefix, inventoryItemIds)),

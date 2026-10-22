@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { checkOversellInvariants } from "../../src/medusa/invariants.ts";
 
-const spreadLimit = 5;
-
 function base(overrides: Partial<Parameters<typeof checkOversellInvariants>[0]>) {
   return {
     mode: "qty1" as const,
@@ -24,8 +22,6 @@ function base(overrides: Partial<Parameters<typeof checkOversellInvariants>[0]>)
       () => "Not enough stock available for item x at location y",
     ),
     loserQuantities: Array.from({ length: 15 }, () => 1),
-    dispatchSpreadMs: 1,
-    spreadLimit,
     ...overrides,
   };
 }
@@ -43,11 +39,6 @@ describe("checkOversellInvariants", () => {
   it("qty1 5xx", () => {
     const v = checkOversellInvariants(base({ statuses: [500] }));
     assert.ok(v.some((x) => x.includes("PRODUCT BUG") && x.includes("500")));
-  });
-
-  it("qty1 spread too high", () => {
-    const v = checkOversellInvariants(base({ dispatchSpreadMs: 9 }));
-    assert.ok(v.some((x) => x.includes("TEST BUG") && x.includes("dispatchSpreadMs")));
   });
 
   it("qty1 shared order ids", () => {
