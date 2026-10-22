@@ -278,6 +278,15 @@ changes the order; each is resolved inside the named task):
 
 ## Task 2: Medusa money races (`P6-MED-RACE-006`, `-007`, `-010`, `-011`)
 
+**Status (2026-10-22, build PR "feat: add medusa money race cases").** Build plan:
+[2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). `P6-MED-RACE-006` moved to
+"Later" (D34: no gift-card or store-credit route at `MEDUSA_REF`, live 404). `P6-MED-RACE-010` stays (D35: checkout does not
+auto-capture). `P6-MED-RACE-007` and `-010` pass. `P6-MED-RACE-011` asserts the database invariants and records F-M1 as a
+**suspected product bug** (D40): the label PRODUCT BUG waits for full-count CI runs to reproduce it. A pending order change
+is cleared by `POST /admin/order-edits/:id/confirm` before cancel (D41); a stuck order is reported as leaked data, not a
+failure. Full count 50 on `main`, nightly and dispatch, 3 on PRs; at 50 trials the three specs take about 7 minutes, so no
+separate job (D39).
+
 - **Goal.** Prove money cannot go negative or be over-returned under contention.
 - **Cases.** `P6-MED-RACE-006` (P0, gift card balance never negative; gated, D5),
   `P6-MED-RACE-007` (P1, concurrent refunds ≤ captured amount), `P6-MED-RACE-010` (accepted extra,
