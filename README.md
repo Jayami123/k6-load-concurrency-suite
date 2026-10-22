@@ -82,7 +82,7 @@ product check:
   `PRODUCT BUG: ... [warmup 1]`). A warm-up whose setup throws also fails the case, as a TEST BUG. The sequential
   controls (`extra-overlap-sequential`, `extra-doc-sequential-control`) fire no burst and have no warm-up.
   Rerun-on-spread stays as the backstop for a trial that is still too wide.
-- Limits stop a runner that is too noisy. Reaching the per-trial cap, or spending the per-case budget, fails the case
+- Limits stop a runner that is too noisy. Reaching the per-trial cap, or exceeding the per-case budget, fails the case
   as **TEST BUG: runner too noisy**, with every attempt kept. The budget is
   `max(RACE_MIN_INVALID_BUDGET, ceil(trials × RACE_MAX_INVALID_SHARE_PCT / 100))` invalid attempts.
 
