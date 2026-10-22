@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { createStockedVariant, type MedusaCatalog } from "../../src/medusa/admin.ts";
+import {
+  cancelOrder,
+  createCampaign,
+  createStockedVariant,
+  type MedusaCatalog,
+} from "../../src/medusa/admin.ts";
 
 const catalog: MedusaCatalog = {
   token: "t",
@@ -91,5 +96,33 @@ describe("createStockedVariant reports ids before later steps can throw", () => 
       /TEST BUG: POST \/admin\/products HTTP 400/,
     );
     assert.deepEqual(seen, []);
+  });
+});
+
+describe("promotion and order-state admin calls", () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("createCampaign returns the campaign id on 200", async () => {
+    stubFetch({
+      "POST /admin/campaigns": { status: 200, body: { campaign: { id: "procamp_1" } } },
+    });
+    assert.equal(await createCampaign("t", "id", 3), "procamp_1");
+  });
+
+  it("createCampaign throws a TEST BUG on 400", async () => {
+    stubFetch({ "POST /admin/campaigns": { status: 400, body: { message: "bad" } } });
+    await assert.rejects(
+      createCampaign("t", "id", 3),
+      /TEST BUG: POST \/admin\/campaigns HTTP 400/,
+    );
+  });
+
+  it("cancelOrder resolves a 400 instead of throwing", async () => {
+    stubFetch({ "POST /admin/orders/o1/cancel": { status: 400, body: { message: "x" } } });
+    const res = await cancelOrder("t", "o1");
+    assert.equal(res.status, 400);
+    assert.match(res.body, /"message":"x"/);
   });
 });

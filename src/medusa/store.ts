@@ -58,6 +58,8 @@ export async function prepareReadyCart(input: {
   variantId: string;
   email: string;
   quantity: number;
+  /** Applied right after the line item; a non-200 is a setup error (plan §8.3). */
+  promoCode?: string;
 }): Promise<{
   cartId: string;
   lineItemStatus: number;
@@ -85,6 +87,13 @@ export async function prepareReadyCart(input: {
   const lineItemMessage = line.status !== 200 ? (lineJson.message ?? null) : null;
 
   if (line.status === 200) {
+    if (input.promoCode) {
+      const promo = await storeJson(`/carts/${cartId}/promotions`, input.publishableKey, {
+        method: "POST",
+        body: { promo_codes: [input.promoCode] },
+      });
+      throwIfSetupFailed("POST /store/carts/:id/promotions", promo.status);
+    }
     const update = await storeJson(`/carts/${cartId}`, input.publishableKey, {
       method: "POST",
       body: {
