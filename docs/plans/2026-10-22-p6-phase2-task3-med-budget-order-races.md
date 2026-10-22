@@ -1,12 +1,13 @@
-# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 3)
+# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 3, owner answers recorded)
 
 This is the implementation plan a weaker model will build from. The owner reviewed revision 1 (rule 10: this task adds
 a CI job and proposes product-bug labels, §11 and §10) and **agreed to every proposed answer in §21 on 2026-10-22**.
 Revision 2 records those answers (D54 to D59). Revision 3 answers the owner's review of revision 2: the labelling
 contradiction (§21 contradiction 5, open questions 7 and 8), a redone time budget with the rerun allowance and setup
 (§11, §12, proposal D60), the `moneyPost` rename kept inside `admin.ts` (§8.2), full skeletons for the new checks and
-both attempt bodies (§8.5, §8.6), and exact commands per build step (§14). D60 to D63 are **proposals, not agreed**.
-**The build has not started** and does not start until the owner answers §21 questions 7 and 8.
+both attempt bodies (§8.5, §8.6), and exact commands per build step (§14). The owner answered revision 3 on
+2026-10-22: questions 7 and 9 agreed, question 8 option (a) (D64 to D66). The build starts after this commit and stops
+after the three dispatch runs of §14 Step 12 for the owner's labels.
 
 Structure follows [2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). The
 source of this task is [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md), section "Task 3: Medusa budget +
@@ -1223,11 +1224,11 @@ not change the verdict. After 3 full-count CI runs the owner labels X04, X05, F-
 becomes an asserted invariant under `test.fail()` with the run links. Where that commit lands is the open contradiction
 §21 item 5: the proposal is a final step of this PR (§14 Step 13), after 3 full-count `workflow_dispatch` runs.
 
-## 11. CI (`.github/workflows/perf.yml`) — revised proposal D60 (not agreed)
+## 11. CI (`.github/workflows/perf.yml`) — D60, agreed by the owner (D66)
 
 D55 accepted one new job for all four cases. The redone budget (§12) shows `-008`/`-009` are small (≈ 6 min at 50
-trials) and fit `medusa-smoke`; only `-005`/`-012` need the new job. **Proposal D60** replaces the D55 layout; it needs
-the owner's agreement (§21 question 9). The numbers below are the §12 numbers.
+trials) and fit `medusa-smoke`; only `-005`/`-012` need the new job. D60 replaces the D55 layout; the owner agreed to it
+(§21 question 9, D66). The numbers below are the §12 numbers.
 
 - **`medusa-smoke` race step** (existing step "Race medusa (P6-MED-RACE-001, money cases, extras)"): renamed "Race
   medusa (P6-MED-RACE-001, money, order-state, extras)"; command
@@ -1298,9 +1299,40 @@ The worst case assumes all 10 reruns are used in each case; Task 2's `main` run 
 includes its actual reruns). The per-attempt times come from the probe VM; the first full-count run on CI is the record
 (§11 stop rule).
 
-**If question 8 picks "raise `-009`'s PR count to 25" (§21):** `-009` on PRs becomes 25 + 1 + `max(2, ceil(5))` = 31
-attempts × 2.9 s + 6 s = 95.9 s, so the `medusa-smoke` PR race step becomes 2:15 + (17.4 + 6) s + 95.9 s = **4 min 14
-s** (job 5 min 49 s); still inside the 10-minute PR step timeout. Full counts are unchanged.
+**`-009` PR trial count (D65, question 8 option (a)).** The count is set in §14 Step 13 from the three dispatch runs
+of Step 12, so a PR run misses the labelled `-009` signals with probability under 1 %:
+
+1. `k` = valid `-009` trials (warm-up excluded) in which at least one signal the owner labelled for `-009` showed (X05,
+   and F-M3 if labelled), summed over the three runs; `m` = valid `-009` trials in those runs (150 if no trial failed).
+2. `p_L` = the lower end of the 95 % Wilson interval of `k / m` (conservative: the point rate of a small count can be
+   high by chance):
+   `p_L = (p + z²/2m − z·√(p(1−p)/m + z²/4m²)) / (1 + z²/m)`, with `p = k/m`, `z = 1.96`.
+3. PR count `n = max(3, ceil(ln 0.01 / ln(1 − p_L)))`. Then the miss probability is `(1 − p_L)ⁿ < 1 %`.
+4. PR time of `-009`: `(n + 1 + max(2, ceil(0.2 n))) × 2.9 s + 6 s`.
+
+Worked values for m = 150 (Step 13 records the real k, m, p_L and n):
+
+| k of 150 | k / m | p_L   | n   | (1 − p_L)ⁿ | `-009` PR attempts | `-009` PR time | `medusa-smoke` PR race step |
+| -------- | ----- | ----- | --- | ---------- | ------------------ | -------------- | --------------------------- |
+| 54       | 0.36  | 0.288 | 14  | 0.87 %     | 18                 | 58.2 s         | 3 min 37 s                  |
+| 30       | 0.20  | 0.144 | 30  | 0.95 %     | 37                 | 113.3 s        | 4 min 32 s                  |
+| 15       | 0.10  | 0.062 | 73  | 0.97 %     | 89                 | 264.1 s        | 7 min 03 s                  |
+| 8        | 0.053 | 0.027 | 167 | 0.99 %     | 202                | 591.8 s        | 12 min 31 s (over 10)       |
+
+The PR race step is 2:15 (today) + `-008` 23.4 s + the `-009` time. **Stop rule:** if the computed `n` would take the PR
+race step over 8 min (80 % of its 10-minute step timeout; about `k ≤ 13` of 150), or if X05 did not show at all
+(`k = 0` for X05), the build stops and reports instead of raising the step timeout. Full counts are unchanged (50).
+
+The spec reads the count as a named constant with this arithmetic in its comment:
+
+```ts
+// D65: PR count from the Step 12 dispatch runs: k = <k> of m = <m>, p_L = <p_L>, n = ceil(ln 0.01 / ln(1 − p_L)) = <n>.
+const MED_RACE_009_PR_TRIALS = <n>;
+const trials =
+  process.env.GITHUB_EVENT_NAME === "pull_request"
+    ? Math.max(raceTrialsFromEnv(), MED_RACE_009_PR_TRIALS)
+    : raceTrialsFromEnv();
+```
 
 - Per-test timeouts: `-005`/`-012` `60_000 + trials * 30_000` (as the money specs; 61 × 15.9 s = 970 s fits in
   60 + 1500 s), `-008`/`-009` `60_000 + trials * 10_000` (61 × 2.9 s = 177 s fits in 60 + 500 s).
@@ -1578,10 +1610,10 @@ the labelled signals stay out of the guards' verdict and are counted in `suspect
 non-empty `labelled` is used only if the owner prefers the single-test form.
 
 ```bash
-npx prettier --write tests/medusa/races/med-race-008-double-cancel.spec.ts README.md   # plus -009 if question 8 says so
+npx prettier --write tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts README.md
 npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
 npx playwright test --list --project=medusa-race | tail -1   # Step 9 total + 1 per spec given the two-test shape
-git add tests/medusa/races/med-race-008-double-cancel.spec.ts README.md
+git add tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts README.md
 git commit -m "test(races): mark the labelled medusa order-state bugs as expected failures"
 git push
 ```
@@ -1636,7 +1668,7 @@ gh pr create --title "feat: add medusa budget and order-state races" --body-file
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A job's time exceeds the estimate (setup is 10 carts per attempt)  | §11 stop rule (80 % of a step timeout); split further. Never cut trials.                                                                                               |
 | F-M3 products pile up in a long-lived local DB                     | Each is prefixed and reported; CI databases are throwaway. Local: `npm run down:medusa` keeps volumes, so the leftovers stay until the volume is removed (documented). |
-| X05 is intermittent (1 of 5): a 3-trial PR run may not show it     | Open question 8 (§21): raise `-009`'s PR count or keep X05 annotation-only.                                                                                            |
+| X05 is intermittent (1 of 5): a 3-trial PR run may not show it     | `-009`'s PR count is set from the dispatch runs so a miss is under 1 % (D65, §12).                                                                                     |
 | `lock_timeout = '3s'` in `registerUsage` could give 5xx under load | Not seen live (burst ≤ 2.8 s). A 5xx is a PRODUCT BUG with the body.                                                                                                   |
 | A ghost order (F-M2) blocks the product delete                     | The cleanup sweeps orders by email prefix first (§9), proven live.                                                                                                     |
 | The P1 X04/X05 sequence differs from the reference text            | P1 is out of reach here; the P6 reference text is the agreed source (D56). The P6 cases stand on their own probe evidence.                                             |
@@ -1675,7 +1707,7 @@ Owner answers to revision 1 (agreed 2026-10-22; each closes the §21 question of
 - **D59 Upstream issues (Q6).** X04, X05, F-M2 and F-M3 are filed upstream only after the D54 labels, as for the Phase 1
   findings.
 
-Proposals of revision 3 (**not agreed**; each names the §21 question that decides it):
+Proposals of revision 3 (agreed by the owner as D64 to D66 below):
 
 - **D60 CI layout (Q9).** `-008`/`-009` run in the `medusa-smoke` race step; only `-005`/`-012` get the new job
   `medusa-order-races`; both race steps get step timeouts (§11, §12). Replaces the D55 layout if agreed.
@@ -1683,7 +1715,17 @@ Proposals of revision 3 (**not agreed**; each names the §21 question that decid
   stop for the owner's labels (§14 Steps 11 and 12).
 - **D62 `test.fail()` in this PR for labelled X04 and F-M3 (Q7).** Two-test shape per spec so the other checks stay strict
   (§14 Step 13).
-- **D63 `-009` and X05 (Q8).** Open: see question 8.
+- **D63 `-009` and X05 (Q8).** Answered by D65.
+
+Owner answers to revision 3 (agreed 2026-10-22):
+
+- **D64 Labelling inside this task (Q7, agreed).** Steps 11 to 13: push, 3 full-count `workflow_dispatch` runs, the owner
+  labels, then `test.fail()` for X04 and F-M3 in this PR (D61, D62 as proposed).
+- **D65 `-009` PR count (Q8, option (a)).** `-009`'s PR trial count is set from the rate measured in the 3 dispatch runs
+  so that a miss is under 1 %, with the arithmetic in §12 and in the spec comment; `test.fail()` then covers the
+  signals the owner labels for `-009`.
+- **D66 CI layout (Q9, agreed).** D60 as proposed: `-008`/`-009` in the `medusa-smoke` race step, a new job for
+  `-005`/`-012` only, per-step timeouts.
 
 ## 21. Contradictions with the roadmap, and open questions (answered)
 
@@ -1719,13 +1761,13 @@ Proposals of revision 3 (**not agreed**; each names the §21 question that decid
 6. **Upstream issues.** Proposed: file X04, X05, F-M2, F-M3 upstream only after the labels of question 1, as for the
    Phase 1 findings. **Agreed (D59).**
 
-**Open questions of revision 3 (not agreed):**
+**Open questions of revision 3 (answered by the owner on 2026-10-22; D64 to D66):**
 
 7. **Labelling inside this task (contradiction 5).** Proposed (D61, D62): push without a PR, 3 full-count
    `workflow_dispatch` runs, the owner labels, then `test.fail()` for X04 and F-M3 in this PR (§14 Steps 11 to 13). In
    `-008`, X04 makes the expected failure stable: with a probe rate of 7 of 8 per trial, a 3-trial PR run misses X04 with
    probability (1/8)³ ≈ 0.2 %, so F-M3 (2 of 13 per trial) can share the same `test.fail()` without making it flaky.
-   Agree, or say where the `test.fail()` commit should go instead.
+   Agree, or say where the `test.fail()` commit should go instead. **Agreed (D64).**
 8. **`-009` and X05 under `test.fail()`.** X05 showed in 1 of 5 probe runs (a small sample). `test.fail()` fails the
    check when the bug does **not** reproduce, so at 3 PR trials with a per-trial rate of 0.2 it would be red on about
    0.8³ ≈ 51 % of PR runs; adding F-M3 in `-009` (1 of 5) gives a combined rate of about 0.36 and still ≈ 26 % red PRs.
@@ -1738,12 +1780,12 @@ Proposals of revision 3 (**not agreed**; each names the §21 question that decid
    - **(b) Keep X05 annotation-only.** `-009` stays green with X05 and F-M3 as `suspected-bug` annotations and histogram
      counts. It does not meet the roadmap "Done when" for X05; the README and the Task 9 closeout say so.
 
-   Which one? (No answer is assumed; D63 stays open.)
+   Which one? **Option (a), with the PR count set from the dispatch runs so a miss is under 1 % (D65, §12).**
 
 9. **CI layout (D60).** Agree to `-008`/`-009` in the `medusa-smoke` race step, `-005`/`-012` alone in
-   `medusa-order-races`, and the two step timeouts of §11? This replaces the D55 layout.
+   `medusa-order-races`, and the two step timeouts of §11? This replaces the D55 layout. **Agreed (D66).**
 
-The build starts only after questions 7, 8 and 9 are answered.
+No open questions remain. The build runs §14 Steps 0 to 12 and stops after Step 12 for the owner's labels.
 
 ## Closeout notes
 
