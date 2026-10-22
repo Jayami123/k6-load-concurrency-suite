@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  campaignCreateBody,
   captureBody,
   caseLeakPattern,
+  fulfillmentBody,
+  promoCode,
+  promotionCreateBody,
   refundBody,
   casePrefix,
   cleanupFailure,
@@ -113,5 +117,40 @@ describe("medusa payloads", () => {
 
   it("refundBody carries only the amount", () => {
     assert.deepEqual(refundBody(505), { amount: 505 });
+  });
+
+  it("promoCode is the lowercase case prefix, the leaf and -code", () => {
+    assert.equal(
+      promoCode("P6-QA-X-P6-MED-RACE-005", "t01a1"),
+      "p6-qa-x-p6-med-race-005-t01a1-code",
+    );
+  });
+
+  it("promoCode throws a TEST BUG for a character outside [a-z0-9-]", () => {
+    assert.throws(() => promoCode("p6-qa-x", "t1_a"), /TEST BUG: promo code/);
+  });
+
+  it("campaignCreateBody has a usage budget and no currency", () => {
+    assert.deepEqual(campaignCreateBody("id", 3), {
+      name: "id",
+      campaign_identifier: "id",
+      budget: { type: "usage", limit: 3 },
+    });
+  });
+
+  it("promotionCreateBody carries either a usage limit or a campaign id", () => {
+    const limited: Record<string, unknown> = promotionCreateBody("c", { limit: 3 });
+    assert.equal(limited.limit, 3);
+    assert.equal("campaign_id" in limited, false);
+    const budgeted: Record<string, unknown> = promotionCreateBody("c", { campaignId: "camp" });
+    assert.equal(budgeted.campaign_id, "camp");
+    assert.equal("limit" in budgeted, false);
+  });
+
+  it("fulfillmentBody names one item and the stock location", () => {
+    assert.deepEqual(fulfillmentBody("li", 1, "loc"), {
+      items: [{ id: "li", quantity: 1 }],
+      location_id: "loc",
+    });
   });
 });
