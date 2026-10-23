@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  attemptEmailLike,
   campaignCreateBody,
   captureBody,
   caseLeakPattern,
@@ -152,5 +153,18 @@ describe("medusa payloads", () => {
       items: [{ id: "li", quantity: 1 }],
       location_id: "loc",
     });
+  });
+});
+
+describe("attemptEmailLike (F-M5 sweep)", () => {
+  it("matches the emails of one attempt and no other attempt", () => {
+    const pattern = attemptEmailLike("P6-RUN-MED-001", "t0a1");
+    assert.equal(pattern, "p6-run-med-001-t0a1-c%");
+    const email = prefixedEmail("P6-RUN-MED-001", "t0a1-c00");
+    assert.equal(email.startsWith(pattern.slice(0, -1)), true);
+    assert.equal(
+      prefixedEmail("P6-RUN-MED-001", "t0a10-c00").startsWith(pattern.slice(0, -1)),
+      false,
+    );
   });
 });

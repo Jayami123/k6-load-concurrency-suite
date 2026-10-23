@@ -74,6 +74,14 @@ export function caseLeakPattern(runPrefix: string, caseId: string): string {
   return likeLiteralPrefix(`${casePrefix(runPrefix, caseId)}-`);
 }
 
+/**
+ * Email LIKE argument for the customers of one attempt (`prefixedEmail(dataPrefix, `${attemptLeaf}-c00`)`).
+ * Matches that attempt's emails only: the "-c" after the attempt tag stops "t0a1" matching "t0a10".
+ */
+export function attemptEmailLike(dataPrefix: string, attemptLeaf: string): string {
+  return likeLiteralPrefix(`${dataPrefix.toLowerCase()}-${attemptLeaf}-c`);
+}
+
 /** Leak SQL LIKE argument. Throws TEST BUG unless prefix is [a-z0-9-]. */
 export function likeLiteralPrefix(prefix: string): string {
   if (!/^[a-z0-9-]+$/.test(prefix)) {
