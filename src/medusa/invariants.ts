@@ -251,6 +251,21 @@ export function checkGhostOrders(input: {
     .map((id) => `SUSPECTED PRODUCT BUG: order ${id} exists but no checkout returned it (F-M2)`);
 }
 
+/**
+ * -001 sweep. A live order of the attempt that no checkout returned is an orphan (F-M5). It is a SUSPECTED annotation
+ * with the order id and attempt, never a violation: the runner records it and then cancels the order.
+ */
+export function checkOrphanOrders(input: {
+  liveOrderIds: readonly string[];
+  returnedOrderIds: readonly string[];
+  attempt: string;
+}): string[] {
+  const returned = new Set(input.returnedOrderIds);
+  return input.liveOrderIds
+    .filter((id) => !returned.has(id))
+    .map((id) => `SUSPECTED: orphan order (F-M5): order ${id} in attempt ${input.attempt}`);
+}
+
 /** -008. One of two cancels takes effect, once. */
 export function checkSingleCancel(input: {
   status: string;

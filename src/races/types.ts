@@ -104,5 +104,7 @@ export interface RaceHistogram {
   reruns: number;
   spreadPolicy: SpreadPolicy & { invalidBudget: number };
   invariantViolations: string[];
+  /** SUSPECTED findings that never fail a case, e.g. orphan orders (F-M5). Absent when the case has none. */
+  suspected?: string[];
   verdict: RaceVerdict;
 }

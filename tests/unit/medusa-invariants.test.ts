@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   checkCancelFulfilExclusive,
   checkGhostOrders,
+  checkOrphanOrders,
   checkPromoCap,
   checkReservationDrift,
   checkSingleCancel,
@@ -446,5 +447,33 @@ describe("checkSummaryRefund (F-M4)", () => {
     assert.deepEqual(checkSummaryRefund({ latestRefunded: null, refundRowsSum: 1010 }), [
       "TEST BUG: order has no order_summary row",
     ]);
+  });
+});
+
+describe("checkOrphanOrders (F-M5)", () => {
+  it("no line when every live order was returned", () => {
+    assert.deepEqual(
+      checkOrphanOrders({ liveOrderIds: ["o1"], returnedOrderIds: ["o1", "o2"], attempt: "t0a1" }),
+      [],
+    );
+  });
+
+  it("an unreturned live order is one SUSPECTED line with its id and attempt", () => {
+    const lines = checkOrphanOrders({
+      liveOrderIds: ["o1", "o9"],
+      returnedOrderIds: ["o1"],
+      attempt: "t0a1",
+    });
+    assert.deepEqual(lines, ["SUSPECTED: orphan order (F-M5): order o9 in attempt t0a1"]);
+  });
+
+  it("the line is never a violation: it does not start with PRODUCT BUG or TEST BUG", () => {
+    const [line] = checkOrphanOrders({
+      liveOrderIds: ["o9"],
+      returnedOrderIds: [],
+      attempt: "t0a1",
+    });
+    assert.equal(line!.startsWith("PRODUCT BUG") || line!.startsWith("TEST BUG"), false);
+    assert.equal(line!.startsWith("SUSPECTED"), true);
   });
 });
