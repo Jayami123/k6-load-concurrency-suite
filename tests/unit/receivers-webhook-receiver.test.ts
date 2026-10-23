@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseDelivery, startWebhookReceiver } from "../../src/documenso/webhook-receiver.ts";
+import {
+  headerSecretCheck,
+  parseDelivery,
+  startWebhookReceiver,
+} from "../../src/receivers/webhook-receiver.ts";
 
-const base = { path: "/hook", receivedAt: 1, expectedSecret: "s" };
+const base = { path: "/hook", receivedAt: 1, check: headerSecretCheck("x-documenso-secret", "s") };
 
 describe("parseDelivery", () => {
   it("matches the expected secret and reads the event", () => {
@@ -39,7 +43,7 @@ describe("startWebhookReceiver", () => {
   it("is addressed by the public host and records a real POST", async () => {
     const receiver = await startWebhookReceiver({
       publicHost: "p6-webhook.test",
-      expectedSecret: "s",
+      check: headerSecretCheck("x-documenso-secret", "s"),
     });
     try {
       assert.match(receiver.url, /^http:\/\/p6-webhook\.test:\d+\/hook$/);

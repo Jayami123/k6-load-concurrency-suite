@@ -71,7 +71,7 @@ import {
   type CompletionMode,
   type TrialSnapshot,
 } from "./invariants.ts";
-import { startWebhookReceiver } from "./webhook-receiver.ts";
+import { headerSecretCheck, startWebhookReceiver } from "../receivers/webhook-receiver.ts";
 
 export type RunContext = {
   baseUrl: string;
@@ -141,7 +141,7 @@ export async function startRun(
   const secret = randomBytes(16).toString("hex");
   const receiver = await deps.startReceiver({
     publicHost: input.webhookHost,
-    expectedSecret: secret,
+    check: headerSecretCheck("x-documenso-secret", secret),
   });
   const inbucket = createInbucketClient(input.inbucketUrl);
   // Filled by signUp's onVerified hook, so a later setup failure can still delete the verified owner.

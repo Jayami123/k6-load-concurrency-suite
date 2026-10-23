@@ -9,11 +9,22 @@ export type WebhookDelivery = {
   secretMatches: boolean;
 };
 
+/** Decides whether a delivery carries the subscriber secret. Pure. Never returns or logs the secret. */
+export type SecretCheck = (headers: IncomingHttpHeaders, rawBody: string) => boolean;
+
+/** Documenso: the secret comes back verbatim in one header. `null` expected means "no header". */
+export function headerSecretCheck(header: string, expectedSecret: string | null): SecretCheck {
+  return (headers) => {
+    const got = headers[header];
+    return expectedSecret === null ? got === undefined : got === expectedSecret;
+  };
+}
+
 /** Pure. Never returns or logs the secret; only whether it matched. */
 export function parseDelivery(input: {
   headers: IncomingHttpHeaders;
   rawBody: string;
-  expectedSecret: string | null;
+  check: SecretCheck;
   receivedAt: number;
   path: string;
 }): WebhookDelivery {
@@ -27,21 +38,17 @@ export function parseDelivery(input: {
     body && typeof body === "object" && typeof (body as { event?: unknown }).event === "string"
       ? (body as { event: string }).event
       : null;
-  const got = input.headers["x-documenso-secret"];
   return {
     receivedAt: input.receivedAt,
     path: input.path,
     host: String(input.headers.host ?? ""),
     event,
     body,
-    secretMatches: input.expectedSecret === null ? got === undefined : got === input.expectedSecret,
+    secretMatches: input.check(input.headers, input.rawBody),
   };
 }
 
-export async function startWebhookReceiver(opts: {
-  publicHost: string;
-  expectedSecret: string | null;
-}) {
+export async function startWebhookReceiver(opts: { publicHost: string; check: SecretCheck }) {
   const deliveries: WebhookDelivery[] = [];
   const server = http.createServer((req, res) => {
     let raw = "";
@@ -51,7 +58,7 @@ export async function startWebhookReceiver(opts: {
         parseDelivery({
           headers: req.headers,
           rawBody: raw,
-          expectedSecret: opts.expectedSecret,
+          check: opts.check,
           receivedAt: Date.now(),
           path: req.url ?? "",
         }),
