@@ -748,14 +748,28 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
 - **README run links:** _pending_
 - **Findings:** _pending_ (the cleanup probe result; the summary output check from Q1)
 - **Deviations from this plan:** the plan branch (C6); the local heap flags (§3.1, R5); _add more as they happen_
-  - **E2 scan false positive (first CI run on PR #41, head `688e3df`).** The Playwright JSON scan (E2, owner-accepted) used the
-    bare pattern `sessionId`. The JSON holds the test title "setup: a correct sign-in is 201 and sets sessionId", so the
-    documenso-smoke job failed at "Check Documenso artefacts for tokens" with "Playwright JSON contains a token pattern". The
-    tests were correct (3 passed; both `test.fail()` tests expected failures). Root cause: the scan pattern was too broad for
-    JSON that names the cookie. Fix (commit `55edc8f`): the JSON scan alone uses `sessionId=[^;[:space:]"]{8,}`, a cookie value.
-    The web-log and race-histogram scans are unchanged. Local proof: a `Set-Cookie: sessionId=…` line matches (exit 0); the
-    current test title does not (exit 1); `Bearer x` and `/verify-email/abc123` still match in both scans. The test title is
-    not renamed, and the JSON scan is not removed.
+  - **E2 scan false positives (three CI runs on PR #41; the first fix was incomplete).**
+    1. Head `688e3df`: the JSON scan (E2, owner-accepted) failed on the bare word `sessionId`, which appears in the setup test
+       title. The tests passed (3 passed; both `test.fail()` tests expected failures). The owner's fix (`55edc8f`) narrowed the
+       JSON scan to `sessionId=[^;[:space:]"]{8,}`, with the other patterns unchanged, and proved the narrowing locally.
+    2. Head `55edc8f`: the scan failed again, on a different match. A value-free diagnostic (`f624147`, then `a143094`,
+       which print only the JSON key path and string length, never the matched text) found the match in
+       `config.metadata.gitDiff`: Playwright writes the repo's git diff into the JSON on CI (about 50 KB, so each file is
+       about 320 KB, against 15 KB locally). The diff contains this workflow's own scan patterns (`Bearer `, `sessionId`), so
+       the scan matched its own source text, not test output. Local runs have no `gitDiff`, which is why they never matched.
+    3. Fix (`4671661`): the JSON scan reads only `suites` and `errors` (`jq -c '{suites, errors}'`, captured into a variable
+       before `grep -q`, so `pipefail` cannot turn a SIGPIPE into a silent pass). The value-bearing pattern is unchanged, and
+       the web-log and race-histogram scans are unchanged. Tested locally on four scratch cases: repro JSON (pass), a bearer
+       string in `config` only (pass), a bearer string in a test title (fail), a cookie value in `errors` (fail).
+       Scope change, for the owner to confirm: the JSON scan no longer reads `config`, so a secret that reached the git diff
+       would not trip it. Test output is still scanned. The race and web-log scans are unchanged.
+       Result: `documenso-smoke` success on `4671661`; the steps `Documenso races`, `Documenso sign-in error contract
+(documenso-api)`, `Check Documenso artefacts for tokens`, `Job summary` and `Stop Documenso` all succeeded.
+       Q1 finding: the job summary counts `documenso-api.json` (its tests are in the totals), but it does not list
+       `P6-OBS-DOC-001` as a known bug. `src/ci/playwright-json-summary.ts` takes known bugs only from annotations of type
+       `issue` (`ISSUE_ANNOTATION_TYPE`), and our spec uses type `product-bug`. Proposed fix: change the type to `issue` (test
+       change, owner decision). The summary check here was a local render of the same script from the repro JSON, not the CI
+       page.
 
 ## Appendix A. Draft upstream issue for `P6-OBS-DOC-001` (for the owner to file; not filed by P6)
 
