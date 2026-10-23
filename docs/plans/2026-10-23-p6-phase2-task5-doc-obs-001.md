@@ -779,10 +779,11 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
      (repo flake rule); both passed. The other `main` jobs passed in attempt 1.
 - **README run links:** met (the `P6-OBS-DOC-001` row links the three runs above).
 - **Findings:**
-  - Cleanup probe (owner Q4): passed. `deleteAccount` ran in `afterAll` and removed the throwaway user (the row count for
-    `%-signin@example.com` returned to 0 after the run). A positive control (one created user, counted, then deleted through
-    `deleteAccount`) showed the count sees users, so the 0 is not a false negative. A sign-in check was not used: the spec's
-    password is not kept after the run.
+  - Cleanup probe (owner Q4): the **row-count check passed**. `deleteAccount` ran in `afterAll`, and the row count for
+    `%-signin@example.com` returned to 0 after the run. A positive control (one created user, counted, then deleted through
+    `deleteAccount`) showed the count sees users, so the 0 is not a false negative. The **planned post-cleanup sign-in check
+    was not run**: the spec's password is not kept after the run, so the row count replaces it. This is a deviation from §7
+    step 2.
   - Summary (Q1): the job summary counts `documenso-api.json` and lists `P6-OBS-DOC-001` under known product bugs (checked by a
     local render of the same script at `b0937e0`; the CI summary page is not readable from here). Cosmetic: each line shows the
     whole annotation description, not a short ID.
