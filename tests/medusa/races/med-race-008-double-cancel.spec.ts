@@ -28,6 +28,8 @@ test.describe("Medusa double cancel", () => {
     test.describe.configure({ timeout: 60_000 + trials * 10_000 });
 
     test.beforeAll(async () => {
+      // The hook gets the 60 s config timeout unless it raises its own (CI: -013 at 50 trials took 56 s).
+      test.setTimeout(60_000 + trials * 10_000);
       token = await seedAndLogin();
       catalog = await loadCatalog(token);
       result = await runOrderCase({
