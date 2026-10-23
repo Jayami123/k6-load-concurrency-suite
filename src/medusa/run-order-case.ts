@@ -262,9 +262,14 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
             inventoryItemId,
           ]);
           for (const row of rows) {
-            const status = await deleteReservation(input.token, row.id);
-            if (status !== 200) {
-              cleanupViolations.push(cleanupFailure("reservation", row.id, `HTTP ${status}`));
+            // adminJson throws on 401 and 5xx; catch it so product and customer cleanup still run.
+            try {
+              const status = await deleteReservation(input.token, row.id);
+              if (status !== 200) {
+                cleanupViolations.push(cleanupFailure("reservation", row.id, `HTTP ${status}`));
+              }
+            } catch (err) {
+              cleanupViolations.push(cleanupFailure("reservation", row.id, err));
             }
           }
         }
