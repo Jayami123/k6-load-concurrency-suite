@@ -1,20 +1,31 @@
 # P6 Phase 2 Task 6: Twenty stack in P6 (build plan)
 
-Branch `feat/2026-10-23-p6-twenty-stack` from `origin/main` `92a9a93`. This plan is the first commit on that
-branch and is also pushed to `plan/2026-10-23-p6-twenty-stack` (rule B10). No PR for the plan. **Stop point:**
-the build changes `.github/workflows/perf.yml` (a new job), so the build waits for the owner's review (rule B10).
+Branch `feat/2026-10-23-p6-twenty-stack` from `origin/main` `92a9a93`. The plan is the first commit on that branch and is
+also on `plan/2026-10-23-p6-twenty-stack` (rule B10). No PR for the plan. The owner approved this plan on 2026-10-23 with the
+changes in §0; the build follows on the feature branch, and the PR is opened after the build.
 
 Probe date: 2026-10-23 (cloud VM, Docker 29.9.2, 4 vCPU, 16 GB). Roadmap: [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md) §Task 6.
 
 ## 0. Status, owner gate and inputs
 
-- **Owner gate.** The build adds a CI job (`twenty-smoke`) to `.github/workflows/perf.yml`. That is a CI workflow change, so
-  the build stops after this plan for review. The harness pin, `src/races/*` and `scripts/harness.mjs` do not change.
-- **Owner instructions used in this plan** (given in the task message, 2026-10-23): the image pull retry for
-  `twenty-smoke` only; every step with `timeout-minutes`, sized from probe times (O5, never raised to fit); the
-  rate-limiter note (verified in §3.4); the token scan by value, not by name; the known-bug convention (`P6-OBS-TW-…`,
-  annotation type `issue`, SUSPECTED, no `test.fail()` without an owner label).
-- **Owner answers recorded here:** none beyond the instructions above. Every open point is in §13 with a proposed answer.
+- **Status.** Approved by the owner on 2026-10-23 with the changes in this section. The build runs on
+  `feat/2026-10-23-p6-twenty-stack` after this docs commit. The PR is opened after the build, with `gh pr create`.
+- **Owner instructions used** (task message, 2026-10-23): the image pull retry for `twenty-smoke` only; `timeout-minutes`
+  on every step, sized from probe times (O5, never raised to fit); the rate-limiter note (verified in §3.4); the token scan by
+  value, not name; the known-bug convention (`P6-OBS-TW-…`, annotation type `issue`, SUSPECTED, no `test.fail()` without an
+  owner label).
+- **Owner decisions (given in this session, 2026-10-23):**
+  1. **O-T2 (changed):** no repository secrets. Bump `qa-portfolio-harness` to `v0.2.12`, which exports
+     `TWENTY_DEFAULT_ADMIN_EMAIL` and `TWENTY_DEV_SEED_PASSWORD` from its package entry. `src/twenty/env.ts` uses
+     `TWENTY_EMAIL` / `TWENTY_PASSWORD` when set, and the harness exports otherwise. The secrets lines are removed from the CI
+     skeleton. No environment steps for either cloud agent.
+  2. **O-T4 (confirmed):** the registry 500 is in the raw attempt-1 logs of run `39961527451` (§3.10). Escalation item 3 is NO.
+  3. Every step has `timeout-minutes`, including checkout and the artefact uploads (5 min each).
+  4. §8.3 uses the worst measured value for each row (first boot 183 s, seed 77 s). The margin stays at least 10 minutes
+     under the 20-minute job timeout.
+  5. Accepted as proposed: O-T1 (both refs), O-T3, O-T5 (value-only scan; X6 later), O-T6 (P6-OBS-TW-001 SUSPECTED in
+     `docs/BACKLOG.md`, no test, no label), O-T7 (tag now, digest as X1), O-T8 (20 minutes), O-T10 (X5 backlog).
+  6. O-T9 (changed): the first Cursor Cloud run confirms the Docker Hub pulls work. No setup change now.
 
 ## 1. Goal, scope and the cases covered
 
@@ -23,20 +34,21 @@ Probe date: 2026-10-23 (cloud VM, Docker 29.9.2, 4 vCPU, 16 GB). Roadmap: [2026-
 - **Cases.** None mapped. The self-test is unmapped (roadmap): health burst, read-only oracle `SELECT 1` on the Twenty DB,
   a session auth proof (signIn, token exchange, `currentUser`, one REST read), and a token scan of the evidence.
 - **In scope.**
-  - `package.json` scripts `up:twenty`, `down:twenty`, `seed:twenty`, `smoke:twenty`, `race:twenty` (all through
-    `scripts/harness.mjs` or the harness adapter; no new start logic).
+  - `package.json`: the `qa-portfolio-harness` pin (`v0.2.12`), and the scripts `up:twenty`, `down:twenty`, `seed:twenty`,
+    `smoke:twenty`, `race:twenty` (all through `scripts/harness.mjs` or the harness adapter; no new start logic).
   - `src/twenty/env.ts`, `src/twenty/auth.ts`, `src/twenty/oracle.ts` (NEW).
   - `scripts/seed-twenty.mjs` (NEW): seeds through the harness adapter's `seed()`.
   - `k6/smoke/twenty-health.js` (NEW), `playwright.config.ts` project `twenty-race`, `tests/twenty/races/twenty-self-test.spec.ts` (NEW).
   - CI job `twenty-smoke` in `.github/workflows/perf.yml`, with the image pull retry.
   - `.env.example` (names only), README section "Run Twenty" (no timing claims), `docs/BACKLOG.md` entries.
 - **Out of scope.** Any race (Task 7), any API-key path, a change to the harness or to `scripts/evidence-token-scan.mjs`,
-  pulls for the other three jobs (a backlog PR, as the owner asked), and any new known-bug test.
-- **Files likely touched.** Matches the roadmap list, plus `scripts/seed-twenty.mjs` and `tests/unit/twenty-auth.test.ts`
-  (both NEW, §5). `scripts/bootstrap.sh` already has `twenty` and `TWENTY_REF`, so it does not change (§4 D1).
-- **Environment changes (both cloud agents).** None needed from the probe: Docker was already running when this session
-  started (`docker info` succeeded before any command), and Docker Hub and GitHub were reachable. The Cursor Cloud agent was **not probed** in
-  this session; listed as an open question (§13 O-T9).
+  pulls for the other three jobs (backlog X5), and any new known-bug test.
+- **Files likely touched.** The roadmap list, plus `scripts/seed-twenty.mjs`, `tests/unit/twenty-auth.test.ts` (both NEW, §5),
+  `package.json` and `package-lock.json` (the pin). `scripts/bootstrap.sh` already has `twenty` and `TWENTY_REF`, so it does
+  not change (§4 D1).
+- **Environment changes (both cloud agents).** None (owner decision 6; §0). Docker was already running when this session
+  started (`docker info` succeeded before any command), and Docker Hub and GitHub were reachable. The Cursor Cloud agent
+  was not probed; its first run confirms the pulls.
 
 ## 2. Assumptions the build depends on
 
@@ -207,9 +219,15 @@ falling back to env`. Both are normal first-boot lines. Recorded so a later read
 - **Proves:** the stack starts, the seed works, health answers, sign-in and token exchange work, the REST and GraphQL data
   paths need the workspace token, the read-only oracle refuses writes, the schema name rule holds for both workspaces, the
   limiter applies to API keys and not to sessions, the token scan has nothing to find, and both stop paths exit 0.
-- **Does not prove:** CI behaviour (runner speed, Docker Hub from GitHub, memory on a hosted runner); the Cursor Cloud agent;
-  the self-test itself (written in the build); the suspected hang's cause (only its behaviour); the owner's claim about the
-  main run (§13 O-T4).
+- **Does not prove:** CI behaviour (runner speed, memory on a hosted runner, Docker Hub from GitHub); the Cursor Cloud agent;
+  the self-test (built in step 4); the cause of the suspected hang (only its behaviour).
+- **The registry 500 in run `39961527451` is confirmed (raw logs).** Attempt 1 failed `documenso-smoke` and `cal-smoke`.
+  Raw job logs (`gh api repos/Jayami123/k6-load-concurrency-suite/actions/jobs/<id>/logs`):
+  - `documenso-smoke` job `120440451056`, 13:29:55Z: `postgres Error received unexpected HTTP status: 500 Internal Server Error`,
+    then `Error response from daemon: received unexpected HTTP status: 500 Internal Server Error`.
+  - `cal-smoke` job `120440451294`, 13:30:30Z: the same error on `postgres_is_ready`.
+  - The `gh run view --job <id> --log` view does not show these lines. That is why an earlier read of attempt 1 found no
+    cause. Attempt 2 passed on every job.
 
 ## 4. Design and decisions (each with a reason)
 
@@ -221,11 +239,12 @@ falling back to env`. Both are normal first-boot lines. Recorded so a later read
 - **D3 P6 signs in and exchanges its own workspace token (A6).** The harness `authenticate()` returns the agnostic token,
   which cannot read data (§3.3). `src/twenty/auth.ts` does signIn, picks the workspace by display name, exchanges the login
   token with the workspace origin, and returns `Bearer <workspace token>`. Reason: the self-test and later races need data.
-- **D4 Login values come from the environment, never from code (open question O-T2).** The roadmap says P6 reads seed
-  logins from the harness config or the environment and never retypes them. The harness does not export its default, so
-  P6 cannot read it. §13 O-T2 gives the proposed answer and the alternatives. Until the owner answers, `src/twenty/env.ts`
-  **throws** when `TWENTY_EMAIL` or `TWENTY_PASSWORD` is missing; there is no fallback.
-- **D5 Rate limits: the self-test uses a session, and any 429 is neither a pass nor a race result.** Sessions are not limited
+- **D4 Login values: the environment first, then the harness exports (owner decision O-T2).** `src/twenty/env.ts` reads
+  `TWENTY_EMAIL` and `TWENTY_PASSWORD` when set and not blank. Otherwise it uses `TWENTY_DEFAULT_ADMIN_EMAIL` and
+  `TWENTY_DEV_SEED_PASSWORD` from `qa-portfolio-harness` v0.2.12 (its package entry; pin in step 1a). No repository secret and
+  no literal in P6 code. The password is never printed (§6.2 test). Reason: it meets the roadmap rule (never retype) without a
+  secret the owner has to manage, and the harness owns the dev seed values.
+- **D5 - **D5 Rate limits: the self-test uses a session, and any 429 is neither a pass nor a race result.** Sessions are not limited
   (A8). The health route is not limited (§3.4). The self-test has no API key. If `TWENTY_API_KEY` is ever set, the 100 per
   60 seconds budget applies, so the self-test would need pacing; it does not use the key. A 429 is recorded in
   `statusCounts["429"]` and `oracle.rateLimited429`, and it fails the test as a setup error (TEST BUG), never as a pass.
@@ -264,26 +283,27 @@ falling back to env`. Both are normal first-boot lines. Recorded so a later read
 
 ## 5. Files (exact paths)
 
-| Path                                                                                      | Status    | Step | Purpose                                                                                            |
-| ----------------------------------------------------------------------------------------- | --------- | ---- | -------------------------------------------------------------------------------------------------- |
-| `src/twenty/env.ts`                                                                       | NEW       | 1    | URLs, workspace names, login values from env (§6.1)                                                |
-| `tests/unit/twenty-env.test.ts`                                                           | NEW       | 1    | 4 unit tests (§6.2)                                                                                |
-| `src/twenty/auth.ts`                                                                      | NEW       | 2    | signIn, pick workspace, origin, exchange, `graphqlData` (§6.4)                                     |
-| `tests/unit/twenty-auth.test.ts`                                                          | NEW       | 2    | 4 unit tests (§6.5)                                                                                |
-| `src/twenty/oracle.ts`                                                                    | NEW       | 3    | schema name, resolve schema, read-only write probe (§6.3)                                          |
-| `tests/unit/twenty-oracle.test.ts`                                                        | NEW       | 3    | 3 unit tests (§6.3)                                                                                |
-| `scripts/seed-twenty.mjs`                                                                 | NEW       | 3    | seed through the adapter (§6.7)                                                                    |
-| `k6/smoke/twenty-health.js`                                                               | NEW       | 3    | `GET /healthz` smoke (§6.8)                                                                        |
-| `package.json`                                                                            | CHANGED   | 3, 4 | scripts `up:twenty`, `down:twenty`, `seed:twenty`, `smoke:twenty` (step 3); `race:twenty` (step 4) |
-| `playwright.config.ts`                                                                    | CHANGED   | 4    | project `twenty-race` (§6.9)                                                                       |
-| `tests/twenty/races/twenty-self-test.spec.ts`                                             | NEW       | 4    | the unmapped self-test (§6.6)                                                                      |
-| `.github/workflows/perf.yml`                                                              | CHANGED   | 5    | job `twenty-smoke` (§8.2)                                                                          |
-| `.env.example`                                                                            | CHANGED   | 6    | names only (§6.10)                                                                                 |
-| `README.md`                                                                               | CHANGED   | 6    | section "Run Twenty", no timing claims (§6.10)                                                     |
-| `docs/BACKLOG.md`                                                                         | CHANGED   | 6    | P6-OBS-TW-001; H-twenty-auth; pull retry for the other jobs                                        |
-| `scripts/bootstrap.sh`                                                                    | unchanged | —    | already has `twenty`, `TWENTY_REF` and the clone (checked)                                         |
-| `scripts/harness.mjs`, `scripts/evidence-token-scan.mjs`, `src/races/*`, `node_modules/*` | unchanged | —    | rule 14 (no harness or fork edits) and the roadmap                                                 |
-| `.cursor/*`, `.claude/*`                                                                  | unchanged | —    | no environment change needed (§1)                                                                  |
+| Path                                                                                      | Status    | Step     | Purpose                                                                                                                                |
+| ----------------------------------------------------------------------------------------- | --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`                                                                            | CHANGED   | 1a, 3, 4 | pin `qa-portfolio-harness` to `v0.2.12` (1a); scripts `up:twenty`, `down:twenty`, `seed:twenty`, `smoke:twenty` (3); `race:twenty` (4) |
+| `package-lock.json`                                                                       | CHANGED   | 1a       | lock entry for the v0.2.12 pin (written by `npm install`)                                                                              |
+| `src/twenty/env.ts`                                                                       | NEW       | 1        | URLs, workspace names, login values (env first, harness exports otherwise) (§6.1)                                                      |
+| `tests/unit/twenty-env.test.ts`                                                           | NEW       | 1        | 6 unit tests (§6.2)                                                                                                                    |
+| `src/twenty/auth.ts`                                                                      | NEW       | 2        | signIn, pick workspace, origin, exchange, `graphqlData` (§6.4)                                                                         |
+| `tests/unit/twenty-auth.test.ts`                                                          | NEW       | 2        | 4 unit tests (§6.5)                                                                                                                    |
+| `src/twenty/oracle.ts`                                                                    | NEW       | 3        | schema name, resolve schema, read-only write probe (§6.3)                                                                              |
+| `tests/unit/twenty-oracle.test.ts`                                                        | NEW       | 3        | 3 unit tests (§6.3)                                                                                                                    |
+| `scripts/seed-twenty.mjs`                                                                 | NEW       | 3        | seed through the adapter (§6.7)                                                                                                        |
+| `k6/smoke/twenty-health.js`                                                               | NEW       | 3        | `GET /healthz` smoke (§6.8)                                                                                                            |
+| `playwright.config.ts`                                                                    | CHANGED   | 4        | project `twenty-race` (§6.9)                                                                                                           |
+| `tests/twenty/races/twenty-self-test.spec.ts`                                             | NEW       | 4        | the unmapped self-test (§6.6)                                                                                                          |
+| `.github/workflows/perf.yml`                                                              | CHANGED   | 5        | job `twenty-smoke` (§8.2)                                                                                                              |
+| `.env.example`                                                                            | CHANGED   | 6        | names only (§6.10)                                                                                                                     |
+| `README.md`                                                                               | CHANGED   | 6        | section "Run Twenty", no timing claims (§6.10)                                                                                         |
+| `docs/BACKLOG.md`                                                                         | CHANGED   | 6        | P6-OBS-TW-001 (SUSPECTED); H-twenty-auth; pull retry for the other jobs (X5)                                                           |
+| `scripts/bootstrap.sh`                                                                    | unchanged | —        | already has `twenty`, `TWENTY_REF` and the clone (checked)                                                                             |
+| `scripts/harness.mjs`, `scripts/evidence-token-scan.mjs`, `src/races/*`, `node_modules/*` | unchanged | —        | rule 14 (no harness or fork edits) and the roadmap                                                                                     |
+| `.cursor/*`, `.claude/*`                                                                  | unchanged | —        | no environment change (§0 decision 6)                                                                                                  |
 
 ## 6. Code skeletons and tests (each new function and test)
 
@@ -293,6 +313,8 @@ Every skeleton below is a starting point; the build copies it and keeps the name
 ### 6.1 `src/twenty/env.ts` (NEW, step 1)
 
 ```ts
+import { TWENTY_DEFAULT_ADMIN_EMAIL, TWENTY_DEV_SEED_PASSWORD } from "qa-portfolio-harness";
+
 const strip = (u: string) => u.replace(/\/$/, "");
 const val = (env: NodeJS.ProcessEnv, name: string) => env[name]?.trim() || undefined;
 
@@ -320,32 +342,23 @@ export function twentyWorkspaceNameFromEnv(env: NodeJS.ProcessEnv = process.env)
   return val(env, "P6_TWENTY_WORKSPACE_NAME") ?? "Apple";
 }
 
-/** No default: the login comes from the environment (open question O-T2). */
+/** TWENTY_EMAIL when set and not blank, else the harness export (owner decision O-T2). */
 export function twentyEmailFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  const v = val(env, "TWENTY_EMAIL");
-  if (!v)
-    throw new Error(
-      "ENV: TWENTY_EMAIL is not set (see docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md O-T2)",
-    );
-  return v;
+  return val(env, "TWENTY_EMAIL") ?? TWENTY_DEFAULT_ADMIN_EMAIL;
 }
 
-/** No default: the login comes from the environment (open question O-T2). Never printed. */
+/** TWENTY_PASSWORD when set and not blank, else the harness export. Returned only, never logged. */
 export function twentyPasswordFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  const v = val(env, "TWENTY_PASSWORD");
-  if (!v)
-    throw new Error(
-      "ENV: TWENTY_PASSWORD is not set (see docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md O-T2)",
-    );
-  return v;
+  return val(env, "TWENTY_PASSWORD") ?? TWENTY_DEV_SEED_PASSWORD;
 }
 ```
 
-### 6.2 `tests/unit/twenty-env.test.ts` (NEW, step 1): 4 tests
+### 6.2 `tests/unit/twenty-env.test.ts` (NEW, step 1): 6 tests
 
 ```ts
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it, mock } from "node:test";
+import { TWENTY_DEFAULT_ADMIN_EMAIL, TWENTY_DEV_SEED_PASSWORD } from "qa-portfolio-harness";
 import {
   twentyBaseUrlFromEnv,
   twentyDatabaseUrlFromEnv,
@@ -356,6 +369,8 @@ import {
 } from "../../src/twenty/env.ts";
 
 describe("twenty env", () => {
+  afterEach(() => mock.restoreAll());
+
   it("defaults to the harness address and the seed workspace", () => {
     assert.equal(twentyBaseUrlFromEnv({}), "http://127.0.0.1:3002");
     assert.equal(twentySubdomainFromEnv({}), "apple");
@@ -387,13 +402,29 @@ describe("twenty env", () => {
     );
   });
 
-  it("fails loudly when the login is not in the environment", () => {
-    assert.throws(() => twentyEmailFromEnv({}), /TWENTY_EMAIL/);
-    assert.throws(() => twentyPasswordFromEnv({ TWENTY_PASSWORD: "   " }), /TWENTY_PASSWORD/);
-    assert.equal(twentyPasswordFromEnv({ TWENTY_PASSWORD: "x" }), "x");
+  it("uses TWENTY_EMAIL and TWENTY_PASSWORD when they are set", () => {
+    assert.equal(twentyEmailFromEnv({ TWENTY_EMAIL: "login@example.test" }), "login@example.test");
+    assert.equal(twentyPasswordFromEnv({ TWENTY_PASSWORD: "value-from-env" }), "value-from-env");
+  });
+
+  it("falls back to the harness exports when they are unset or blank", () => {
+    assert.equal(twentyEmailFromEnv({}), TWENTY_DEFAULT_ADMIN_EMAIL);
+    assert.equal(twentyEmailFromEnv({ TWENTY_EMAIL: "   " }), TWENTY_DEFAULT_ADMIN_EMAIL);
+    assert.equal(twentyPasswordFromEnv({}), TWENTY_DEV_SEED_PASSWORD);
+    assert.equal(twentyPasswordFromEnv({ TWENTY_PASSWORD: "  " }), TWENTY_DEV_SEED_PASSWORD);
+  });
+
+  it("never prints the password", () => {
+    const log = mock.method(console, "log", () => {});
+    const error = mock.method(console, "error", () => {});
+    twentyPasswordFromEnv({});
+    twentyPasswordFromEnv({ TWENTY_PASSWORD: "value-from-env" });
+    assert.equal(log.mock.callCount() + error.mock.callCount(), 0);
   });
 });
 ```
+
+Test counts: 6 (defaults; trailing slash; DB precedence; env override; harness fallback; never prints).
 
 ### 6.3 `src/twenty/oracle.ts` (NEW, step 3) and `tests/unit/twenty-oracle.test.ts` (NEW, step 3): 3 tests
 
@@ -914,29 +945,36 @@ README section "Run Twenty": the commands (`npm run up:twenty`, `npm run seed:tw
 
 ### 6.11 Tests: count per step
 
-Unit tests: step 1 +4, step 2 +4, step 3 +3, so **417 → 421 → 425 → 428**. The spec (step 4) is a Playwright test, not a
-unit test, so it does not change the count.
+Unit tests: step 1a (pin) +0, step 1 (env) +6, step 2 (auth) +4, step 3 (oracle) +3, so **417 → 417 → 423 → 427 → 430**. The
+spec (step 4) is a Playwright test, not a unit test, so it does not change the count.
 
 ## 7. Build steps (one commit each)
 
-The plan commit is step 0. Each build step: `npx prettier --write <new files>`, `npm run test:unit` (count below), then
-`npm run check` (exit 0), `git add <paths>` (rule A2), `git commit`. The commit messages carry no attribution line (rule A3,
-AGENTS.md).
+Each build step: `npx prettier --write <changed files>`, `npm run test:unit` (count below), then `npm run check` (exit 0),
+`git add <paths>` (rule A2), `git commit`. No attribution line in any commit (rule A3, AGENTS.md).
 
-**Step 0 (plan).** `git add docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md`;
-`git commit -m "docs(plans): add the phase 2 task 6 twenty-stack plan"`; `git push -u origin feat/2026-10-23-p6-twenty-stack`;
-`git push origin HEAD:refs/heads/plan/2026-10-23-p6-twenty-stack`. Unit count: **417** (no change).
-Expected `npm run check` tail: `k6 inspect ok: …` lines, then `# tests 417`, `# pass 417`, `# fail 0`.
+**Step 0 (this docs commit, owner changes).** Files: `docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md`.
+`git add docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md`;
+`git commit -m "docs(plans): apply the owner decisions to the phase 2 task 6 twenty-stack plan"`; push the same commit to
+`feat/2026-10-23-p6-twenty-stack` (`git push -u origin feat/2026-10-23-p6-twenty-stack`) and to
+`plan/2026-10-23-p6-twenty-stack` (`git push origin HEAD:refs/heads/plan/2026-10-23-p6-twenty-stack`). Unit count **417**.
+
+**Step 1a (harness pin, owner decision 1).** Files: `package.json`, `package-lock.json`.
+`package.json` dependency becomes `"qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.12"`. Then
+`npm install` (updates the lock). Check:
+`node -e 'import("qa-portfolio-harness").then(m=>console.log(typeof m.TWENTY_DEFAULT_ADMIN_EMAIL, typeof m.TWENTY_DEV_SEED_PASSWORD))'`
+prints `string string`. `npm run check` exit 0.
+`git add package.json package-lock.json`;
+`git commit -m "chore(deps): pin qa-portfolio-harness v0.2.12 for the twenty seed exports"`. Unit count **417**.
 
 **Step 1 (env).** Files: `src/twenty/env.ts`, `tests/unit/twenty-env.test.ts` (§6.1, §6.2).
 `git add src/twenty/env.ts tests/unit/twenty-env.test.ts`;
-`git commit -m "feat(twenty): add the env helpers and their unit tests"`.
-Unit count: **421** (`# tests 421`, `# pass 421`, `# fail 0`).
+`git commit -m "feat(twenty): add the env helpers and their unit tests"`. Unit count **423**
+(`# tests 423`, `# pass 423`, `# fail 0`).
 
 **Step 2 (auth).** Files: `src/twenty/auth.ts`, `tests/unit/twenty-auth.test.ts` (§6.4, §6.5).
 `git add src/twenty/auth.ts tests/unit/twenty-auth.test.ts`;
-`git commit -m "feat(twenty): add the workspace sign-in and token exchange"`.
-Unit count: **425**.
+`git commit -m "feat(twenty): add the workspace sign-in and token exchange"`. Unit count **427**.
 
 **Step 3 (oracle, seed, smoke, scripts).** Files: `src/twenty/oracle.ts`, `tests/unit/twenty-oracle.test.ts`,
 `scripts/seed-twenty.mjs`, `k6/smoke/twenty-health.js`, `package.json`.
@@ -951,23 +989,21 @@ Unit count: **425**.
 
 Check: `npm run k6:inspect` prints `k6 inspect ok: k6/smoke/twenty-health.js`.
 `git add src/twenty/oracle.ts tests/unit/twenty-oracle.test.ts scripts/seed-twenty.mjs k6/smoke/twenty-health.js package.json`;
-`git commit -m "feat(twenty): add the read-only oracle, the health smoke and the harness scripts"`.
-Unit count: **428**.
+`git commit -m "feat(twenty): add the read-only oracle, the health smoke and the harness scripts"`. Unit count **430**.
 
 **Step 4 (self-test and project).** Files: `playwright.config.ts`, `tests/twenty/races/twenty-self-test.spec.ts`,
 `package.json` (add `"race:twenty": "playwright test --project=twenty-race"`).
 Check: `npm run typecheck` exit 0 (the spec is in `tsconfig.races.json`).
 `git add playwright.config.ts tests/twenty/races/twenty-self-test.spec.ts package.json`;
-`git commit -m "test(twenty): add the twenty-race project and the unmapped self-test"`.
-Unit count: **428** (no change).
+`git commit -m "test(twenty): add the twenty-race project and the unmapped self-test"`. Unit count **430** (no change).
 
-**Step 4b (local proof on this VM, no commit).** Run in order, record each exit code in the closeout:
+**Step 4b (local proof on this VM, no commit).** Run in order; record each exit code in the closeout:
 
 ```bash
 export PATH="/usr/local/bin:$PATH"
 bash scripts/bootstrap.sh twenty            # exit 0, "left as is" on the second run
 npm run up:twenty                           # exit 0, about 2 min
-npm run seed:twenty                         # exit 0, "twenty seed: created=true users=4"
+npm run seed:twenty                         # exit 0, "twenty seed: created=true users=4" (harness default login, no env)
 npm run smoke:twenty                        # k6: 5 iterations, checks 100 %, exit 0
 npm run race:twenty                         # playwright: 1 passed, exit 0
 TWENTY_DOWN_VOLUMES=1 npm run down:twenty   # exit 0
@@ -976,15 +1012,14 @@ npm run down:twenty                         # exit 0 when nothing is running (ch
 
 **Step 5 (CI job).** File: `.github/workflows/perf.yml` (§8.2). `npm run lint:actions` exit 0.
 `git add .github/workflows/perf.yml`; `git commit -m "ci(perf): add the twenty-smoke job with the image pull retry"`.
-Unit count: **428**.
+Unit count **430**.
 
-**Step 6 (docs).** Files: `README.md`, `.env.example`, `docs/BACKLOG.md`. Check: `npm run format:check` exit 0.
+**Step 6 (docs and backlog).** Files: `README.md`, `.env.example`, `docs/BACKLOG.md`. Check: `npm run format:check` exit 0.
 `git add README.md .env.example docs/BACKLOG.md`;
-`git commit -m "docs(twenty): add the run section, the env names and the suspected finding"`.
-Unit count: **428**.
+`git commit -m "docs(twenty): add the run section, the env names and the backlog entries"`. Unit count **430**.
 
-**Stop.** Push, then the report. CI runs on the PR only (perf triggers on `pull_request` and on `main`), so the first CI
-read happens on the PR, once (rule 15).
+**Stop.** Push the branch and open the PR (`gh pr create`, REST fallback). CI runs on the PR. The first CI read happens once
+(rule 15).
 
 ## 8. CI changes and the time budget (O5)
 
@@ -1013,11 +1048,9 @@ twenty-smoke:
     # Removes the volumes on every run, so no state carries between runs.
     TWENTY_DOWN_VOLUMES: "1"
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-    # O-T2: the login values' source is the owner's decision. Not written in this plan.
-    TWENTY_EMAIL: ${{ secrets.TWENTY_EMAIL }}
-    TWENTY_PASSWORD: ${{ secrets.TWENTY_PASSWORD }}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      timeout-minutes: 5
       with:
         persist-credentials: false
         path: ${{ env.P6_WORKING_DIRECTORY }}
@@ -1032,8 +1065,23 @@ twenty-smoke:
           exit 1
         fi
 
-    # setup-node, Install P6 dependencies and setup-k6: copy the three blocks from medusa-smoke (lines 77 to 91),
-    # with timeout-minutes 5, 10 and 5.
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      timeout-minutes: 5
+      with:
+        node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+        cache: npm
+
+    - name: Install P6 dependencies
+      timeout-minutes: 10
+      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+      run: |
+        set -euo pipefail
+        npm ci
+
+    - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+      timeout-minutes: 5
+      with:
+        k6-version: ${{ env.K6_VERSION }}
 
     - name: Prepare harness roots (Twenty fork at TWENTY_REF)
       timeout-minutes: 10
@@ -1054,7 +1102,6 @@ twenty-smoke:
       timeout-minutes: 14
       working-directory: ${{ env.PRODUCTS_ROOT }}/twenty-CRM/packages/twenty-docker
       env:
-        TWENTY_BASE_URL: ${{ env.TWENTY_BASE_URL }}
         OVERLAY: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml
       run: |
         set -euo pipefail
@@ -1148,13 +1195,14 @@ twenty-smoke:
 
     - name: Job summary (Playwright results, race table)
       if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
-      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
       timeout-minutes: 2
+      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
       run: |
         set -euo pipefail
         node scripts/write-ci-job-summary.ts
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      timeout-minutes: 5
       if: ${{ always() && steps.token_scan.outcome == 'success' }}
       with:
         name: race-histograms-twenty
@@ -1163,6 +1211,7 @@ twenty-smoke:
         retention-days: 14
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      timeout-minutes: 5
       if: ${{ always() && steps.token_scan.outcome == 'success' }}
       with:
         name: twenty-container-log
@@ -1181,66 +1230,69 @@ twenty-smoke:
 
 Notes on the skeleton:
 
-- `TWENTY_EMAIL` and `TWENTY_PASSWORD` come from repository secrets **in this skeleton**, which is one option of §13 O-T2.
-  The owner decides. If the owner picks another option, edit these two lines only.
-- The job summary step writes the summary only when the scan passed; a scan failure is visible as a red step.
-- The `Stop` step has no `|| true`: a failing down turns the job red. Build step 4b checks `down` with nothing running (exit 0).
-- The pull step runs in the fork's compose folder, as the harness does (`cwd: dockerDir`), so compose reads the same
-  project directory.
+- The login values are not in CI. `src/twenty/env.ts` uses the harness exports (pin v0.2.12, step 1a), so the job sets no
+  secret (owner decision 1).
+- The job summary step writes the summary only when the scan passed; a scan failure is a red step.
+- The Stop step has no `|| true`: a failing down turns the job red. Build step 4b checks `down` with nothing running (exit 0).
+- The pull step runs in the fork's compose folder, as the harness does (`cwd: dockerDir`), so compose reads the same project
+  directory.
+- Every step has `timeout-minutes` (owner rule), including checkout and both artefact uploads.
 
-### 8.3 Time budget (measured where the probe measured; estimates marked)
+### 8.3 Time budget (worst measured value per row, owner decision 4)
 
-| Part                                     | Time          | Source                                                                                                                                                                  |
-| ---------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checkout, setup-node, `npm ci`, setup-k6 | ~1.5 min      | **estimate**, from the Documenso job in run 39961527451 (checkout 3 s, setup-node 7 s, `npm ci` 5 s, k6 1 s) plus slack                                                 |
-| Bootstrap clone                          | 0.25 min      | **measured** 15 s here (CI may be slower; the step cap is 10 min)                                                                                                       |
-| Cold pull (four images)                  | 0.6 min       | **measured** 34 s (the step cap is 14 min, §8.4)                                                                                                                        |
-| First boot, no pull                      | 2.3 min       | **measured** 135 s (cold, fresh volumes)                                                                                                                                |
-| Seed                                     | 1.3 min       | **measured** 77 s (70 s on the first seed)                                                                                                                              |
-| Self-test at 50 trials                   | ~1 min        | **estimate**; 150 parallel `/healthz` took 252 ms, and 50 trials of 20 requests with one oracle and one auth round is well under a minute. The first CI run measures it |
-| k6 smoke, scan, artefacts                | ~0.5 min      | **estimate**                                                                                                                                                            |
-| Down with volumes                        | 0.05 min      | **measured** 2 to 3 s                                                                                                                                                   |
-| **Worst case, measured-based**           | **≈ 7.5 min** | sum of the rows above                                                                                                                                                   |
+| Part                                     | Time (worst) | Source                                                                                                                                       |
+| ---------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checkout, setup-node, `npm ci`, setup-k6 | 1.5 min      | **estimate** with slack. The Documenso job in run 39961527451 took 16 s for these steps (checkout 3 s, setup-node 7 s, `npm ci` 5 s, k6 1 s) |
+| Bootstrap clone                          | 0.25 min     | **measured** 15 s (one sample)                                                                                                               |
+| Cold pull (four images)                  | 0.57 min     | **measured** 34 s (one sample; the first boot below also includes a pull, so this is counted twice, on purpose)                              |
+| First boot                               | 3.05 min     | **measured** 183 s (first run, images pulled inside `up`). Worst of 183, 135, 106, 140 s                                                     |
+| Seed                                     | 1.28 min     | **measured** 77 s (worst of 70 and 77 s)                                                                                                     |
+| Self-test at 50 trials                   | 1.0 min      | **estimate**, used as a ceiling; 150 parallel `/healthz` took 252 ms. The first CI run measures it                                           |
+| k6 smoke, token scan, job summary        | 0.5 min      | **estimate**, used as a ceiling                                                                                                              |
+| Down with volumes                        | 0.05 min     | **measured** 3 s (worst of 2 and 3 s)                                                                                                        |
+| **Worst case, measured-based**           | **8.2 min**  | sum of the rows above                                                                                                                        |
 
-**Job timeout 20 min.** Margin: 20 − 7.5 = 12.5 min, which is at least the 10 minutes O5 requires. Estimates in the table are
-replaced by measured values after the first CI run; if a measured worst case moves the margin under 10 minutes, the owner
-decides (never a raised timeout to fit).
+**Job timeout 20 min.** Margin: 20 − 8.2 = **11.8 min**, which is at least the 10 minutes O5 requires. Estimated rows are
+ceilings, so the real worst case is at most this sum. If the first CI run's measured numbers move the margin under 10 minutes,
+the owner decides the new value (never a raised timeout to fit).
 
-**Full trial count.** `RACE_TRIALS=50` on `main`, nightly and dispatch (D6). Each trial is one health burst, so the count
-changes the self-test time only, not the cold start or the pull.
+**Full trial count.** `RACE_TRIALS=50` on `main`, nightly and dispatch (D6). Each trial is one health burst, so the count changes
+only the self-test time, not the cold start or the pull.
 
-**Step caps are not the job time.** The step caps add up to more than the job timeout (for example pull 14 and up 12 and seed 10).
-That is deliberate: a step that hits its cap has failed, and the job timeout is set from measured times (O5), never from the sum of caps.
+**Step caps are not the job time.** The step caps add up to more than the job timeout (pull 14, up 12, seed 10, and more). That
+is deliberate: a step that hits its cap has failed. The job timeout is set from measured times (O5), never from the sum of caps.
 
 ### 8.4 Step timeouts and the reason for each
 
-| Step                              | timeout-minutes | Reason                                                                                                                                                |
-| --------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Verify TWENTY_REF                 | 2               | grep only                                                                                                                                             |
-| setup-node, npm ci, setup-k6      | 5, 10, 5        | copied from `medusa-smoke`; `npm ci` took 5 s in the Documenso job                                                                                    |
-| Prepare harness roots (bootstrap) | 10              | clone measured 15 s here; 10 min covers a slow runner                                                                                                 |
-| Pull (3 tries)                    | 14              | 3 × 240 s per try + 15 s + 30 s = 765 s worst case (D11), rounded up to 840 s                                                                         |
-| Start (harness up)                | 12              | measured 106 to 183 s; the compose `--wait` healthcheck fails by itself after about 300 s start period + 20 × 5 s, so a stuck boot ends before 12 min |
-| Seed                              | 10              | measured 70 to 77 s; the adapter's own 40-minute cap is not used                                                                                      |
-| k6 smoke                          | 3               | 5 iterations                                                                                                                                          |
-| Self-test                         | 5               | estimate about 1 min at 50 trials; the cap leaves room for slow runners                                                                               |
-| Capture logs                      | 2               | `docker compose logs`                                                                                                                                 |
-| Token scan                        | 3               | grep and jq                                                                                                                                           |
-| Job summary                       | 2               | `write-ci-job-summary.ts`                                                                                                                             |
-| Upload artefacts                  | (no cap set)    | uploads are not in the measured total; GitHub's default applies                                                                                       |
-| Down                              | 5               | measured 2 to 3 s                                                                                                                                     |
+| Step                               | timeout-minutes | Reason                                                                                                                        |
+| ---------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Checkout                           | 5               | the P6 repository, small                                                                                                      |
+| Verify TWENTY_REF                  | 2               | grep only                                                                                                                     |
+| setup-node                         | 5               | copied from `medusa-smoke`                                                                                                    |
+| Install P6 dependencies (`npm ci`) | 10              | 5 s in the Documenso job; 10 min covers a slow runner                                                                         |
+| setup-k6                           | 5               | downloads k6                                                                                                                  |
+| Prepare harness roots (bootstrap)  | 10              | clone measured 15 s here; 10 min covers a slow runner                                                                         |
+| Pull (3 tries)                     | 14              | 3 × 240 s per try + 15 s + 30 s = 765 s worst case (D11), rounded up to 840 s                                                 |
+| Start (harness up)                 | 12              | measured 106 to 183 s; compose `--wait` fails by itself after about 300 s start period + 20 × 5 s, so a stuck boot ends first |
+| Seed                               | 10              | measured 70 to 77 s; the adapter's own 40-minute cap is not used                                                              |
+| k6 smoke                           | 3               | 5 iterations                                                                                                                  |
+| Self-test                          | 5               | estimate about 1 min at 50 trials; the cap leaves room for slow runners                                                       |
+| Capture logs                       | 2               | `docker compose logs`                                                                                                         |
+| Token scan                         | 3               | grep and jq                                                                                                                   |
+| Job summary                        | 2               | `write-ci-job-summary.ts`                                                                                                     |
+| Upload artefacts (2 steps)         | 5 each          | owner rule: every step has a cap; uploads of a few small files                                                                |
+| Stop (down)                        | 5               | measured 2 to 3 s                                                                                                             |
 
 ## 9. Test strategy (what each layer proves)
 
-- **Unit (`tests/unit/twenty-*.test.ts`, 11 tests):** the env rules (defaults, precedence, required login), the origin
-  order and pick rules of the sign-in path, the error text that never prints a body, and the schema name rule against two
-  live schemas. No network.
+- **Unit (`tests/unit/twenty-*.test.ts`, 13 tests):** the env rules (defaults, precedence, env override, harness fallback, no
+  printing), the origin order and pick rules of the sign-in path, the error text that never prints a body, and the schema name
+  rule against two live schemas. No network.
 - **Smoke (k6, 5 iterations):** the harness-started server answers `/healthz` with 200. Not a performance number.
-- **Self-test (Playwright `twenty-race`):** health burst (no 429), read-only oracle (`SELECT 1` and SQLSTATE 25006), the
-  workspace schema resolves, one session auth proof with `currentUser` and one REST read. It proves the stack and the
-  access path, not a race.
+- **Self-test (Playwright `twenty-race`):** health burst (no 429), read-only oracle (`SELECT 1` and SQLSTATE 25006), the workspace
+  schema resolves, one session auth proof with `currentUser` and one REST read. It proves the stack and the access path, not a race.
 - **Token scan (CI):** value patterns over the logs, the harness log, the histograms and the JSON suites and errors.
-- **Local proof (step 4b):** the same commands on this VM, exit codes recorded.
+- **Local proof (step 4b):** the same commands on this VM, with exit codes recorded.
 
 ## 10. Test strategy notes (what this does not prove)
 
@@ -1249,21 +1301,20 @@ That is deliberate: a step that hits its cap has failed, and the job timeout is 
 
 ## 11. Risks
 
-| Risk                                                                                                | Likelihood                          | Mitigation in this plan                                                                                    |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Docker Hub errors during the pull on a shared runner (the owner cites HTTP 500 for run 39961527451) | Medium                              | Three tries with 15 s and 30 s backoff, each try capped at 4 min (D11). The cause is not proven (§13 O-T4) |
-| First boot slower on a hosted runner than on this VM                                                | Medium                              | Step cap 12 min; the compose healthcheck fails by itself after about 7 min                                 |
-| Seed login values unavailable in CI                                                                 | High until O-T2                     | `twentyEmailFromEnv` / `twentyPasswordFromEnv` throw with a clear message; the job cannot pass silently    |
-| Harness `authenticate()` used by mistake (agnostic token)                                           | Medium                              | P6 never calls `authenticate()` for data; `src/twenty/auth.ts` is the one path (D3). Backlog H-twenty-auth |
-| A future `TWENTY_API_KEY` run hits 100 per 60 s                                                     | Low (not used)                      | D5: self-test uses sessions; a 429 is a TEST BUG                                                           |
-| Malformed bodies hang (P6-OBS-TW-001)                                                               | Known                               | The self-test sends only well-formed bodies, and no request has a timeout shorter than the test (§3.5)     |
-| Token leakage through logs or Playwright JSON `config`                                              | Low                                 | D7: value patterns, suites and errors only; the probe's log scan was clean (A10)                           |
-| The shared scan's bare-name patterns (Task 5 class)                                                 | Medium if the shared script is used | The job does not use it (D7); §13 O-T5                                                                     |
-| `harness down` without `TWENTY_DOWN_VOLUMES` keeps state                                            | Low in CI                           | The job sets the variable (§8.2)                                                                           |
-| Port 8025 or 1025 used by a future product                                                          | Low                                 | §3.7; one stack per job                                                                                    |
-| `redis` image unpinned in the fork's compose                                                        | Low                                 | Accepted for now; §12 X2                                                                                   |
-| Image tag `v2.44.0` re-pushed upstream                                                              | Low                                 | Digest recorded (§3.9); §12 X1                                                                             |
-| Probe-only artefacts under the scratchpad, not in git                                               | None                                | Not committed (rule 14)                                                                                    |
+| Risk                                                       | Likelihood                                            | Mitigation in this plan                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Docker Hub registry 500 during the pull on a hosted runner | **Confirmed once** (run 39961527451 attempt 1, §3.10) | Three tries with 15 s and 30 s backoff, each try capped at 4 min (D11)                                     |
+| First boot slower on a hosted runner than on this VM       | Medium                                                | Step cap 12 min; the compose healthcheck fails by itself after about 7 min                                 |
+| Harness export missing in a future pin                     | Low                                                   | The pin is exact (`v0.2.12`); the unit test for the fallback fails if the export disappears                |
+| Harness `authenticate()` used by mistake (agnostic token)  | Medium                                                | P6 never calls `authenticate()` for data; `src/twenty/auth.ts` is the one path (D3). Backlog H-twenty-auth |
+| A future `TWENTY_API_KEY` run hits 100 per 60 s            | Low (not used)                                        | D5: self-test uses sessions; a 429 is a TEST BUG                                                           |
+| Malformed bodies hang (P6-OBS-TW-001)                      | Known                                                 | The self-test sends only well-formed bodies (§3.5)                                                         |
+| Token leakage through logs or Playwright JSON `config`     | Low                                                   | D7: value patterns, suites and errors only; the probe's log scan was clean (A10)                           |
+| The shared scan's bare-name patterns (Task 5 class)        | Medium if the shared script is used                   | The job does not use it (D7); X6 later (O-T5)                                                              |
+| `harness down` without `TWENTY_DOWN_VOLUMES` keeps state   | Low in CI                                             | The job sets the variable (§8.2)                                                                           |
+| Port 8025 or 1025 used by a future product                 | Low                                                   | §3.7; one stack per job                                                                                    |
+| `redis` image unpinned in the fork's compose               | Low                                                   | Accepted for now; §12 X2                                                                                   |
+| Image tag `v2.44.0` re-pushed upstream                     | Low                                                   | Digest recorded (§3.9); §12 X1                                                                             |
 
 ## 12. Proposed extras (out of scope until the owner accepts them)
 
@@ -1274,96 +1325,85 @@ That is deliberate: a step that hits its cap has failed, and the job timeout is 
 - **X5** The pull retry for `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`, `cal-smoke`, `cal-state-races` and `documenso-smoke` (backlog PR, owner request).
 - **X6** Use the shared token scan with value patterns (a one-line change to `scripts/evidence-token-scan.mjs`), if the owner wants one scanner.
 
-## 13. Open questions and proposed answers
+## 13. Open questions and owner answers (2026-10-23)
 
-Routine choices are decided in this plan (D1 to D16). These need the owner:
+Every question is answered by the owner's decisions in §0. Routine choices are decided in §4 (D1 to D16).
 
-- **O-T1 Branch names.** The owner asked for `feat/2026-10-23-p6-twenty-stack`; rule B10 says the plan goes to `plan/…`.
-  _Proposed answer:_ keep the feat branch for the build, and push the same plan commit to `plan/2026-10-23-p6-twenty-stack` as well.
-  Both refs are in the plan's step 0.
-- **O-T2 Where the seed login comes from.** The roadmap says P6 never retypes seed logins. The harness does not export its
-  dev default, and the login is needed in CI (the sign-in path is required for the self-test). Options:
-  (a) **recommended:** repository secrets `TWENTY_EMAIL` and `TWENTY_PASSWORD`, set once by the owner (§8.2 uses this);
-  (b) a literal dev default in `src/twenty/env.ts`, with a comment that it is the fork's public seed value (the Documenso
-  placeholder precedent), which breaks the roadmap's "never retype" rule;
-  (c) a harness change that exports the default (H-twenty-pass, Phase 3 at the earliest).
-  _Why (a):_ it keeps the rule, needs no harness change, and the owner controls the value. The owner must add the secrets before
-  the build's CI run; without them the job fails in the seed-or-self-test step with the clear message from §6.1.
-- **O-T3 The owner's limiter note.** Confirmed for API keys (§3.4), not for sessions. _Proposed answer:_ keep the self-test
-  on sessions (D5); record the API-key facts in the README section; no change to the burst size.
-- **O-T4 The owner's claim about run 39961527451.** The owner says attempt 1 failed two jobs with a registry HTTP 500. The
-  Task 5 closeout says the same. The attempt-1 logs I could read show the harness-up step printing success lines
-  ("Documenso web is up", "Cal web is up") and then `Process completed with exit code 1`; no 500 line appears, and no pull
-  error is in the logs. _Proposed answer:_ keep the pull retry (cheap and harmless). Before any backlog item is closed, the
-  owner confirms the 500 from the full attempt log (the raw log download, not the `--log` view). Until then the attempt-1
-  failures are **unexplained** (escalation check, item 3).
-- **O-T5 Token scanner.** The shared script matches bare names (the Task 5 class). _Proposed answer:_ keep the value-only
-  scan in this job (D7); decide on X6 separately.
-- **O-T6 Suspected finding P6-OBS-TW-001.** _Proposed answer:_ record it as SUSPECTED in `docs/BACKLOG.md` (step 6); no test
-  in Task 6; the owner decides about X3 (a `test.fail()` needs an owner label, the Phase 2 convention).
-- **O-T7 Digest pin.** _Proposed answer:_ tag now (the harness default); digest as X1.
-- **O-T8 Job timeout 20 min.** _Proposed answer:_ as §8.3. If the first CI run's measured worst case leaves less than 10
-  minutes of margin, the owner decides the new value.
-- **O-T9 Cursor Cloud.** The Cursor Cloud agent was not probed, and its environment configuration is not part of this session.
-  _Proposed answer:_ no environment step for either agent (the stack needs only Docker and network access, which this session
-  had); the owner confirms on the first Cursor run, and a probe decides if that run fails.
-- **O-T10 Remaining duplicate pulls.** The owner asked for the pull step in `twenty-smoke` only. _Proposed answer:_ X5 as a
-  backlog PR.
+- **O-T1 Branch names. Answered: both refs.** The plan commit is on `feat/2026-10-23-p6-twenty-stack` and on
+  `plan/2026-10-23-p6-twenty-stack`.
+- **O-T2 Where the seed login comes from. Answered: no repository secrets.** Harness `v0.2.12` exports
+  `TWENTY_DEFAULT_ADMIN_EMAIL` and `TWENTY_DEV_SEED_PASSWORD`; `src/twenty/env.ts` uses them unless `TWENTY_EMAIL` /
+  `TWENTY_PASSWORD` are set (D4). The CI skeleton has no secrets lines.
+- **O-T3 The owner's limiter note. Answered: as proposed.** Confirmed for API keys (§3.4), not for sessions. The self-test stays
+  on sessions (D5); the README section records the API-key facts.
+- **O-T4 The registry 500 for run 39961527451. Answered: confirmed.** The raw attempt-1 logs show
+  `Error received unexpected HTTP status: 500 Internal Server Error` for `postgres` in `documenso-smoke` (job `120440451056`,
+  13:29:55Z) and `postgres_is_ready` in `cal-smoke` (job `120440451294`, 13:30:30Z). §3.10 has the details. The pull retry
+  (D11) is the response.
+- **O-T5 Token scanner. Answered: value-only scan in this job (D7).** X6 (the shared scanner with value patterns) is later.
+- **O-T6 Suspected finding P6-OBS-TW-001. Answered: SUSPECTED in `docs/BACKLOG.md`; no test in Task 6; no label.**
+- **O-T7 Digest pin. Answered: tag now (`v2.44.0`).** Digest as X1.
+- **O-T8 Job timeout 20 min. Answered: as proposed.** Margin 11.8 min (§8.3).
+- **O-T9 Cursor Cloud. Answered: no setup change now.** The first Cursor run confirms the Docker Hub pulls work.
+- **O-T10 Pulls in the other jobs. Answered: X5, backlog.**
 
 ## 14. Contradictions with the roadmap
 
 - **C1 Auth assumption (roadmap probe item 5).** The roadmap names the harness `authenticate()` as the auth path. In this
   pinned harness it returns the agnostic token, which cannot read data (§3.3). P6 does its own exchange (D3). Backlog
   H-twenty-auth.
-- **C2 Seed logins (roadmap rule "never retype").** Cannot be met without a harness export or a repository secret (O-T2).
+- **C2 Seed logins (roadmap rule "never retype"). Resolved.** The harness v0.2.12 exports the dev defaults; P6 reads the
+  exports only when no environment value is set (D4). No P6 literal and no secret.
 - **C3 Token scan tool (roadmap scope).** The roadmap names `scripts/evidence-token-scan.mjs`. Its bare-name patterns match
   test titles and source text (the Task 5 failures). The job uses value patterns (D7).
 - **C4 Owner's limiter note (owner instructions).** True for API keys; not observed for sessions (§3.4). Recorded, not a change
   to the roadmap's cases.
 - **C5 D10 (sparse or full clone).** The probe shows the full clone is fast (15 s), so D10's condition for sparse is not met;
-  full clone stays (D1). Not a contradiction, listed for completeness.
+  full clone stays (D1).
 - **C6 Roadmap "npm run up:twenty … down:twenty".** The scripts did not exist; the build adds them. The probe used the harness
   entry point directly.
-- **C7 The owner's run 39961527451 account** and the Task 5 closeout differ from the logs I could read (O-T4).
+- **C7 The registry 500 in run 39961527451. Resolved (confirmed).** The raw logs show the 500 (§3.10). The earlier read of
+  the `--log` view that found no cause was incomplete.
 
 ## 15. Self-check (rule 20)
 
 - **(a) Roadmap "Done when".**
-  - Up, smoke, self-test and down work on a cloud VM: **met locally** by §3 (smoke and self-test scripts are built in step 4b).
-    _Gap:_ the self-test and the job are not run yet; the build does that.
-  - Up, smoke, self-test and down work in CI (green on the PR and once on `main`): **gap** until the build and the owner's
-    secrets (O-T2).
-  - Token scan before every upload: **planned** (§8.2) and tested in step 5's review.
-  - No secret in git: **planned** (§6.1 throws without values; O-T2).
+  - Up, smoke, self-test and down work on a cloud VM: **met locally** by §3 (the smoke and self-test scripts are built in
+    step 4b).
+    _Gap:_ the self-test and the job run in the build (steps 4b and 5).
+  - Up, smoke, self-test and down work in CI (green on the PR and once on `main`): **gap** until the PR's CI run. The main run follows the merge.
+  - Token scan before every upload: **planned** (§8.2).
+  - No secret in git: **met by design**: no secret, no literal login in P6 code (D4, §6.1), no secrets lines in CI (§8.2).
   - README "Run Twenty" has no timing claims: **planned** (§6.10).
-  - Environment steps listed for both agents: **listed**: none for Claude Code (probed). Cursor: **gap**, O-T9.
-  - `npm run check` green: **met** on the baseline (§3.1 row 14) and required after each step.
-- **(b) Names and paths grep-checked.** The following names are in the repo now (the plan's new names are marked NEW in §5):
-  `bootstrap.sh` (`twenty`, `TWENTY_REF`), `scripts/harness.mjs`, `src/oracles/pg.ts` (`createReadOnlyPool`, `selectRows`,
-  `waitForStable`, `closePool`), `src/races/*` (`fireTogether`, `runTrials`, `recordTrial`, `createRerunRunner`,
+  - Environment steps listed for both agents: **none needed** (owner decision 6; §1). Cursor's first run confirms the pulls.
+  - `npm run check` green: **met** on the baseline (§3.1 row 13) and required after each step.
+- **(b) Names and paths grep-checked.** The following names exist in the repo or in the pinned harness (the plan's new names are
+  marked NEW in §5): `bootstrap.sh` (`twenty`, `TWENTY_REF`), `scripts/harness.mjs`, `src/oracles/pg.ts` (`createReadOnlyPool`,
+  `selectRows`, `waitForStable`, `closePool`), `src/races/*` (`fireTogether`, `runTrials`, `recordTrial`, `createRerunRunner`,
   `spreadPolicyFromEnv`, `raceTrialsFromEnv`, `createHistogram`, `writeHistogram`), `src/races/types.ts` (`RaceProduct`
   includes `"twenty"`), `src/ci/playwright-json-summary.ts` (`ISSUE_ANNOTATION_TYPE`), `scripts/write-ci-job-summary.ts`,
   `scripts/evidence-token-scan.mjs`, `tests/documenso/races/documenso-self-test.spec.ts`, `.github/workflows/perf.yml`
   (`documenso-smoke`, `medusa-smoke`), `k6/smoke/documenso-health.js`, `playwright.config.ts`, `.env.example`,
-  `docs/BACKLOG.md`. The harness names (`getAdapter`, `seed`, `loadConfig`, `twentyComposeFilePaths`) were read in
-  `node_modules/qa-portfolio-harness`.
-- **(c) CI time estimate.** §8.3 includes setup and reruns of the pull (three tries) and the seed; the worst case is 7.5 min
-  against a 20-minute timeout, a 12.5-minute margin. Numbers match across §3.1, §8.3 and §8.4 (cold pull 34 s, first boot
-  135 s, seed 77 s, down 2 s).
+  `docs/BACKLOG.md`. The harness v0.2.12 names (`getAdapter`, `seed`, `loadConfig`, `twentyComposeFilePaths`,
+  `TWENTY_DEFAULT_ADMIN_EMAIL`, `TWENTY_DEV_SEED_PASSWORD`) were read in its source (`src/index.ts`, `src/adapters/twenty-env.ts`).
+- **(c) CI time estimate.** §8.3 uses the worst measured value per row (first boot 183 s, seed 77 s); the worst case is
+  **8.2 min** against a 20-minute timeout, a **11.8-minute margin** (at least 10 as required). The pull retry (three tries) is in
+  the timeline, the seed too. Values match across §3.1, §8.3 and §8.4.
 - **(d) Skeletons and commands.** Every new function and test has a skeleton (§6.1 to §6.8); every build step has `git add`
-  paths, the commit command, and the expected count. The expected `npm run check` tail is given in step 0.
-- **(e) Owner answers.** None recorded beyond the instructions in §0. Every decision the owner has not made is in §13.
+  paths, the commit command and the expected count. Every CI step has `timeout-minutes` (§8.2, §8.4).
+- **(e) Owner answers.** Recorded in §0 (decisions 1 to 6) and §13. No answer is recorded beyond what the owner gave in this session.
 
 ## 16. Closeout notes (fill in before the PR merges)
 
-- **Merge SHA:** _pending_ (no PR yet; the build waits for the owner's review of this plan).
+- **Merge SHA:** _pending_ (the PR is opened after the build; the owner says "merge" to merge it).
 - **CI runs:** _pending_. The first run is on the PR. The main run and the nightly run follow the merge.
-- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5): malformed `{}` and empty bodies on `/metadata` and `/graphql` get no
-  response in three sessions.
+- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5; `docs/BACKLOG.md`): malformed `{}` and empty bodies on `/metadata` and
+  `/graphql` get no response, reproduced three times.
 - **Deviations from this plan so far:**
-  - The owner's `up:twenty` / `down:twenty` scripts did not exist; the probe called `scripts/harness.mjs` directly (§3).
+  - The owner's `up:twenty` / `down:twenty` scripts did not exist; the probe called `scripts/harness.mjs` directly (§3.1).
   - The probe's first `auth` run had a bug of its own: the probe truncated the response body to 300 characters before parsing
     it, so the sign-in looked empty. Fixed in the probe and re-run (`auth-warm.out`). No product data changed.
-  - The cited main run's attempt 1 could not be tied to a registry 500 in the logs (O-T4).
-  - The plan commit goes to two refs (O-T1).
-- **Rule slips:** none recorded yet. The first `npm run up:twenty` and `down:twenty` calls used the harness directly (above).
+  - My earlier read of attempt 1 of run `39961527451` said the cause was unexplained. The raw logs (§3.10) show the registry 500. The earlier read used the `--log` view, which omits those lines.
+  - The plan commit goes to two refs (O-T1, both accepted).
+  - Step 1a (the pin bump) was added after the owner's approval, as its own commit before the env step.
+- **Rule slips:** none recorded. The first `npm run up:twenty` and `down:twenty` calls used the harness directly (above).
