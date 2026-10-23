@@ -17,6 +17,7 @@
     "down:documenso": "node scripts/harness.mjs down documenso",
     "smoke:documenso": "k6 run --summary-export results/documenso-health-summary.json k6/smoke/documenso-health.js",
     "race:documenso": "playwright test --project=documenso-race",
+    "test:documenso-api": "playwright test --project=documenso-api",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prelint:actions": "node scripts/actionlint.mts --install-only",
