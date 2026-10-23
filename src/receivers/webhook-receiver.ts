@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import http, { type IncomingHttpHeaders } from "node:http";
 
 export type WebhookDelivery = {
@@ -17,6 +18,17 @@ export function headerSecretCheck(header: string, expectedSecret: string | null)
   return (headers) => {
     const got = headers[header];
     return expectedSecret === null ? got === undefined : got === expectedSecret;
+  };
+}
+
+/** Cal: `x-cal-signature-256` is the lower-case hex HMAC-SHA256 of the raw body with the subscriber secret (step 0, section 3.7). */
+export function hmacSignatureCheck(secret: string): SecretCheck {
+  return (headers, rawBody) => {
+    const got = headers["x-cal-signature-256"];
+    if (typeof got !== "string") return false;
+    const want = Buffer.from(createHmac("sha256", secret).update(rawBody).digest("hex"));
+    const have = Buffer.from(got);
+    return have.length === want.length && timingSafeEqual(have, want);
   };
 }
 

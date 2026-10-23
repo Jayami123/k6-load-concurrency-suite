@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import {
   headerSecretCheck,
+  hmacSignatureCheck,
   parseDelivery,
   startWebhookReceiver,
 } from "../../src/receivers/webhook-receiver.ts";
@@ -61,5 +63,20 @@ describe("startWebhookReceiver", () => {
     } finally {
       await receiver.close();
     }
+  });
+});
+
+describe("hmacSignatureCheck", () => {
+  it("accepts the HMAC of the raw body and rejects any other body", () => {
+    const check = hmacSignatureCheck("s3cret");
+    const body = '{"triggerEvent":"BOOKING_CREATED"}';
+    const sig = createHmac("sha256", "s3cret").update(body).digest("hex");
+    assert.equal(check({ "x-cal-signature-256": sig }, body), true);
+    assert.equal(check({ "x-cal-signature-256": sig }, body + " "), false);
+    assert.equal(check({}, body), false);
+  });
+
+  it("rejects a signature of a different length without throwing", () => {
+    assert.equal(hmacSignatureCheck("s3cret")({ "x-cal-signature-256": "00" }, "{}"), false);
   });
 });
