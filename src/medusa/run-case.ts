@@ -13,9 +13,16 @@ import {
   deleteProduct,
   type MedusaCatalog,
 } from "./admin.ts";
-import { checkOversellInvariants, type OversellMode } from "./invariants.ts";
-import { leakCheck, waitForOversellStable } from "./oracle.ts";
-import { caseLeakPattern, casePrefix, cleanupFailure, prefixedEmail } from "./payloads.ts";
+import { checkOrphanOrders, checkOversellInvariants, type OversellMode } from "./invariants.ts";
+import { selectRows } from "../oracles/pg.ts";
+import { LEAK_LIVE_ORDER_IDS_SQL, leakCheck, waitForOversellStable } from "./oracle.ts";
+import {
+  attemptEmailLike,
+  caseLeakPattern,
+  casePrefix,
+  cleanupFailure,
+  prefixedEmail,
+} from "./payloads.ts";
 import { completeCart, prepareReadyCarts } from "./store.ts";
 
 function parseCompleteBody(body: string): {
@@ -67,6 +74,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
   const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const inventoryItemIds: string[] = [];
   const cleanupViolations: string[] = [];
+  const suspected: string[] = [];
   const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
 
   try {
@@ -257,6 +265,26 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
 
         return record;
       } finally {
+        // Sweep the attempt's live orders by email (F-M5, plan D48). A losing checkout can leave an order that HTTP
+        // never returned, so the response ids above miss it. A failing sweep is a cleanup violation, never silent.
+        try {
+          const swept = await selectRows<{ id: string }>(input.pool, LEAK_LIVE_ORDER_IDS_SQL, [
+            attemptEmailLike(dataPrefix, trialLeaf),
+          ]);
+          // Orphans are annotated before they are cancelled. They are SUSPECTED (F-M5), never a violation.
+          suspected.push(
+            ...checkOrphanOrders({
+              liveOrderIds: swept.map((row) => row.id),
+              returnedOrderIds: orderIds,
+              attempt: trialLeaf,
+            }),
+          );
+          for (const row of swept) {
+            if (!orderIds.includes(row.id)) orderIds.push(row.id);
+          }
+        } catch (err) {
+          cleanupViolations.push(cleanupFailure("order sweep", trialLeaf, err));
+        }
         for (const orderId of [...new Set(orderIds)]) {
           try {
             await cancelAndArchive(input.token, orderId);
@@ -298,6 +326,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     histogram.verdict = trialsOk && histogram.invariantViolations.length === 0 ? "pass" : "fail";
   } finally {
     histogram.finishedAt = new Date().toISOString();
+    histogram.suspected = suspected;
     await writeHistogram(histogram);
   }
 
