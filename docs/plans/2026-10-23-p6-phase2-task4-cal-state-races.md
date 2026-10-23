@@ -1157,5 +1157,17 @@ Filled in as the work goes. Final values are written at the end of the build and
 - **Run 1, full count (`39932990882`, workflow_dispatch, head `57826b4`): conclusion success.** Every job succeeded: `cal-state-races`, `cal-smoke`, `documenso-smoke`, `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`.
   - `cal-state-races` steps (50 trials, step wall time from the job list): P6-CAL-RACE-006 1 min 45 s; -008 1 min 38 s; -007 1 min 32 s; -009 1 min 32 s. `Start Cal` 76 s. These are single-run observations, not a median (rule: median of at least 3). The planning figure in section 9.2 (about 5 min per case) was an overestimate.
   - **O12, receiver-move check:** `documenso-smoke` succeeded in run 1, including `Documenso races (documenso-race)` (3 min 42 s), which runs the Documenso self-test on the moved receiver (`src/receivers/webhook-receiver.ts`).
-  - Labels: not applied. Runs 2 and 3 are pending (O6, O11: sequential dispatches).
+  - Labels: not applied (see the full-count runs below).
+- **Full-count runs for the labels (O6, O11), all on head `48845c0` or `57826b4`, all `workflow_dispatch`, all conclusion success:**
+  - run 1: `39932990882` (head `57826b4`), finished 09:55 UTC;
+  - run 2: `39935674101` (head `48845c0`), finished 10:12 UTC;
+  - run 3: `39938126238` (head `48845c0`), finished 10:33 UTC.
+    Per-case step time (50 trials), run 2 / run 3: P6-CAL-RACE-006 1 min 44 s / 1 min 24 s; -008 1 min 40 s / 1 min 20 s; -007 1 min 32 s / 1 min 29 s; -009 1 min 32 s / 1 min 29 s. `Start Cal`: run 2 1 min 18 s, run 3 1 min 14 s. `documenso-smoke` succeeded in runs 2 and 3 (the receiver-move check, O12); its `Documenso races` step took 3 min 40 s and 3 min 27 s.
+- **Histograms (`race-histograms-cal-state`), checked per run from the artifact, all three runs identical:** every case has 50 valid trials, 0 invalid, 0 reruns, verdict `pass`, no invariant violations, status 200 for every request. 51 SUSPECTED lines per case (50 trials plus the warm-up), and every attempt reproduces its finding:
+  - F-C1 (`-006`, cap 1): 10 accepted per attempt, `usageCount` 1 at the end, 50 of 50 attempts;
+  - F-C1 (`-008`, cap 3): 10 accepted per attempt, `usageCount` 3 at the end, 50 of 50 attempts;
+  - F-C2 (`-007`): final `accepted` with one `BOOKING_CREATED` and one `BOOKING_CANCELLED` in 50 of 50 attempts;
+  - F-C3 (`-009`): final `accepted` with two `BOOKING_CREATED` and zero `BOOKING_CANCELLED` in 50 of 50 attempts.
+    Email is not observed (`emailObservable: false`, D9).
+- **Labels: not applied.** O6 asks for the owner's decision after these three runs. No test has changed to assert or use `test.fail()`.
 - **Deviations added in the build:** Documenso change limited to import paths and the `check` argument (7.1 said so); the Cal cancel helper is a copy of a private helper in `run-case.ts` (not edited); `subscribeWebhook`, `unsubscribeWebhook`, `resolveConfirmSetup` and `waitQuiet` were added in step 5 (not in the plan's file list).
