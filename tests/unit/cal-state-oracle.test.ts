@@ -4,6 +4,7 @@ import {
   BOOKING_BY_EMAIL_SQL,
   BOOKING_STATUS_SQL,
   CASE_ACCEPTED_SQL,
+  CONFIRM_SETUP_SQL,
   LINK_STATE_SQL,
 } from "../../src/cal/state-oracle.ts";
 
@@ -14,6 +15,7 @@ describe("state oracle SQL", () => {
       CASE_ACCEPTED_SQL,
       BOOKING_STATUS_SQL,
       BOOKING_BY_EMAIL_SQL,
+      CONFIRM_SETUP_SQL,
     ]) {
       assert.match(sql, /^\s*SELECT\b/i);
       assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|ALTER|DROP)\b/i);

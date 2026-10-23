@@ -61,3 +61,27 @@ export async function readBookingByEmail(
     throw new Error(`TEST BUG: expected one booking for ${email}, got ${rows.length}`);
   return rows[0]!;
 }
+
+/** The confirmation event type of the seed (`tennis-class`, 60 min, requires confirmation) and its host. */
+export const CONFIRM_SETUP_SQL = `
+SELECT e.id AS "eventTypeId", e.length, e."requiresConfirmation", u.username, u.id AS "userId"
+FROM "EventType" e JOIN users u ON u.id = e."userId"
+WHERE e.slug = 'tennis-class'
+`;
+
+export async function resolveConfirmSetup(
+  pool: pg.Pool,
+): Promise<{ eventTypeId: number; length: number; username: string; userId: number }> {
+  const rows = await selectRows<{
+    eventTypeId: number;
+    length: number;
+    requiresConfirmation: boolean;
+    username: string;
+    userId: number;
+  }>(pool, CONFIRM_SETUP_SQL, []);
+  const r = rows[0];
+  if (rows.length !== 1 || !r || r.length !== 60 || !r.requiresConfirmation) {
+    throw new Error(`TEST BUG: seed changed: tennis-class ${JSON.stringify(rows)}`);
+  }
+  return { eventTypeId: r.eventTypeId, length: r.length, username: r.username, userId: r.userId };
+}
