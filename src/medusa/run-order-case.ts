@@ -11,6 +11,7 @@ import {
   archiveOrder,
   cancelFulfillment,
   cancelOrder,
+  capturePayment,
   createFulfillment,
   createStockedVariant,
   deleteCustomersByEmail,
@@ -21,16 +22,21 @@ import {
 import {
   checkCancelFulfilExclusive,
   checkLoserStatuses,
+  checkRefundCap,
   checkReservationDrift,
   checkSingleCancel,
+  checkSummaryRefund,
   classifyFindings,
 } from "./invariants.ts";
 import {
+  MONEY_PAYMENT_FOR_ORDER_SQL,
   OPEN_FULFILLMENTS_SQL,
   ORDER_LINE_ITEM_SQL,
   ORDER_RESERVATIONS_SQL,
   PHANTOM_RESERVED_SQL,
   orderStateLeakCheck,
+  readLatestSummaryRefund,
+  readMoneySnapshot,
   readOrderState,
 } from "./oracle.ts";
 import {
@@ -43,7 +49,7 @@ import {
 import { completeCart, prepareReadyCarts } from "./store.ts";
 
 /**
- * double-cancel: two parallel cancels of one order (P6-MED-RACE-008, P1 X04).
+ * double-cancel: N parallel cancels of one order (P6-MED-RACE-008 with N = 2, P1 X04; P6-MED-RACE-013 and -014 with N = 10).
  * cancel-vs-fulfil: one cancel ‖ one fulfil of one order (P6-MED-RACE-009, P1 X05).
  */
 export type OrderMode = "double-cancel" | "cancel-vs-fulfil";
@@ -57,6 +63,10 @@ export type RunOrderCaseInput = {
   title: string;
   mode: OrderMode;
   trials: number;
+  /** Parallel requests per burst. Omitted: DEFAULT_ORDER_CONCURRENCY (2, the -008 and -009 shape). */
+  concurrency?: number;
+  /** Capture the order's payment with its full amount before the burst (P6-MED-RACE-014). Default false. */
+  captureFirst?: boolean;
   /** Signal tags the owner labelled (plan D54); a labelled SUSPECTED line is asserted. Empty until labelled. */
   labelled: readonly string[];
 };
@@ -69,8 +79,17 @@ export type RunOrderCaseResult = {
   reportedLeaked: string[];
 };
 
-/** Two requests per burst: the X04/X05 shape the roadmap ports (plan D46). */
-const N = 2;
+/** Default requests per burst: the X04/X05 shape the roadmap ports (plan D46). */
+export const DEFAULT_ORDER_CONCURRENCY = 2;
+
+/** Omitted gives the default; anything else must be a whole number of at least 1. */
+export function resolveOrderConcurrency(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_ORDER_CONCURRENCY;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`TEST BUG: order burst concurrency ${value} must be a whole number >= 1`);
+  }
+  return value;
+}
 
 function orderIdOf(body: string): string | null {
   try {
@@ -92,6 +111,8 @@ function messageOf(body: string | undefined): string {
 }
 
 export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCaseResult> {
+  const N = resolveOrderConcurrency(input.concurrency);
+  const captureFirst = input.captureFirst ?? false;
   const base = medusaBaseUrlFromEnv();
   const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const leakPrefix = caseLeakPattern(input.runPrefix, input.caseId);
@@ -158,6 +179,26 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
         ]);
         if (!item) throw new Error(`TEST BUG: no line item for order ${orderId}`);
 
+        // Captured first (P6-MED-RACE-014). A capture 5xx is a PRODUCT BUG (plan D3b-7); any other failure is a TEST BUG.
+        let paymentId = "";
+        if (captureFirst) {
+          const [pay] = await selectRows<{ payment_id: string; amount: string }>(
+            input.pool,
+            MONEY_PAYMENT_FOR_ORDER_SQL,
+            [orderId],
+          );
+          if (!pay) throw new Error(`TEST BUG: no payment row for order ${orderId}`);
+          paymentId = pay.payment_id;
+          const cap = await capturePayment(input.token, paymentId, Number(pay.amount));
+          if (cap.status !== 200) {
+            throw new Error(
+              cap.status >= 500
+                ? `PRODUCT BUG: capture HTTP ${cap.status}`
+                : `TEST BUG: capture HTTP ${cap.status}`,
+            );
+          }
+        }
+
         // Burst: index 0 cancels; index 1 cancels (-008) or fulfils (-009).
         const bodies: string[] = [];
         const fired = await fireTogether(
@@ -208,6 +249,17 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
           ...checkReservationDrift(state),
           ...checkLoserStatuses(statuses.filter((s) => s !== 200)),
         ];
+        let latestRefunded: number | null = null;
+        let refundedSum = 0;
+        if (captureFirst) {
+          const money = await readMoneySnapshot(input.pool, paymentId, orderId);
+          refundedSum = money.refundedSum;
+          latestRefunded = await readLatestSummaryRefund(input.pool, orderId);
+          lines.push(
+            ...checkRefundCap({ capturedSum: money.capturedSum, refundedSum: money.refundedSum }),
+            ...checkSummaryRefund({ latestRefunded, refundRowsSum: money.refundedSum }),
+          );
+        }
         const { violations, suspected } = classifyFindings(lines, input.labelled);
 
         // Same rule as runPromoCase: suspected lines never reach invariantViolations, so a suspected signal in the
@@ -227,6 +279,8 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
           loserStatus: statuses.find((s) => s !== 200) ?? null,
           loserMessage: messageOf(bodies[statuses.findIndex((s) => s !== 200)]),
           suspectedBug: suspected.join(" | "),
+          // Only the captured case reads money; other cases keep their histogram fields unchanged.
+          ...(captureFirst ? { latestRefunded, refundedSum } : {}),
         };
         for (const line of suspected)
           runSuspected.push(`trial ${trial} attempt ${attempt}: ${line}`);
