@@ -39,6 +39,15 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   mail catcher runs in `docker/cal.compose.yml`. Not in P6 without a harness change.
 - **Heap default under `NODE_OPTIONS`** (harness follow-up H-heap, plan §3.1.1). The Cal adapter applies its heap default
   only when `NODE_OPTIONS` is unset, so a sandbox that sets `--use-openssl-ca` loses it and `up:cal` runs out of memory.
+- **X7 (harness bug): `down:cal || true` hides a crash.** Both Stop Cal steps (`cal-smoke`, `cal-state-races`) run
+  `npm run down:cal || true`. The harness `loadConfig` (via `adapters/registry` `getAdapter`) resolves every product root
+  eagerly, so `down:cal` fails with "Error: Documenso product root does not exist" when Documenso is not checked out.
+  Evidence: run [39994702506](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39994702506) (PR #46), job
+  [120555085199](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39994702506/job/120555085199). Fix: a
+  harness patch that resolves only the requested product, with a unit test; then P6 bumps the pin and removes `|| true`
+  (keep `if: always()`). No P6 workaround. **Done when** both are merged.
+- **Yarn crash (watch item).** The same job had a one-off Yarn "unexpected empty event loop" exit 42. A re-run fixed it.
+  **Done when** no repeat is seen by the Phase 2 closeout, or it gets its own item if it repeats.
 
 ## Twenty
 
