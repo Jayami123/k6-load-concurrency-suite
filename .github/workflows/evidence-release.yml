@@ -69,6 +69,8 @@ jobs:
           git merge-base --is-ancestor "$TARGET_SHA" origin/main \
             || { echo "::error::target_sha is not on main"; exit 1; }
           [[ -f "docs/releases/$TAG.md" ]] || { echo "::error::docs/releases/$TAG.md is missing on main"; exit 1; }
+          head -n 1 "docs/releases/$TAG.md" | grep -qE '^#[[:space:]]+[^[:space:]]' \
+            || { echo "::error::docs/releases/$TAG.md must start with an H1 line ('# <release title>'); none found"; exit 1; }
 
       - name: Check that the notes list exactly the selected runs
         run: |
@@ -164,8 +166,16 @@ jobs:
       - name: Create the release
         run: |
           set -euo pipefail
+          # The release title is the notes' H1 without its "# " (Phase 1 notes: "P6 Phase 1 evidence (CI)").
+          first="$(head -n 1 "docs/releases/$TAG.md")"
+          if [[ ! "$first" =~ ^#[[:space:]]+([^[:space:]].*)$ ]]; then
+            echo "::error::docs/releases/$TAG.md must start with an H1 line ('# <release title>'); found: ${first:0:80}"
+            exit 1
+          fi
+          title="${BASH_REMATCH[1]}"
+          echo "Release title: $title"
           gh release create "$TAG" \
             --target "$TARGET_SHA" \
-            --title "P6 Phase 1 evidence (CI)" \
+            --title "$title" \
             --notes-file "docs/releases/$TAG.md" \
             "$RUNNER_TEMP"/release/*.zip "$RUNNER_TEMP/release/SHA256SUMS.txt"
