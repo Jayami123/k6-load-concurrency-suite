@@ -9,9 +9,33 @@ Everything below marked **probe** comes from the live Cal web app on 2026-10-23 
 by `scripts/bootstrap.sh`. Cloud timings prove a test works and are never published (roadmap, "Rules that hold for every
 task below"); the CI numbers are the only published ones.
 
-**Status of this plan.** The plan commit is the only commit on this branch. The task changes a CI workflow
-(`.github/workflows/perf.yml`) and a shared module under `src/` (the webhook receiver), and the probe labels suspected
-product behaviour, so rule 10 stops the build here for the owner's review. Steps 1 to 7 (section 8) are not started.
+**Status of this plan.** First version: the plan commit `5ec8786`, stopped for review under rule 10. This version
+records the owner's answers (section 0) and the step-0 probe (section 3.7), and is the one the build follows. The build
+stops again after the first full-count CI runs, for the owner's labels (section 0, O6).
+
+## 0. Owner answers (2026-10-23)
+
+Recorded as given by the owner for this task. Each one is also listed with its section in section 14.
+
+- **O1 (payload uid): answered by probe.** Confirmed by the step-0 probe (section 3.7): the booking uid is `payload.uid`
+  in every delivery. No top-level `uid` exists.
+- **O2 (increment timing): answered by probe, with one limit.** The booking row exists before the response, the usage
+  counter already reads at its cap in every response, and a booking through an already-full link is still written (section
+  3.7). So the counter does not gate the write. The exact order inside one request is not observable from outside; the code
+  path says the increment runs after the row is written. Recorded as such.
+- **O3 (signature): answered by probe.** With a secret set, Cal sends `x-cal-signature-256` = lower-case hex
+  HMAC-SHA256 of the raw body keyed by the secret, with no `sha256=` prefix. The receiver must verify it (section 7.1).
+- **O4 (password source): agreed.** Read from the fork's seed file at run time. Never printed, never committed.
+- **O5 (job split and timeouts): decided.** No 90-minute timeout. The new cases run in a separate job,
+  `cal-state-races`, following the Medusa precedent (`medusa-order-races`, `medusa-cancel-extras`): the same pins as
+  `cal-smoke`, caches restored and never saved, its own `timeout-minutes`. `cal-smoke` gets no new steps and keeps its
+  60-minute timeout. Time budget at 50 trials with reruns and setup for both jobs is in section 9. Each job must sit at
+  least 10 minutes under its timeout.
+- **O6 (labels): agreed.** F-C1, F-C2 and F-C3 stay SUSPECTED until **3 full-count CI runs** reproduce them. The owner then
+  labels them. The build stops after those runs, for that decision. No `test.fail()` before then.
+- **O7 (branch name): agreed.** `feat/2026-10-23-p6-cal-state-races`.
+- **O8 (priorities): agreed.** `-008` P2, `-009` P1.
+- **O9 (email gap): agreed.** Record the gap (D9); no harness change in this task.
 
 ## 1. Goal, scope and the cases covered
 
@@ -32,8 +56,8 @@ product behaviour, so rule 10 stops the build here for the owner's review. Steps
 3. Host session and private-link helpers (`src/cal/session.ts`, `src/cal/private-link.ts`) and unit tests.
 4. A runner module for the four cases (`src/cal/run-state-case.ts`), so `src/cal/run-case.ts` (549 lines today) does not
    grow. Four Playwright specs under `tests/cal/races/`.
-5. CI: four new `cal-smoke` steps, a webhook host mapping step, a job timeout change (section 9). **Not started until the
-   owner approves.**
+5. CI: a new job `cal-state-races` with the four cases, its own webhook host mapping and its own timeout. `cal-smoke` is
+   unchanged (section 9, O5).
 6. README rows and `docs/BACKLOG.md` items for the three SUSPECTED findings (section 4 D-C7).
 
 **Out of scope.** Changing the Documenso run-case logic (only the import and the constructor call move), the
@@ -145,7 +169,7 @@ and no loser response ever appeared (no 4xx). So the product accepts the 10 requ
 probe does not show the order of the increment against the booking row. Code path (read, not run): the booking is
 created, then `onBookingCreated` runs `updatePrivateLinkUsage` (`BookingEventHandlerService.ts:46`, method at `:58`);
 it awaits `validateAndIncrementUsage`, whose failure is caught and logged there (`Promise.allSettled`), so it never
-reaches the client. Open point O2 (section 14) asks the build to confirm the order with a timestamp read.
+reaches the client. Open point O2 is answered in section 3.7 (the row is written before the response; a full link still writes).
 
 The probe bug (run 1 with the flag missing) is kept on purpose: it shows the link is ignored without the flag (A2, A6),
 and it is why the build must set `hasHashedBookingLink: true` (skeleton 7.4).
@@ -187,10 +211,37 @@ oracle counts triggers and never relies on their order. The email half is not ob
 ### 3.6 What the probe proves, and what it does not
 
 - Proves: A1 to A16 (section 2) at the stated runs. Routes, bodies and statuses are real.
-- Does not prove: the webhook signature header and body format (the probe used `secret: null`, so Cal sent no signature;
-  see O3), the `payload.uid` field used to filter deliveries per booking (O1), the per-trial time budget (section 9 uses
-  planning assumptions, marked as such), or any rate that a CI trial count depends on (rule 13: full-count CI runs).
+- Does not prove (after the step-0 probe, section 3.7): the per-trial time budget (section 9.2 uses planning assumptions,
+  marked as such), the rates a CI trial count depends on (rule 13: full-count CI runs, section 9.4), and whether any finding is a
+  PRODUCT BUG (all three stay SUSPECTED; section 4 D-C7).
 - Does not prove: that any finding is a PRODUCT BUG. All of F-C1, F-C2, F-C3 stay SUSPECTED (section 4 D-C7).
+
+### 3.7 Step-0 probe (owner O1 to O3, run before the build; 2026-10-23)
+
+Script: `probe-cal-step0.mjs` in the scratchpad (outside the repo). It starts its own raw receiver that keeps each delivery's
+headers and exact raw body, creates a webhook **with a random secret** (never printed), and records only booleans, value
+shapes and lengths. Exit codes: `npm run up:cal` **0** (second start, with the heap value in the shell, section 3.1.1),
+probe **0**, `npm run down:cal` **0** (`GET /pro/30min` afterwards: HTTP 000). A first version of the script contained a
+stray booking call; it was removed before the run. No booking from that version reached the database.
+
+| Check                                                                | Result (one run)                                                                                                                                                              | What it proves                                                                                 |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Webhook subscription with `secret`                                   | create 200, `id` found                                                                                                                                                        | a secret subscription is accepted                                                              |
+| Deliveries received                                                  | 2: `BOOKING_REQUESTED` (pending create), `BOOKING_CREATED` (confirm 200)                                                                                                      | both triggers carry signatures                                                                 |
+| O1: `payload.uid`                                                    | equals the booking uid in 2 of 2 deliveries; no top-level `uid`                                                                                                               | the oracle filters on `body.payload.uid`                                                       |
+| O3: signature header                                                 | name `x-cal-signature-256` in 2 of 2; value 64 lower-case hex; equals hex HMAC-SHA256 of the raw body with the secret in 2 of 2; equals the `sha256=`-prefixed form in 0 of 2 | the receiver verifies `hmacSignatureCheck` as written (7.1), no prefix                         |
+| Link create                                                          | 200                                                                                                                                                                           | A1 unchanged                                                                                   |
+| O2 burst: 10 parallel bookings, cap 1                                | 10 of 10 HTTP 200; the booking row existed before the response in 10 of 10; the usage counter read **1** at each of the 10 responses                                          | the counter reaches its cap before any response is returned; the rows are written first        |
+| O2 full link: one more booking after the burst (link already at cap) | HTTP 200, row written (`pending`), usage stays 1                                                                                                                              | the increment cannot gate the booking write: the booking is written even when the link is full |
+| Cleanup                                                              | 12 live bookings of the run prefix cancelled, 0 errors; link cleared (200); webhook deleted (200)                                                                             | leak-check and cleanup routes work                                                             |
+
+Notes that matter for the build:
+
+- The burst in this probe used `tennis-class`, which requires confirmation, so its rows stayed `pending`. The `-006` and
+  `-008` cases use `30min` (no confirmation), where section 3.3 showed `accepted`.
+- O2 "timing": from outside the request the order inside one request is not observable. What is proven: the row is written
+  before the response, the counter is at its cap before any response, and a full link does not stop a write. The code path
+  (section 3.3) says the increment runs after the row. The cases do not depend on the exact order.
 
 ## 4. Design and decisions
 
@@ -223,7 +274,7 @@ Each decision gives the reason. "D-C" numbers are local to this plan (the roadma
   repeated full-count CI runs reproduce it, then PRODUCT BUG. So: each case asserts only **test** guards (counters, setup,
   leak check, no thrown requests, no 5xx); product lines are returned as `SUSPECTED PRODUCT BUG: ... (F-C<n>)` and
   annotated `suspected-bug` (the Medusa pattern, `tests/medusa/races/med-race-013-cancel-burst.spec.ts`). A `labelled`
-  array per spec starts empty. The owner labels a tag after full-count runs; then the line becomes an assertion (D54
+  array per spec starts empty. The owner labels a tag after 3 full-count CI runs (O6); then the line becomes an assertion (D54
   pattern). No `test.fail()` and no PRODUCT BUG label in this task.
 - **D-C8. Expected behaviour is written down as the oracle, even though it is not yet asserted.** The oracle says what a
   correct product does (one accepted booking, one side-effect set). The suspected line says the observed value. When the
@@ -253,7 +304,7 @@ All are read-only queries through `createReadOnlyPool` (`default_transaction_rea
   attendee LIKE pattern (`caseLeakPattern`, so the case's own bookings only).
 - **Booking status.** `"Booking".status` by id (`pending`, `accepted`, `cancelled`, ...).
 - **Webhook side effects.** From the receiver: the deliveries whose `body.payload.uid` equals the booking's uid, counted by
-  `body.triggerEvent` (O1: field name to confirm).
+  `body.triggerEvent` (O1, answered: `payload.uid`).
 - **Loser statuses.** Every non-200 is a clean 4xx; a 5xx is a PRODUCT line (SUSPECTED, "5xx"); a `null` (thrown request) is a
   TEST BUG.
 
@@ -268,34 +319,37 @@ All are read-only queries through `createReadOnlyPool` (`default_transaction_rea
 - `checkConfirmConfirm({ finalStatus, createdCount, statuses })`: suspected F-C3 when `createdCount !== 1` (the roadmap's
   "one webhook delivery") or the final status is not `accepted`; test guard when a status is `null`.
 - `checkStatusNotNull(statuses)`: test guard for `null` (thrown) requests, and a product line for any 5xx.
+- `checkSignedDeliveries(deliveries)`: test guard. Every delivery must have `secretMatches` true (the Cal receiver verifies
+  `x-cal-signature-256` with a per-run secret, 7.1). A delivery that fails the check is a TEST BUG line, not a product finding.
+  Step-0 evidence: the signature matched in 2 of 2 deliveries (section 3.7).
 
 ## 6. Files
 
-| Path                                                       | Change                                                       | Purpose                                                                                                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `src/documenso/webhook-receiver.ts`                        | **moved** to `src/receivers/webhook-receiver.ts`             | Pluggable `SecretCheck` (7.1)                                                                                   |
-| `src/receivers/webhook-receiver.ts`                        | **NEW (moved)**                                              | `headerSecretCheck`, `hmacSignatureCheck`, `parseDelivery`, `startWebhookReceiver` (7.1)                        |
-| `src/documenso/run-case.ts`                                | edit                                                         | Import path (line 74) and `startWebhookReceiver` call: `check: headerSecretCheck("x-documenso-secret", secret)` |
-| `tests/documenso/races/documenso-self-test.spec.ts`        | edit                                                         | Import path (line 25 today; the roadmap says 29) and the constructor call (same rule)                           |
-| `tests/unit/webhook-receiver.test.ts`                      | **moved** to `tests/unit/receivers-webhook-receiver.test.ts` | Existing tests, new import path, `check` argument; +2 HMAC tests in step 2                                      |
-| `src/cal/state-oracle.ts`                                  | **NEW**                                                      | SQL constants and readers (7.2)                                                                                 |
-| `src/cal/state-invariants.ts`                              | **NEW**                                                      | Pure checks (5.1, 7.3)                                                                                          |
-| `src/cal/session.ts`                                       | **NEW**                                                      | `extractHostPassword` (pure) and `loginAsHost` (7.4)                                                            |
-| `src/cal/private-link.ts`                                  | **NEW**                                                      | `privateLinkId`, `multiplePrivateLinksBody`, `setPrivateLinks`, `clearPrivateLinks` (7.4)                       |
-| `src/cal/run-state-case.ts`                                | **NEW**                                                      | `runLinkBurstCase`, `runPendingRaceCase`, `waitQuiet` (7.5)                                                     |
-| `tests/cal/races/cal-race-006-private-link.spec.ts`        | **NEW**                                                      | `P6-CAL-RACE-006` (7.6)                                                                                         |
-| `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`   | **NEW**                                                      | `P6-CAL-RACE-007` (7.6)                                                                                         |
-| `tests/cal/races/cal-race-008-private-link-cap.spec.ts`    | **NEW**                                                      | `P6-CAL-RACE-008` (7.6)                                                                                         |
-| `tests/cal/races/cal-race-009-double-confirm.spec.ts`      | **NEW**                                                      | `P6-CAL-RACE-009` (7.6)                                                                                         |
-| `tests/unit/receivers-webhook-receiver.test.ts`            | edit                                                         | +2 tests for `hmacSignatureCheck` (7.7)                                                                         |
-| `tests/unit/cal-state-invariants.test.ts`                  | **NEW**                                                      | 6 tests for the four checks (7.7)                                                                               |
-| `tests/unit/cal-state-oracle.test.ts`                      | **NEW**                                                      | 1 test: SQL constants are read-only (7.7)                                                                       |
-| `tests/unit/cal-session.test.ts`                           | **NEW**                                                      | 2 tests for `extractHostPassword` (7.7)                                                                         |
-| `tests/unit/cal-private-link.test.ts`                      | **NEW**                                                      | 2 tests for `privateLinkId` and `multiplePrivateLinksBody` (7.7)                                                |
-| `.github/workflows/perf.yml`                               | edit (step 6, after owner review)                            | `cal-smoke`: webhook host mapping, four race steps, job timeout (section 9)                                     |
-| `README.md`                                                | edit (step 7)                                                | Rows for the four cases, the receiver move, the suspected findings, the email gap                               |
-| `docs/BACKLOG.md`                                          | edit (step 7)                                                | Three items: F-C1, F-C2, F-C3 (labels and `test.fail()` after full-count CI)                                    |
-| `docs/plans/2026-10-23-p6-phase2-task4-cal-state-races.md` | **NEW** (this file)                                          | Plan, closeout notes at the end                                                                                 |
+| Path                                                       | Change                                                                      | Purpose                                                                                                         |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `src/documenso/webhook-receiver.ts`                        | **moved** to `src/receivers/webhook-receiver.ts`                            | Pluggable `SecretCheck` (7.1)                                                                                   |
+| `src/receivers/webhook-receiver.ts`                        | **NEW (moved)**                                                             | `headerSecretCheck`, `hmacSignatureCheck`, `parseDelivery`, `startWebhookReceiver` (7.1)                        |
+| `src/documenso/run-case.ts`                                | edit                                                                        | Import path (line 74) and `startWebhookReceiver` call: `check: headerSecretCheck("x-documenso-secret", secret)` |
+| `tests/documenso/races/documenso-self-test.spec.ts`        | edit                                                                        | Import path (line 25 today; the roadmap says 29) and the constructor call (same rule)                           |
+| `tests/unit/webhook-receiver.test.ts`                      | **moved** to `tests/unit/receivers-webhook-receiver.test.ts`                | Existing tests, new import path, `check` argument; +2 HMAC tests in step 2                                      |
+| `src/cal/state-oracle.ts`                                  | **NEW**                                                                     | SQL constants and readers (7.2)                                                                                 |
+| `src/cal/state-invariants.ts`                              | **NEW**                                                                     | Pure checks (5.1, 7.3)                                                                                          |
+| `src/cal/session.ts`                                       | **NEW**                                                                     | `extractHostPassword` (pure) and `loginAsHost` (7.4)                                                            |
+| `src/cal/private-link.ts`                                  | **NEW**                                                                     | `privateLinkId`, `multiplePrivateLinksBody`, `setPrivateLinks`, `clearPrivateLinks` (7.4)                       |
+| `src/cal/run-state-case.ts`                                | **NEW**                                                                     | `runLinkBurstCase`, `runPendingRaceCase`, `waitQuiet` (7.5)                                                     |
+| `tests/cal/races/cal-race-006-private-link.spec.ts`        | **NEW**                                                                     | `P6-CAL-RACE-006` (7.6)                                                                                         |
+| `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`   | **NEW**                                                                     | `P6-CAL-RACE-007` (7.6)                                                                                         |
+| `tests/cal/races/cal-race-008-private-link-cap.spec.ts`    | **NEW**                                                                     | `P6-CAL-RACE-008` (7.6)                                                                                         |
+| `tests/cal/races/cal-race-009-double-confirm.spec.ts`      | **NEW**                                                                     | `P6-CAL-RACE-009` (7.6)                                                                                         |
+| `tests/unit/receivers-webhook-receiver.test.ts`            | edit                                                                        | +2 tests for `hmacSignatureCheck` (7.7)                                                                         |
+| `tests/unit/cal-state-invariants.test.ts`                  | **NEW**                                                                     | 7 tests for the four checks and the signed-delivery guard (7.7)                                                 |
+| `tests/unit/cal-state-oracle.test.ts`                      | **NEW**                                                                     | 1 test: SQL constants are read-only (7.7)                                                                       |
+| `tests/unit/cal-session.test.ts`                           | **NEW**                                                                     | 2 tests for `extractHostPassword` (7.7)                                                                         |
+| `tests/unit/cal-private-link.test.ts`                      | **NEW**                                                                     | 2 tests for `privateLinkId` and `multiplePrivateLinksBody` (7.7)                                                |
+| `.github/workflows/perf.yml`                               | edit (step 6): new job `cal-state-races` (section 9); `cal-smoke` unchanged | `cal-state-races` job, its artifacts and four race steps (9.1)                                                  |
+| `README.md`                                                | edit (step 7)                                                               | Rows for the four cases, the receiver move, the suspected findings, the email gap                               |
+| `docs/BACKLOG.md`                                          | edit (step 7)                                                               | Three items: F-C1, F-C2, F-C3 (labels and `test.fail()` after full-count CI)                                    |
+| `docs/plans/2026-10-23-p6-phase2-task4-cal-state-races.md` | **NEW** (this file)                                                         | Plan, closeout notes at the end                                                                                 |
 
 Not touched: `src/cal/run-case.ts`, `src/cal/api.ts`, `src/cal/oracle.ts`, `src/cal/payloads.ts`, `src/cal/invariants.ts`,
 `tests/cal/races/cal-race-001-*.spec.ts`, `cal-race-003-*.spec.ts`, `scripts/`, `package.json`, `.env.example` (no new
@@ -483,6 +537,16 @@ export function checkConfirmConfirm(input: {
 /** Pure. Test guard for a thrown request (null); a 5xx is a product line. */
 export function checkStatusNotNull(statuses: Array<number | null>): string[] {
   // null -> `TEST BUG: request threw (no HTTP status)`; 5xx -> handled by caller as suspected "5xx"
+}
+```
+
+```ts
+/** Pure. Every delivery must pass the signature check; a failure is a TEST BUG, not a product finding. */
+export function checkSignedDeliveries(deliveries: Array<{ secretMatches: boolean }>): string[] {
+  const bad = deliveries.filter((d) => !d.secretMatches).length;
+  return bad === 0
+    ? []
+    : [`TEST BUG: ${bad} webhook delivery(ies) failed the x-cal-signature-256 check`];
 }
 ```
 
@@ -723,7 +787,7 @@ test("hmacSignatureCheck never matches a different-length signature", () => {
 });
 ```
 
-`tests/unit/cal-state-invariants.test.ts`, six tests:
+`tests/unit/cal-state-invariants.test.ts`, seven tests (the last one is the signed-delivery guard):
 
 1. `checkLinkCap passes when cap 1 admits one booking and the counter reads 1`
 2. `checkLinkCap flags F-C1 when 10 bookings are accepted through a cap-1 link`
@@ -731,6 +795,7 @@ test("hmacSignatureCheck never matches a different-length signature", () => {
 4. `checkConfirmCancel passes for accepted with one BOOKING_CREATED and none cancelled`
 5. `checkConfirmCancel flags F-C2 when both side-effect sets fired`
 6. `checkConfirmConfirm flags F-C3 when two BOOKING_CREATED webhooks arrived`
+7. `checkSignedDeliveries flags a delivery whose signature does not match`
 
 `tests/unit/cal-state-oracle.test.ts`, one test: `state-oracle SQL is read-only`: each constant matches `/^\s*SELECT\b/i`
 and does not match `/\b(INSERT|UPDATE|DELETE|ALTER|DROP)\b/i`.
@@ -746,105 +811,204 @@ and does not match `/\b(INSERT|UPDATE|DELETE|ALTER|DROP)\b/i`.
 1. `multiplePrivateLinksBody builds the tRPC batch shape`: expect `body["0"].json.multiplePrivateLinks[0]` to equal the input link.
 2. `privateLinkId is lower-case, URL-safe and distinct per trial`.
 
-### 7.8 Build steps (run after owner approval; each step one commit)
+### 7.8 Build steps (owner decisions in section 0; each step one commit)
 
-Before step 1: **step 0 (probe re-run, no commit).** Run `probe-cal-confirm.mjs` with a webhook secret set to confirm the
-signature header and body (O3) and read the `payload.uid` field of a `BOOKING_CREATED` delivery (O1). Record the output in
-the step 0 notes of the plan's closeout. Expected: `x-cal-signature-256` present, `payload.uid` equal to the booking uid.
-If either is different, stop and update sections 5 and 7.1 before step 1.
-
-Every step: `export PATH="/usr/local/bin:$PATH"`, then `npm run check` (expect `CHECK_EXIT=0`) and
+Step 0 is done (section 3.7). Every step: `export PATH="/usr/local/bin:$PATH"`, then `npm run check` (expect exit 0) and
 `npm run test:unit 2>&1 | grep -E '^# (tests|pass|fail)'`. The count must match the table; if it differs, stop (rule 11).
 
 | Step | Commit subject (Conventional, lowercase)                                              | `git add` paths                                                                                                                                                                                                                  | Unit tests after step |
 | ---- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| 1    | `refactor(receivers): move the webhook receiver to src/receivers with a secret check` | `src/receivers/webhook-receiver.ts`, `src/documenso/run-case.ts`, `tests/documenso/races/documenso-self-test.spec.ts`, `tests/unit/receivers-webhook-receiver.test.ts` (plus the two `git mv` paths)                             | 391                   |
-| 2    | `feat(cal): add state oracle, invariants and the cal webhook signature check`         | `src/cal/state-oracle.ts`, `src/cal/state-invariants.ts`, `src/receivers/webhook-receiver.ts`, `tests/unit/receivers-webhook-receiver.test.ts`, `tests/unit/cal-state-invariants.test.ts`, `tests/unit/cal-state-oracle.test.ts` | 400 (+9)              |
-| 3    | `feat(cal): add host session and private-link helpers`                                | `src/cal/session.ts`, `src/cal/private-link.ts`, `tests/unit/cal-session.test.ts`, `tests/unit/cal-private-link.test.ts`                                                                                                         | 404 (+4)              |
-| 4    | `feat(cal): add P6-CAL-RACE-006 and -008 private link cases`                          | `src/cal/run-state-case.ts` (runLinkBurstCase part), `tests/cal/races/cal-race-006-private-link.spec.ts`, `tests/cal/races/cal-race-008-private-link-cap.spec.ts`                                                                | 404 (+0)              |
-| 5    | `feat(cal): add P6-CAL-RACE-007 and -009 pending booking cases`                       | `src/cal/run-state-case.ts` (runPendingRaceCase, waitQuiet), `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`, `tests/cal/races/cal-race-009-double-confirm.spec.ts`                                                     | 404 (+0)              |
-| 6    | `ci(cal): run the cal state races in cal-smoke`                                       | `.github/workflows/perf.yml` (**owner review first**, rule 10)                                                                                                                                                                   | 404 (+0)              |
-| 7    | `docs(readme): document the cal state races and their suspected findings`             | `README.md`, `docs/BACKLOG.md`                                                                                                                                                                                                   | 404 (+0)              |
+| 1    | `refactor(receivers): move the webhook receiver to src/receivers with a secret check` | `src/receivers/webhook-receiver.ts`, `src/documenso/run-case.ts`, `tests/documenso/races/documenso-self-test.spec.ts`, `tests/unit/receivers-webhook-receiver.test.ts`                                                           | 391                   |
+| 2    | `feat(cal): add state oracle, invariants and the cal webhook signature check`         | `src/cal/state-oracle.ts`, `src/cal/state-invariants.ts`, `src/receivers/webhook-receiver.ts`, `tests/unit/receivers-webhook-receiver.test.ts`, `tests/unit/cal-state-invariants.test.ts`, `tests/unit/cal-state-oracle.test.ts` | 401 (+10)             |
+| 3    | `feat(cal): add host session and private-link helpers`                                | `src/cal/session.ts`, `src/cal/private-link.ts`, `tests/unit/cal-session.test.ts`, `tests/unit/cal-private-link.test.ts`                                                                                                         | 405 (+4)              |
+| 4    | `feat(cal): add P6-CAL-RACE-006 and -008 private link cases`                          | `src/cal/run-state-case.ts`, `tests/cal/races/cal-race-006-private-link.spec.ts`, `tests/cal/races/cal-race-008-private-link-cap.spec.ts`                                                                                        | 405 (+0)              |
+| 5    | `feat(cal): add P6-CAL-RACE-007 and -009 pending booking cases`                       | `src/cal/run-state-case.ts`, `tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts`, `tests/cal/races/cal-race-009-double-confirm.spec.ts`                                                                                     | 405 (+0)              |
+| 6    | `ci(cal): add a cal-state-races job for the state cases`                              | `.github/workflows/perf.yml`                                                                                                                                                                                                     | 405 (+0)              |
+| 7    | `docs(readme): document the cal state races and their suspected findings`             | `README.md`, `docs/BACKLOG.md`                                                                                                                                                                                                   | 405 (+0)              |
 
-Step-by-step commands, with the expected output:
+Step-by-step commands and expected output:
 
 1. `git mv src/documenso/webhook-receiver.ts src/receivers/webhook-receiver.ts`;
-   `git mv tests/unit/webhook-receiver.test.ts tests/unit/receivers-webhook-receiver.test.ts`; edit the two importers and the
-   moved test (7.1). Run `npm run typecheck` → exit 0 (no output). Run `npm run test:unit` → `# tests 391`, `# pass 391`.
-   Commit: `git add src/receivers/webhook-receiver.ts src/documenso/run-case.ts tests/documenso/races/documenso-self-test.spec.ts tests/unit/receivers-webhook-receiver.test.ts && git commit -m "refactor(receivers): move the webhook receiver to src/receivers with a secret check"`.
-   **Documenso smoke:** `documenso-smoke` (CI) must stay green on this commit. Local Documenso is not run here (Node 24 stack,
-   separate probe); the owner checks the PR's smoke job.
-   Note: `git mv` already stages both moves; the `git add` above adds the edits.
-2. Write `state-oracle.ts`, `state-invariants.ts` (7.2, 7.3) and the HMAC function in `webhook-receiver.ts` if not already
-   in step 1 (it is in 7.1; add it here if step 1 left it out, and keep step 1 green). Add the nine tests (7.7). Expect
-   `# tests 400`, `# pass 400`. Commit with the subject above.
-3. Write `session.ts` and `private-link.ts` (7.4) and their 4 tests. Expect `# tests 404`. Commit.
-4. Write `runLinkBurstCase` (7.5) and the `-006`/`-008` specs (7.6). Local run (Cal up, `npm run up:cal`, then down):
-   `RACE_TRIALS=3 npm run race:cal -- tests/cal/races/cal-race-006-private-link.spec.ts` → expected: 3 trials, a
-   `suspected-bug` annotation per trial line, `1 passed` for the spec and `1 passed` for the histogram test. Then `-008` the
-   same. `npm run test:unit` → `# tests 404`. Commit.
-5. Write `runPendingRaceCase`, `waitQuiet` and the `-007`/`-009` specs. Local run with `RACE_TRIALS=3` for both files:
-   expected `passed` for each spec and the suspected lines annotated. `npm run test:unit` → `# tests 404`. Commit.
-6. CI (after owner review): edit `.github/workflows/perf.yml` per section 9. Run `npm run lint:actions` → exit 0. Commit.
-   Open a PR only if the owner asks (rule 3, and the task rules).
-7. README rows and BACKLOG items. `npm run format:check` → `All matched files use Prettier code style!`. Commit.
+   `git mv tests/unit/webhook-receiver.test.ts tests/unit/receivers-webhook-receiver.test.ts`; update the two importers
+   and the moved test (7.1; Documenso passes `headerSecretCheck("x-documenso-secret", expectedSecret)`). Then
+   `npm run typecheck` (exit 0, no output) and `npm run test:unit` → `# tests 391`, `# pass 391`.
+   Commit with the subject above. **Documenso smoke:** `documenso-smoke` (CI) must stay green on this commit; it is checked
+   on the first full CI run on the branch (section 0 O6 runs) and recorded in the closeout.
+2. Write `state-oracle.ts` and `state-invariants.ts` (7.2, 7.3), add `hmacSignatureCheck` (7.1) if step 1 left it out,
+   and the tests in 7.7. Expect `# tests 401`, `# pass 401` (+2 HMAC, +7 invariants, +1 read-only SQL). Commit.
+3. Write `session.ts` and `private-link.ts` (7.4) and their four tests. Expect `# tests 405`. Commit.
+4. Write `runLinkBurstCase` (7.5) and the `-006` and `-008` specs (7.6). Local run (`npm run up:cal`, then `npm run down:cal`
+   after the runs; both exit 0 expected): `RACE_TRIALS=3 npm run race:cal -- tests/cal/races/cal-race-006-private-link.spec.ts`
+   and the `-008` file. Expected: each spec passes; each trial line shows as a `suspected-bug` annotation when it violates
+   the cap, and the verdict is `pass`. `npm run test:unit` → `# tests 405`. Commit.
+5. Write `runPendingRaceCase` and `waitQuiet` and the `-007`/`-009` specs. Local run with `RACE_TRIALS=3` for both files:
+   each spec passes, suspected lines annotated. `npm run test:unit` → `# tests 405`. Commit.
+6. CI: add the `cal-state-races` job to `.github/workflows/perf.yml` as in section 9.1. Run `npm run lint:actions` (exit 0)
+   and `npm run check`. Commit. Push the branch (`git push -u origin feat/2026-10-23-p6-cal-state-races`, retry on network
+   errors only). The job does not run on a push (section 9.1); the full-count runs are dispatched (section 9.4).
+7. README rows (the four cases, the receiver move, the three suspected findings, the email gap) and `docs/BACKLOG.md`
+   items F-C1, F-C2, F-C3 (labels and `test.fail()` wait for the owner). `npm run format:check` → `All matched files use
+Prettier code style!`. Commit and push.
 
-## 8. The rest of the build, in one place
+After step 7: section 9.4 (dispatch the full-count runs), then stop for the owner's labels (O6).
 
-Section 7.8 is the step list. The build stops after step 7 with the PR not opened (the owner asked for no PR in this task).
-Run `npm run check` once more before any push, and read CI once after a PR is opened (rule 15).
+## 8. Build order and stop points
 
-## 9. CI changes and the time budget
+Steps 1 to 7 of section 7.8, in order, one commit each. The owner's decisions (section 0) are the approval for the CI job
+and the receiver move, so the build does not stop for them. It stops after the first full-count CI runs (section 9.4), for
+the labels (O6).
 
-### 9.1 CI changes (`.github/workflows/perf.yml`, job `cal-smoke`)
+## 9. CI and the time budget (O5)
 
-1. Add a step after "Start Cal (harness up)" (copy of the Documenso step "Map the webhook host", `perf.yml` line 884):
+### 9.1 Jobs
+
+- **`cal-smoke`: unchanged.** Its steps, its `HARNESS_UP_TIMEOUT_MS` (2400000) and its `timeout-minutes: 60` stay as they are.
+  No race step is added to it; the four state cases do not touch it.
+- **New job `cal-state-races`** in `.github/workflows/perf.yml`, placed after `cal-smoke`. It follows the Medusa precedent
+  (`medusa-order-races`, `medusa-cancel-extras`): the same pins as `cal-smoke` (the Cal fork checkout at `CAL_REF`, the
+  `CAL_REF` verification against `scripts/bootstrap.sh`, the Yarn version check), caches **restored, never saved** (the save
+  steps stay in `cal-smoke` only), its own `timeout-minutes: 85`.
+
+Skeleton (the setup steps are copied from `cal-smoke`; only the names, the artifact names and the race steps differ):
 
 ```yaml
-- name: Map the webhook host
-  run: |
-    set -euo pipefail
-    echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
-    getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
+cal-state-races:
+  name: cal-state-races
+  runs-on: ubuntu-24.04
+  timeout-minutes: 85
+  env:
+    P6_WORKING_DIRECTORY: p6
+    PRODUCTS_ROOT: ${{ github.workspace }}/products
+    CAL_CHECKOUT_PATH: products/cal
+    CAL_BASE_URL: http://127.0.0.1:3000
+    # Fork trust-auth local DB (no password). Not a secret.
+    CAL_DB_URL: postgresql://postgres@127.0.0.1:5450/calendso
+    P6_WEBHOOK_HOST: p6-webhook.test
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    COREPACK_ENABLE_STRICT: "0"
+    TURBO_TELEMETRY_DISABLED: "1"
+    NEXT_TELEMETRY_DISABLED: "1"
+  steps:
+    # checkout P6, checkout the Cal fork at CAL_REF, verify HEAD, verify CAL_REF (copy from cal-smoke)
+    # setup-node, npm ci (copy); corepack and the yarn 4.12.0 check (copy)
+    # restore Cal yarn cache and Cal node_modules cache (restore only, copy from cal-smoke)
+    # yarn install --immutable; prisma generate; bootstrap.sh cal with BOOTSTRAP_SKIP_INSTALL=1 (copy)
+    # restore Cal build cache (restore only, copy from cal-smoke)
+
+    - name: Map the webhook host
+      run: |
+        set -euo pipefail
+        echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
+        getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
+
+    - name: Start Cal (harness up)
+      id: cal_up
+      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+      env:
+        # Same cap as cal-smoke (40 min).
+        HARNESS_UP_TIMEOUT_MS: "2400000"
+      run: |
+        set -euo pipefail
+        npm run up:cal
+
+    - name: Race P6-CAL-RACE-006 (cal-race)
+      if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+      timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+      env:
+        RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+        P6_PLAYWRIGHT_JSON: results/playwright/cal-race-006.json
+      run: |
+        set -euo pipefail
+        npm run race:cal -- tests/cal/races/cal-race-006-private-link.spec.ts
+
+    # -007, -008 and -009: the same step shape, with their own spec, timeouts and JSON names.
+
+    - name: Stop Cal (harness down)
+      if: ${{ always() }}
+      working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+      run: |
+        set -euo pipefail
+        npm run down:cal || true
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+      with:
+        name: race-histograms-cal-state
+        path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
+        if-no-files-found: warn
+        retention-days: 14
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ failure() }}
+      with:
+        name: cal-state-harness-log
+        path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
+        if-no-files-found: warn
+        retention-days: 14
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ always() }}
+      with:
+        name: cal-state-web-log
+        path: ${{ env.P6_WORKING_DIRECTORY }}/node_modules/qa-portfolio-harness/.harness/cal-web.log
+        if-no-files-found: warn
+        retention-days: 14
 ```
 
-`P6_WEBHOOK_HOST` is `p6-webhook.test` (`.env.example`); the job env gets it if it is not already set (Documenso's job sets
-it at line 815). A second mapping of the same line is harmless because `tee -a` appends once per run.
+Names are unique per run: `cal-smoke` uses `race-histograms-cal`, `cal-harness-log` and `cal-web-log`; the new job uses the
+`-state` suffix, so the artifact names never collide. `RACE_TRIALS` is `5` on PRs and `50` on every other event (D6). The
+`cal-state-races` job does not run on a push to a feature branch (`perf.yml` triggers: PRs, pushes to `main`, nightly,
+dispatch). Full-count runs on this branch are dispatched by hand (9.4).
 
-2. Four race steps after the `-003` step, same shape as `-001` (`if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}`,
-   `RACE_TRIALS` `'5'` on PRs and `'50'` otherwise, `P6_PLAYWRIGHT_JSON` under `results/playwright/`, `timeout-minutes`
-   `5` on PRs and `10` otherwise).
-3. Job `timeout-minutes` from 60 to **90** (section 9.2 arithmetic; open question O5).
-4. No change to `race-histograms-cal` (its path already covers `results/races/`).
+Histograms: `results/races/` holds one JSON per case (`P6-CAL-RACE-006.json` and so on). The job summary step
+(`scripts/write-ci-job-summary.ts`) is not added to this job; the histograms are read from the artifact.
 
-### 9.2 Time budget (planning assumptions, not measured; the first PR run measures them)
+### 9.2 Time budget at 50 trials, with reruns and setup (planning assumptions, not measured)
 
-Assumptions, stated so the owner can change them: setup per trial (10 slot reads with overlap checks, link update) 3.0 s;
-one 10-request burst 1.1 s (probe: 0.88 to 1.31 s, section 3.3); one confirm/cancel round 1.5 s burst plus 1.5 s quiet
-window; cleanup of 10 bookings 1.0 s; rerun allowance (invalid budget `max(20 %, 2)` of 50 trials) 10 bursts per case.
+Assumptions, stated so the owner can change them: setup before `up` (checkout, npm ci, yarn install, Prisma, bootstrap,
+cache restore) 10 min; `up` typical 3 min (warm cache) and worst 40 min (the cap); per trial, setup (10 slot reads with
+overlap checks, link update) 3.0 s, one 10-request burst 1.1 s (probe: 0.88 to 1.31 s, section 3.3), one confirm/cancel
+round 1.5 s burst plus 1.5 s quiet window, cleanup 1.0 s; reruns: the invalid budget `max(20 %, 2)` of 50 trials = 10
+bursts per case; warm-up 1 burst.
 
-| Case                     | Per trial (planning)          | 50 trials | Reruns allowance  | Warm-up | Per case (planning) | Step timeout (main) |
-| ------------------------ | ----------------------------- | --------- | ----------------- | ------- | ------------------- | ------------------- |
-| `-006` (cap 1)           | 3.0 + 1.1 + 1.0 = 5.1 s       | 255 s     | 10 × 5.1 s = 51 s | ~1 s    | ~5.1 min            | 10 min              |
-| `-008` (cap 3)           | 5.1 s                         | 255 s     | 51 s              | ~1 s    | ~5.1 min            | 10 min              |
-| `-007` (confirm‖cancel)  | 0.3 + 0.5 + 3.0 + 0.3 = 4.1 s | 205 s     | 10 × 4.1 s = 41 s | ~1 s    | ~4.2 min            | 10 min              |
-| `-009` (confirm‖confirm) | 4.1 s                         | 205 s     | 41 s              | ~1 s    | ~4.2 min            | 10 min              |
+Per case (50 trials):
 
-- **New cases, total (planning):** about 19 min; worst case about 20 min with every rerun used.
-- **Job, worst case:** harness up cap 40 min (`HARNESS_UP_TIMEOUT_MS` 2400000) + setup before it about 10 min (checkout,
-  npm ci, yarn install, Prisma, bootstrap, build cache) + smoke 1 min + `-001` about 1.2 min + `-003` about 0.8 min + self-test
-  about 1 min + new cases 20 min + summary and uploads about 3 min = **about 77 min**. Margin to the job timeout at 90 min:
-  **13 min**, above the 10-minute rule (rule 20 (c)). At 60 min the job would time out in the worst case, which contradicts
-  the roadmap (contradiction C4).
-- **Typical main run** (warm build cache, `up` about 3 min): about 40 min total.
-- **PR run** (5 trials): the four new cases about 2 min in total with reruns; the job stays well inside 90 min.
-- Published numbers: none. These figures are planning values for the owner's review; section 9.3 says what the first run measures.
+| Case                       | Per trial (planning)          | 50 trials | Reruns allowance  | Per case (planning) | Step timeout main / PR |
+| -------------------------- | ----------------------------- | --------- | ----------------- | ------------------- | ---------------------- |
+| `-006` (cap 1)             | 3.0 + 1.1 + 1.0 = 5.1 s       | 255 s     | 10 × 5.1 s = 51 s | ~5.1 min            | 10 / 5 min             |
+| `-008` (cap 3)             | 5.1 s                         | 255 s     | 51 s              | ~5.1 min            | 10 / 5 min             |
+| `-007` (confirm ‖ cancel)  | 0.3 + 0.5 + 3.0 + 0.3 = 4.1 s | 205 s     | 10 × 4.1 s = 41 s | ~4.2 min            | 10 / 5 min             |
+| `-009` (confirm ‖ confirm) | 4.1 s                         | 205 s     | 41 s              | ~4.2 min            | 10 / 5 min             |
 
-### 9.3 What the first CI run measures (not done here)
+**Job `cal-state-races` (timeout 85 min):**
 
-Per-case wall time, the number of invalid attempts per case, the observed per-trial setup cost, and the `up` duration. The
-owner asked for "median of at least 3" published runs (roadmap rule); the plan does not publish any number until those runs
-exist.
+- New cases total: about 19 min (planning). Warm-up and reruns included.
+- Typical run: 10 (setup) + 3 (`up`) + 19 (cases) + 2 (stop and uploads) = **34 min**. Margin to 85: 51 min.
+- Worst run (`up` at the 40-min cap): 10 + 40 + 19 + 2 = **71 min**. Margin: **14 min**. Rule met (at least 10).
+- PR run (5 trials): the four cases total about 2 min with reruns.
+
+**Job `cal-smoke` (timeout 60 min, unchanged):**
+
+- Typical: 10 + 3 + smoke 1 + `-001` 1.2 + `-003` 0.8 + self-test 1 + uploads 3 = **about 20 min**. Margin: 40 min.
+- Worst (`up` at the 40-min cap): 10 + 40 + 1 + 1.2 + 0.8 + 1 + 3 = **57 min**. Margin: **3 min**. **Does not meet the
+  10-minute rule.** The cause is the existing `HARNESS_UP_TIMEOUT_MS` of 40 min, which the owner's answers did not change.
+  The one-line fix is a cap of 30 min (`1800000`): worst case becomes 47 min, margin 13. It is not applied in this task.
+  Open question O10 asks the owner for the choice.
+
+### 9.3 What the first runs measure
+
+Per-case wall time, invalid attempts per case, the per-trial setup cost, and the `up` duration. No published numbers come
+from these runs; the first three runs' medians come with the closeout (rule: median of at least 3 full-count runs).
+
+### 9.4 Full-count runs for the labels (O6)
+
+- Dispatch `perf.yml` on `feat/2026-10-23-p6-cal-state-races` three times (`workflow_dispatch`, which runs with
+  `RACE_TRIALS` 50 for the new job). Each run is one full-count run for F-C1, F-C2 and F-C3.
+- The three runs are read once each after they finish (rule 15), and the outcome of each case is recorded in the closeout
+  (section 16) with its run link. A run that fails is root-caused first (rule 13); a setup failure is a TEST BUG and is not rerun.
+- After three full-count runs exist, the build stops. The owner decides the labels; the test changes (`labelled` and
+  `test.fail()`) follow in a later commit only after that decision.
 
 ## 10. Test strategy (what each layer proves)
 
@@ -852,16 +1016,16 @@ exist.
   the HMAC check, the password extraction, the batch body, the link id, the SQL being read-only. These run on every PR.
 - Local race runs (`RACE_TRIALS=3`, section 7.8 step 4 and 5): prove each spec runs end to end on the real app. They are
   not published (roadmap rule).
-- CI race runs (`cal-smoke`): the histograms under `race-histograms-cal`, the full-count evidence the owner needs for labels
+- CI race runs (`cal-state-races`): the histograms under `race-histograms-cal-state`, the full-count evidence the owner needs for labels
   (rule 13).
 
 ## 11. Risks
 
 1. **The three suspected findings may not reproduce at CI scale.** The probe is 5 link bursts and 8 concurrent rounds on one
-   VM. Mitigation: the cases record SUSPECTED only (D-C7); the owner labels after full-count runs; no `test.fail()` now.
+   VM. Mitigation: the cases record SUSPECTED only (D-C7); the owner labels after 3 full-count CI runs (O6); no `test.fail()` now.
 2. **Webhook filter by uid (O1) is unverified.** If `payload.uid` is not the field, the per-booking counts are wrong. Mitigation:
    step 0 probe before step 1 (section 7.8).
-3. **Webhook signature (O3) is unverified.** The probe used `secret: null`. Mitigation: step 0 with a secret; the HMAC check
+3. **Webhook signature (O3) is unverified.** RESOLVED by the step-0 probe (section 3.7): the header is `x-cal-signature-256`, the HMAC check
    in 7.1 is written to the documented format, and step 0 confirms it.
 4. **Webhook delivery is asynchronous.** A quiet window can be too short on a slow CI runner, which would undercount.
    Mitigation: 1.5 s quiet, 8 s cap, and counts only; a count shortfall shows up as a SUSPECTED line on the next run, not as a
@@ -895,7 +1059,7 @@ exist.
   `tests/documenso/races/documenso-self-test.spec.ts:29` for the importer; it is line 25. `src/documenso/run-case.ts:74` is
   correct.
 - **C4 (job timeout).** The roadmap's risk list says the Cal job "already 60-min timeout" is fine. The worst-case arithmetic
-  (section 9.2) is about 77 min. The plan proposes 90 (open question O5).
+  (section 9.2) is about 77 min. Resolved by O5: a separate job with its own 85-minute timeout (worst 71 min).
 - **C5 (the failure path of the increment).** The roadmap says a failed increment "is turned into `PrivateLinkExpired`" and
   implies the booking may fail. In the built code the error is caught and logged in `updatePrivateLinkUsage`, so the booking is
   never refused (section 3.3). The roadmap's risk is real, and the observed outcome is accepted bookings with no 4xx at all.
@@ -912,24 +1076,25 @@ exist.
 - **E5 (proposed, `P6-OBS-CAL-004`):** a Cal webhook with a wrong signature is rejected by the receiver, as a receiver-side test.
   Only if O3 shows the product signs deliveries.
 
-## 14. Open questions (proposed answers; the owner decides)
+## 14. Open questions and owner answers
 
-- **O1. Which field carries the booking uid in a webhook delivery?** Proposed: `body.payload.uid`, confirmed by the step 0 probe
-  before step 1. If it differs, the plan changes section 5 only.
-- **O2. Is the link increment after the booking row is written?** Proposed: yes, from the code path (section 3.3), confirmed by
-  reading `Booking.createdAt` against the link update time in step 0. The answer does not change the cases, only the
-  explanation in the findings.
-- **O3. Does Cal sign deliveries when a secret is set, and in which format?** Proposed: the roadmap's `X-Cal-Signature-256` HMAC
-  of the raw body, confirmed in step 0 with a secret. Not probed in this task (the probe used no secret).
-- **O4. Where does the host password come from?** Proposed: the fork's seed file at run time (D-C6), the same way the harness
-  reads the seeded API key. Alternative: a CI secret `CAL_HOST_PASSWORD`. Proposed: no new secret.
-- **O5. Job timeout.** Proposed: 90 min (section 9.2). Alternative: a separate `cal-races` job with its own `up`, which costs
-  about 25 min more per run in build time. Proposed: keep one job.
-- **O6. Labels.** Proposed: F-C1, F-C2 and F-C3 stay SUSPECTED until full-count CI runs reproduce them, then the owner labels
-  them (rule 13). No `test.fail()` in this task.
-- **O7. Branch name.** Proposed: keep `feat/2026-10-23-p6-cal-state-races`, as the owner asked. Recorded as a deviation (D-C14).
-- **O8. Priorities of `-008` and `-009`.** Proposed: P2 and P1 (section 1). Owner to confirm.
-- **O9. Email gap.** Proposed: record it (D9), no harness change in this task.
+Answered (section 0): O1 (`payload.uid` is the booking uid), O2 (the counter does not gate the write; intra-request order
+not observable), O3 (signed with `x-cal-signature-256`, hex HMAC-SHA256 of the raw body; the receiver verifies it),
+O4 (seed file at run time), O5 (separate job `cal-state-races`, `cal-smoke` unchanged), O6 (SUSPECTED until 3 full-count
+CI runs), O7 (branch name), O8 (priorities `-008` P2, `-009` P1), O9 (email gap recorded).
+
+Open:
+
+- **O10. `cal-smoke` worst-case margin.** Section 9.2: at the 40-minute `up` cap the job's worst case is 57 min, a 3-minute
+  margin against its 60-minute timeout, which does not meet the owner's "at least 10 minutes under" rule. Options: (a) cap
+  `HARNESS_UP_TIMEOUT_MS` at 30 min in `cal-smoke` (worst 47 min, margin 13); (b) leave as is and accept the margin.
+  Proposed: (a). Not applied; the owner decides. The new job is unaffected (its worst case is 71 min against 85).
+- **O11. Full-count run count.** Owner: three full-count CI runs. Proposed: three `workflow_dispatch` runs on this branch
+  (section 9.4), since the feature branch has no PR and no push trigger. If the owner prefers runs on `main`, the labels
+  wait for those.
+- **O12. Documenso smoke.** The receiver move (step 1) must leave `documenso-smoke` green. It runs only in CI (PR, main,
+  nightly, dispatch). Proposed: the first dispatch run on this branch also runs `documenso-smoke` (dispatch runs all jobs),
+  and its result goes into the closeout.
 
 ## 15. Self-check (rule 20)
 
@@ -949,7 +1114,7 @@ exist.
   **NEW** (planned, skeleton in 7.x): `src/receivers/webhook-receiver.ts`, `src/cal/state-oracle.ts`, `src/cal/state-invariants.ts`,
   `src/cal/session.ts`, `src/cal/private-link.ts`, `src/cal/run-state-case.ts`, the four specs, the five unit files.
 - **(c) CI estimate** includes reruns and setup and matches across sections (sections 1, 9.2 and 9.3): 19–20 min new cases;
-  77 min worst job; 90-minute timeout with 13 min margin.
+  `cal-state-races` worst 71 min, timeout 85 (margin 14); `cal-smoke` worst 57 min, margin 3 (O10, not yet decided).
 - **(d) Skeletons and commands:** every new function and test has a skeleton (7.1–7.7). Every step has its `git add` paths,
   commit subject, expected `npm run check` gate (`CHECK_EXIT=0`) and unit count (section 7.8). Items still to write in the build
   are marked as skeleton bodies, not left out.
@@ -957,25 +1122,28 @@ exist.
 
 ## 16. Closeout notes
 
-- **Merge SHA:** not merged. The build is stopped for owner review (rule 10: CI workflow change and a shared receiver move).
-  No PR was opened (the task asked for none).
-- **Plan commit:** the head of `feat/2026-10-23-p6-cal-state-races` after the plan commit (see the report header).
+Filled in as the work goes. Final values are written at the end of the build and after the three full-count runs.
+
+- **Plan versions:** `5ec8786` (first version, stopped for review); this version follows it (owner answers, step-0 probe,
+  separate job).
+- **Merge SHA:** not merged. No PR (the task asked for none; the labels wait for the owner).
 - **Findings (SUSPECTED, not labelled):**
-  - F-C1: link cap ignored for acceptance. 10 of 10 accepted through a cap-1 link in 5 of 5 probe runs; 10 of 10 through a cap-3
-    link in 1 run; the counter does stop at the cap.
+  - F-C1: link cap ignored for acceptance. 10 of 10 accepted through a cap-1 link in 5 of 5 probe runs; 10 of 10 through a
+    cap-3 link in 1 run; the counter stops at the cap. The step-0 probe shows a booking is also written when the link is
+    already full (section 3.7).
   - F-C2: confirm ‖ cancel on a PENDING booking: both 200 and both side-effect sets in 4 of 4 rounds; final `accepted`.
   - F-C3: confirm ‖ confirm on a PENDING booking: both 200 and two `BOOKING_CREATED` deliveries in 4 of 4 rounds.
-- **Environment finding:** `up:cal` OOM in this sandbox (section 3.1.1), a harness heap default that `NODE_OPTIONS` removes (H-heap).
+- **Environment finding:** `up:cal` heap OOM in this sandbox (section 3.1.1); harness follow-up H-heap.
 - **Deviations:**
-  - D-C14: branch name `feat/...` for the plan commit (rules 1 and 10 name `plan/...`); owner's instruction, same as Task 3b.
-  - Probe error (recorded in section 3.3): the first link-burst run did not set `hasHashedBookingLink`; its 10 accepted bookings
-    with no link row are not evidence of F-C1. Corrected in the next run; kept as a row.
-  - The first `up:cal` attempt ran with the sandbox `NODE_OPTIONS`; the second with an explicit heap value. Both recorded.
+  - D-C14: branch `feat/...` for the plan commit (rules 1 and 10 name `plan/...`). Owner's instruction, same as Task 3b.
+  - Probe error (section 3.3): the first link-burst run did not set `hasHashedBookingLink`. Its rows are not evidence of F-C1.
+  - Step-0 probe script had a stray booking call; removed before the run (section 3.7).
+  - The first `up:cal` attempt ran with the sandbox `NODE_OPTIONS`; the later attempts with an explicit heap value.
 - **Rule slips (honest record):**
-  - I armed two duplicate Monitor watches and one stray one-minute reminder during the Cal start. I stopped or deleted all three
-    before the probe ran; none wrote anything to the repo or to Cal.
-  - A harness command was launched in a subshell whose wrapper reported "completed (exit 0)" before the real command finished.
-    The real exit code was read from the exit file (`up-cal.exit`, `up-cal2.exit`). The reports use the real codes only.
-  - Rule 15 (read CI once after pushing): no CI run exists for this branch (no PR, and `perf.yml` runs on PRs, `main`, nightly
-    and dispatch only), so there is nothing to read yet.
-  - The plan's CI and time figures are planning assumptions (section 9.2), not measured values; they are labelled as such.
+  - Two duplicate Monitor watches and one stray one-minute reminder were created during the Cal start; all three were
+    stopped or deleted before the probe ran, and none wrote to the repo or to Cal.
+  - A harness command launched in a subshell reported "completed (exit 0)" before the real command finished. The real exit
+    codes were read from the exit files. Reports use the real codes only.
+  - The plan's time figures are planning assumptions (section 9.2), not measured values, and are labelled as such.
+  - Section 9.2: the `cal-smoke` worst-case margin (3 min) does not meet the 10-minute rule; it is O10, not yet decided.
+- **Step results (filled in during the build):** step 0 done (section 3.7). Steps 1 to 7, CI runs and labels: pending.
