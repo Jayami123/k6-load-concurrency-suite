@@ -1,4 +1,4 @@
-export type PrivateLinkInput = { link: string; maxUsageCount: number };
+export type PrivateLinkInput = { link: string; maxUsageCount: number; usageCount?: number };
 
 /** Pure. Lower-case, URL-safe, unique per case and attempt. The link column is unique, so the id must not repeat. */
 export function privateLinkId(casePrefixValue: string, trial: number): string {

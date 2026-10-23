@@ -25,6 +25,7 @@ import {
   readBookingByEmail,
   readBookingStatus,
   readCaseAccepted,
+  readEventLinks,
   readLinkState,
 } from "./state-oracle.ts";
 import {
@@ -35,7 +36,7 @@ import {
   checkStatusNotNull,
 } from "./state-invariants.ts";
 import type { WebhookDelivery } from "../receivers/webhook-receiver.ts";
-import { clearPrivateLinks, privateLinkId, setPrivateLinks } from "./private-link.ts";
+import { privateLinkId, setPrivateLinks } from "./private-link.ts";
 
 export type StateCaseResult = {
   histogram: RaceHistogram;
@@ -80,6 +81,15 @@ export async function runLinkBurstCase(input: {
   const cleanupViolations: string[] = [];
 
   try {
+    // The event type may hold links of other users of the fixture. The race replaces its whole link list, so the
+    // prior list is kept and put back after every attempt. A time-limited link cannot be restored faithfully: refuse.
+    const priorLinks = await readEventLinks(input.pool, input.setup.eventTypeId);
+    if (priorLinks.some((l) => l.expiresAt !== null)) {
+      throw new Error(
+        "TEST BUG: event type has a time-limited private link; refusing to replace the link list",
+      );
+    }
+
     const runAttempt = async (trial: number, attempt: number): Promise<RaceAttemptResult> => {
       const tag = attemptTag(trial, attempt);
       const attemptPrefix = `${dataPrefix}-${tag}`;
@@ -152,7 +162,16 @@ export async function runLinkBurstCase(input: {
           }
         }
         try {
-          await clearPrivateLinks(base, input.cookie, input.setup.eventTypeId);
+          await setPrivateLinks(
+            base,
+            input.cookie,
+            input.setup.eventTypeId,
+            priorLinks.map((l) => ({
+              link: l.link,
+              maxUsageCount: l.maxUsageCount,
+              usageCount: l.usageCount,
+            })),
+          );
         } catch (err) {
           cleanupViolations.push(cleanupFailure("link", link, err));
         }
@@ -247,6 +266,7 @@ export async function subscribeWebhook(
   return id;
 }
 
+/** Deletes a webhook subscription created by subscribeWebhook. Throws TEST BUG unless HTTP 200. */
 export async function unsubscribeWebhook(
   baseUrl: string,
   cookie: string,

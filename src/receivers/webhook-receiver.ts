@@ -60,6 +60,7 @@ export function parseDelivery(input: {
   };
 }
 
+/** Starts a loopback receiver on a random port; each delivery is checked with `opts.check`. */
 export async function startWebhookReceiver(opts: { publicHost: string; check: SecretCheck }) {
   const deliveries: WebhookDelivery[] = [];
   const server = http.createServer((req, res) => {

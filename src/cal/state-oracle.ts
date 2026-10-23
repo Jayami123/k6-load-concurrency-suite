@@ -15,6 +15,14 @@ FROM "Booking" b JOIN "Attendee" a ON a."bookingId" = b.id
 WHERE a.email LIKE $1 AND b.status = 'accepted'
 `;
 
+/** Every link of one event type, so a shared fixture's links can be put back after a race. */
+export const EVENT_LINKS_SQL = `
+SELECT link, "maxUsageCount"::int AS "maxUsageCount", "usageCount"::int AS "usageCount", "expiresAt"
+FROM "HashedLink"
+WHERE "eventTypeId" = $1
+ORDER BY id
+`;
+
 /** Status of one booking by id. */
 export const BOOKING_STATUS_SQL = `
 SELECT status::text AS status FROM "Booking" WHERE id = $1
@@ -27,6 +35,7 @@ FROM "Booking" b JOIN "Attendee" a ON a."bookingId" = b.id
 WHERE a.email = $1
 `;
 
+/** The usage row of the case's own link. Throws TEST BUG when the row is missing. */
 export async function readLinkState(
   pool: pg.Pool,
   eventTypeId: number,
@@ -41,17 +50,35 @@ export async function readLinkState(
   return rows[0]!;
 }
 
+/** Accepted bookings whose attendee email matches the case pattern. */
 export async function readCaseAccepted(pool: pg.Pool, likePattern: string): Promise<number> {
   const rows = await selectRows<{ n: number }>(pool, CASE_ACCEPTED_SQL, [likePattern]);
   return rows[0]?.n ?? 0;
 }
 
+/** Every link of the event type, ordered by id. Read-only. */
+export async function readEventLinks(
+  pool: pg.Pool,
+  eventTypeId: number,
+): Promise<
+  Array<{ link: string; maxUsageCount: number; usageCount: number; expiresAt: Date | null }>
+> {
+  return selectRows<{
+    link: string;
+    maxUsageCount: number;
+    usageCount: number;
+    expiresAt: Date | null;
+  }>(pool, EVENT_LINKS_SQL, [eventTypeId]);
+}
+
+/** Reads the status of one booking. */
 export async function readBookingStatus(pool: pg.Pool, bookingId: number): Promise<string> {
   const rows = await selectRows<{ status: string }>(pool, BOOKING_STATUS_SQL, [bookingId]);
   if (rows.length !== 1) throw new Error(`TEST BUG: booking ${bookingId} missing`);
   return rows[0]!.status;
 }
 
+/** The one booking of an attendee email. Throws TEST BUG unless exactly one exists. */
 export async function readBookingByEmail(
   pool: pg.Pool,
   email: string,
@@ -69,6 +96,7 @@ FROM "EventType" e JOIN users u ON u.id = e."userId"
 WHERE e.slug = 'tennis-class'
 `;
 
+/** The seeded confirmation event type and its host. Throws TEST BUG if the seed changed. */
 export async function resolveConfirmSetup(
   pool: pg.Pool,
 ): Promise<{ eventTypeId: number; length: number; username: string; userId: number }> {
