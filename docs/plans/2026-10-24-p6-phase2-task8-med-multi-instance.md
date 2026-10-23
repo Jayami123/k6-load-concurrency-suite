@@ -92,9 +92,12 @@ port 9001: /health=200 GET /store/products=200 count=4 returned=4 firstId=prod_0
 same product ids on both ports: true
 ```
 
-The product ids are generated when the data is seeded. Two separate databases would not return identical ids, so identical
-ids on both ports show one shared database. Redis mode returned the same ids (`probe-read-redis.out`). The read was
-read-only; no write went through the second backend.
+The primary evidence that both backends use one database is the shared `DATABASE_URL`: the probe launched the second
+backend from the same `apps/backend/.env` that the harness writes once per `up` (`writeBackendEnv`). The matching product
+ids are runtime corroboration only. Two databases restored from the same dump would return the same ids, so the ids alone
+do not prove sharing. Redis mode returned the same ids (`probe-read-redis.out`). The read was read-only; no write went
+through the second backend. A write through one port and a read through the other would be the direct proof; it was not
+run, because this task is read-only.
 
 ### 4.2 Lock provider per mode (spec item 2)
 
@@ -171,7 +174,8 @@ Code path, read in the pinned package (`medusa.adapter.ts`):
   `reapProductListeners(port, "backend")` (line 940, listeners on the base port only), then waits for that port to close.
 - So a second backend that the harness does not record is **not known to `down`**. This is from reading the code. The live
   probe did not test it, because the probe rules say to stop the second backend before `down`. **The live probe in Phase 3
-  must confirm it:** start the H3 second instance, run `down`, and expect the second pid gone and 9001 closed.
+  must confirm it:** start the H3 second instance, run `down`, and expect port 9001 closed. The second pid is a separate, asynchronous check:
+  an exited Node process can stay a zombie for a few seconds (§4.4 zombie note), so it is not required to be gone at once.
 
 Live results, clean path (both modes): after our `kill -TERM` and `npm run down:medusa` (exit 0):
 
@@ -291,16 +295,14 @@ private async stopSecondBackend(): Promise<void> {
   const url = this.cfg.secondBaseUrl;
   if (url === undefined) return; // env unset: no-op, nothing changes for existing runs
   const { host, port } = medusaListen(url);
-  let stopError: Error | undefined;
-  try {
-    stopMedusaBackend2FromPidFile(HARNESS_ROOT);
-  } catch (error) {
-    stopError = error instanceof Error ? error : new Error(String(error));
-  }
-  await this.reapProductListeners(port, "backend-2"); // only processes started from productRoot
+  // A recorded pid that cannot be stopped throws here (MedusaBackendStopError). Nothing is reaped after that.
+  stopMedusaBackend2FromPidFile(HARNESS_ROOT);
+  // No pid file: reap only listeners started from productRoot (reapProductListeners checks argv and cwd).
+  await this.reapProductListeners(port, "backend-2");
   const closed = await this.waitForPortClosed(host, port, STOP_POLL_MS);
-  if (closed) return;
-  throw stopError ?? new Error(`Second Medusa backend still listening on ${host}:${port}; not killed.`);
+  if (!closed) {
+    throw new Error(`Second Medusa backend still listening on ${host}:${port}; not killed.`);
+  }
 }
 ```
 
@@ -310,6 +312,7 @@ Rules, in words:
 - No pid file and the port is open: reap only listeners whose argv or cwd is in `productRoot`
   (`reapProductListeners`, line 731, the same check `stopBackend` uses today). Any other process on the port **throws;
   nothing is killed.**
+- A recorded pid that cannot be stopped throws before any reap, so a stop error is never reported as success.
 - Success is the port closing (`waitForPortClosed`, line 778). A zombie still answers `kill(pid, 0)`, so a pid check would
   report a stopped process as running.
 
