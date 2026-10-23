@@ -3,9 +3,7 @@
 Backlog item X5 ([BACKLOG.md](../BACKLOG.md), from the Task 6 plan §12). Branch `ci/2026-10-23-p6-pull-retry` from `origin/main`
 at `38533b0`.
 
-**Status: stopped at the budget gate, again.** Under option G (7-min pull cap) `medusa-smoke` and `twenty-smoke` miss the 10-minute
-margin (§5.3). The owner's rule is to stop, list the options and escalate, not to pick one. So this branch holds the shared
-script and this plan. **No workflow file is changed yet**, and no PR is open. The per-job changes in §4 wait for the decision.
+**Status: built, PR opened (see the PR for the first run).** The budget gate was passed with the owner's decisions M1 and T1 (§5).
 
 ## 1. Goal and scope
 
@@ -20,7 +18,7 @@ script and this plan. **No workflow file is changed yet**, and no PR is open. Th
 ## 2. The shared script
 
 `scripts/ci/compose-pull.sh` (executable, shellcheck clean). Only `docker compose pull` is retried. `harness up`, seed and tests
-are never retried. Each try is capped at 120 s (named constant `per_try_seconds`).
+are never retried. Each try is capped at 100 s (named constant `per_try_seconds`).
 
 ```bash
 #!/usr/bin/env bash
@@ -57,8 +55,8 @@ for file in "${files[@]}"; do
   compose+=(-f "$file")
 done
 
-# Worst CI pull measured 66 s (twenty-smoke, PR #44 head 4672b4d); 120 s per try leaves room above it.
-per_try_seconds=120
+# Worst CI pull measured 66 s (twenty-smoke, PR #44 head 4672b4d); 100 s per try leaves room above it.
+per_try_seconds=100
 max_tries=3
 for attempt in 1 2 3; do
   if timeout "$per_try_seconds" "${compose[@]}" pull --ignore-buildable; then
@@ -146,55 +144,49 @@ compose file "/nonexistent/x.yml" is invalid: open /nonexistent/x.yml: no such f
 Exit 1 after about 45 s (15 s and 30 s backoff). Each harness `down` also exits 0 with nothing running (checked for medusa,
 documenso and cal).
 
-## 4. Changes (after the decision in §5)
+## 4. Changes (applied in this PR)
 
-- **`twenty-smoke`:** replace the inline loop with the script. Keep the step name, `id: twenty_pull`, `timeout-minutes: 14`, the
-  `if:` on harness up and the `always()` guard on log capture.
-- **Six jobs:** add `Pull <Product> images (3 tries, 15 s then 30 s)` with an `id` and `timeout-minutes: 14`, just before harness
-  up. Gate harness up with `if: ${{ steps.<id>.outcome == 'success' }}`. Example for `cal-smoke`:
-
-```yaml
-      - name: Pull Cal images (3 tries, 15 s then 30 s)
-        id: cal_pull
-        timeout-minutes: 14
-        working-directory: ${{ env.PRODUCTS_ROOT }}/cal/packages/prisma
-        run: |
-          set -euo pipefail
-          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-cal \
-            -f "${{ env.PRODUCTS_ROOT }}/cal/packages/prisma/docker-compose.yml" \
-            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/cal.compose.yml"
-
-      - name: Start Cal (harness up)
-        id: cal_up
-        if: ${{ steps.cal_pull.outcome == 'success' }}
-        ...
-```
-
-- **Downstream behaviour (read from the workflow; not yet run in CI):** a failed pull makes the job red and skips harness up and
-  every step that tests `*_up.outcome`. The `always()` steps (stop and log upload) and the `!cancelled()` job summary still run.
-  The stop step runs `down`, which exits 0 with nothing running (§3.3).
+- **Shared script:** `scripts/ci/compose-pull.sh`, 100 s per try, 3 tries, 15 s then 30 s backoff, so each pull step is capped at
+  **6 min** (3 × 100 s + 45 s = 5.75 min).
+- **Six pull steps:** `Pull <Product> images (3 tries, 15 s then 30 s)` with an `id` and `timeout-minutes: 6`, placed just before
+  harness up. Each harness up has `if: ${{ steps.<id>.outcome == 'success' }}`:
+  - Medusa (`medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`): `-p qa-harness-medusa -f medusa.compose.yml`, run in
+    the harness docker directory.
+  - Cal (`cal-smoke`, `cal-state-races`): `-p qa-harness-cal` with the fork's `packages/prisma/docker-compose.yml` and the harness
+    `cal.compose.yml`, run in the fork's `packages/prisma` directory.
+  - Documenso (`documenso-smoke`): `-p qa-harness-documenso -f documenso.compose.yml`.
+- **`twenty-smoke`:** the inline loop is replaced by the script. Kept: the step name, `id: twenty_pull`, the `if:` on harness up,
+  and the `always()` guard on log capture. Its cap is now 6 min (was 14).
+- **Save cache steps:** `medusa-smoke` pnpm and Medusa build saves have `timeout-minutes: 2`. Cal's three saves and Documenso's build
+  save have `timeout-minutes: 5`. All keep `continue-on-error: true`, so a timeout costs only a cache miss.
+- **Downstream behaviour:** a failed pull makes the job red and skips harness up and every step that checks `*_up.outcome`. The
+  `always()` stop and log steps and the `!cancelled()` job summary still run. Each harness `down` exits 0 with nothing running (§3.3).
 
 ## 5. Budget (O5: worst-case values, not middle ones)
 
-Task 6's budget (plan `docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md` §8.3) used the measured pull time (34 s), not the
-14-minute pull cap, so its 11.8-min margin was overstated. This PR corrects the budget: every pull step is capped at 7 min, and
-the Task 6 figures are not reused. Under the corrected budget `twenty-smoke` is at 9.92 min, below the margin (see §5.3).
+**Correction to Task 6.** The Task 6 budget (plan `docs/plans/2026-10-23-p6-phase2-task6-twenty-stack.md` §8.3) used the measured
+pull time (34 s), not the 14-minute pull cap, so its 11.8-minute margin was overstated. This PR corrects it: every pull step is capped
+at 6 min, and the Task 6 figures are not reused.
 
-Option G (owner decision): per-try timeout 120 s, 3 tries, 15 s and 30 s backoff, so each pull step is capped at **7 min**
-(3 × 120 s + 45 s = 6.75 min). Each `Save … cache` step gets `timeout-minutes: 5` in this PR and counts 5 min. Every other step counts
-its largest observed duration in the last eight runs (successful steps only).
+Each job's worst case is the sum, over its steps, of the largest duration observed for that step in the last eight runs (successful
+steps only). Pull steps count their cap (6 min). Save cache steps count their cap, and they have never been observed to run.
 
-### 5.1 Per job
+**Decisions applied (owner):** M1, Medusa's two Save caps at 2 min. T1, per-try timeout 100 s for every job, so each pull step is 6 min.
+Option G (the 120 s value) is superseded.
 
-| Job                    | Job timeout (min) | Worst case (min) | Margin (min) | Result   |
-| ---------------------- | ----------------- | ---------------- | ------------ | -------- |
-| `medusa-smoke`         | 45                | 37.47            | 7.53         | **MISS** |
-| `medusa-order-races`   | 45                | 23.57            | 21.43        | OK       |
-| `medusa-cancel-extras` | 30                | 11.67            | 18.33        | OK       |
-| `cal-smoke`            | 60                | 28.08            | 31.92        | OK       |
-| `cal-state-races`      | 85                | 17.77            | 67.23        | OK       |
-| `documenso-smoke`      | 45                | 18.38            | 26.62        | OK       |
-| `twenty-smoke`         | 20                | 10.08            | 9.92         | **MISS** |
+### 5.1 Per job (after this PR)
+
+| Job                    | Job timeout (min) | Worst case (min) | Margin (min) | Result |
+| ---------------------- | ----------------- | ---------------- | ------------ | ------ |
+| `medusa-smoke`         | 45                | 30.47            | 14.53        | OK     |
+| `medusa-order-races`   | 45                | 22.57            | 22.43        | OK     |
+| `medusa-cancel-extras` | 30                | 10.67            | 19.33        | OK     |
+| `cal-smoke`            | 60                | 27.08            | 32.92        | OK     |
+| `cal-state-races`      | 85                | 16.77            | 68.23        | OK     |
+| `documenso-smoke`      | 45                | 17.38            | 27.62        | OK     |
+| `twenty-smoke`         | 20                | 9.08             | 10.92        | OK     |
+
+Every job has at least 10 min of margin. The tightest is `twenty-smoke` at 10.92 min. The job timeouts are unchanged.
 
 ### 5.2 Steps per job
 
@@ -202,7 +194,6 @@ its largest observed duration in the last eight runs (successful steps only).
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                     |
 | -------------------------------------------------------------------- | --------- | ---------------- | ------------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap                  |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.03             | max observed (7 runs)     |
 | Checkout Medusa fork                                                 | —         | 0.02             | max observed (7 runs)     |
 | Verify Medusa fork HEAD                                              | —         | 0.00             | max observed (7 runs)     |
@@ -216,6 +207,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Install Medusa dependencies                                          | —         | 0.10             | max observed (7 runs)     |
 | Restore Medusa build cache                                           | —         | 0.03             | max observed (7 runs)     |
 | Generate the CI admin password                                       | —         | 0.00             | max observed (7 runs)     |
+| Pull Medusa images (3 tries, 15 s then 30 s)                         | 6         | 6.00             | pull cap                  |
 | Start Medusa (harness up)                                            | —         | 0.63             | max observed (7 runs)     |
 | k6 smoke (GET /health)                                               | —         | 0.02             | max observed (7 runs)     |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (14 runs)    |
@@ -223,15 +215,14 @@ its largest observed duration in the last eight runs (successful steps only).
 | Job summary (Playwright results, race table)                         | —         | 0.02             | max observed (7 runs)     |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (14 runs)    |
 | Stop Medusa (harness down)                                           | —         | 0.02             | max observed (7 runs)     |
-| Save pnpm store cache                                                | 5         | 5.00             | save cap (never observed) |
-| Save Medusa build cache                                              | 5         | 5.00             | save cap (never observed) |
-| **Total**                                                            |           | **37.47**        | margin **7.53**           |
+| Save pnpm store cache                                                | 2         | 2.00             | save cap (never observed) |
+| Save Medusa build cache                                              | 2         | 2.00             | save cap (never observed) |
+| **Total**                                                            |           | **30.47**        | margin **14.53**          |
 
 #### `medusa-order-races` (job timeout 45 min)
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                  |
 | -------------------------------------------------------------------- | --------- | ---------------- | ---------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap               |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.03             | max observed (8 runs)  |
 | Checkout Medusa fork                                                 | —         | 0.02             | max observed (8 runs)  |
 | Verify Medusa fork HEAD                                              | —         | 0.02             | max observed (8 runs)  |
@@ -244,6 +235,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Install Medusa dependencies                                          | —         | 0.20             | max observed (8 runs)  |
 | Restore Medusa build cache                                           | —         | 0.05             | max observed (8 runs)  |
 | Generate the CI admin password                                       | —         | 0.00             | max observed (8 runs)  |
+| Pull Medusa images (3 tries, 15 s then 30 s)                         | 6         | 6.00             | pull cap               |
 | Start Medusa (harness up)                                            | —         | 0.90             | max observed (8 runs)  |
 | k6 smoke (GET /health)                                               | —         | 0.02             | max observed (8 runs)  |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (16 runs) |
@@ -251,13 +243,12 @@ its largest observed duration in the last eight runs (successful steps only).
 | Job summary (Playwright results, race table)                         | —         | 0.02             | max observed (8 runs)  |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (16 runs) |
 | Stop Medusa (harness down)                                           | —         | 0.02             | max observed (8 runs)  |
-| **Total**                                                            |           | **23.57**        | margin **21.43**       |
+| **Total**                                                            |           | **22.57**        | margin **22.43**       |
 
 #### `medusa-cancel-extras` (job timeout 30 min)
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                  |
 | -------------------------------------------------------------------- | --------- | ---------------- | ---------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap               |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.02             | max observed (8 runs)  |
 | Checkout Medusa fork                                                 | —         | 0.02             | max observed (8 runs)  |
 | Verify Medusa fork HEAD                                              | —         | 0.00             | max observed (8 runs)  |
@@ -270,6 +261,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Install Medusa dependencies                                          | 15        | 0.17             | max observed (8 runs)  |
 | Restore Medusa build cache                                           | —         | 0.03             | max observed (8 runs)  |
 | Generate the CI admin password                                       | —         | 0.00             | max observed (8 runs)  |
+| Pull Medusa images (3 tries, 15 s then 30 s)                         | 6         | 6.00             | pull cap               |
 | Start Medusa (harness up)                                            | 10        | 0.73             | max observed (8 runs)  |
 | k6 smoke (GET /health)                                               | 5         | 0.02             | max observed (8 runs)  |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (16 runs) |
@@ -277,13 +269,12 @@ its largest observed duration in the last eight runs (successful steps only).
 | Job summary (Playwright results, race table)                         | 5         | 0.00             | max observed (8 runs)  |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (16 runs) |
 | Stop Medusa (harness down)                                           | 5         | 0.02             | max observed (8 runs)  |
-| **Total**                                                            |           | **11.67**        | margin **18.33**       |
+| **Total**                                                            |           | **10.67**        | margin **19.33**       |
 
 #### `cal-smoke` (job timeout 60 min)
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                     |
 | -------------------------------------------------------------------- | --------- | ---------------- | ------------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap                  |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.03             | max observed (7 runs)     |
 | Checkout Cal fork                                                    | —         | 0.12             | max observed (7 runs)     |
 | Verify Cal fork HEAD                                                 | —         | 0.02             | max observed (7 runs)     |
@@ -298,6 +289,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Generate Cal Prisma client                                           | —         | 0.13             | max observed (7 runs)     |
 | Prepare Cal product .env and harness roots                           | —         | 0.00             | max observed (7 runs)     |
 | Restore Cal build cache                                              | —         | 0.08             | max observed (7 runs)     |
+| Pull Cal images (3 tries, 15 s then 30 s)                            | 6         | 6.00             | pull cap                  |
 | Start Cal (harness up)                                               | —         | 1.33             | max observed (7 runs)     |
 | k6 smoke (GET /pro/30min)                                            | —         | 0.02             | max observed (7 runs)     |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (21 runs)    |
@@ -312,13 +304,12 @@ its largest observed duration in the last eight runs (successful steps only).
 | Save Cal Yarn cache                                                  | 5         | 5.00             | save cap (never observed) |
 | Save Cal node_modules cache                                          | 5         | 5.00             | save cap (never observed) |
 | Save Cal build cache                                                 | 5         | 5.00             | save cap (never observed) |
-| **Total**                                                            |           | **28.08**        | margin **31.92**          |
+| **Total**                                                            |           | **27.08**        | margin **32.92**          |
 
 #### `cal-state-races` (job timeout 85 min)
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                  |
 | -------------------------------------------------------------------- | --------- | ---------------- | ---------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap               |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.02             | max observed (7 runs)  |
 | Checkout Cal fork                                                    | —         | 0.07             | max observed (7 runs)  |
 | Verify Cal fork HEAD                                                 | —         | 0.02             | max observed (7 runs)  |
@@ -333,6 +324,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Prepare Cal product .env and harness roots                           | —         | 0.00             | max observed (7 runs)  |
 | Restore Cal build cache                                              | —         | 0.05             | max observed (7 runs)  |
 | Map the webhook host                                                 | —         | 0.00             | max observed (7 runs)  |
+| Pull Cal images (3 tries, 15 s then 30 s)                            | 6         | 6.00             | pull cap               |
 | Start Cal (harness up)                                               | —         | 1.42             | max observed (7 runs)  |
 | Race P6-CAL-RACE-006 (cal-race)                                      | —         | 1.83             | max observed (7 runs)  |
 | Race P6-CAL-RACE-008 (cal-race)                                      | —         | 1.75             | max observed (7 runs)  |
@@ -342,13 +334,12 @@ its largest observed duration in the last eight runs (successful steps only).
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (14 runs) |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (14 runs) |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (14 runs) |
-| **Total**                                                            |           | **17.77**        | margin **67.23**       |
+| **Total**                                                            |           | **16.77**        | margin **68.23**       |
 
 #### `documenso-smoke` (job timeout 45 min)
 
 | Step                                                                 | Cap (min) | Worst used (min) | Basis                     |
 | -------------------------------------------------------------------- | --------- | ---------------- | ------------------------- |
-| (new) Pull images                                                    | 7         | 7.00             | pull cap                  |
 | Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        | —         | 0.03             | max observed (8 runs)     |
 | Checkout Documenso fork                                              | —         | 0.08             | max observed (8 runs)     |
 | Verify Documenso fork HEAD                                           | —         | 0.00             | max observed (8 runs)     |
@@ -360,6 +351,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Prepare harness roots                                                | —         | 0.02             | max observed (8 runs)     |
 | Map the webhook host                                                 | —         | 0.02             | max observed (8 runs)     |
 | Restore Documenso build cache                                        | —         | 0.05             | max observed (8 runs)     |
+| Pull Documenso images (3 tries, 15 s then 30 s)                      | 6         | 6.00             | pull cap                  |
 | Start Documenso (harness up)                                         | —         | 0.98             | max observed (8 runs)     |
 | k6 smoke (GET /signin, /api/auth/csrf)                               | —         | 0.02             | max observed (8 runs)     |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (24 runs)    |
@@ -371,7 +363,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | —         | 0.03             | max observed (24 runs)    |
 | Stop Documenso (harness down)                                        | —         | 0.02             | max observed (8 runs)     |
 | Save Documenso build cache                                           | 5         | 5.00             | save cap (never observed) |
-| **Total**                                                            |           | **18.38**        | margin **26.62**          |
+| **Total**                                                            |           | **17.38**        | margin **27.62**          |
 
 #### `twenty-smoke` (job timeout 20 min)
 
@@ -383,7 +375,7 @@ its largest observed duration in the last eight runs (successful steps only).
 | Install P6 dependencies                                              | 10        | 0.10             | max observed (3 runs) |
 | Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 | 5         | 0.02             | max observed (3 runs) |
 | Prepare harness roots (Twenty fork at TWENTY_REF)                    | 10        | 0.20             | max observed (3 runs) |
-| Pull Twenty images (3 tries, 15 s then 30 s)                         | 7         | 7.00             | pull cap              |
+| Pull Twenty images (3 tries, 15 s then 30 s)                         | 6         | 6.00             | pull cap              |
 | Start Twenty (harness up)                                            | 12        | 1.72             | max observed (3 runs) |
 | Seed Twenty (harness seed)                                           | 10        | 0.83             | max observed (3 runs) |
 | k6 smoke (GET /healthz)                                              | 3         | 0.00             | max observed (3 runs) |
@@ -394,43 +386,139 @@ its largest observed duration in the last eight runs (successful steps only).
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | 5         | 0.03             | max observed (6 runs) |
 | Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 | 5         | 0.03             | max observed (6 runs) |
 | Stop Twenty (harness down, volumes removed)                          | 5         | 0.03             | max observed (3 runs) |
-| **Total**                                                            |           | **10.08**        | margin **9.92**       |
-
-### 5.3 Two jobs miss the margin (stop; owner decision needed)
-
-Two jobs are below the 10-minute margin with option G. The owner's rule says to stop and escalate. Nothing in the workflow has been
-changed, and no PR is open.
-
-- **`medusa-smoke`: margin 7.53 min.** Its two `Save` cache steps count 5 min each (10 min together), which is most of the gap.
-  Its race step (18.85 min observed) is the other large part.
-  - _Option M1:_ cap the two Medusa save steps at 2 min each. Margin becomes 13.53 min. Tradeoff: a save that really takes more than
-    2 min is cut. The step is `continue-on-error`, so the cost is a cache miss on the next run, not a red job.
-  - _Option M2:_ keep 5 min and accept 7.53 min. Breaks the margin rule.
-  - Not allowed by the rule: raising `medusa-smoke` above 45 min.
-- **`twenty-smoke`: margin 9.92 min (short by about 5 s).** Its non-pull work is 3.08 min, and the pull is 7 min.
-  - _Option T1:_ per-try timeout 100 s instead of 120 s (3 × 100 s + 45 s = 5.75 min, so the step cap is 6). Margin becomes 10.92 min.
-    Tradeoff: a pull slower than 100 s is cut. The slowest measured CI pull was 66 s, so the headroom is about 1.5 times.
-    This changes the per-try value the owner just set.
-  - _Option T2:_ keep 120 s and 7 min and accept 9.92 min. Breaks the margin rule by 5 s.
-
-Neither of these can be decided here. The owner picks T1 or T2, and M1 or M2.
+| **Total**                                                            |           | **9.08**         | margin **10.92**      |
 
 ## 6. Follow-ups (not in this PR)
 
-Older steps with no `timeout-minutes` (from the workflow, listed for the follow-up PR, per the owner's rule):
+Older steps with no `timeout-minutes` (the owner's rule: list them, do not fix them here):
 
-- `medusa-smoke`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Medusa fork; Verify Medusa fork HEAD; Stub harness product roots; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Install P6 dependencies; Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1; Check (format, actionlint, typecheck, k6 inspect, unit tests); Enable pnpm via corepack; Restore pnpm store cache; Install Medusa dependencies; Restore Medusa build cache; Generate the CI admin password; Start Medusa (harness up); k6 smoke (GET /health); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Job summary (Playwright results, race table); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Stop Medusa (harness down); Save pnpm store cache; Save Medusa build cache
-- `medusa-order-races`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Medusa fork; Verify Medusa fork HEAD; Stub harness product roots; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Install P6 dependencies; Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1; Enable pnpm via corepack; Restore pnpm store cache; Install Medusa dependencies; Restore Medusa build cache; Generate the CI admin password; Start Medusa (harness up); k6 smoke (GET /health); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Job summary (Playwright results, race table); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Stop Medusa (harness down)
-- `medusa-cancel-extras`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Medusa fork; Verify Medusa fork HEAD; Stub harness product roots; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1; Enable pnpm via corepack; Restore pnpm store cache; Restore Medusa build cache; Generate the CI admin password; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-- `cal-smoke`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Cal fork; Verify Cal fork HEAD; Verify CAL_REF matches bootstrap.sh; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Install P6 dependencies; Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1; Enable corepack; Restore Cal Yarn cache; Restore Cal node_modules cache; Install Cal dependencies; Generate Cal Prisma client; Prepare Cal product .env and harness roots; Restore Cal build cache; Start Cal (harness up); k6 smoke (GET /pro/30min); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Race self-test (cal-race, 3 trials); Job summary (Playwright results, race table); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Stop Cal (harness down); Save Cal Yarn cache; Save Cal node_modules cache; Save Cal build cache
-- `cal-state-races`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Cal fork; Verify Cal fork HEAD; Verify CAL_REF matches bootstrap.sh; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Install P6 dependencies; Enable corepack; Restore Cal Yarn cache; Restore Cal node_modules cache; Install Cal dependencies; Generate Cal Prisma client; Prepare Cal product .env and harness roots; Restore Cal build cache; Map the webhook host; Start Cal (harness up); Stop Cal (harness down); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-- `documenso-smoke`: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1; Checkout Documenso fork; Verify Documenso fork HEAD; Verify DOCUMENSO_REF matches bootstrap.sh; Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1; Install P6 dependencies; Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1; Install Documenso dependencies; Prepare harness roots; Map the webhook host; Restore Documenso build cache; Start Documenso (harness up); k6 smoke (GET /signin, /api/auth/csrf); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Check Documenso artefacts for tokens; Job summary (Playwright results, race table); Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9; Stop Documenso (harness down); Save Documenso build cache
+- medusa-smoke: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- medusa-smoke: Checkout Medusa fork
+- medusa-smoke: Verify Medusa fork HEAD
+- medusa-smoke: Stub harness product roots
+- medusa-smoke: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- medusa-smoke: Install P6 dependencies
+- medusa-smoke: Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1
+- medusa-smoke: Check (format, actionlint, typecheck, k6 inspect, unit tests)
+- medusa-smoke: Enable pnpm via corepack
+- medusa-smoke: Restore pnpm store cache
+- medusa-smoke: Install Medusa dependencies
+- medusa-smoke: Restore Medusa build cache
+- medusa-smoke: Generate the CI admin password
+- medusa-smoke: Start Medusa (harness up)
+- medusa-smoke: k6 smoke (GET /health)
+- medusa-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- medusa-smoke: Race medusa (P6-MED-RACE-001, money, order-state, extras)
+- medusa-smoke: Job summary (Playwright results, race table)
+- medusa-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- medusa-smoke: Stop Medusa (harness down)
+- medusa-order-races: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- medusa-order-races: Checkout Medusa fork
+- medusa-order-races: Verify Medusa fork HEAD
+- medusa-order-races: Stub harness product roots
+- medusa-order-races: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- medusa-order-races: Install P6 dependencies
+- medusa-order-races: Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1
+- medusa-order-races: Enable pnpm via corepack
+- medusa-order-races: Restore pnpm store cache
+- medusa-order-races: Install Medusa dependencies
+- medusa-order-races: Restore Medusa build cache
+- medusa-order-races: Generate the CI admin password
+- medusa-order-races: Start Medusa (harness up)
+- medusa-order-races: k6 smoke (GET /health)
+- medusa-order-races: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- medusa-order-races: Race medusa budget (P6-MED-RACE-005, -012)
+- medusa-order-races: Job summary (Playwright results, race table)
+- medusa-order-races: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- medusa-order-races: Stop Medusa (harness down)
+- medusa-cancel-extras: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- medusa-cancel-extras: Checkout Medusa fork
+- medusa-cancel-extras: Verify Medusa fork HEAD
+- medusa-cancel-extras: Stub harness product roots
+- medusa-cancel-extras: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- medusa-cancel-extras: Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1
+- medusa-cancel-extras: Enable pnpm via corepack
+- medusa-cancel-extras: Restore pnpm store cache
+- medusa-cancel-extras: Restore Medusa build cache
+- medusa-cancel-extras: Generate the CI admin password
+- medusa-cancel-extras: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- medusa-cancel-extras: Race medusa cancel extras (P6-MED-RACE-013, -014)
+- medusa-cancel-extras: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-smoke: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- cal-smoke: Checkout Cal fork
+- cal-smoke: Verify Cal fork HEAD
+- cal-smoke: Verify CAL_REF matches bootstrap.sh
+- cal-smoke: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- cal-smoke: Install P6 dependencies
+- cal-smoke: Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1
+- cal-smoke: Enable corepack
+- cal-smoke: Restore Cal Yarn cache
+- cal-smoke: Restore Cal node_modules cache
+- cal-smoke: Install Cal dependencies
+- cal-smoke: Generate Cal Prisma client
+- cal-smoke: Prepare Cal product .env and harness roots
+- cal-smoke: Restore Cal build cache
+- cal-smoke: Start Cal (harness up)
+- cal-smoke: k6 smoke (GET /pro/30min)
+- cal-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-smoke: Race self-test (cal-race, 3 trials)
+- cal-smoke: Race P6-CAL-RACE-001 (cal-race)
+- cal-smoke: Race P6-CAL-RACE-003 (cal-race)
+- cal-smoke: Job summary (Playwright results, race table)
+- cal-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-smoke: Stop Cal (harness down)
+- cal-state-races: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- cal-state-races: Checkout Cal fork
+- cal-state-races: Verify Cal fork HEAD
+- cal-state-races: Verify CAL_REF matches bootstrap.sh
+- cal-state-races: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- cal-state-races: Install P6 dependencies
+- cal-state-races: Enable corepack
+- cal-state-races: Restore Cal Yarn cache
+- cal-state-races: Restore Cal node_modules cache
+- cal-state-races: Install Cal dependencies
+- cal-state-races: Generate Cal Prisma client
+- cal-state-races: Prepare Cal product .env and harness roots
+- cal-state-races: Restore Cal build cache
+- cal-state-races: Map the webhook host
+- cal-state-races: Start Cal (harness up)
+- cal-state-races: Race P6-CAL-RACE-006 (cal-race)
+- cal-state-races: Race P6-CAL-RACE-008 (cal-race)
+- cal-state-races: Race P6-CAL-RACE-007 (cal-race)
+- cal-state-races: Race P6-CAL-RACE-009 (cal-race)
+- cal-state-races: Stop Cal (harness down)
+- cal-state-races: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-state-races: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- cal-state-races: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- documenso-smoke: Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+- documenso-smoke: Checkout Documenso fork
+- documenso-smoke: Verify Documenso fork HEAD
+- documenso-smoke: Verify DOCUMENSO_REF matches bootstrap.sh
+- documenso-smoke: Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+- documenso-smoke: Install P6 dependencies
+- documenso-smoke: Run grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1
+- documenso-smoke: Install Documenso dependencies
+- documenso-smoke: Prepare harness roots
+- documenso-smoke: Map the webhook host
+- documenso-smoke: Restore Documenso build cache
+- documenso-smoke: Start Documenso (harness up)
+- documenso-smoke: k6 smoke (GET /signin, /api/auth/csrf)
+- documenso-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- documenso-smoke: Documenso races (documenso-race)
+- documenso-smoke: Check Documenso artefacts for tokens
+- documenso-smoke: Job summary (Playwright results, race table)
+- documenso-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- documenso-smoke: Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+- documenso-smoke: Stop Documenso (harness down)
 
 ## 7. Verify
 
-- `npm run check` (format, actionlint, typecheck, k6 inspect, unit tests) on this branch, after the script was added.
-- The script's local runs and failure path are in §3.
-- No CI run exists for this branch yet. The first run comes after the decision and the workflow change.
+- `npm run check` (format, actionlint, typecheck, k6 inspect, unit tests) on the PR head: see the PR.
+- `shellcheck scripts/ci/compose-pull.sh` exits 0.
+- The script's local runs (100 s per try) and failure path are in §3.
+- CI: the first run's pull step time per job is recorded in the PR, not here.
 
 ## 8. Backlog
 
