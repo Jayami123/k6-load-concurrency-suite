@@ -167,8 +167,9 @@ Each decision gives its reason.
   It runs only when `documenso_up` succeeded, like the other steps, and it has `timeout-minutes: 5`.
 - **D13. The CI step fails the job directly** (no `|| status=$?`). Reason: a regression in these tests is a real
   failure. The race steps use `|| status=$?` only because they write histograms first.
-- **D14. Label: PRODUCT BUG (owner Q2).** The test annotation uses type `product-bug` (the Medusa `P6-MED-RACE-008` pattern,
-  `tests/medusa/races/med-race-008-double-cancel.spec.ts` line 51) and a description that starts with
+- **D14. Label: PRODUCT BUG (owner Q2).** The test annotation uses type `issue` (PR review, owner: the repo convention for
+  `test.fail()` known bugs, used by CAL-001, CAL-002 and DOC-002, and the type `src/ci/playwright-json-summary.ts` reads;
+  the first draft used `product-bug`, which the summary does not list) and a description that starts with
   `PRODUCT BUG P6-OBS-DOC-001 (low):` plus the one-line reason. The README keeps PRODUCT BUG. Reason: the code path is
   deterministic (an `AppError` without `statusCode`, mapped to 500 by `onError`), present at the pin and on upstream `main`,
   and reproduced in every probe (5/5, 20/20, 3/3). Rule 13's repeated-run rule is for statistical races.
@@ -182,7 +183,7 @@ Each decision gives its reason.
 | Path                                                    | Status | Purpose                                                                                                                                                                                              |
 | ------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/documenso/signin.ts`                               | NEW    | `signinPayload`, `classifySignin` (pure); `freshCsrf`, `signinAttempt`, `createVerifiedPasswordUser` (HTTP)                                                                                          |
-| `tests/unit/documenso-signin.test.ts`                   | NEW    | Unit tests for the two pure helpers (7 tests)                                                                                                                                                        |
+| `tests/unit/documenso-signin.test.ts`                   | NEW    | Unit tests for the two pure helpers (8 tests)                                                                                                                                                        |
 | `tests/documenso/api/doc-obs-001-signin-errors.spec.ts` | NEW    | The spec: `beforeAll` setup, one real test, two `test.fail()` tests, `afterAll` cleanup                                                                                                              |
 | `playwright.config.ts`                                  | edit   | Add project `documenso-api` (`testDir: "tests/documenso/api"`, `use.baseURL: documensoBaseUrlFromEnv()`)                                                                                             |
 | `package.json`                                          | edit   | Add script `"test:documenso-api": "playwright test --project=documenso-api"`                                                                                                                         |
@@ -217,9 +218,10 @@ export function signinPayload(input: { email: string; password: string; csrfToke
 }
 
 /**
- * Pure. 201/200 is success. A known `code` wins over the status: INVALID_CREDENTIALS is bad-credentials
- * (even though the status is 500 today), INVALID_REQUEST is bad-csrf. A zod `error` array is validation.
- * Anything else is server-error. The body is parsed and never returned.
+ * Pure. 200/201 is always success, whatever the body, so a wrong password that succeeds can never pass the guard.
+ * Otherwise a known `code` decides: INVALID_CREDENTIALS is bad-credentials (even though the status is 500 today),
+ * INVALID_REQUEST is bad-csrf. A zod `error` array is validation. Anything else is server-error.
+ * The body is parsed and never returned.
  */
 export function classifySignin(status: number, text: string): SigninOutcome {
   if (status === 200 || status === 201) return { kind: "success", code: null };
@@ -382,6 +384,9 @@ describe("classifySignin", () => {
       code: null,
     });
   });
+  it("201 with an INVALID_CREDENTIALS body is still success (a success never passes the guard as bad-credentials)", () => {
+    assert.deepEqual(classifySignin(201, INVALID_CREDENTIALS), { kind: "success", code: null });
+  });
   it("never reports success for 4xx or 5xx", () => {
     for (const status of [400, 401, 403, 500]) {
       assert.notEqual(classifySignin(status, INVALID_CREDENTIALS).kind, "success");
@@ -463,8 +468,9 @@ test("P6-OBS-DOC-001: wrong password is 401, never 5xx", async () => {
   expect(classifySignin(r.status, r.text).kind, "guard: known credentials contract").toBe(
     "bad-credentials",
   );
+  expect(r.setCookieNames, "guard: no session on a rejected sign-in").not.toContain("sessionId");
   test.info().annotations.push({
-    type: "product-bug",
+    type: "issue",
     description:
       "PRODUCT BUG P6-OBS-DOC-001 (low): wrong password returns 500 INVALID_CREDENTIALS, not 401. Cause: AppError without statusCode, onError maps it to 500.",
   });
@@ -477,8 +483,9 @@ test("P6-OBS-DOC-001: bad CSRF is 400 or 403, never 5xx", async () => {
   const bogus = { jar: session.jar, token: "bogus-csrf-value" };
   const r = await signinAttempt(BASE, bogus, { email, password });
   expect(classifySignin(r.status, r.text).kind, "guard: CSRF contract").toBe("bad-csrf");
+  expect(r.setCookieNames, "guard: no session on a rejected sign-in").not.toContain("sessionId");
   test.info().annotations.push({
-    type: "product-bug",
+    type: "issue",
     description:
       "PRODUCT BUG P6-OBS-DOC-001 (low): bad CSRF returns 500 INVALID_REQUEST, not 400 or 403. Cause: AppError without statusCode (line 94), onError maps it to 500.",
   });
@@ -535,8 +542,8 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   git add src/documenso/signin.ts tests/unit/documenso-signin.test.ts
   git commit -m "test(documenso): add the sign-in error classifier for P6-OBS-DOC-001"
   ```
-- Expected `npm run check` tail: `# tests 416`, `# pass 416`, `# fail 0`, exit 0.
-- **Unit-test count after step 1: 416** (409 + 7).
+- Expected `npm run check` tail: `# tests 417`, `# pass 417`, `# fail 0`, exit 0.
+- **Unit-test count after step 1: 417** (409 + 8; the eighth test was added in the PR review, see §14).
 
 ### Step 2: the Playwright project, the script and the spec (with the cleanup probe)
 
@@ -553,7 +560,7 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   npm run down:documenso; echo "DOWN=$?"
   ```
   Expected: `UP=0`, `TEST=0`, `DOWN=0`. Playwright reports `3 passed`: the two `test.fail()` tests pass while the bug reproduces,
-  and the `product-bug` annotations appear in the list output.
+  and the `issue` annotations appear in the list output.
 - **Cleanup probe (owner Q4; this is the stop point).** The `afterAll` is the probe. After the run, check that the account is gone:
   a scratch script outside the repo signs in with the same email and password. Expected: `500 INVALID_CREDENTIALS` (the
   user-not-found branch, §3.2 row 8). Record the status. If `deleteAccount` threw (`CLEANUP:` in the output, `TEST` non-zero), or the
@@ -571,7 +578,7 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   git add playwright.config.ts package.json tests/documenso/api/doc-obs-001-signin-errors.spec.ts
   git commit -m "test(documenso): add the sign-in error contract spec (P6-OBS-DOC-001)"
   ```
-- **Unit-test count after step 2: 416** (no unit change; Playwright lists 3 tests).
+- **Unit-test count after step 2: 417** (no unit change; Playwright lists 3 tests).
 
 ### Step 3: CI step in `documenso-smoke` and the token scan
 
@@ -607,8 +614,8 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   git add .github/workflows/perf.yml
   git commit -m "ci(documenso): run the sign-in error contract in documenso-smoke"
   ```
-- Expected: `lint:actions` exit 0 (actionlint); `npm run check` tail `# tests 416`, `# pass 416`, `# fail 0`.
-- **Unit-test count after step 3: 416.**
+- Expected: `lint:actions` exit 0 (actionlint); `npm run check` tail `# tests 417`, `# pass 417`, `# fail 0`.
+- **Unit-test count after step 3: 417.**
 
 ### Step 4: README row and section
 
@@ -627,7 +634,7 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   git add README.md
   git commit -m "docs(readme): link the P6-OBS-DOC-001 sign-in test"
   ```
-- **Unit-test count after step 4: 416.**
+- **Unit-test count after step 4: 417.**
 
 ### Step 5: push, open the PR, closeout placeholders
 
@@ -635,7 +642,7 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
   repo's PR template if one exists. The owner decides the merge. Do not use the GitHub connector to create the PR.
 - Read CI once after the push (rule 15). Record the run numbers in §14. Closeout needs **3 CI runs (PR + main)** where both
   negative tests are expected failures (owner Q2). If any run does not reproduce, stop and escalate.
-- **Unit-test count: 416.**
+- **Unit-test count: 417.**
 
 ## 8. CI changes and the time budget
 
@@ -720,6 +727,14 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
 - **Q7. Validation echo.** Answer: out of scope; recorded in the owner's backlog as candidate `P6-OBS-DOC-003`. (Applied: §1, R4.)
 - **Q8. Stub server.** Answer: no stub server; the `classifySignin` unit tests cover the guard decision. (Applied: R1.)
 - **E2. Accepted** (CI fix in §0a 2 and §7 step 3b). **E1 and E3: not in this task.**
+- **PR review round (owner, 2026-10-23, PR #41 at `2174fce`).**
+  1. Revert the `classifySignin` reorder from `2174fce` (security reason): a 200 or 201 must stay success whatever the body,
+     so a wrong password that succeeds cannot pass the guard as bad-credentials. The doc comment states the rule.
+  2. Pin it with a unit test: `classifySignin(201, INVALID_CREDENTIALS)` is `success`. The count becomes 417.
+  3. Both negative tests assert, before `test.fail()`, that no `sessionId` cookie was set by the rejected sign-in.
+  4. Annotation type `issue` (was `product-bug`), with the description still starting `PRODUCT BUG P6-OBS-DOC-001 (low):`.
+  5. The JSON scan reads `suites` and `errors` only (§14).
+  6. `npm run check` green at 417; prettier on the changed files; commit `test(documenso)`.
 
 ## 13. Self-check (rule 20)
 
@@ -770,6 +785,14 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
        `issue` (`ISSUE_ANNOTATION_TYPE`), and our spec uses type `product-bug`. Proposed fix: change the type to `issue` (test
        change, owner decision). The summary check here was a local render of the same script from the repro JSON, not the CI
        page.
+
+  - **PR review round (owner, 2026-10-23, §12).** (a) The `classifySignin` reorder from `2174fce` (a CodeRabbit outside-diff
+    comment, valid as a consistency fix) was reverted in the `b0937e0` commit: a 201 with an error-code body must stay
+    success, so the guard cannot pass a successful wrong password as bad-credentials. (b) Unit-test count 416 → 417: the new
+    test pins that rule. (c) Both negative tests assert no `sessionId` cookie before `test.fail()`. (d) Annotation type
+    `product-bug` → `issue`, so the job summary lists `P6-OBS-DOC-001` as a known bug. (e) The JSON scan reads only `suites`
+    and `errors`, and skips `config`, because Playwright writes the repo's git diff into `config.metadata.gitDiff` on CI
+    (about 50 KB, with this workflow's own scan patterns in it). Accepted by the owner. Test output is still scanned.
 
 ## Appendix A. Draft upstream issue for `P6-OBS-DOC-001` (for the owner to file; not filed by P6)
 
