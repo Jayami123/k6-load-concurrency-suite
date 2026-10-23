@@ -9,21 +9,24 @@ Probe date: 2026-10-23 (cloud VM, Docker 29.9.2, Node 22.23.3, 4 vCPU, 16 GB). P
 final version, `probe7-run1-INVALID.mjs` is the first run that the helper bug invalidated, `probe2.mjs` the optional cases,
 `malformed.sh` the P6-OBS-TW-001 repro; outputs `*.out` and `*.json` next to them, and `exit-codes.txt` for every exit code).
 
-## 0. Status: stopped for the owner's review (no build yet)
+## 0. Status
 
-Rule B10 and the owner's instructions stop this task before the build, for **two** reasons, and both are real:
+Version 2 of this plan (2026-10-23), after the owner's decisions on version 1 (d82d3eb). The build follows §7 on the feature branch.
 
-1. **P6-OBS-TW-001 reproduced** (§3.5). The owner's instruction: "If it reproduces, stop for the owner's review before the build."
-   The label is the owner's. This plan records the evidence and the proposed outcome (**reproduced**); it adds no `test.fail()`,
-   no label, and does not change the `docs/BACKLOG.md` status.
-2. **The task changes a CI workflow** (`.github/workflows/perf.yml`, the `twenty-smoke` job: race step timeout, the token-scan
-   patterns, and the job timeout decision in §8). Rule B10 names this as a stop.
+### 0.1 Owner decisions applied in this version
 
-A third finding is not a stop trigger but needs the owner's decision before the build (§12, Q1): the probe reproduces a
-**more than one success** result on the parallel reset-token redemption (`P6-TW-RACE-004`) in 5 of 5 trials (10 of 10 requests
-succeed every time). Under rule 13 this stays SUSPECTED until repeated full-count CI runs reproduce it. This plan does not label it.
-
-Once the owner approves §12 (Q1 to Q4 at least), the build follows §7 step by step on the feature branch.
+- **Labels.** `P6-TW-RACE-004` is **PRODUCT BUG** (50 of 50 parallel redemptions succeeded, §3.7). The spec runs all trials, asserts the
+  guards (setup, overlap), then calls `test.fail()` and asserts exactly one. `P6-OBS-TW-001` is **PRODUCT BUG** (§3.9); `docs/BACKLOG.md` is
+  updated with the evidence and a follow-up task. No test is added for P6-OBS-TW-001 in this task (it is not a race).
+- **CI.** `twenty-smoke` is unchanged (smoke and self-test only). A new job `twenty-races` runs the race specs (§8). Its timeout comes from
+  the worst-case budget in §8.3 (pull counted at its 6-minute cap, not the measured pull time). Options (a) raise the smoke timeout and (c)
+  cut the full count are removed.
+- **Q4** keep `-002` and `-003`. **Q5** throwaway members stay; the run reports their count by prefix. **Q6** `destroyTask` as proposed,
+  checked in step 9. **Q7** the scan adds the reset-link pattern and the invite-link pattern (§8.2). **Q8** probe scripts stay outside the
+  repo (session scratchpad, not committed).
+- **Spec location.** The new specs live in `tests/twenty/tw-races/` with their own Playwright project `twenty-tw-races` (script
+  `race:twenty-tw`). Reason: `race:twenty` runs `tests/twenty/races/` for the smoke job, so placing the races there would add them to
+  `twenty-smoke`, which the owner wants unchanged. This is a deviation from the roadmap's file list (§12.1 C7).
 
 ## 1. Goal, scope and the cases covered
 
@@ -41,8 +44,8 @@ Once the owner approves §12 (Q1 to Q4 at least), the build follows §7 step by 
 - **In scope.**
   - `src/twenty/mailpit.ts` (NEW), `src/twenty/api.ts` (NEW), `src/twenty/payloads.ts` (NEW), `src/twenty/invariants.ts` (NEW),
     `src/twenty/run-case.ts` (NEW), `src/twenty/oracle.ts` (CHANGED: three read-only queries), `src/twenty/env.ts` (CHANGED: Mailpit URL).
-  - Six specs under `tests/twenty/races/` (NEW), matching unit tests under `tests/unit/` (NEW).
-  - `.github/workflows/perf.yml` (CHANGED, `twenty-smoke` race step and token-scan patterns; owner review, §8), `README.md`
+  - Six specs under `tests/twenty/tw-races/` (NEW) with Playwright project `twenty-tw-races`, matching unit tests under `tests/unit/` (NEW).
+  - `.github/workflows/perf.yml` (CHANGED: new job `twenty-races`; `twenty-smoke` is not touched), `README.md`
     ("Twenty races" section, no timing claims), `docs/BACKLOG.md` (entries only; no status change).
 - **Out of scope.** Changes to the harness or its pin; `scripts/evidence-token-scan.mjs` (X6 is still a proposal); the Medusa,
   Cal and Documenso jobs; any `test.fail()` or product label (owner decision, Q1); API-key limiter tests (Task 6 X4).
@@ -58,7 +61,7 @@ Once the owner approves §12 (Q1 to Q4 at least), the build follows §7 step by 
 | A5  | A throwaway member can be created through the product API (the reset flow needs a workspace member)         | **Yes, through the invitation flow** (§3.6). `signUp` alone does not (§3.6, source)                                                    |
 | A6  | The reset email arrives in Mailpit with a 64-hex token in the body                                          | **Yes** (§3.6)                                                                                                                         |
 | A7  | `validatePasswordResetToken` and `updatePasswordViaResetToken` are the redemption path; a replay is refused | **Yes**: replay returns a GraphQL error `Token is invalid`, HTTP 200 (§3.6)                                                            |
-| A8  | Ten parallel redemptions of one token: exactly one succeeds (the roadmap's expectation)                     | **No**: 10 of 10 succeed in 5 of 5 trials (§3.7). SUSPECTED, not labelled (§12 Q1)                                                     |
+| A8  | Ten parallel redemptions of one token: exactly one succeeds (the roadmap's expectation)                     | **No**: 10 of 10 succeed in 5 of 5 trials (§3.7). Owner label: PRODUCT BUG                                                             |
 | A9  | Soft delete exists for the cleanup/leak check                                                               | **Partly**: GraphQL `deleteCompany` keeps a row with `deletedAt`; REST `DELETE` leaves no row; `destroyCompany` removes the row (§3.5) |
 | A10 | The reset request is rate limited per email (3 per 15 minutes, source `auth.resolver.ts` lines 126–127)     | **Source only**; each trial uses its own member, so one request per email (§4 D7)                                                      |
 | A11 | Captcha does not block sign-up or reset in the harness overlay                                              | **Yes**: `signUpInWorkspace` and `emailPasswordResetLink` returned 200 with no token                                                   |
@@ -187,7 +190,7 @@ Why the REST delete removes the row was not explained by the source read in this
 **Result: 50 of 50 parallel redemption requests succeed (5 trials × 10).** The roadmap predicted a check-then-act window, and the
 source shows it (`updatePasswordViaResetToken` runs `validatePasswordResetToken` (a `findOne` for an unrevoked, unexpired token),
 then `updatePassword`, then `invalidatePasswordResetToken` (an unconditional `update`), with no lock). The sequential replay is
-refused, so the bug is a race, not a missing check. **Status: SUSPECTED** (rule 13). Not labelled, no `test.fail()` (§12 Q1).
+refused, so the bug is a race, not a missing check. **Owner label: PRODUCT BUG** (2026-10-23 owner decision). The spec asserts the guards, then `test.fail()`, then exactly one (§6.10).
 
 Limits of this sample: five trials, one stack, one Node process. Each request was sent with `Promise.all`; the 200s show that all
 ten were accepted. The request start and end times were not recorded in this probe; the build records them (`RaceRequestResult`
@@ -226,9 +229,8 @@ the three sessions of Task 6 §3.5). `{"foo":1}` and valid bodies answer in unde
 probe did not attach a debugger. It also does not say whether the hang is a product bug or a harness or proxy artefact; that is the
 owner's call.
 
-**Proposed outcome (for the owner's decision; not applied): reproduced.** The evidence is this run plus Task 6 §3.5. Label stays
-SUSPECTED until the owner decides (rule 13). No `test.fail()`, no label, no status change in `docs/BACKLOG.md` by this task (owner
-instruction; Task 6 D14).
+**Owner label: PRODUCT BUG** (2026-10-23 owner decision). The evidence is this run plus Task 6 §3.5. No `test.fail()` in this task
+(it is not a race). `docs/BACKLOG.md` is updated from SUSPECTED to PRODUCT BUG with this evidence, and a follow-up task is listed there (§12.2 X7).
 
 ### 3.10 Database facts (read-only pool, schema derivation)
 
@@ -282,40 +284,48 @@ instruction; Task 6 D14).
   nothing here. The CI capture (existing step) is unchanged; the probe's own capture uses whole seconds.
 - **D13 Mailpit URL: `P6_TWENTY_MAILPIT_URL`, default `http://127.0.0.1:8025`,** with the same loopback rule as `twentyBaseUrlFromEnv`
   (cleartext only to loopback). Reason: the credentials are not sent there, but the reset token is, and the rule keeps one standard.
-- **D14 Expected verdicts.** `-001`: final ∈ {A, B}, no 5xx. `-002`: final ∈ {10, 20}, no 5xx. `-003`: both 2xx, one survivor id, one live row.
-  `-004`: exactly one success in each trial. `-005`: both values kept. `-006`: the replay is refused, the hash is unchanged by the replay, the
-  token stays revoked. **`-004` is expected to fail** on the probe's evidence (§3.7); the build does not hide that (rule 12). §12 Q1 decides how
-  CI shows it. Until the owner decides, the build stops at step 8.
+- **D14 Expected verdicts.** `-001`: final ∈ {A, B}, no 5xx. `-002`: final ∈ {10, 20}, no 5xx. `-003`: both 2xx, one survivor id, one live
+  row. `-005`: both values kept. `-006`: the replay is refused, the hash is unchanged by the replay, the token stays revoked. **`-004` is
+  PRODUCT BUG** (owner, 2026-10-23): its spec asserts the guards, then `test.fail()`, then exactly one success per trial (§6.10). If a fix
+  lands, the test turns red as "unexpectedly passed", which is intended.
+- **D15 Overlap guard on every parallel case.** Every burst uses `fireTogether`; a trial counts only when the requests overlapped (latest start
+  before earliest end). Reason: a trial that did not overlap cannot show a race, so a pass would be a false pass. Applied to all parallel cases,
+  not only `-004` (the owner's rule for `-004`, extended).
+- **D16 Leak check.** After each case, companies whose name starts with the run prefix must number 0 (destroyed by the cleanup in each
+  burst). Throwaway members are counted by prefix and reported (Q5), not asserted.
 
 ## 5. Files (exact paths)
 
-| Path                                                     | Status  | Step | Notes                                                                |
-| -------------------------------------------------------- | ------- | ---- | -------------------------------------------------------------------- |
-| `src/twenty/env.ts`                                      | CHANGED | 1    | `twentyMailpitUrlFromEnv`                                            |
-| `tests/unit/twenty-env.test.ts`                          | CHANGED | 1    | +1 test (Mailpit URL rule)                                           |
-| `src/twenty/mailpit.ts`                                  | NEW     | 2    | `latestMessageFor`, `resetTokenFrom`, `inviteFrom`, `waitForMessage` |
-| `tests/unit/twenty-mailpit.test.ts`                      | NEW     | 2    | 5 tests                                                              |
-| `src/twenty/payloads.ts`                                 | NEW     | 3    | names, addresses, passwords (in memory)                              |
-| `tests/unit/twenty-payloads.test.ts`                     | NEW     | 3    | 3 tests                                                              |
-| `src/twenty/invariants.ts`                               | NEW     | 4    | one `assert…` per oracle rule                                        |
-| `tests/unit/twenty-invariants.test.ts`                   | NEW     | 4    | 6 tests                                                              |
-| `src/twenty/api.ts`                                      | NEW     | 5    | REST PATCH/POST/GET/DELETE, GraphQL calls, invitation, reset         |
-| `tests/unit/twenty-api.test.ts`                          | NEW     | 5    | 3 tests (fake fetch)                                                 |
-| `src/twenty/oracle.ts`                                   | CHANGED | 6    | `passwordHashMd5`, `resetTokenCounts`, `companyLiveRows`             |
-| `tests/unit/twenty-oracle.test.ts`                       | CHANGED | 6    | +1 test (SELECT-only and schema guard)                               |
-| `src/twenty/run-case.ts`                                 | NEW     | 7    | `runTwentyTrials`: warm-up, reruns, histogram in `finally`           |
-| `tests/twenty/races/tw-race-001-lost-update.spec.ts`     | NEW     | 7    | §6.8                                                                 |
-| `tests/twenty/races/tw-race-005-disjoint-fields.spec.ts` | NEW     | 7    | §6.9                                                                 |
-| `tests/twenty/races/tw-race-004-reset-token.spec.ts`     | NEW     | 8    | §6.10                                                                |
-| `tests/twenty/races/tw-race-006-reset-replay.spec.ts`    | NEW     | 8    | §6.11                                                                |
-| `tests/twenty/races/tw-race-002-kanban-position.spec.ts` | NEW     | 9    | §6.12                                                                |
-| `tests/twenty/races/tw-race-003-merge.spec.ts`           | NEW     | 9    | §6.13                                                                |
-| `.github/workflows/perf.yml`                             | CHANGED | 10   | race step timeout, token-scan patterns (owner review, §8)            |
-| `README.md`                                              | CHANGED | 11   | "Twenty races" section, no timing claims                             |
-| `docs/BACKLOG.md`                                        | CHANGED | 11   | new open items only; no status change for P6-OBS-TW-001              |
+| Path                                                        | Status  | Step | Notes                                                                                                  |
+| ----------------------------------------------------------- | ------- | ---- | ------------------------------------------------------------------------------------------------------ |
+| `src/twenty/env.ts`                                         | CHANGED | 1    | `twentyMailpitUrlFromEnv`                                                                              |
+| `tests/unit/twenty-env.test.ts`                             | CHANGED | 1    | +1 test (Mailpit URL rule)                                                                             |
+| `src/twenty/mailpit.ts`                                     | NEW     | 2    | `latestMessageFor`, `resetTokenFrom`, `inviteFrom`, `waitForMessage`                                   |
+| `tests/unit/twenty-mailpit.test.ts`                         | NEW     | 2    | 5 tests                                                                                                |
+| `src/twenty/payloads.ts`                                    | NEW     | 3    | names, addresses, passwords (in memory)                                                                |
+| `tests/unit/twenty-payloads.test.ts`                        | NEW     | 3    | 3 tests                                                                                                |
+| `src/twenty/invariants.ts`                                  | NEW     | 4    | one `assert…` per oracle rule, and `overlapped`                                                        |
+| `tests/unit/twenty-invariants.test.ts`                      | NEW     | 4    | 7 tests                                                                                                |
+| `src/twenty/api.ts`                                         | NEW     | 5    | REST PATCH/POST/GET/DELETE, GraphQL calls, invitation, reset                                           |
+| `tests/unit/twenty-api.test.ts`                             | NEW     | 5    | 3 tests (fake fetch)                                                                                   |
+| `src/twenty/oracle.ts`                                      | CHANGED | 6    | `passwordHashMd5`, `resetTokenCounts`, `companyLiveRows`, `companyRowsByPrefix`, `memberCountByPrefix` |
+| `tests/unit/twenty-oracle.test.ts`                          | CHANGED | 6    | +1 test (SELECT-only and schema guard)                                                                 |
+| `src/twenty/member.ts`                                      | NEW     | 7    | `createInvitedMember`, `requestResetToken` (setup, TEST BUG on failure)                                |
+| `src/twenty/run-case.ts`                                    | NEW     | 7    | `setupTwentyContext`, `timed`, `runTwentyTrials`                                                       |
+| `playwright.config.ts`                                      | CHANGED | 7    | project `twenty-tw-races`, testDir `tests/twenty/tw-races`                                             |
+| `package.json`                                              | CHANGED | 7    | script `race:twenty-tw`                                                                                |
+| `tests/twenty/tw-races/tw-race-001-lost-update.spec.ts`     | NEW     | 7    | §6.9                                                                                                   |
+| `tests/twenty/tw-races/tw-race-005-disjoint-fields.spec.ts` | NEW     | 7    | §6.9                                                                                                   |
+| `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts`     | NEW     | 8    | §6.10 (PRODUCT BUG)                                                                                    |
+| `tests/twenty/tw-races/tw-race-006-reset-replay.spec.ts`    | NEW     | 8    | §6.11                                                                                                  |
+| `tests/twenty/tw-races/tw-race-002-kanban-position.spec.ts` | NEW     | 9    | §6.12                                                                                                  |
+| `tests/twenty/tw-races/tw-race-003-merge.spec.ts`           | NEW     | 9    | §6.13                                                                                                  |
+| `.github/workflows/perf.yml`                                | CHANGED | 10   | new job `twenty-races` (§8); `twenty-smoke` untouched                                                  |
+| `README.md`                                                 | CHANGED | 11   | "Twenty races" section, no timing claims                                                               |
+| `docs/BACKLOG.md`                                           | CHANGED | 11   | P6-OBS-TW-001 to PRODUCT BUG; follow-up task (§12.2 X7)                                                |
 
-Unchanged: `src/races/*` (the shared race code), `src/twenty/auth.ts`, `scripts/*`, `package.json` (the `race:twenty` script already
-runs every spec in `tests/twenty/races`), `playwright.config.ts` (`twenty-race` project already covers `tests/twenty/races`), the harness pin.
+Unchanged: `src/races/*` (the shared race code; `dispatchSpreadMs`, `fireTogether`, `recordTrial`, `createRerunRunner` are used as they are),
+`src/twenty/auth.ts`, `scripts/*`, `scripts/ci/compose-pull.sh` (used as it is), `tests/twenty/races/` (the smoke self-test), the harness pin.
 
 ## 6. Code skeletons and tests (each new function and test)
 
@@ -678,32 +688,163 @@ export async function companyLiveRows(
 
 Test (+1): `companyLiveRows` throws `TEST BUG` for a schema that is not `workspace_<id>` (no pool needed: the check runs first), and the three SQL strings pass `assertSelectOnly` (the existing guard, exported from `src/oracles/pg.ts`).
 
-### 6.7 `src/twenty/run-case.ts` (NEW, step 7)
+### 6.6a Additions to §6.4 and §6.6 (NEW functions, step 4 and step 6)
 
 ```ts
-import type { RaceHistogram, RaceAttemptResult } from "../races/types.ts";
-import { createHistogram, writeHistogram } from "../races/histogram.ts";
-import { createRerunRunner, spreadPolicyFromEnv } from "../races/rerun-on-spread.ts";
-import { runTrials } from "../races/run-trials.ts";
-import { fireTogether } from "../races/fire-together.ts";
-import { recordTrial } from "../races/trial-record.ts";
-import { raceTrialsFromEnv } from "../races/env.ts";
+// src/twenty/invariants.ts (step 4): pure; the spec decides what to do with the answer.
+export function overlapped(
+  requests: Array<Pick<RaceRequestResult, "startedAtMs" | "endedAtMs">>,
+): boolean {
+  if (requests.length < 2) return false;
+  return (
+    Math.max(...requests.map((r) => r.startedAtMs)) < Math.min(...requests.map((r) => r.endedAtMs))
+  );
+}
+```
+
+```ts
+// src/twenty/oracle.ts (step 6): each query through selectRows (SELECT only); the schema is checked first.
+export async function companyRowsByPrefix(
+  pool: pg.Pool,
+  schema: string,
+  prefix: string,
+): Promise<number> {
+  if (!SCHEMA_RE.test(schema)) throw new Error("TEST BUG: schema name is not a workspace schema");
+  const rows = await selectRows<{ n: string }>(
+    pool,
+    `SELECT count(*) AS n FROM "${schema}".company WHERE name LIKE $1`,
+    [`${prefix}%`],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+export async function memberCountByPrefix(pool: pg.Pool, prefix: string): Promise<number> {
+  const rows = await selectRows<{ n: string }>(
+    pool,
+    `SELECT count(*) AS n FROM core."user" WHERE email LIKE $1`,
+    [`${prefix.toLowerCase()}%`],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+```
+
+Test (step 6, the one new test): the three interpolated SQL strings (`companyLiveRows`, `companyRowsByPrefix`, and a schema that is not `workspace_<id>`)
+throw `TEST BUG` before any query; the SQL texts pass `assertSelectOnly`.
+
+### 6.7 `src/twenty/member.ts` (NEW, step 7; no unit test: covered by the specs)
+
+```ts
+export interface CaseContext {
+  base: string;
+  mailpitUrl: string;
+  auth: string; // workspace bearer token (signInWorkspace)
+  workspaceId: string;
+  schema: string; // workspace_<base36>, resolved from core.workspace
+  pool: pg.Pool; // read-only oracle pool
+  prefix: string; // p6RunPrefix()
+}
+
+/** Invite a fresh address, read the invite mail, sign up through it. Every failure is a setup error (TEST BUG). */
+export async function createInvitedMember(
+  ctx: CaseContext,
+  address: string,
+): Promise<{ address: string; password: string }> {
+  const inv = await sendInvitation(ctx.base, ctx.auth, address);
+  if (inv.status !== 200 || inv.json?.errors)
+    throw new Error(`TEST BUG: sendInvitations HTTP ${inv.status}`);
+  const invite = inviteFrom(
+    await waitForMessage({ mailpitUrl: ctx.mailpitUrl, address, subject: /join|invit/i }),
+  );
+  if (!invite) throw new Error("TEST BUG: no invite link in the invite mail");
+  const password = freshPassword();
+  const su = await signUpFromInvite(ctx.base, address, password, invite);
+  if (su.status !== 200 || su.json?.errors)
+    throw new Error(`TEST BUG: signUpInWorkspace HTTP ${su.status}`);
+  return { address, password };
+}
+
+/** Request a reset for a member and return the 64-hex token from the reset mail. */
+export async function requestResetToken(ctx: CaseContext, address: string): Promise<string> {
+  const rq = await requestPasswordReset(ctx.base, address, ctx.workspaceId);
+  if (rq.status !== 200 || rq.json?.errors)
+    throw new Error(`TEST BUG: emailPasswordResetLink HTTP ${rq.status}`);
+  const token = resetTokenFrom(
+    await waitForMessage({ mailpitUrl: ctx.mailpitUrl, address, subject: /password/i }),
+  );
+  if (!token) throw new Error("TEST BUG: no reset token in the reset mail");
+  return token; // in memory only; never logged, never in a histogram (D8)
+}
+```
+
+Error messages carry the status only, never a body, a token or a password.
+
+### 6.8 `src/twenty/run-case.ts` (NEW, step 7)
+
+```ts
+export async function setupTwentyContext(): Promise<CaseContext> {
+  const base = twentyBaseUrlFromEnv();
+  const pool = createReadOnlyPool(twentyDatabaseUrlFromEnv());
+  const session = await signInWorkspace({
+    baseUrl: base,
+    email: twentyEmailFromEnv(),
+    password: twentyPasswordFromEnv(),
+    workspaceName: twentyWorkspaceNameFromEnv(),
+  });
+  const ws = await resolveWorkspaceSchema(pool, twentySubdomainFromEnv());
+  return {
+    base,
+    mailpitUrl: twentyMailpitUrlFromEnv(),
+    auth: session.authorizationHeader,
+    workspaceId: ws.workspaceId,
+    schema: ws.schema,
+    pool,
+    prefix: p6RunPrefix(),
+  };
+}
+
+/** One request with its start and end time (sequential calls). Same fields as fireTogether records. */
+export async function timed(
+  index: number,
+  fn: () => Promise<{ status: number; body: string }>,
+): Promise<RaceRequestResult> {
+  const startedAtMs = performance.now();
+  try {
+    const { status, body } = await fn();
+    return {
+      index,
+      status,
+      bodySummary: summariseBody(status, body),
+      startedAtMs,
+      endedAtMs: performance.now(),
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      index,
+      status: null,
+      bodySummary: summariseBody(null, message),
+      startedAtMs,
+      endedAtMs: performance.now(),
+      error: message,
+    };
+  }
+}
 
 /**
- * One case: warm-up, then N trials through the rerun runner. The histogram is written in `finally` (the Documenso shape).
- * `trialBody` returns the oracle values of one attempt; `check` throws on a violation (recorded, then the case fails).
+ * Warm-up, then N trials through the rerun runner (the self-test shape). `attempt` may throw: a setup error is a stub, and the
+ * spec's first guard fails on it. `leakCheck` runs before the histogram is written; its values join the histogram oracle.
  */
 export async function runTwentyTrials(opts: {
   caseId: string;
   title: string;
   concurrency: number;
-  burst: (trial: number) => Promise<{
-    requests: Parameters<typeof recordTrial>[1]["requests"];
-    oracle: Record<string, number | string | boolean | null>;
-  }>;
-  check: (oracle: Record<string, number | string | boolean | null>, requests: unknown[]) => void;
-  warm?: () => Promise<unknown>;
-}): Promise<RaceHistogram> {
+  attempt: (
+    trial: number,
+  ) => Promise<{ requests: RaceRequestResult[]; oracle: Record<string, RaceOracleValue> }>;
+  leakCheck?: () => Promise<Record<string, RaceOracleValue>>;
+}): Promise<{
+  histogram: RaceHistogram;
+  trials: Array<{ trial: number; ok: boolean; value?: RaceAttemptResult; error?: string }>;
+}> {
   const trials = raceTrialsFromEnv();
   const histogram = createHistogram({
     caseId: opts.caseId,
@@ -713,258 +854,308 @@ export async function runTwentyTrials(opts: {
     trials,
   });
   try {
+    const burst = async (trial: number): Promise<RaceAttemptResult> => {
+      const { requests, oracle } = await opts.attempt(trial);
+      const record = recordTrial(
+        trial,
+        { requests, dispatchSpreadMs: dispatchSpreadMs(requests.map((r) => r.startedAtMs)) },
+        () => {},
+      );
+      record.oracle = oracle;
+      return record;
+    };
     const runner = createRerunRunner(spreadPolicyFromEnv(), trials);
-    await runner.warmup(() => attemptOnce(0));
-    await runTrials(trials, (trial) => runner.runTrial(trial, () => attemptOnce(trial)));
+    await runner.warmup(() => burst(0));
+    const results = await runTrials(trials, (trial) => runner.runTrial(trial, () => burst(trial)));
     runner.applyTo(histogram);
-    return histogram;
+    if (opts.leakCheck) Object.assign(histogram.oracle, await opts.leakCheck());
+    return { histogram, trials: results };
   } finally {
     await writeHistogram(histogram);
-  }
-
-  async function attemptOnce(trial: number): Promise<RaceAttemptResult> {
-    const { requests, oracle } = await opts.burst(trial);
-    const fired = { requests, dispatchSpreadMs: 0 };
-    return recordTrial(trial, fired, () => opts.check(oracle, requests));
   }
 }
 ```
 
-(The build fills `dispatchSpreadMs` from `fireTogether`'s result instead of `0`: the skeleton keeps `fireTogether` out for brevity. `fireTogether(n, makeRequest)` returns `{requests, dispatchSpreadMs}`.)
+Playwright project (step 7): in `playwright.config.ts` add `{ name: "twenty-tw-races", testDir: "tests/twenty/tw-races", retries: 0, use: { baseURL: twentyBaseUrlFromEnv() } }`;
+in `package.json` add `"race:twenty-tw": "playwright test --project=twenty-tw-races"`.
 
-### 6.8 `tests/twenty/races/tw-race-001-lost-update.spec.ts` (NEW, step 7)
+### 6.9 Specs `-001` and `-005` (NEW, step 7): the common shape
+
+Every spec: `setupTwentyContext()`; `runTwentyTrials`; then the guards (every trial ok, every burst overlapped, leak count 0); then the
+per-trial oracle assertions. Skeleton for `-001` (`tests/twenty/tw-races/tw-race-001-lost-update.spec.ts`):
 
 ```ts
-import { expect, test } from "@playwright/test";
-import { runTwentyTrials } from "../../../src/twenty/run-case.ts";
-import { createCompany, patchCompany, restCall } from "../../../src/twenty/api.ts";
-import { assertNameIsOneOf, assertNo5xx } from "../../../src/twenty/invariants.ts";
-import { companyName } from "../../../src/twenty/payloads.ts";
-import { signInWorkspace } from "../../../src/twenty/auth.ts";
-import {
-  twentyBaseUrlFromEnv,
-  twentyEmailFromEnv,
-  twentyPasswordFromEnv,
-  twentyWorkspaceNameFromEnv,
-} from "../../../src/twenty/env.ts";
-import { p6RunPrefix } from "../../../src/races/prefix.ts";
-
-test.describe.configure({ timeout: 600_000 });
-
 test("P6-TW-RACE-001: two PATCH of one company name end on one of the two values, no 5xx", async () => {
-  const base = twentyBaseUrlFromEnv();
-  const prefix = p6RunPrefix();
-  const session = await signInWorkspace({
-    baseUrl: base,
-    email: twentyEmailFromEnv(),
-    password: twentyPasswordFromEnv(),
-    workspaceName: twentyWorkspaceNameFromEnv(),
-  });
-  const histogram = await runTwentyTrials({
+  const ctx = await setupTwentyContext();
+  const { histogram, trials } = await runTwentyTrials({
     caseId: "P6-TW-RACE-001",
     title: "two PATCH of one company name",
     concurrency: 2,
-    burst: async (trial) => {
-      const id = (await createCompany(
-        base,
-        session.authorizationHeader,
-        companyName(prefix, trial, "rec"),
-      ).then((r) => r.id))!;
-      const A = `${prefix}-${trial}-A`,
-        B = `${prefix}-${trial}-B`;
-      // Fire both PATCH at once (fireTogether in the real code; Promise.all in this skeleton).
-      const [ra, rb] = await Promise.all([
-        patchCompany(base, session.authorizationHeader, id, { name: A }),
-        patchCompany(base, session.authorizationHeader, id, { name: B }),
-      ]);
-      const final = (await restCall(base, session.authorizationHeader, "GET", `/companies/${id}`))
-        .json as any;
-      return {
-        requests: [ra, rb].map((r, index) => ({
-          index,
-          status: r.status,
-          bodySummary: "",
-          startedAtMs: 0,
-          endedAtMs: 0,
-        })),
-        oracle: { finalName: final?.data?.company?.name ?? null, A, B, id },
-      };
-    },
-    check: (oracle, requests) => {
-      assertNo5xx((requests as Array<{ status: number }>).map((r) => r.status));
-      assertNameIsOneOf(oracle.finalName as string | null, [
-        oracle.A as string,
-        oracle.B as string,
-      ]);
-    },
-  });
-  expect(histogram.invariantViolations, "P6-TW-RACE-001 violations").toEqual([]);
-});
-```
-
-(The skeleton drops `runTwentyTrials`' return details for brevity. The `id` and the names are real: §3.3.)
-
-### 6.9 `tests/twenty/races/tw-race-005-disjoint-fields.spec.ts` (NEW, step 7)
-
-Same shape as §6.8. `burst` fires `patchCompany(... { name: X })` and `patchCompany(... { employees: N })` together and reads the record back; `check` calls `assertBothKept(got, want)` and `assertNo5xx`. Expected: 8 of 8 kept (§3.4).
-
-### 6.10 `tests/twenty/races/tw-race-004-reset-token.spec.ts` (NEW, step 8)
-
-```ts
-// Expected to FAIL on the probe's evidence (§3.7). The assertion stays strict: no test.fail() until the owner decides (§12 Q1).
-test("P6-TW-RACE-004: N=10 parallel redemptions of one reset token: exactly one success", async () => {
-  const base = twentyBaseUrlFromEnv();
-  const pool = createReadOnlyPool(twentyDatabaseUrlFromEnv());
-  const prefix = p6RunPrefix();
-  const histogram = await runTwentyTrials({
-    caseId: "P6-TW-RACE-004",
-    title: "reset token: N parallel redemptions",
-    concurrency: 10,
-    burst: async (trial) => {
-      const addr = throwawayAddress(prefix, trial);
-      const member = await createMember(base, addr); // sendInvitation + waitForMessage + signUpFromInvite (§6.5)
-      await requestPasswordReset(base, addr, workspaceId); // one request per email (D7)
-      const mail = await waitForMessage({ mailpitUrl, address: addr, subject: /reset/i });
-      const token = resetTokenFrom(mail)!;
-      const before = await passwordHashMd5(pool, addr);
-      const fired = await fireTogether(10, () =>
-        redeemResetToken(base, token, freshPassword()).then((r) => ({
-          status: r.status,
-          body: r.text,
-        })),
-      );
-      const successes = fired.requests.filter(
-        (r) => r.status === 200 && r.bodySummary.includes('"success":true'),
-      ).length;
+    attempt: async (trial) => {
+      const id = (await createCompany(ctx.base, ctx.auth, companyName(ctx.prefix, trial, "rec")))
+        .id!;
+      const A = companyName(ctx.prefix, trial, "A"),
+        B = companyName(ctx.prefix, trial, "B");
+      const fired = await fireTogether(2, async (i) => {
+        const r = await patchCompany(ctx.base, ctx.auth, id, { name: i === 0 ? A : B });
+        return { status: r.status, body: r.text };
+      });
+      const final = (await restCall(ctx.base, ctx.auth, "GET", `/companies/${id}`)).json as any;
+      await destroyCompany(ctx.base, ctx.auth, id);
       return {
         requests: fired.requests,
         oracle: {
-          successes,
-          hashChanged: before !== (await passwordHashMd5(pool, addr)),
-          revoked: (await resetTokenCounts(pool, addr)).revoked,
+          final: final?.data?.company?.name ?? null,
+          A,
+          B,
+          overlapped: overlapped(fired.requests),
         },
       };
     },
-    check: (oracle) => assertExactlyOne(oracle.successes as number, "P6-TW-RACE-004"),
+    leakCheck: async () => ({
+      companyRowsLeft: await companyRowsByPrefix(ctx.pool, ctx.schema, ctx.prefix),
+    }),
   });
-  expect(histogram.invariantViolations).toEqual([]);
+  guards(trials, histogram); // every trial ok, every burst overlapped, companyRowsLeft === 0 (shared helper, see below)
+  for (const t of trials) {
+    const o = t.value!.oracle;
+    assertNo5xx(t.value!.statuses);
+    assertNameIsOneOf(o.final as string | null, [o.A as string, o.B as string]);
+  }
 });
 ```
 
-(The build fills `createMember` and `workspaceId` from §6.5 and the `core.workspace` lookup. The `successes` count reads the response body, which the skeleton reads from `bodySummary`; the build reads the parsed body.)
+`guards(trials, histogram)` is a helper in `run-case.ts`: `expect` that every trial is ok (message: the first trial error), every
+`oracle.overlapped === true`, and `oracle.companyRowsLeft === 0`. The `-005` spec is the same with `fireTogether` of `name` and
+`employees` PATCHes and `assertBothKept`; expected 8 of 8 kept (§3.4).
 
-### 6.11 `tests/twenty/races/tw-race-006-reset-replay.spec.ts` (NEW, step 8)
+### 6.10 `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts` (NEW, step 8): PRODUCT BUG
 
-Same member and token setup as §6.10, then one redemption (`expect` 200 with `success: true`), then one replay. Oracle: `assertReplayRefused(replayBody)`, the password hash after the replay equals the hash after the first redemption (`passwordHashMd5`), and `resetTokenCounts(...).revoked` is 1. Expected: pass (§3.6).
+Trial: fresh member, reset token, sequential reads of the hash, then 10 parallel redemptions with `fireTogether`.
 
-### 6.12 `tests/twenty/races/tw-race-002-kanban-position.spec.ts` (NEW, step 9)
+```ts
+// P6-TW-RACE-004 is a PRODUCT BUG (owner label, 2026-10-23). The guards run first and are never inside test.fail().
+test("P6-TW-RACE-004 PRODUCT BUG: N=10 parallel redemptions of one reset token must admit exactly one", async () => {
+  const ctx = await setupTwentyContext();
+  const { histogram, trials } = await runTwentyTrials({
+    caseId: "P6-TW-RACE-004",
+    title: "reset token: N parallel redemptions",
+    concurrency: 10,
+    attempt: async (trial) => {
+      const addr = throwawayAddress(ctx.prefix, trial);
+      const member = await createInvitedMember(ctx, addr); // setup (TEST BUG on failure)
+      const token = await requestResetToken(ctx, addr); // setup
+      const hashBefore = await passwordHashMd5(ctx.pool, addr); // setup: must be non-null
+      if (hashBefore === null) throw new Error("TEST BUG: no password hash for the member");
+      const success: boolean[] = [];
+      const fired = await fireTogether(10, async (i) => {
+        const r = await redeemResetToken(ctx.base, token, freshPassword());
+        success[i] = r.json?.data?.updatePasswordViaResetToken?.success === true;
+        return { status: r.status, body: r.text };
+      });
+      const hashAfter = await passwordHashMd5(ctx.pool, addr);
+      const rc = await resetTokenCounts(ctx.pool, addr);
+      return {
+        requests: fired.requests,
+        oracle: {
+          successes: success.filter(Boolean).length,
+          overlapped: overlapped(fired.requests),
+          hashChanged: hashBefore !== hashAfter,
+          revokedRows: rc.revoked,
+          totalTokenRows: rc.total,
+        },
+      };
+    },
+    leakCheck: async () => ({
+      companyRowsLeft: await companyRowsByPrefix(ctx.pool, ctx.schema, ctx.prefix),
+      throwawayMembers: await memberCountByPrefix(ctx.pool, ctx.prefix),
+    }),
+  });
 
-Same shape as §6.8 with `createTask` and `patchTaskPosition(base, auth, id, 10)` ‖ `patchTaskPosition(base, auth, id, 20)`; oracle `final` from `GET /rest/tasks/{id}`; `check`: final ∈ {10, 20} and no 5xx. Expected: pass (§3.8). Cleanup: `destroyTask` (not probed, §12 Q6).
+  // 1. Guards: setup, overlap, leak. A failure here is red, never a PRODUCT BUG pass.
+  guards(trials, histogram);
 
-### 6.13 `tests/twenty/races/tw-race-003-merge.spec.ts` (NEW, step 9)
+  // 2. Label, then the strict assertion. test.fail() is called only after the guards pass.
+  test.info().annotations.push({
+    type: "issue",
+    description:
+      "P6-TW-RACE-004 PRODUCT BUG: one reset token is redeemed more than once under concurrency (check-then-act, no lock)",
+  });
+  test.fail();
+  for (const t of trials) {
+    expect(
+      t.value!.oracle.successes,
+      `trial ${t.trial}: successes of 10 parallel redemptions`,
+    ).toBe(1);
+  }
+});
+```
 
-Per trial: two companies (`companyName` with sides `A` and `B`), `fireTogether(2, () => mergeCompanies(base, auth, [a, b]))`, the survivor ids from the bodies (`data.mergeCompanies.id`), and `companyLiveRows(pool, schema, [a, b])`. `check`: `assertOneSurvivor(liveRows, survivorIds)` and no 5xx. Expected: pass (§3.8).
+Behaviour: expected result on the probe's evidence is 10 successes in every trial, so the strict loop fails and the test is green as an
+expected failure. If the product fixes the race, the loop passes and Playwright reports the test as unexpectedly passed (red), as the owner
+wants. `throwawayMembers` is the count by prefix (Q5), reported not asserted.
+
+### 6.11 `tests/twenty/tw-races/tw-race-006-reset-replay.spec.ts` (NEW, step 8)
+
+Setup as in §6.10. Then `timed(0, redeem)` (success expected), `timed(1, redeem)` (replay). Oracle: `firstSuccess`, `replayRefused`
+(from `assertReplayRefused` on the parsed body), `hashChangedByReplay` (hash after the replay ≠ hash after the first redemption), `revokedRows`
+equal to `totalTokenRows`. `check`: `firstSuccess` true, `replayRefused` true, `hashChangedByReplay` false, `revokedRows === totalTokenRows`. Expected: pass (§3.6). No overlap guard (sequential by design).
+
+### 6.12 `tests/twenty/tw-races/tw-race-002-kanban-position.spec.ts` (NEW, step 9)
+
+Same shape as §6.9: `createTask`, then `fireTogether(2)` of `patchTaskPosition(…, 10)` and `(…, 20)`, read back, then cleanup with
+`destroyTask` (a GraphQL mutation not probed yet, Q6: step 9 checks it with one call first). Oracle `final`; check `final ∈ {10, 20}`.
+If `destroyTask` does not exist, the spec records `taskRowsLeft` (a count of tasks by title prefix) and reports it; no assertion on it.
+
+### 6.13 `tests/twenty/tw-races/tw-race-003-merge.spec.ts` (NEW, step 9)
+
+Per trial: two companies (sides `A` and `B`), `fireTogether(2, …mergeCompanies(ctx.base, ctx.auth, [a, b]))`, survivor ids from
+`data.mergeCompanies.id` in the bodies, `companyLiveRows(ctx.pool, ctx.schema, [a, b])`, then `destroyCompany` on the survivor (cleanup).
+Check: `assertOneSurvivor(liveRows, survivorIds)` and no 5xx.
 
 ## 7. Build steps (one commit each)
 
-Every step: `npm run check` must exit 0, and `npm run test:unit` must print the count in the table. If the count differs, stop and explain
-(rule 11). The unit count starts at **431** (§3.0 row 19).
+Each step: `npm run check` exits 0 and `npm run test:unit` prints the count below. A different count means stop and explain (rule 11).
+Starting count: **431** (§3.0 row 19). Playwright specs do not enter the unit count.
 
-| Step | Commit subject (Conventional Commits, lowercase)                       | Files (`git add` paths)                                                                                                                  | Unit count after |
-| ---- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 0    | `docs(plans): add the phase 2 task 7 twenty-races plan` (this plan)    | `docs/plans/2026-10-23-p6-phase2-task7-twenty-races.md`                                                                                  | 431              |
-| 1    | `feat(twenty): add the Mailpit URL rule`                               | `src/twenty/env.ts`, `tests/unit/twenty-env.test.ts`                                                                                     | 432              |
-| 2    | `feat(twenty): add the Mailpit reader for reset and invite mail`       | `src/twenty/mailpit.ts`, `tests/unit/twenty-mailpit.test.ts`                                                                             | 437              |
-| 3    | `feat(twenty): add race payload helpers`                               | `src/twenty/payloads.ts`, `tests/unit/twenty-payloads.test.ts`                                                                           | 440              |
-| 4    | `feat(twenty): add the race invariants`                                | `src/twenty/invariants.ts`, `tests/unit/twenty-invariants.test.ts`                                                                       | 446              |
-| 5    | `feat(twenty): add the REST and GraphQL race calls`                    | `src/twenty/api.ts`, `tests/unit/twenty-api.test.ts`                                                                                     | 449              |
-| 6    | `feat(twenty): add the reset, merge and member read queries`           | `src/twenty/oracle.ts`, `tests/unit/twenty-oracle.test.ts`                                                                               | 450              |
-| 7    | `test(twenty): add the name, disjoint-field races and the case runner` | `src/twenty/run-case.ts`, `tests/twenty/races/tw-race-001-lost-update.spec.ts`, `tests/twenty/races/tw-race-005-disjoint-fields.spec.ts` | 450              |
-| 8    | `test(twenty): add the reset-token races` (`-004` strict, see §12 Q1)  | `tests/twenty/races/tw-race-004-reset-token.spec.ts`, `tests/twenty/races/tw-race-006-reset-replay.spec.ts`                              | 450              |
-| 9    | `test(twenty): add the kanban position and merge races`                | `tests/twenty/races/tw-race-002-kanban-position.spec.ts`, `tests/twenty/races/tw-race-003-merge.spec.ts`                                 | 450              |
-| 10   | `ci(perf): add the twenty race timeout and reset-link token scan`      | `.github/workflows/perf.yml` (**stop for owner review first, §0**)                                                                       | 450              |
-| 11   | `docs(readme): describe the twenty races`                              | `README.md`, `docs/BACKLOG.md`                                                                                                           | 450              |
+| Step | Commit subject (Conventional Commits, lowercase)                                        | Files (`git add` paths)                                                                                                                                                                                        | Unit count after |
+| ---- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 0a   | `docs(plans): record the owner decisions for the task 7 plan` (this version)            | `docs/plans/2026-10-23-p6-phase2-task7-twenty-races.md`                                                                                                                                                        | 431              |
+| 1    | `feat(twenty): add the Mailpit URL rule`                                                | `src/twenty/env.ts`, `tests/unit/twenty-env.test.ts`                                                                                                                                                           | 432              |
+| 2    | `feat(twenty): add the Mailpit reader for reset and invite mail`                        | `src/twenty/mailpit.ts`, `tests/unit/twenty-mailpit.test.ts`                                                                                                                                                   | 437              |
+| 3    | `feat(twenty): add race payload helpers`                                                | `src/twenty/payloads.ts`, `tests/unit/twenty-payloads.test.ts`                                                                                                                                                 | 440              |
+| 4    | `feat(twenty): add the race invariants and the overlap check`                           | `src/twenty/invariants.ts`, `tests/unit/twenty-invariants.test.ts`                                                                                                                                             | 447              |
+| 5    | `feat(twenty): add the REST and GraphQL race calls`                                     | `src/twenty/api.ts`, `tests/unit/twenty-api.test.ts`                                                                                                                                                           | 450              |
+| 6    | `feat(twenty): add the reset, merge and leak-check queries`                             | `src/twenty/oracle.ts`, `tests/unit/twenty-oracle.test.ts`                                                                                                                                                     | 451              |
+| 7    | `test(twenty): add the case runner, member setup and the name and disjoint-field races` | `src/twenty/member.ts`, `src/twenty/run-case.ts`, `playwright.config.ts`, `package.json`, `tests/twenty/tw-races/tw-race-001-lost-update.spec.ts`, `tests/twenty/tw-races/tw-race-005-disjoint-fields.spec.ts` | 451              |
+| 8    | `test(twenty): add the reset-token races (004 as PRODUCT BUG, 006)`                     | `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts`, `tests/twenty/tw-races/tw-race-006-reset-replay.spec.ts`                                                                                              | 451              |
+| 9    | `test(twenty): add the kanban position and merge races`                                 | `tests/twenty/tw-races/tw-race-002-kanban-position.spec.ts`, `tests/twenty/tw-races/tw-race-003-merge.spec.ts`                                                                                                 | 451              |
+| 10   | `ci(perf): add the twenty-races job`                                                    | `.github/workflows/perf.yml`                                                                                                                                                                                   | 451              |
+| 11   | `docs(backlog): record P6-OBS-TW-001 as a product bug and describe the twenty races`    | `docs/BACKLOG.md`, `README.md`                                                                                                                                                                                 | 451              |
 
-Commands for every step (exact, from the repo root):
-
-```bash
-export PATH="/usr/local/bin:$PATH"            # Node 22.23 first (AGENTS.md)
-git add <files from the table>                 # never git add -A or git add .
-git commit -m "<subject from the table>"       # no attribution lines (repo rule A3)
-npm run test:unit                              # expected: "# pass <count in the table>" and "# fail 0"
-npm run check                                  # expected: exit 0; prints the unit count above
-```
-
-Expected output of `npm run test:unit` after step 1: `# tests 432`, `# pass 432`, `# fail 0`. Each later step follows the table.
-
-Playwright specs need the stack (steps 7 to 9, and the CI run): `npm run up:twenty && npm run seed:twenty && RACE_TRIALS=5 npm run race:twenty`,
-then `npm run down:twenty`. Expected with the probe's evidence: step 7 passes (`-001`, `-005`); step 8 **`-004` fails** (§3.7), `-006` passes;
-step 9 passes. The build stops at step 8 for the decision in §12 Q1 before pushing a red step. Playwright tests do not enter the unit count.
-
-Unit count after each step is what this table says: 432, 437, 440, 446, 449, 450, then unchanged.
-
-## 8. CI changes and the time budget at full trial count
-
-### 8.1 What changes (owner review, §0)
-
-1. `twenty-smoke` race step (`Twenty self-test (twenty-race)`): `timeout-minutes` from 5 to 9 (the step now runs four more specs).
-   `RACE_TRIALS` unchanged (5 on PRs, 50 otherwise, roadmap D6).
-2. Token scan (`Check Twenty artefacts for tokens`): the value patterns gain two reset-link patterns (§8.2).
-3. Job `timeout-minutes` stays 20 in this plan; the budget (§8.3) shows it is short of the 10-minute margin, so the owner decides (Q2).
-4. No change to other jobs, the pins, the harness, or `scripts/evidence-token-scan.mjs`.
-
-### 8.2 Token-scan change (skeleton)
-
-In `.github/workflows/perf.yml`, the `value` variable of step `Check Twenty artefacts for tokens` (current line 1421) gains two alternatives:
+Commands for every step (repo root):
 
 ```bash
-value='Bearer [A-Za-z0-9._~+/=-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|reset-password/[0-9a-f]{64}|passwordResetToken"?[:=] ?"?[0-9a-f]{64}'
+export PATH="/usr/local/bin:$PATH"           # Node 22.23 first (AGENTS.md)
+npx prettier --write <the files of the step>  # Markdown, YAML and TypeScript must pass format:check
+git add <files from the table>                # never git add -A or git add .
+git commit -m "<subject from the table>"      # no attribution lines (repo rule A3)
+npm run test:unit                             # expected: "# tests <count>", "# pass <count>", "# fail 0"
+npm run check                                 # expected: exit 0
 ```
 
-Why not a bare 64-hex pattern: the Twenty image digest (`sha256:01fb6d…`, Task 6 §3.9) is 64 hex, so a bare pattern would flag the logs
-on every run. The two patterns above name the reset link and the token field.
+Playwright checks, from step 7 on (local, proof only; the stack is started and stopped with the owner's scripts):
 
-### 8.3 Time budget at full trial count (`RACE_TRIALS=50`, worst case, estimates unless marked)
+```bash
+npm run up:twenty                             # expected exit 0
+npm run seed:twenty                           # expected exit 0
+RACE_TRIALS=5 npm run race:twenty-tw          # expected: 001, 005 pass (step 7); 004 passes as expected-fail (step 8); 006, 002, 003 pass
+npm run down:twenty                           # expected exit 0
+```
 
-| Part                                            | Time (worst)           | Source                                                                                                               |
-| ----------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Checkout, setup-node, `npm ci`, setup-k6        | 1.5 min                | Task 6 §8.3 estimate                                                                                                 |
-| Bootstrap clone                                 | 0.25 min               | Task 6 measured 15 s                                                                                                 |
-| Pull (retry, 3 tries)                           | 0.57 min               | Task 6 measured 34 s; the step cap is 14 min (not in the sum, Task 6 §8.4)                                           |
-| First boot                                      | 3.05 min               | Task 6 measured 183 s (worst)                                                                                        |
-| Seed                                            | 1.28 min               | Task 6 measured 77 s (worst); this probe 80 s                                                                        |
-| Self-test (existing, 50 trials)                 | 1.0 min                | Task 6 estimate                                                                                                      |
-| `-001`, `-002`, `-003`, `-005` (50 trials each) | 0.5 min each = 2.0 min | **estimate** (probe: one trial of two PATCH plus a GET is tens of ms; the warm-up and the rerun runner add overhead) |
-| `-004` (50 trials, one sign-up each)            | 1.5 min                | **estimate**: one `signUpInWorkspace` at 971 ms (probe) dominates, plus mail polls and 10 parallel redemptions       |
-| `-006` (50 trials, one sign-up each)            | 1.5 min                | **estimate**, same as `-004`                                                                                         |
-| k6 smoke                                        | 0.5 min                | Task 6 estimate                                                                                                      |
-| Token scan, job summary                         | 0.5 min                | Task 6 estimate                                                                                                      |
-| Capture logs, artefact uploads (2)              | 0.3 min                | Task 6 estimates                                                                                                     |
-| Down with volumes                               | 0.05 min               | Task 6 measured 3 s (worst); this probe 2 s                                                                          |
-| **Worst case, measured-plus-estimate**          | **14.0 min**           | sum of the rows above                                                                                                |
+After step 11: one local full-count run (`RACE_TRIALS=50`) to see the cloud-VM timings; they are proof only and are not published.
 
-**Margin: 20 − 14.0 = 6.0 min.** That is below the 10-minute margin the owner set (Task 6 §8.3, O5). The timeout is **not** raised here
-(the owner's rule: never raised to fit). Options for the owner (Q2):
+## 8. CI changes and the time budget
 
-- (a) **Job timeout 24 minutes** (proposed): margin 10.0 min. The first CI run measures the real rows and the owner can lower it.
-- (b) Move the four new races to their own job: each job pays the boot (about 6.1 min) again, so the sum grows; not proposed.
-- (c) Cut the full count for `-004` and `-006` below 50: a change to roadmap D6, not proposed.
+### 8.1 What changes
 
-**Step caps are not the job time** (Task 6 §8.3). The race step at 9 minutes is the cap for 50 trials (estimate 5.0 min, so the cap has margin).
-On PRs (5 trials) the race step is about 0.5 min.
+1. A new job `twenty-races` in `.github/workflows/perf.yml`, placed after `twenty-smoke`. It follows the `cal-state-races` pattern: its own
+   checkout, `TWENTY_REF` check, `bootstrap.sh twenty`, the shared pull script (`scripts/ci/compose-pull.sh`, merged in PR #45), `up`, `seed`,
+   the race step, log capture, the token scan, the job summary, uploads, and `down` with `always()` and volumes removed (`TWENTY_DOWN_VOLUMES=1`).
+2. `twenty-smoke` is unchanged: same timeout (20), same steps, and `race:twenty` still runs only `tests/twenty/races/` (the self-test).
+3. The token scan gains two patterns in the new job only (§8.2).
 
-### 8.4 Step timeouts (new or changed rows only)
+### 8.2 Token-scan patterns (new job)
 
-| Step                              | timeout-minutes | Reason                                                            |
-| --------------------------------- | --------------- | ----------------------------------------------------------------- |
-| Twenty self-test (twenty-race)    | 9               | 5.0 min estimate at 50 trials; cap leaves 4 min for a slow runner |
-| Check Twenty artefacts for tokens | 3 (unchanged)   | grep only; the two new patterns add no real cost                  |
+The new job's scan step uses the value pattern below (the smoke job keeps its own pattern unchanged):
+
+```bash
+value='Bearer [A-Za-z0-9._~+/=-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|reset-password/[0-9a-f]{64}|passwordResetToken"?[:=] ?"?[0-9a-f]{64}|inviteToken=[0-9a-f]{64}'
+```
+
+Why not a bare 64-hex pattern: the Twenty image digest (`sha256:01fb6d…`, Task 6 §3.9) is 64 hex, so a bare pattern would flag every run.
+
+### 8.3 Job skeleton and time budget (worst case)
+
+```yaml
+twenty-races:
+  name: twenty-races
+  runs-on: ubuntu-24.04
+  timeout-minutes: 33 # worst-case budget below: 22.63 min, margin 10.37 min (>= 10)
+  env: # same env block as twenty-smoke (P6 paths, TWENTY_REF, TWENTY_BASE_URL, P6_TWENTY_DATABASE_URL, TWENTY_DOWN_VOLUMES=1)
+    ...
+  steps:
+    - checkout (timeout 5); verify TWENTY_REF (2); setup-node (5); npm ci (10)
+    - bootstrap (10): bash scripts/bootstrap.sh twenty
+    - pull (6): compose-pull.sh -p qa-harness-twenty ... # id: twenty_pull
+    - up (12): npm run up:twenty # if pull succeeded
+    - seed (10): npm run seed:twenty
+    - race (9): RACE_TRIALS=5 on PR, 50 otherwise; npm run race:twenty-tw # if seed succeeded
+    - capture logs (2), token scan (3), job summary (2), upload histograms (5), upload container log (5)
+    - down (5): npm run down:twenty # if: always()
+```
+
+Worst-case budget, every row in minutes. Rows marked **estimate** are not measured; the pull row is at its cap, as the owner asked.
+
+| Part                                          | Worst case | Source                                                                                                        |
+| --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
+| Checkout, verify, setup-node, `npm ci`        | 1.50       | **estimate** (Task 6 table: 16 s measured for the same steps on the Documenso job)                            |
+| Bootstrap clone                               | 0.25       | measured 15 s (Task 6)                                                                                        |
+| Pull (`compose-pull.sh`, 3 tries)             | **6.00**   | **the step cap, not measured** (owner: the cap, 6 min; the script's own worst is 100 s × 3 + 45 s = 5.75 min) |
+| First boot (`up`)                             | 3.05       | measured worst 183 s (Task 6)                                                                                 |
+| Seed                                          | 1.28       | measured worst 77 s (Task 6); 80 s in this probe                                                              |
+| Race step at 50 trials                        | **9.00**   | **the step cap** (owner: the race step gets 9). Estimate of the work: 5.0 min (§8.4)                          |
+| Capture logs                                  | 0.10       | estimate (`docker compose logs`, Task 6 measured nothing for this step)                                       |
+| Token scan                                    | 0.50       | **estimate**                                                                                                  |
+| Job summary                                   | 0.50       | **estimate**                                                                                                  |
+| Upload histograms and container log (2 steps) | 0.40       | **estimate**: 0.2 min each, small files                                                                       |
+| Down with volumes                             | 0.05       | measured 2 to 3 s (Task 6); 2 s here                                                                          |
+| **Worst-case total**                          | **22.63**  | sum of the rows                                                                                               |
+
+**Timeout: 33 minutes.** Margin: 33 − 22.63 = **10.37 min** (at least the 10 minutes the owner set). Choosing a new job's timeout is not a
+raise of `twenty-smoke`, which stays at 20.
+
+Measured-and-estimated expectation, for comparison only (not the budget): pull at its measured 0.57 min and the race at its estimate of 5.0
+min give about 13.2 min. Record the first `main` run's real rows in §16 (closeout) before deciding anything else.
+
+### 8.4 Race step estimate (not the budget)
+
+| Case                           | Trials (main) | Estimate per trial                                                                                    | Estimate total         |
+| ------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------- | ---------------------- |
+| `-001`, `-002`, `-003`, `-005` | 50 each       | tens of ms (two PATCH and a GET, or two merges and two counts) plus the warm-up                       | 0.5 min each = 2.0 min |
+| `-004`, `-006`                 | 50 each       | one `signUpInWorkspace` (971 ms measured, bcrypt) plus invite and reset mail polls and the redemption | 1.5 min each = 3.0 min |
+| **Race total**                 |               |                                                                                                       | **5.0 min (estimate)** |
+
+On PRs the race uses 5 trials, so the step is about 0.5 min.
+
+### 8.5 Step timeouts (new job)
+
+| Step                              | timeout-minutes | Reason                               |
+| --------------------------------- | --------------- | ------------------------------------ |
+| Checkout (`actions/checkout`)     | 5               | small repository                     |
+| Verify TWENTY_REF                 | 2               | grep only                            |
+| setup-node, npm ci                | 5, 10           | as `twenty-smoke`                    |
+| Bootstrap                         | 10              | clone measured 15 s                  |
+| Pull                              | 6               | the shared script's cap (owner)      |
+| Start (up)                        | 12              | measured 106 to 183 s                |
+| Seed                              | 10              | measured 70 to 80 s                  |
+| Race                              | 9               | owner; estimate 5.0 min at 50 trials |
+| Capture logs, token scan, summary | 2, 3, 2         | as `twenty-smoke`                    |
+| Uploads (2)                       | 5 each          | as `twenty-smoke`                    |
+| Down                              | 5               | measured 2 to 3 s                    |
+
+Step caps add up to more than the job timeout; that is deliberate (a step that hits its cap has failed). The job timeout comes from the budget (§8.3).
+
+### 8.6 Closeout values to fill in from the first `main` run
+
+Measured row by row (pull, first boot, seed, race at 50 trials, total job time), with the run id. Until then §8.3 is the budget, and the estimates
+in §8.4 are not published numbers.
 
 ## 9. Test strategy (what each layer proves)
 
 - **Unit (`tests/unit/twenty-*.test.ts`):** the Mailpit parser and poller, the payload helpers, each invariant, the REST and GraphQL call
   wrappers (with fake `fetch`), the oracle SQL guard and the schema check, and the Mailpit URL rule. These run on every `npm run check`.
-- **Playwright races (`tests/twenty/races/*.spec.ts`):** the four required cases plus two optional ones, against the live stack. They run on
+- **Playwright races (`tests/twenty/tw-races/*.spec.ts`):** the four required cases plus two optional ones, against the live stack. They run on
   `main`, nightly and dispatch with 50 trials; PRs use 5 (roadmap D6).
 - **Not covered:** a 429 on the reset request (the rate limit is source-only, A10); the kanban UI's own position values (§12 R7); the `signUp`
   route; a real mail delay on a hosted runner (polled with a 15 s cap).
@@ -973,83 +1164,93 @@ On PRs (5 trials) the race step is about 0.5 min.
 
 - The races prove behaviour on one stack with one Node process. They do not measure contention on a multi-core runner.
 - A PASS of `-001`, `-005`, `-006` (and of `-002`, `-003`) is a characterization of the observed behaviour, not a proof of absence of a bug.
-- `-004` is a SUSPECTED finding with five trials of evidence in the probe. Only repeated full-count CI runs can turn it into PRODUCT BUG (rule 13).
+- `-004` is labelled PRODUCT BUG by the owner (2026-10-23). The spec's expected failure is the evidence; a fix turns the test red as unexpectedly passed.
 
 ## 11. Risks
 
-| #   | Risk                                                                           | Likelihood | Mitigation in this plan                                                            |
-| --- | ------------------------------------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------- |
-| R1  | `-004` red in CI until the owner decides (SUSPECTED, 10 of 10 in probe)        | **High**   | Strict assertion kept; §12 Q1; no `test.fail()` without a label                    |
-| R2  | Job timeout short at full count (margin 6.0 min against 10 required)           | High       | §8.3 options; the owner decides (Q2)                                               |
-| R3  | Mail delay on a hosted runner (invite and reset mail)                          | Medium     | Poll every 250 ms for 15 s; a miss is TEST BUG, never a pass (D9)                  |
-| R4  | Reset token leaks into a container log or a histogram                          | Low        | D8: no token in histograms; scan pattern for reset links (§8.2)                    |
-| R5  | Throwaway members accumulate on a local stack                                  | Medium     | Prefix on every address; the CI stack is removed with volumes; Q5                  |
-| R6  | Captcha enabled in a future overlay blocks sign-up and reset                   | Low        | A11 holds for this pin; a 4xx from a guard would be a setup error (TEST BUG)       |
-| R7  | The kanban UI sends position values the API race does not model                | Medium     | §3.8 limit; the spec is named "position", the claim is API-level only              |
-| R8  | `destroyTask` does not exist; task rows stay after a run                       | Medium     | Q6: verified in step 9 before use; if absent, rows stay and the leak check says so |
-| R9  | P6-OBS-TW-001 hangs the Node client (30 s per request, `headersTimeout` 300 s) | Known      | No malformed bodies in the races; the probe's curl timeouts are 30 s               |
+| #   | Risk                                                                                | Likelihood | Mitigation in this plan                                                            |
+| --- | ----------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| R1  | `-004` is an expected failure until the product fixes it (PRODUCT BUG, owner label) | Known      | `test.fail()` after the guards; a fix shows as unexpectedly passed (§6.10)         |
+| R2  | Job timeout short at full count (margin 6.0 min against 10 required)                | High       | §8.3 options; the owner decides (Q2)                                               |
+| R3  | Mail delay on a hosted runner (invite and reset mail)                               | Medium     | Poll every 250 ms for 15 s; a miss is TEST BUG, never a pass (D9)                  |
+| R4  | Reset token leaks into a container log or a histogram                               | Low        | D8: no token in histograms; scan pattern for reset links (§8.2)                    |
+| R5  | Throwaway members accumulate on a local stack                                       | Medium     | Prefix on every address; the CI stack is removed with volumes; Q5                  |
+| R6  | Captcha enabled in a future overlay blocks sign-up and reset                        | Low        | A11 holds for this pin; a 4xx from a guard would be a setup error (TEST BUG)       |
+| R7  | The kanban UI sends position values the API race does not model                     | Medium     | §3.8 limit; the spec is named "position", the claim is API-level only              |
+| R8  | `destroyTask` does not exist; task rows stay after a run                            | Medium     | Q6: verified in step 9 before use; if absent, rows stay and the leak check says so |
+| R9  | P6-OBS-TW-001 hangs the Node client (30 s per request, `headersTimeout` 300 s)      | Known      | No malformed bodies in the races; the probe's curl timeouts are 30 s               |
 
 ## 12. Contradictions with the roadmap, proposed extras, open questions
 
 ### 12.1 Contradictions with the roadmap
 
-- **C1 Throwaway user path.** The roadmap lists "signup, invite, or the seed's other users". Probed: `signUp` alone gives no reset mail (source: a
-  workspace membership is required; probe: a non-member reset is silently skipped). **Invite is the path** (D2). The seed's other users are
-  rejected (D3).
-- **C2 "Done when" for `-004`.** The roadmap says "pass or record a proven bug with `test.fail()`". The probe's evidence is SUSPECTED, not
-  PROVEN (rule 13), and the owner's instruction for this task is no `test.fail()`. So `-004` cannot be closed by this task; it needs the owner's
-  decision (Q1).
-- **C3 Step cap.** The roadmap says nothing about the step cap; the existing race step cap is 5 minutes and the 50-trial race is estimated at
-  5.0 minutes. The cap changes to 9 (§8.4).
-- **C4 Probe item "PATCH writes only that field" (roadmap §Task 7 probe list).** Confirmed (§3.2).
-- **C5 `-006` replay wording.** The roadmap says "refused with a clean 4xx or GraphQL error". Probed: GraphQL error with HTTP 200 (§3.6). The oracle
-  accepts a GraphQL error and checks for `errors` (not for the status), so the plan matches the probe, not the 4xx wording.
-- **C6 `-002` and `-003` scope.** Roadmap: "only if the probe shows each is cheap". Probed: both cheap (§3.8). Included (D1), not "Later".
+- **C1 Throwaway user path.** Roadmap: "signup, invite, or the seed's other users". Probed: `signUp` alone gives no reset mail; invite is the path (D2).
+- **C2 "Done when" for `-004`.** Roadmap: "pass or record a proven bug with `test.fail()`". Owner label: PRODUCT BUG (2026-10-23). The spec does
+  `test.fail()` after the guards (§6.10). Closed by the owner's decision.
+- **C3 Step cap.** The race step's cap is 9 minutes in the new job (owner); not a change to `twenty-smoke`.
+- **C4 PATCH writes only that field.** Confirmed (§3.2).
+- **C5 `-006` replay wording.** Roadmap: "a clean 4xx or GraphQL error". Probed: GraphQL error with HTTP 200 (§3.6); the oracle checks `errors`.
+- **C6 `-002` and `-003`.** Roadmap: "only if cheap". Probed cheap (§3.8); included (owner Q4).
+- **C7 File locations.** Roadmap: `tests/twenty/races/tw-race-*.spec.ts`. Now `tests/twenty/tw-races/` with project `twenty-tw-races`, so
+  `twenty-smoke`'s `race:twenty` keeps running only the self-test (owner: smoke unchanged). Reason in §0.1.
+- **C8 P6-OBS-TW-001.** Roadmap: "label and test.fail() follow the Phase 2 convention". Owner label: PRODUCT BUG, with no test in this task
+  (not a race); the follow-up is in BACKLOG (X7).
 
 ### 12.2 Proposed extras (out of scope until the owner accepts them)
 
-- **X1** A reset-request flood test: a fourth request for one email inside 15 minutes is refused (source `auth.resolver.ts` lines 126–127; not probed).
-- **X2** The same merge race for people (`mergePeople`, the same argument shape as `mergeCompanies`).
-- **X3** Pin the reset-token scan as a shared pattern in `scripts/evidence-token-scan.mjs` (X6 of Task 6).
-- **X4** A separate `twenty-races` CI job (only if §8.3 option (b) is chosen).
+- **X1** A reset-request flood test (a fourth request for one email inside 15 minutes is refused; source `auth.resolver.ts` lines 126–127; not probed).
+- **X2** The merge race for people (`mergePeople`).
+- **X3** The reset-link and invite-link scan patterns in `scripts/evidence-token-scan.mjs` (Task 6 X6).
+- **X7 (BACKLOG follow-up, not built here)** P6-OBS-TW-001 guarded spec: (a) guards: a valid query gets 200 and `{"foo":1}` gets 400, both
+  within a few hundred milliseconds; (b) then `test.fail()` and expect `{}` to get a 400 within a **5-second** client timeout, never 30 s;
+  (c) a probe of the same requests without auth; (d) a P6-style check that N parallel empty-body requests do not stop a valid request from
+  answering. Added to `docs/BACKLOG.md` in step 11.
 
-### 12.3 Open questions (each with the proposed answer; none is answered by the owner yet, rule 20 (e))
+### 12.3 Owner decisions (2026-10-23), recorded
 
-- **Q1 How does CI show `P6-TW-RACE-004` while it is SUSPECTED?** Options: (a) keep the strict assertion on PRs and main, so the step is red until the owner labels the finding; (b) `test.fail()` now, which the owner's instruction forbids; (c) keep the assertion, record an `issue` annotation with the ID and status SUSPECTED (Task 6 D14), and let the first full-count run decide. **Proposed: (c)**, with the strict assertion, so the failing step shows the trial data and no test is weakened. The owner decides whether a red step may stay red on `main` until the label. Until then the build stops at step 8.
-- **Q2 Job timeout.** **Proposed: 24 minutes** (margin 10.0 min, §8.3 option (a)). The owner decides.
-- **Q3 Race step cap.** **Proposed: 9 minutes** (§8.4). Not a timeout raise to fit: it is the cap for the step.
-- **Q4 Keep `-002` and `-003` in this task?** **Proposed: yes** (cheap, §3.8). If the owner says no, the two specs move to "Later" with the probe reason.
-- **Q5 Throwaway members in a local stack.** **Proposed:** leave them (no delete API probed); the leak check counts members by email prefix and reports the count, not an assertion.
-- **Q6 `destroyTask`.** **Proposed:** verify in step 9 with one call; if it is absent, leave the task rows (prefixed) and say so in the histogram's notes.
-- **Q7 Token scan pattern.** **Proposed:** the two patterns in §8.2; a bare 64-hex pattern is rejected (digests).
-- **Q8 Where the probe scripts live.** They stay outside the repo (scratchpad) as the owner asked; the plan cites every number. The repo keeps no probe code.
+- Q1 `-004`: **PRODUCT BUG**, guards then `test.fail()` then strict (§6.10).
+- Q2 Job timeout: **new job at 33 minutes from the worst-case budget** (§8.3); `twenty-smoke` stays at 20; options (a) and (c) removed.
+- Q3 Race step cap: **9 minutes**.
+- Q4 `-002` and `-003`: **kept**.
+- Q5 Throwaway members: **left in place**; the run reports the count by prefix (`throwawayMembers`).
+- Q6 `destroyTask`: **as proposed**: checked in step 9; if absent, the spec reports the task rows and does not assert on them.
+- Q7 Scan patterns: **as proposed, plus `inviteToken=[0-9a-f]{64}`** (§8.2).
+- Q8 Probe scripts: **outside the repo**; cited as "session scratchpad, not committed".
 
-### 12.4 Risks the owner should weigh (in addition to §11)
+### 12.4 Risks the owner should weigh
 
-- R1 and R2 are the two that change what the owner decides. Everything else is handled in the build.
+- R1 is closed by the label: `-004` is a known bug, so its job stays red as an expected failure (green test). A fix turns it red as "unexpectedly passed".
+- R2 is closed by the budget: the new job's margin is 10.37 min at worst case; the first `main` run's real numbers go in §8.6.
 
 ## 13. Self-check (rule 20)
 
-- **(a) Roadmap "Done when".** `-001`, `-004`, `-005`, `-006`: **`-001` and `-005` and `-006` probed as passing; `-004` probed as failing (SUSPECTED), so the "Done when" is a gap until Q1**. `-002`, `-003`: **landed in step 9 (D1)** or listed under "Later" with the reason if Q4 says no. Histograms uploaded after the token scan: unchanged step order (existing). Leak check by prefix: D7 and Q5. `npm run check` green: §3.0 row 19 (431, exit 0). CI on `main`: pending (the build). The rest of the "Done when" list is the build's job.
-- **(b) Names and paths grep-checked.** Existing and confirmed: `src/twenty/auth.ts` (`signInWorkspace`, `currentUserEmail`, `originFor`, `pickWorkspace`, `graphqlData`), `src/twenty/env.ts` (`twentyBaseUrlFromEnv`, `twentyDatabaseUrlFromEnv`, `twentyEmailFromEnv`, `twentyPasswordFromEnv`, `twentyWorkspaceNameFromEnv`), `src/twenty/oracle.ts` (`workspaceSchemaName`, `resolveWorkspaceSchema`, `readOnlyWriteSqlstate`), `src/oracles/pg.ts` (`createReadOnlyPool`, `selectRows`, `waitForStable`, `closePool`, `assertSelectOnly`), `src/races/fire-together.ts` (`fireTogether`, `summariseBody`), `src/races/run-trials.ts` (`runTrials`), `src/races/trial-record.ts` (`recordTrial`), `src/races/rerun-on-spread.ts` (`createRerunRunner`, `spreadPolicyFromEnv`), `src/races/histogram.ts` (`createHistogram`, `writeHistogram`), `src/races/env.ts` (`raceTrialsFromEnv`), `src/races/prefix.ts` (`p6RunPrefix`), `src/races/types.ts` (`RaceHistogram`, `RaceAttemptResult`, `RaceRequestResult`, `RaceProduct` includes `"twenty"`), `tests/twenty/races/twenty-self-test.spec.ts`, `playwright.config.ts` (`twenty-race` project), `.github/workflows/perf.yml` (`twenty-smoke`, the race step at lines 1391–1402, the token scan at lines 1414 onward), `docs/BACKLOG.md`. **NEW** (marked in §5 and §6): `src/twenty/mailpit.ts`, `src/twenty/api.ts`, `src/twenty/payloads.ts`, `src/twenty/invariants.ts`, `src/twenty/run-case.ts`, the six specs, the new unit files, `twentyMailpitUrlFromEnv`, `passwordHashMd5`, `resetTokenCounts`, `companyLiveRows`. Fork names: `updatePasswordViaResetToken`, `validatePasswordResetToken`, `emailPasswordResetLink`, `signUpInWorkspace`, `sendInvitations`, `mergeCompanies`, `destroyCompany`, `deleteCompany`, `updateCompany`, `updateTask` (the update mutation name in the probe's REST response).
-- **(c) CI estimate.** §8.3: worst 14.0 min against 20 min, margin 6.0 min, below the owner's 10 min. Decision in Q2. Values match across §3.0, §8.3 and §8.4 (the race rows are the same numbers).
-- **(d) Skeletons and commands.** Every new function has a skeleton (§6.1 to §6.13); every build step has `git add` paths, the commit subject, the commands and the expected output (§7). The `as any` in §6.5 is marked for the build to type.
-- **(e) Owner answers.** Only the owner's instructions of this session are used: the stops, the no-`test.fail()` and no-label rules, the BACKLOG status not changed, the pull-retry and the Task 6 conventions that the roadmap carries. **No answer to Q1 to Q8 is recorded**; each is a proposal.
+- **(a) Roadmap "Done when".** `-001`, `-005`, `-006`, `-002`, `-003`: passing in the build. `-004`: PRODUCT BUG, expected failure recorded
+  with `test.fail()`, repeated-run evidence in the histograms (the full-count main run). Histograms uploaded after the token scan: unchanged step order.
+  Leak check by prefix: D16 (asserted: 0 company rows; members reported). `npm run check` green: each step. README: step 11.
+- **(b) Names and paths.** Existing and grep-checked: `scripts/ci/compose-pull.sh` (X5), `src/races/fire-together.ts` (`fireTogether`,
+  `dispatchSpreadMs`, `summariseBody`), `src/races/run-trials.ts` (`runTrials`), `src/races/trial-record.ts` (`recordTrial`), `src/races/rerun-on-spread.ts`
+  (`createRerunRunner`, `spreadPolicyFromEnv`, runner `warmup`, `runTrial`, `applyTo`), `src/races/histogram.ts` (`createHistogram`, `writeHistogram`),
+  `src/races/env.ts` (`raceTrialsFromEnv`), `src/races/prefix.ts` (`p6RunPrefix`), `src/races/types.ts` (`RaceAttemptResult` with `oracle`, `requests`;
+  `RaceRequestResult` with `startedAtMs` and `endedAtMs`), `src/oracles/pg.ts` (`createReadOnlyPool`, `selectRows`, `assertSelectOnly`), `src/twenty/auth.ts`
+  (`signInWorkspace`), `src/twenty/env.ts`, `src/twenty/oracle.ts` (`resolveWorkspaceSchema`), `src/twenty/api.ts` (step 5), `src/twenty/mailpit.ts` (step 2),
+  `.github/workflows/perf.yml` (`cal-state-races`, `twenty-smoke`). **NEW:** `src/twenty/member.ts`, `src/twenty/run-case.ts`, the six specs. Fork
+  mutation names used are those probed in §3.1, plus `destroyTask` (to be checked in step 9).
+- **(c) CI estimate.** §8.3: worst case 22.63 min, timeout 33, margin 10.37 min. Pull at its cap, race at its cap; estimates marked.
+- **(d) Skeletons and commands.** Each new function has a skeleton (§6.6a to §6.13); each step has the `git add` paths, the commit subject, the
+  commands and the expected output (§7). Known gaps: `src/twenty/mailpit.ts`, `payloads.ts`, `invariants.ts`, `api.ts` skeletons are in v1 §6.2–§6.5
+  and carried unchanged, with `overlapped` added (§6.6a).
+- **(e) Owner answers.** Only the decisions in §0.1 and §12.3 are recorded. Anything else is a plan decision, marked as such.
 
 ## 14. Closeout notes (fill in before the PR merges)
 
-- **Merge SHA:** _pending_ (the build PR; no PR for this plan).
-- **CI runs:** _pending_. The plan commit does not run the Twenty job on `main`; the build's first CI run is on its PR.
-- **Probe findings (not labels):**
-  - `P6-OBS-TW-001` reproduced again: 12 of 12 hangs for empty and `{}` bodies on both endpoints, 3 runs each; `{"foo":1}` and valid bodies answer in under 15 ms (§3.9). Proposed outcome: reproduced. Owner decides.
-  - SUSPECTED: `P6-TW-RACE-004` shows more than one success on parallel reset-token redemption, 50 of 50 accepted in 5 trials (§3.7). Owner decides how CI shows it (Q1).
-  - The race pair `-001` and `-005` and the optional `-002`, `-003` show no bug in 8 or 5 trials each (§3.3, §3.4, §3.8).
-  - REST `DELETE` removes the company row (two runs); GraphQL `deleteCompany` soft-deletes; `destroyCompany` removes the row (§3.5). The plan cleans up with `destroyCompany`.
-- **Deviations from the roadmap:** the throwaway member comes from the invitation flow (C1); `-002` and `-003` are included (C6); the races use REST PATCH (D6).
-- **Deviations from the plan's own process:**
-  - The first probe run was invalid (helper sent POST for PATCH and a wrong return field in `signUp`); its rows are discarded and the run is kept on disk (§3.0 row 5).
-  - Two further probe runs failed on a wrong endpoint (`sendInvitations` on `/graphql`, should be `/metadata`) and a wrong mail filter. Both fixed; each run is in §3.0.
-  - The first `docker logs` capture (fractional-second timestamps) returned 0 lines; re-captured with whole seconds (§3.9, D12).
-  - The plan commit goes to two refs (`feat/…` and `plan/…`), as Task 6 did (rule B10).
-- **Environment note.** The session's system instructions name the branch `claude/awesome-noether-tu22g0` for development. The owner's instruction and repo rule A1 require `feat/2026-10-23-p6-twenty-races`. The feature branch is used; the `claude/` branch is not pushed to.
-- **Rule slips:** none recorded. The stop rule is applied (§0). No `test.fail()`, no product label, no BACKLOG status change, no probe data in the repo.
+- **Merge SHA:** _pending_ (the build PR; this plan has no PR).
+- **CI runs:** _pending_. The first `main` run of `twenty-races` gives the measured rows for §8.6.
+- **Findings (owner labels):**
+  - `P6-TW-RACE-004`: **PRODUCT BUG** (50 of 50 parallel redemptions accepted in the probe, §3.7). Expected failure recorded with `test.fail()`.
+  - `P6-OBS-TW-001`: **PRODUCT BUG** (12 of 12 hangs for empty and `{}` bodies on both endpoints, §3.9). BACKLOG updated; follow-up X7.
+  - `-001`, `-005`, `-006`, `-002`, `-003`: no bug in the probe (§3.3, §3.4, §3.6, §3.8).
+- **Deviations from the plan's first version:** spec location `tests/twenty/tw-races/` with project `twenty-tw-races` (§0.1); the job is new,
+  `twenty-smoke` unchanged; the guards run before `test.fail()` (owner); the overlap guard applies to every parallel case (D15).
+- **Environment note.** The session's instructions name `claude/awesome-noether-tu22g0`; the feature branch `feat/2026-10-23-p6-twenty-races`
+  is used (repo rule A1). No attribution lines on commits (repo rule A3).
+- **Rule slips:** none recorded so far.
