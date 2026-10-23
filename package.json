@@ -20,6 +20,7 @@
     "up:twenty": "node scripts/harness.mjs up twenty",
     "down:twenty": "node scripts/harness.mjs down twenty",
     "seed:twenty": "node scripts/seed-twenty.mjs",
+    "race:twenty": "playwright test --project=twenty-race",
     "smoke:twenty": "k6 run --summary-export results/twenty-health-summary.json k6/smoke/twenty-health.js",
     "test:documenso-api": "playwright test --project=documenso-api",
     "format": "prettier --write .",
