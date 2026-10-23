@@ -2,7 +2,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type pg from "pg";
-import { resolveWorkspaceSchema, workspaceSchemaName } from "../../src/twenty/oracle.ts";
+import {
+  companyLiveRows,
+  companyRowsByPrefix,
+  resolveWorkspaceSchema,
+  workspaceSchemaName,
+} from "../../src/twenty/oracle.ts";
 
 const APPLE = "20202020-1c25-4d02-bf25-6aeccf7ea419";
 const YC = "3b8e6458-5fc1-4e63-8563-008ccddaa6db";
@@ -29,5 +34,11 @@ describe("twenty oracle", () => {
       resolveWorkspaceSchema(fakePool([{ id: APPLE }, { id: YC }]), "apple"),
       /TEST BUG/,
     );
+  });
+
+  it("the leak and live-row queries refuse a schema name that is not workspace_<id>", async () => {
+    const pool = {} as pg.Pool;
+    await assert.rejects(companyLiveRows(pool, "public; DROP TABLE x", ["id"]), /TEST BUG/);
+    await assert.rejects(companyRowsByPrefix(pool, "core", "p6"), /TEST BUG/);
   });
 });
