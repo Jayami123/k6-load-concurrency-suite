@@ -382,7 +382,7 @@ jobs:
   # Task 3b (plan §16, owner-agreed 2026-10-23): P6-MED-RACE-013 and -014 run here, not in medusa-smoke.
   # Time budget at 50 trials (plan §16.2): 51 attempts per case expected, 61 at most (1 warm-up + 50 + 10 reruns);
   # per attempt 3.2 s (-013) and 3.5 s (-014), setup included (cloud probe means, an estimate until the first CI run).
-  # Race step: 5 min 42 s expected, 6 min 49 s worst. Job: about 8 min 12 s expected, 9 min 19 s worst, with the
+  # Race step: 5 min 42 s expected, 6 min 49 s worst. Job: about 8 min 8 s expected, 9 min 15 s worst, with the
   # 1 min 26 s measured before the race step on medusa-smoke and an estimated 1 min after it. Job timeout 30 min
   # leaves 20 min of margin; the race step's 20 min timeout puts its 80 % stop rule at 16 min.
   medusa-cancel-extras:
