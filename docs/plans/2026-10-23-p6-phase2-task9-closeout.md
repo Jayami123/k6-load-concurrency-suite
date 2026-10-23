@@ -19,6 +19,8 @@ Scope: roadmap [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md
 - **Stop for owner review: yes.** This plan proposes a CI workflow change (§6 step 2, the release title) and asks for product
   bug labels (§4 6a, 6c, 6d). Rule 10.
 - Unit-test count today: **471** (`npm run check`, exit 0; §11).
+- **Owner review (2026-10-23): approved with changes.** §15 records the owner's decisions; where §15 differs from a
+  proposal in §4, §6, §8, §9 or §10, §15 and the edited sections win.
 
 ## 1. What the build does, and what it does not
 
@@ -303,7 +305,8 @@ Upstream HEAD from `git ls-remote` on 2026-10-23; code read from blobless clones
 
 **Twenty's policy matters for two drafts.** `P6-TW-RACE-004` (a single-use reset token redeemed ten times) and `P6-OBS-TW-001`
 (an unauthenticated client can hold server sockets open indefinitely) are security-relevant. Twenty asks for these by email to
-security@twenty.com and confidentiality. This repo's README and BACKLOG already describe both in public. Owner decision (Q5).
+security@twenty.com and confidentiality. This repo's README and BACKLOG already describe both in public. Owner decision
+(§15 item 2): follow the policy; private emails, no public issue drafts.
 
 ### 2.12 Duplicate search (read-only)
 
@@ -348,8 +351,8 @@ line "ERROR: Yarn is terminating due to an unexpected empty event loop.", exit 4
 - **C3 Rule 19 "its own docs/ branch with a PR".** The closeout report rides the Task 9 build PR, which is a `docs/` branch
   (one PR per task, rule 6).
 - **C4 Roadmap "Twenty first-boot time making run B slow".** Not seen: `twenty-*` jobs took 2.8 to 6 min in A.
-- **C5 Upstream drafts for Twenty as public issues.** Twenty's security policy asks for email and confidentiality (§2.11).
-  The drafts are written in the template shape as asked; the channel is the owner's choice (Q5).
+- **C5 Upstream drafts for Twenty.** The roadmap asks for drafts in each product's issue template. Twenty's security policy
+  asks for email and confidentiality (§2.11), so the owner chose private emails to security@twenty.com (§15 item 2).
 
 ## 4. Open decisions (evidence and a proposed answer each; the owner decides labels)
 
@@ -504,16 +507,31 @@ The specs need a live product; CI on the PR runs them. Expected on the PR run: `
 `Known product bugs still reproducing: P6-OBS-DOC-001, P6-OBS-DOC-001, P6-OBS-DOC-002`; `twenty-races` line
 `… : P6-TW-RACE-004`.
 
-### Step 2: `ci(release): take the release title from the notes heading` (owner review: CI change)
+### Step 2: `ci(release): take the title from the notes heading` (owner review: CI change)
 
-File: `.github/workflows/evidence-release.yml`, step "Create the release". Replace the step's `run` with:
+File: `.github/workflows/evidence-release.yml`. Its own commit (owner, §15 item 4). Two changes:
+
+1. In the step "Check that target_sha is on main", after the `[[ -f "docs/releases/$TAG.md" ]]` line, stop early when the notes
+   have no H1, so a bad notes file fails before any download:
+
+```yaml
+head -n 1 "docs/releases/$TAG.md" | grep -qE '^# +[^[:space:]]' \
+|| { echo "::error::docs/releases/$TAG.md must start with an H1 line ('# <release title>'); none found"; exit 1; }
+```
+
+2. In the step "Create the release", replace the hard-coded `--title "P6 Phase 1 evidence (CI)"`:
 
 ```yaml
 run: |
   set -euo pipefail
-  # The release title is the notes' first line without its "# " (Phase 1: "P6 Phase 1 evidence (CI)").
-  title="$(head -n 1 "docs/releases/$TAG.md" | sed -e 's/^#[[:space:]]*//')"
-  [[ -n "$title" ]] || { echo "::error::docs/releases/$TAG.md has no title line"; exit 1; }
+  # The release title is the notes' H1 without its "# " (Phase 1 notes: "P6 Phase 1 evidence (CI)").
+  first="$(head -n 1 "docs/releases/$TAG.md")"
+  if [[ ! "$first" =~ ^#[[:space:]]+([^[:space:]].*)$ ]]; then
+    echo "::error::docs/releases/$TAG.md must start with an H1 line ('# <release title>'); found: ${first:0:80}"
+    exit 1
+  fi
+  title="${BASH_REMATCH[1]}"
+  echo "Release title: $title"
   gh release create "$TAG" \
     --target "$TARGET_SHA" \
     --title "$title" \
@@ -521,10 +539,21 @@ run: |
     "$RUNNER_TEMP"/release/*.zip "$RUNNER_TEMP/release/SHA256SUMS.txt"
 ```
 
+Prove the title locally with the same bash test (expected output: `P6 Phase 2 evidence (CI)` and `P6 Phase 1 evidence (CI)`;
+a file without an H1 prints the error):
+
+```bash
+for f in docs/releases/p6-phase2.md docs/releases/p6-phase1.md; do
+  first="$(head -n 1 "$f")"; [[ "$first" =~ ^#[[:space:]]+([^[:space:]].*)$ ]] && echo "${BASH_REMATCH[1]}" || echo "error: $f"
+done
+```
+
+(Step 3 creates `p6-phase2.md`; run this check after step 3 and paste its output into the PR body.)
+
 ```bash
 npm run check                 # expected: exit 0, 471 tests; actionlint (with shellcheck) prints nothing for this file
 git add .github/workflows/evidence-release.yml
-git commit -m "ci(release): take the release title from the notes heading"
+git commit -m "ci(release): take the title from the notes heading"
 ```
 
 ### Step 3: `docs(releases): add the p6-phase2 evidence notes`
@@ -585,9 +614,10 @@ Phase 2 closeout (Task 9). Plan: docs/plans/2026-10-23-p6-phase2-task9-closeout.
 
 - Runs A (40037355173, push) and B (40039351021, dispatch) at a82521a: every product job green.
 - README "Phase 2 results", Known product bugs extended; release notes docs/releases/p6-phase2.md (runs A and B only).
-- evidence-release.yml takes the release title from the notes heading (CI change, owner review).
+- evidence-release.yml takes the release title from the notes H1 and fails with a clear message when there is none (CI
+  change). Resulting title for docs/releases/p6-phase2.md: "P6 Phase 2 evidence (CI)".
 - Three issue annotations now start with their case id.
-- Upstream drafts are in the plan appendices; nothing is filed by P6.
+- Upstream drafts and the private security emails are in the plan appendices; nothing is filed or sent by P6.
 
 npm run check: exit 0, 471 tests.
 EOF
@@ -711,21 +741,25 @@ product bugs".
 **Known product bugs** (edit the existing rows; keep the column order). For every Phase 2 row, the Evidence cell keeps the
 label-evidence runs (marked "label evidence") and adds `main` counts and runs A and B. Exact cells:
 
-| Row                                      | Severity         | Upstream                                                                                                          | Evidence cell (append)                                                                                                          |
-| ---------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `P6-OBS-DOC-001`                         | low              | "not filed (draft: Task 9 plan Appendix E)"                                                                       | "`main`: both tests expected failures in every green `documenso-smoke` since `39961527451`; runs A and B (release `p6-phase2`)" |
-| `P6-MED-RACE-011` (F-M1)                 | suspected (D40)  | not filed                                                                                                         | "`main`: 705 of 1000 attempts (green full-count runs)"                                                                          |
-| `P6-MED-RACE-008` (X04)                  | per Q6           | "not filed (draft: Task 9 plan Appendix B1)"                                                                      | "`main`: X04 653 of 900 attempts; runs A and B"                                                                                 |
-| `P6-MED-RACE-009` (X05)                  | per Q6           | "not filed (draft: Appendix B2)"                                                                                  | "`main`: X05 259 of 900 attempts; runs A and B"                                                                                 |
-| F-M3                                     | per Q6           | "not filed (draft: Appendix B1)"                                                                                  | "`main`: `-008` 247 of 900, `-009` 40 of 900, `-013` 945 of 950, `-014` 950 of 953 attempts"                                    |
-| F-M2                                     | per Q6           | "not filed (draft: Appendix B3)"                                                                                  | "`main`: `-012` 209 of 1050, `-005` 12 of 1051 attempts"                                                                        |
-| F-M4 (`-014`), NEW row, only if labelled | per 6a           | "not filed (draft: Appendix B1)"                                                                                  | "`main`: 684 of 953 attempts; runs A and B"                                                                                     |
-| `P6-CAL-RACE-006` (F-C1)                 | PRODUCT BUG (O6) | "[calcom/cal.diy#29815](https://github.com/calcom/cal.diy/issues/29815) (existing; comment drafted, Appendix C1)" | "`main`: 600 of 600 attempts"                                                                                                   |
-| `P6-CAL-RACE-008` (F-C1)                 | PRODUCT BUG (O6) | same as `-006`                                                                                                    | "`main`: 600 of 600 attempts"                                                                                                   |
-| `P6-CAL-RACE-007` (F-C2)                 | PRODUCT BUG (O6) | "not filed (draft: Appendix C2)"                                                                                  | "`main`: 600 of 600 attempts"                                                                                                   |
-| `P6-CAL-RACE-009` (F-C3)                 | PRODUCT BUG (O6) | "not filed (draft: Appendix C3)"                                                                                  | "`main`: 600 of 600 attempts"                                                                                                   |
-| `P6-OBS-TW-001`                          | PRODUCT BUG      | "not filed (draft: Appendix D2; channel per Q5)"                                                                  | "`main`: 8 of 8 hang tests expected failures in runs A and B"                                                                   |
-| `P6-TW-RACE-004`                         | PRODUCT BUG      | "not filed (draft: Appendix D1; channel per Q5)"                                                                  | "`main`: 250 of 250 attempts with more than one success (10 of 10 every time); runs A and B"                                    |
+| Row                      | Severity                                     | Upstream                                                                                                          | Evidence cell (append)                                                                                                          |
+| ------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `P6-OBS-DOC-001`         | low                                          | "not filed (draft: Task 9 plan Appendix E)"                                                                       | "`main`: both tests expected failures in every green `documenso-smoke` since `39961527451`; runs A and B (release `p6-phase2`)" |
+| `P6-MED-RACE-011` (F-M1) | suspected (D40)                              | not filed                                                                                                         | "`main`: 705 of 1000 attempts (green full-count runs)"                                                                          |
+| `P6-MED-RACE-008` (X04)  | per Q6                                       | "not filed (draft: Task 9 plan Appendix B1)"                                                                      | "`main`: X04 653 of 900 attempts; runs A and B"                                                                                 |
+| `P6-MED-RACE-009` (X05)  | per Q6                                       | "not filed (draft: Appendix B2)"                                                                                  | "`main`: X05 259 of 900 attempts; runs A and B"                                                                                 |
+| F-M3                     | per Q6                                       | "not filed (draft: Appendix B1)"                                                                                  | "`main`: `-008` 247 of 900, `-009` 40 of 900, `-013` 945 of 950, `-014` 950 of 953 attempts"                                    |
+| F-M2                     | per Q6                                       | "not filed (draft: Appendix B3)"                                                                                  | "`main`: `-012` 209 of 1050, `-005` 12 of 1051 attempts"                                                                        |
+| F-M4 (`-014`), NEW row   | PRODUCT BUG, medium (owner label 2026-10-23) | "not filed (draft: Appendix B1)"                                                                                  | "`main`: 684 of 953 attempts; runs A and B"                                                                                     |
+| `P6-CAL-RACE-006` (F-C1) | PRODUCT BUG (O6)                             | "[calcom/cal.diy#29815](https://github.com/calcom/cal.diy/issues/29815) (existing; comment drafted, Appendix C1)" | "`main`: 600 of 600 attempts"                                                                                                   |
+| `P6-CAL-RACE-008` (F-C1) | PRODUCT BUG (O6)                             | same as `-006`                                                                                                    | "`main`: 600 of 600 attempts"                                                                                                   |
+| `P6-CAL-RACE-007` (F-C2) | PRODUCT BUG (O6)                             | "not filed (draft: Appendix C2)"                                                                                  | "`main`: 600 of 600 attempts"                                                                                                   |
+| `P6-CAL-RACE-009` (F-C3) | PRODUCT BUG (O6)                             | "not filed (draft: Appendix C3)"                                                                                  | "`main`: 600 of 600 attempts"                                                                                                   |
+| `P6-OBS-TW-001`          | PRODUCT BUG                                  | "not filed publicly: reported privately per Twenty's security policy (owner sends; Appendix D2)"                  | "`main`: 8 of 8 hang tests expected failures in runs A and B"                                                                   |
+| `P6-TW-RACE-004`         | PRODUCT BUG                                  | "not filed publicly: reported privately per Twenty's security policy (owner sends; Appendix D1)"                  | "`main`: 250 of 250 attempts with more than one success (10 of 10 every time); runs A and B"                                    |
+
+**Reproduction detail (owner, §15 item 2).** The README Phase 2 text adds no reproduction steps beyond what the repo already
+holds: no request bodies, endpoints or token handling beyond the existing "Twenty races", "Twenty empty-body spec" and
+"Known product bugs" text. The new Twenty cells above carry counts and run links only.
 
 ### 8.2 `docs/releases/p6-phase2.md` (verbatim)
 
@@ -748,14 +782,27 @@ does not set that field, so it keeps its default. Read the trials and the job re
 `P6-TW-RACE-004` shows more than one success in every trial.
 ```
 
-### 8.3 BACKLOG (apply only what the owner decided)
+### 8.3 BACKLOG (the owner's decisions, §15)
 
-- Medusa, F-M2: replace the arithmetic with §2.6 (per-run spread, empirical miss table) and the new "done when" (6e).
-- Medusa, new items: F-M4 (label per 6a; follow-up PR with 5 PR trials), F-M5 (6b), `-009` PR count (F9), X9 Twenty verdict.
-- Cal, run 121: the owner's decision (6d) with the warm-up evidence; F-C1: link #29815.
-- Cal, Yarn watch item: closed (6g), with the counts of §2.13.
-- Documenso (new section): `P6-OBS-DOC-003` (6c).
-- Twenty, P6-TW-RACE-004: add the `main` evidence (runs A and B, 4 runs before them).
+- Medusa, F-M2: keep "PRODUCT BUG, annotation only"; replace the arithmetic with §2.6 (pooled 209 of 1050, D65 n = 24, per-run
+  0 to 21 of 50, empirical miss 13.3 % at 28 trials and 1 of 21 full runs) and the decision "no F-M2 `test.fail()` spec" (6e);
+  done when a deterministic trigger exists without a fork change.
+- Medusa, new **F-M4, PRODUCT BUG (owner label 2026-10-23), medium**: 684 of 953 attempts in 19 green full-count `main` runs
+  (31 to 43 of 50 each; runs A and B 43 and 36); follow-up PR adds the `test.fail()` with 5 PR trials (F8).
+- Medusa, new **F-M5, SUSPECTED** (same mechanism as F-M2): 0 orphan lines in 13 green runs since PR #38; the sweep and the
+  annotation stay.
+- Medusa, new **`medusa-smoke` race-step stop rule** (Q7): 24.1 min estimated (slowest measured 19.9 min + 4.2 min rerun
+  allowance) vs the 24.0-minute stop rule (80 % of 30); re-measure in Phase 3 after the pin bump; the fix is less per-trial
+  time or fewer trials, never a higher timeout.
+- Medusa, new `-009` PR trials 13 → 20 after a budget recheck (F11); Twenty histogram verdict (F9); known-bug visibility (F10).
+- Cal, run 121: **observation, no label** (6d): the oversell was in the warm-up burst, the loser's 400 was F-M2's
+  `temp_failure` signature; 0 in 1200 `-001` and 72 `extra-s1-n2` counted trials since. Item closed.
+- Cal, F-C1: link calcom/cal.diy#29815 (comment drafted for the owner).
+- Cal, Yarn watch item: **closed** (6g): 0 repeats in 170 `main` job logs and 32 Cal PR job logs.
+- Documenso (new section): **`P6-OBS-DOC-003`, finding (low)**: the validation 400 echoes the submitted password and CSRF
+  value; no test, no public issue; a private-advisory draft for the owner (plan Appendix F).
+- Twenty, P6-TW-RACE-004 and P6-OBS-TW-001: add the `main` evidence (runs A and B) and "reported privately per Twenty's
+  security policy (owner sends; plan Appendices D1, D2)".
 
 ### 8.4 Phase closeout report (`docs/plans/2026-10-2x-p6-phase2-closeout.md`)
 
@@ -770,36 +817,39 @@ H3 pin bump and the `P6-MED-RACE-002/003` probe.
 
 ## 9. Upstream drafts (summary; full text in the appendices)
 
-| Bug                             | Upstream            | Action                                                 | Appendix |
-| ------------------------------- | ------------------- | ------------------------------------------------------ | -------- |
-| X04 + F-M3 (+ F-M4 if labelled) | medusajs/medusa     | new issue                                              | B1       |
-| X05                             | medusajs/medusa     | new issue                                              | B2       |
-| F-M2                            | medusajs/medusa     | new issue                                              | B3       |
-| F-C1                            | calcom/cal.diy      | comment on #29815                                      | C1       |
-| F-C2                            | calcom/cal.diy      | new issue                                              | C2       |
-| F-C3                            | calcom/cal.diy      | new issue                                              | C3       |
-| `P6-TW-RACE-004`                | twentyhq/twenty     | private report proposed (Q5); text in the bug template | D1       |
-| `P6-OBS-TW-001`                 | twentyhq/twenty     | private report proposed (Q5); text in the bug template | D2       |
-| `P6-OBS-DOC-001`                | documenso/documenso | new issue (Task 5 Appendix A, refreshed)               | E        |
+| Bug               | Upstream            | Action                                                            | Appendix |
+| ----------------- | ------------------- | ----------------------------------------------------------------- | -------- |
+| X04 + F-M3 + F-M4 | medusajs/medusa     | new issue                                                         | B1       |
+| X05               | medusajs/medusa     | new issue                                                         | B2       |
+| F-M2              | medusajs/medusa     | new issue                                                         | B3       |
+| F-C1              | calcom/cal.diy      | comment on #29815                                                 | C1       |
+| F-C2              | calcom/cal.diy      | new issue                                                         | C2       |
+| F-C3              | calcom/cal.diy      | new issue                                                         | C3       |
+| `P6-TW-RACE-004`  | twentyhq/twenty     | private email to security@twenty.com (owner sends)                | D1       |
+| `P6-OBS-TW-001`   | twentyhq/twenty     | private email to security@twenty.com (owner sends)                | D2       |
+| `P6-OBS-DOC-003`  | documenso/documenso | private advisory draft (GHSA form), owner decides whether to send | F        |
+| `P6-OBS-DOC-001`  | documenso/documenso | new issue (Task 5 Appendix A, refreshed)                          | E        |
 
-Nothing is filed or posted by P6. The owner files each one and then puts the URL in README.
+Nothing is filed, posted or sent by P6. The owner files or sends each one; for public issues the owner then puts the URL in
+README. The two Twenty emails and the Documenso advisory get no URL in README.
 
 ## 10. Follow-ups (not built here)
 
 | ID  | Item                                                                                                                                                                                                                                                             | Where                                         | Done when                                                                                                          |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | F1  | P1 PR removing X04/X05 from `tests/medusa/api/races.spec.ts` (now `P6-MED-RACE-008/009`)                                                                                                                                                                         | `playwright-e2e-ci-framework` (separate repo) | the P1 PR merges                                                                                                   |
-| F2  | Harness H3 is merged on harness `main` as `51b7d1e` (confirmed: `git ls-remote` HEAD = `51b7d1eb04c3…`); tag `v0.2.13` does not exist yet (latest `v0.2.12`)                                                                                                     | qa-portfolio-harness                          | `v0.2.13` tagged; then the P6 pin bump PR (`package.json`, README) and the Phase 3 probe for `P6-MED-RACE-002/003` |
-| F3  | X7: harness resolves only the requested product root; then P6 removes `                                                                                                                                                                                          |                                               | true` from both "Stop Cal" steps                                                                                   | harness, then `perf.yml` | both merged |
+| F2  | Harness H3 merged on harness `main` as `51b7d1e` (`git ls-remote` HEAD = `51b7d1eb04c3…`); `v0.2.13` not tagged yet (latest `v0.2.12`)                                                                                                                           | qa-portfolio-harness                          | `v0.2.13` tagged; then the P6 pin bump PR (`package.json`, README) and the Phase 3 probe for `P6-MED-RACE-002/003` |
+| F3  | X7: harness resolves only the requested product root; then P6 removes the `\|\| true` from both "Stop Cal" steps                                                                                                                                                 | harness, then `perf.yml`                      | both merged                                                                                                        |
 | F4  | H-twenty-auth: harness `authenticate()` returns a workspace token                                                                                                                                                                                                | harness                                       | P6 uses the adapter directly                                                                                       |
 | F5  | X1: digest pins for the Twenty images                                                                                                                                                                                                                            | harness overlay                               | digests in the overlay                                                                                             |
 | F6  | X6: one value-only token scanner (`scripts/evidence-token-scan.mjs`) for every job                                                                                                                                                                               | P6                                            | owner accepts                                                                                                      |
 | F7  | `timeout-minutes` for older uncapped steps. Uncapped today: `medusa-smoke` 19 of 23 steps, `medusa-order-races` 18 of 20, `medusa-cancel-extras` 12 of 20, `cal-smoke` 23 of 29, `cal-state-races` 19 of 24, `documenso-smoke` 19 of 23; the three Twenty jobs 0 | `perf.yml`                                    | every step has a cap                                                                                               |
-| F8  | X9: `runTwentyTrials` sets `verdict` like the other runners, with a unit test                                                                                                                                                                                    | `src/twenty/run-case.ts`                      | merged; Twenty histograms say `pass`                                                                               |
-| F9  | `-009` PR count 13 → 20 (empirical miss 2.3 % → 0.9 %, §2.6); cost about 9 s per PR run                                                                                                                                                                          | spec + plan arithmetic                        | owner agrees                                                                                                       |
-| F10 | F-M4 `test.fail()` in `-014` with 5 PR trials (if labelled, 6a)                                                                                                                                                                                                  | spec                                          | merged                                                                                                             |
-| F11 | E1 `issue` annotations on six known-bug tests; E2 job summary step in `cal-state-races`; X10 upload the Playwright `{suites, errors}` JSON of `twenty-obs` and `documenso-api`                                                                                   | tests, `perf.yml`                             | owner accepts                                                                                                      |
-| F12 | H-email (Cal mail catcher), H-heap (`NODE_OPTIONS` heap default)                                                                                                                                                                                                 | harness                                       | carried from BACKLOG                                                                                               |
+| F8  | F-M4 `test.fail()` in `-014`, 5 PR trials (owner label PRODUCT BUG, medium)                                                                                                                                                                                      | spec, own PR                                  | merged                                                                                                             |
+| F9  | Twenty histogram `verdict` fix (X9): `runTwentyTrials` sets `verdict` like the other runners, with a unit test                                                                                                                                                   | `src/twenty/run-case.ts`                      | merged; Twenty histograms say `pass`                                                                               |
+| F10 | Known-bug visibility: `issue` annotations and job-summary lines for `-008`, `-009` and the four Cal state known-bug tests (E1); a job summary step in `cal-state-races` (E2); `twenty-obs` uploads its Playwright `{suites, errors}` JSON (X10)                  | tests, `perf.yml`                             | merged                                                                                                             |
+| F11 | `-009` PR trials 13 → 20 (empirical miss 2.3 % → 0.9 %, §2.6), after a `medusa-smoke` PR budget recheck                                                                                                                                                          | spec + plan arithmetic                        | merged                                                                                                             |
+| F12 | `medusa-smoke` race step: estimate 24.1 min vs 24.0 stop rule (§2.7, BACKLOG item); re-measure in Phase 3 after the pin bump                                                                                                                                     | `perf.yml` / specs                            | the estimate is under the stop rule by less per-trial time or fewer trials, never a higher timeout                 |
+| F13 | H-email (Cal mail catcher), H-heap (`NODE_OPTIONS` heap default)                                                                                                                                                                                                 | harness                                       | carried from BACKLOG                                                                                               |
 
 ## 11. `npm run check` baseline and expected counts
 
@@ -812,6 +862,10 @@ At `a82521a` on the plan branch: exit 0. `All matched files use Prettier code st
 | 1 (annotations)   | 471        | strings in Playwright specs; no unit test reads them |
 | 2 (release title) | 471        | workflow only (actionlint checks it)                 |
 | 3 to 6            | 471        | docs only                                            |
+
+Where the 471st test came from: the X8 plan built to 470; its review fix `dae02ed` ("fix(twenty): send https base urls over
+tls in the timed post client") added one unit test, `tests/unit/twenty-timed-post.test.ts` "speaks TLS to an https base URL
+and never sends cleartext HTTP" (X8 plan §12: "471 after the review fixes"). So `main` at `a82521a` has 471.
 
 A different count at any step: stop and explain (rule 11).
 
@@ -844,6 +898,34 @@ A different count at any step: stop and explain (rule 11).
 - (d) Every step has its files, `git add` paths, commit subject and the expected `npm run check` output (§6, §11).
 - (e) No owner answer is recorded; §4 holds proposals only.
 
+## 15. Owner decisions (2026-10-23) and what changed
+
+The owner approved the plan at `8bf5946` with these changes. They supersede the proposals in §4 and the sections named here.
+
+1. **Labels and items.** 6a: F-M4 = **PRODUCT BUG, medium**; its `test.fail()` test (5 PR trials) is a separate follow-up PR
+   (F8), not this build. Task 5 is closed. 6b: F-M5 stays SUSPECTED, recorded as the same mechanism as F-M2. 6c:
+   `P6-OBS-DOC-003` = **finding (low)**, no test, no public issue; the private-advisory draft is kept for the owner
+   (Appendix F). 6d: run 121 = observation, no label. 6e: no F-M2 `test.fail()` spec; the arithmetic (§2.6) goes into
+   BACKLOG. 6f: the three annotations are fixed in the build (step 1). 6g: the Yarn watch item is closed.
+2. **Q5 Twenty.** Follow Twenty's security policy: no public GitHub issue drafts for `P6-TW-RACE-004` or `P6-OBS-TW-001`;
+   Appendices D1 and D2 are private emails to security@twenty.com for the owner to send. The README Phase 2 text adds no
+   reproduction steps beyond what the repo already holds (§8.1 note).
+3. **Q7.** No trial or timeout change. BACKLOG gets the `medusa-smoke` race-step item: 24.1 min estimated vs the 24.0-minute
+   stop rule, 19.9 min slowest measured; re-measure in Phase 3 after the pin bump; the fix is less per-trial time or fewer
+   trials, never a higher timeout (F12).
+4. **`evidence-release.yml`.** Its own commit, `ci(release): take the title from the notes heading`; it fails with a clear
+   message when the notes file has no H1 (step 2). The PR body shows the resulting title for `p6-phase2.md`.
+5. **Follow-ups** (§10): F8 F-M4 `test.fail()` PR; F9 Twenty histogram verdict fix; F10 `issue` annotations and summaries for
+   `-008`, `-009` and the Cal state known-bug tests, a `cal-state-races` summary step and `twenty-obs` artefacts; F11 `-009`
+   PR trials 13 → 20 after a budget recheck.
+6. **471st test**: stated in §11 (from `dae02ed`, X8's review fix).
+7. **Release.** After the owner merges, dispatch exactly as §2.8 (tag `p6-phase2`, target
+   `a82521ad0e258ea3e5f9b649b389745cd96280a9`, run_ids `"40037355173 40039351021"`) before 2026-11-06, and report the release
+   URL.
+
+Not changed by the owner, so kept as proposed: Q1 (run B pairs with A), Q2 (CI title fix), Q3 (X9 as its own PR, now F9), Q4
+(F-C1 as a comment on #29815). Q6 (severities) got no answer: README keeps "(proposed)" for X04, X05, F-M3 and F-M2.
+
 ## Appendix A. Scratch scripts (never committed)
 
 In the session scratchpad: `runs/` (job JSON per run), `art/<run>/` (artefacts), `logs/` (job logs), `scripts/summ.py`
@@ -852,7 +934,7 @@ need them: it copies the cells from this plan. To re-derive a cell: `gh run down
 histogram fields named in §2.5 (`trialsRequested`, `trials`, `attempts[].oracle.suspectedBug`, `invalidTrials`, `reruns`,
 `startedAt`, `finishedAt`).
 
-## Appendix B1. Medusa: X04 + F-M3 (+ F-M4 if labelled), for the owner to file (not filed by P6)
+## Appendix B1. Medusa: X04 + F-M3 + F-M4, for the owner to file (not filed by P6)
 
 Template: `medusajs/medusa` `.github/ISSUE_TEMPLATE/bug_report_v2.yml` ("Bug report for v2.0", form), checked at
 `029fb31fd077ab9c6d6fd9d68c676c17c71294c7`. Duplicate search: none (§2.12). Title prefix from the template: `[Bug]: `.
@@ -881,7 +963,7 @@ Template: `medusajs/medusa` `.github/ISSUE_TEMPLATE/bug_report_v2.yml` ("Bug rep
 > - N = 10: 948 of 950 attempts have more than one 200, and 945 of 950 leave `inventory_level.reserved_quantity` above the
 >   sum of the live reservations (4 to 7 for a quantity-1 order). The product can then not be deleted ("Cannot remove
 >   following inventory item(s) since they have reservations").
-> - (F-M4, if labelled) N = 10 on a **captured** order: the payment holds one refund of the captured amount (no double
+> - (F-M4) N = 10 on a **captured** order: the payment holds one refund of the captured amount (no double
 >   refund), but `order_summary.totals.refunded_total` is twice the refund rows in 684 of 953 attempts.
 >
 > **Expected behavior.** Exactly one cancel takes effect; the other requests fail with a 4xx and change nothing. The order has
@@ -1023,47 +1105,78 @@ Template and commit as C2. Duplicate search: none (§2.12).
 >
 > **Evidence.** Spec `tests/cal/races/cal-race-009-double-confirm.spec.ts`; CI evidence as in F-C2.
 
-## Appendix D1. Twenty: `P6-TW-RACE-004` (channel per Q5; text in the bug template shape)
+## Appendix D1. Twenty: `P6-TW-RACE-004`, private email to security@twenty.com (the owner sends it; not sent by P6)
 
-Template: `twentyhq/twenty` `.github/ISSUE_TEMPLATE/report-bug.md`, checked at `c13b414b7a5a8a0a9c4f967be40bfa2c5a3a175e`.
-Twenty's `.github/SECURITY.md` asks for security reports by email to security@twenty.com, kept confidential. Proposed channel:
-that email with this text. Duplicate search: none (§2.12).
+Twenty's `.github/SECURITY.md` (checked at `c13b414b7a5a8a0a9c4f967be40bfa2c5a3a175e`) asks for vulnerability reports by email to
+security@twenty.com, kept confidential until a fix ships. No public GitHub issue is drafted (owner, §15 item 2). Duplicate
+search: none (§2.12).
 
-> **Title.** A password-reset token can be redeemed many times by parallel requests
->
-> **Bug Description.** Ten parallel `updatePasswordViaResetToken` mutations (`POST /metadata`) with one valid reset token
-> **all succeed** (250 of 250 attempts, 10 of 10 every time). A replay after a finished redemption is refused ("Token is
-> invalid"), so the single-use check exists but is not atomic. Screenshots: not applicable (API).
->
-> **Expected behavior.** Exactly one redemption succeeds; the others get "Token is invalid".
->
-> **Technical inputs.** `auth.resolver.ts` `updatePasswordViaResetToken` (L1299–1311 at `c13b414b`) runs
-> `validatePasswordResetToken` (a `findOne` for an unrevoked, unexpired token, `reset-password.service.ts` L254–288), then
-> `authService.updatePassword`, then `invalidatePasswordResetToken` (an unconditional `update` of `revokedAt`, L290–309). There
-> is no lock or conditional update between the check and the revoke. A conditional revoke first (`UPDATE … SET revokedAt = now()
-WHERE value = :hash AND revokedAt IS NULL`, and proceed only when one row changed) closes the window. Observed on image
-> `twentycrm/twenty:v2.44.0`; the code path is the same at `main` `c13b414b`. Reproduction:
-> https://github.com/Jayami123/k6-load-concurrency-suite, spec `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts`.
+```text
+To: security@twenty.com
+Subject: Password-reset token can be redeemed many times by parallel requests
 
-## Appendix D2. Twenty: `P6-OBS-TW-001` (channel per Q5; text in the bug template shape)
+Hello Twenty security team,
 
-Template and commit as D1. Duplicate search: none (§2.12).
+We found that one password-reset token can be redeemed many times when the redemptions arrive in parallel.
 
-> **Title.** `POST /graphql` and `POST /metadata` with an empty body or `{}` never answer, also without authentication
->
-> **Bug Description.** A `POST /graphql` or `POST /metadata` with `Content-Type: application/json` and an empty body, or the
-> body `{}`, gets no response: no status, no bytes, with or without an `Authorization` header. The server never closes the
-> socket: 20 such requests held for 400 s were all still open (past Node's 300 s `requestTimeout`), with and without
-> authentication. The server log has no line for them. `{"foo":1}` gets a 400 within 10 ms and a valid query a 200, so the
-> server is up. In CI the 8 combinations (2 endpoints × 2 bodies × with and without auth) hang in every run (8 of 8 in runs
-> 40037355173 and 40039351021). Ten hung requests do not slow a valid query (200 under 1 s).
->
-> **Expected behavior.** A 4xx (for example 400 "Must provide query string") at once, as for `{"foo":1}`.
->
-> **Technical inputs.** Observed on image `twentycrm/twenty:v2.44.0` (fork pin `7cbdfec6`); not re-run on `main` `c13b414b`.
-> The cause in the source was not traced. Impact: an unauthenticated client can hold server sockets open indefinitely.
-> Reproduction: https://github.com/Jayami123/k6-load-concurrency-suite, specs `tests/twenty/tw-obs/tw-obs-001-empty-body-hang.spec.ts`
-> and `tw-obs-001-hung-requests-resource.spec.ts`.
+What we see
+- Ten parallel updatePasswordViaResetToken mutations (POST /metadata) with one valid reset token all succeed.
+- This happened in every attempt we ran: 250 of 250 in our CI runs (10 of 10 redemptions succeeded each time).
+- A replay after a finished redemption is refused ("Token is invalid"), so the single-use check exists but is not atomic.
+
+Where it is
+- auth.resolver.ts updatePasswordViaResetToken (L1299-1311 at c13b414b) calls validatePasswordResetToken (a findOne for an
+  unrevoked, unexpired token; reset-password.service.ts L254-288), then authService.updatePassword, then
+  invalidatePasswordResetToken (an unconditional update of revokedAt; L290-309). Nothing locks or conditions the update
+  between the check and the revoke.
+- A conditional revoke first (UPDATE ... SET revokedAt = now() WHERE value = :hash AND revokedAt IS NULL, and continue only
+  when one row changed) would close the window.
+
+Impact
+- Anyone holding a reset token (for example from a forwarded or intercepted reset email) can race the legitimate user and set
+  the password more than once with the same token. Each redemption changes the password hash.
+
+Environment
+- Self-hosted image twentycrm/twenty:v2.44.0; the code path is the same at main c13b414b.
+- Our test and its CI evidence are in a public QA repository; we can share the exact links and the request shape on request.
+
+We are happy to help verify a fix. Please let us know if you need anything else.
+```
+
+## Appendix D2. Twenty: `P6-OBS-TW-001`, private email to security@twenty.com (the owner sends it; not sent by P6)
+
+Same policy and commit as D1. No public GitHub issue is drafted. Duplicate search: none (§2.12).
+
+```text
+To: security@twenty.com
+Subject: Unauthenticated requests with an empty JSON body hold server sockets open indefinitely
+
+Hello Twenty security team,
+
+We found that POST /graphql and POST /metadata never answer a request whose JSON body is empty or {}, and the server never
+closes those sockets, with or without an Authorization header.
+
+What we see
+- Content-Type: application/json with an empty body, or the body {}, on POST /graphql or POST /metadata: no status and no
+  bytes, ever. Same result without credentials.
+- Twenty such requests held for 400 s were all still open (past Node's 300 s requestTimeout), with and without
+  authentication. The server log has no line for them.
+- The body {"foo":1} gets a 400 within 10 ms and a valid query a 200, so the server is otherwise healthy.
+- In our CI the eight combinations (two endpoints x two bodies x with and without auth) hang in every run.
+
+Impact
+- An unauthenticated client can hold server sockets (and whatever per-request resources they keep) open indefinitely. In our
+  test, ten held requests did not slow a valid query, so we have not shown a denial of service; we did not test larger
+  numbers.
+
+Environment
+- Self-hosted image twentycrm/twenty:v2.44.0; not re-run on main c13b414b. We did not trace the cause in the source.
+- Our tests and CI evidence are in a public QA repository; we can share the exact links on request.
+
+Expected: an immediate 4xx (for example 400 "Must provide query string"), as for {"foo":1}.
+
+We are happy to help verify a fix.
+```
 
 ## Appendix E. Documenso: `P6-OBS-DOC-001` (refresh of Task 5 Appendix A)
 
@@ -1075,3 +1188,29 @@ search: none (§2.12). Replace its last evidence sentence ("CI run links are add
 > `tests/documenso/api/doc-obs-001-signin-errors.spec.ts` in https://github.com/Jayami123/k6-load-concurrency-suite.
 
 This is a status-code contract bug, not a security report, so the public bug form fits Documenso's policy.
+
+## Appendix F. Documenso: `P6-OBS-DOC-003`, private advisory draft (the owner decides whether to send it; not sent by P6)
+
+Owner label: **finding (low)**, no test, no public issue (§15 item 1, 6c). Documenso's `SECURITY.md` (checked at
+`8707e33c124e4b1a68dde92d5e05178c9aabd0be`) prefers GitHub's private vulnerability reporting form
+(https://github.com/documenso/documenso/security/advisories/new), else security@documenso.com. Fields of that form:
+
+> **Title.** Sign-in validation errors echo the submitted password and CSRF token in the response body
+>
+> **Affected product / versions.** `documenso/documenso`, `main` at `8707e33c` (also the self-hosted fork at `f4105e47`).
+>
+> **Severity (proposed).** Low. The value goes back only to the client that sent it.
+>
+> **Description.** `POST /api/auth/email-password/authorize` validates its JSON body with `sValidator('json', ZSignInSchema)`
+> (`packages/auth/server/routes/email-password.ts` L66) and no error hook, so a validation failure returns 400 with the
+> validator's default body, which includes the submitted input. A body without `csrfToken` returns the `email` and the
+> `password` in `data`; a password shorter than 6 characters returns the `password` and the `csrfToken`.
+>
+> **Impact.** Any layer that logs response bodies (a reverse proxy, an APM agent, a browser or mobile error reporter) then
+> stores a user's password in clear text. No other user's data is exposed.
+>
+> **Suggested fix.** Pass a hook to `sValidator` that returns only the issue codes and paths, never `data`, for this route
+> (and the other auth routes that use the same pattern).
+>
+> **Reproduction.** Send the two request bodies above to the route and read the 400 body. Observed in a local probe on
+> 2026-10-23 (two samples per body); the code is the same at `main` `8707e33c`.
