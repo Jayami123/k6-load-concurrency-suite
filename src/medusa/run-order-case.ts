@@ -107,6 +107,14 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
   const cleanupViolations: string[] = [];
   const reportedLeaked: string[] = [];
   const reportedProductIds: string[] = [];
+  /** Runs one cleanup step; a throw (DB read, network, admin 5xx) is a TEST BUG and the next step still runs. */
+  const guard = async (kind: string, key: string, step: () => Promise<void>): Promise<void> => {
+    try {
+      await step();
+    } catch (err) {
+      cleanupViolations.push(cleanupFailure(kind, key, err));
+    }
+  };
 
   try {
     // One attempt = fresh product and checkout order, one burst of two requests, oracle, cleanup.
@@ -225,74 +233,72 @@ export async function runOrderCase(input: RunOrderCaseInput): Promise<RunOrderCa
         return record;
       } finally {
         // Cleanup, plan §9. A route the product state blocks leaves leaked data (D49), not a failure.
+        // Each step is guarded, so a failing step never skips the later ones or hides the attempt's own error.
         if (orderId) {
-          const { status } = await readOrderState(
-            input.pool,
-            orderId,
-            inventoryItemId,
-            input.catalog.locationId,
-          );
-          const open = await selectRows<{ id: string }>(input.pool, OPEN_FULFILLMENTS_SQL, [
-            orderId,
-          ]);
-          for (const f of open) {
-            if (status === "canceled") {
-              reportedLeaked.push(`fulfillment ${f.id} of canceled order ${orderId} (X05, D49)`);
-              continue;
+          await guard("order", orderId, async () => {
+            const { status } = await readOrderState(
+              input.pool,
+              orderId,
+              inventoryItemId,
+              input.catalog.locationId,
+            );
+            const open = await selectRows<{ id: string }>(input.pool, OPEN_FULFILLMENTS_SQL, [
+              orderId,
+            ]);
+            for (const f of open) {
+              if (status === "canceled") {
+                reportedLeaked.push(`fulfillment ${f.id} of canceled order ${orderId} (X05, D49)`);
+                continue;
+              }
+              const res = await cancelFulfillment(input.token, orderId, f.id);
+              if (res.status !== 200) {
+                cleanupViolations.push(cleanupFailure("fulfillment", f.id, `HTTP ${res.status}`));
+              }
             }
-            const res = await cancelFulfillment(input.token, orderId, f.id);
-            if (res.status !== 200) {
-              cleanupViolations.push(cleanupFailure("fulfillment", f.id, `HTTP ${res.status}`));
+            if (status !== "canceled") {
+              const res = await cancelOrder(input.token, orderId);
+              if (res.status !== 200) {
+                cleanupViolations.push(
+                  cleanupFailure("order cancel", orderId, `HTTP ${res.status}`),
+                );
+              }
             }
-          }
-          if (status !== "canceled") {
-            const res = await cancelOrder(input.token, orderId);
-            if (res.status !== 200) {
-              cleanupViolations.push(cleanupFailure("order cancel", orderId, `HTTP ${res.status}`));
-            }
-          }
-          try {
-            await archiveOrder(input.token, orderId);
-          } catch (err) {
-            cleanupViolations.push(cleanupFailure("order archive", orderId, err));
-          }
+          });
+          await guard("order archive", orderId, () => archiveOrder(input.token, orderId));
         }
         if (inventoryItemId) {
-          const rows = await selectRows<{ id: string }>(input.pool, ORDER_RESERVATIONS_SQL, [
-            inventoryItemId,
-          ]);
-          for (const row of rows) {
-            // adminJson throws on 401 and 5xx; catch it so product and customer cleanup still run.
-            try {
-              const status = await deleteReservation(input.token, row.id);
-              if (status !== 200) {
-                cleanupViolations.push(cleanupFailure("reservation", row.id, `HTTP ${status}`));
-              }
-            } catch (err) {
-              cleanupViolations.push(cleanupFailure("reservation", row.id, err));
+          await guard("reservations", inventoryItemId, async () => {
+            const rows = await selectRows<{ id: string }>(input.pool, ORDER_RESERVATIONS_SQL, [
+              inventoryItemId,
+            ]);
+            for (const row of rows) {
+              await guard("reservation", row.id, async () => {
+                const status = await deleteReservation(input.token, row.id);
+                if (status !== 200) {
+                  cleanupViolations.push(cleanupFailure("reservation", row.id, `HTTP ${status}`));
+                }
+              });
             }
-          }
+          });
         }
         if (productId) {
           try {
             await deleteProduct(input.token, productId);
           } catch (err) {
-            const phantom = await selectRows<{ id: string }>(input.pool, PHANTOM_RESERVED_SQL, [
-              leakPrefix,
-            ]);
-            if (phantom.some((row) => row.id === productId)) {
-              reportedProductIds.push(productId);
-              reportedLeaked.push(`product ${productId} (F-M3, D49)`);
-            } else {
-              cleanupViolations.push(cleanupFailure("product", productId, err));
-            }
+            await guard("product", productId, async () => {
+              const phantom = await selectRows<{ id: string }>(input.pool, PHANTOM_RESERVED_SQL, [
+                leakPrefix,
+              ]);
+              if (phantom.some((row) => row.id === productId)) {
+                reportedProductIds.push(productId);
+                reportedLeaked.push(`product ${productId} (F-M3, D49)`);
+              } else {
+                cleanupViolations.push(cleanupFailure("product", productId, err));
+              }
+            });
           }
         }
-        try {
-          await deleteCustomersByEmail(input.token, email);
-        } catch (err) {
-          cleanupViolations.push(cleanupFailure("customer", email, err));
-        }
+        await guard("customer", email, () => deleteCustomersByEmail(input.token, email));
       }
     };
 

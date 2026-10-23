@@ -97,6 +97,14 @@ export async function runPromoCase(input: RunPromoCaseInput): Promise<RunPromoCa
   const runner = createRerunRunner(spreadPolicyFromEnv(), input.trials);
   const runSuspected: string[] = [];
   const cleanupViolations: string[] = [];
+  /** Runs one cleanup step; a throw (DB read, network, admin 5xx) is a TEST BUG and the next step still runs. */
+  const guard = async (kind: string, key: string, step: () => Promise<void>): Promise<void> => {
+    try {
+      await step();
+    } catch (err) {
+      cleanupViolations.push(cleanupFailure(kind, key, err));
+    }
+  };
 
   try {
     // One attempt = fresh product, campaign/promotion and N carts, one burst, oracle, cleanup.
@@ -206,16 +214,14 @@ export async function runPromoCase(input: RunPromoCaseInput): Promise<RunPromoCa
       } finally {
         // Cleanup, plan §9: live orders by email prefix (ghost orders included), product, promotion, campaign,
         // customers.
-        const live = await selectRows<{ id: string }>(input.pool, LIVE_ORDERS_FOR_EMAIL_SQL, [
-          emailLike,
-        ]);
-        for (const order of live) {
-          try {
-            await cancelAndArchive(input.token, order.id);
-          } catch (err) {
-            cleanupViolations.push(cleanupFailure("order", order.id, err));
+        await guard("orders", emailLike, async () => {
+          const live = await selectRows<{ id: string }>(input.pool, LIVE_ORDERS_FOR_EMAIL_SQL, [
+            emailLike,
+          ]);
+          for (const order of live) {
+            await guard("order", order.id, () => cancelAndArchive(input.token, order.id));
           }
-        }
+        });
         if (productId) {
           try {
             await deleteProduct(input.token, productId);
