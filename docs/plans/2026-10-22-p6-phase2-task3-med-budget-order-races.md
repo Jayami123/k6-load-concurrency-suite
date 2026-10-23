@@ -1822,7 +1822,8 @@ No open questions remain. The build runs §14 Steps 0 to 12 and stops after Step
 
 ## Closeout notes
 
-Filled in before the PR merges.
+The findings, deviations and rule slips were filled in before PR #32 merged. The merge SHA and the first `main` run
+were added after the merge, in the follow-up docs PR.
 
 - Merge SHA: `8cccc568f5bf36440080e14bb34e9127bc1c82fb` (PR
   [#32](https://github.com/Jayami123/k6-load-concurrency-suite/pull/32), merge commit, 2026-10-23, on the owner's word).
