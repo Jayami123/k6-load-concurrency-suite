@@ -36,6 +36,15 @@ Recorded as given by the owner for this task. Each one is also listed with its s
 - **O7 (branch name): agreed.** `feat/2026-10-23-p6-cal-state-races`.
 - **O8 (priorities): agreed.** `-008` P2, `-009` P1.
 - **O9 (email gap): agreed.** Record the gap (D9); no harness change in this task.
+- **O6 (labels): decided 2026-10-23.** F-C1 (`-006`, `-008`), F-C2 (`-007`) and F-C3 (`-009`) are **PRODUCT BUG**, from
+  150 of 150 attempts across runs 39932990882, 39935674101 and 39938126238. Implemented as the Medusa X04 pattern
+  (`med-race-008`): each spec keeps a guards test that must pass, and adds a known-bug test under `test.fail()` that
+  asserts the labelled lines are absent. The owner's wording "wrap each case in test.fail()" would also hide guard
+  failures (setup, 5xx, cleanup, leak check) as passes, so `test.fail()` wraps the labelled assertion only. Run links and a
+  one-line reason are in each spec's comment.
+- **O13 (red runs 117 and 121): root causes recorded in the closeout, no rerun.** Run 117 is a proven hook-timeout failure,
+  fixed by PR #36 on `main`. Run 121 is one intermittent Medusa oversell in an unmapped extra, not reproduced in any later
+  run; left unlabelled for the owner.
 
 ## 1. Goal, scope and the cases covered
 
@@ -1170,4 +1179,27 @@ Filled in as the work goes. Final values are written at the end of the build and
   - F-C3 (`-009`): final `accepted` with two `BOOKING_CREATED` and zero `BOOKING_CANCELLED` in 50 of 50 attempts.
     Email is not observed (`emailObservable: false`, D9).
 - **Labels: not applied.** O6 asks for the owner's decision after these three runs. No test has changed to assert or use `test.fail()`.
+- **Labels applied (O6, O13):** `labelled` set per spec (`F-C1` for `-006` and `-008`, `F-C2` for `-007`, `F-C3` for `-009`);
+  the runner keeps labelled lines out of the guards verdict and returns them as `labelled`; each spec has a known-bug test
+  under `test.fail()`. Local run with `RACE_TRIALS=3` (Cal up, then down, exit 0): 12 of 12 expected outcomes, no unexpected
+  pass or fail. Backlog and README rows updated (`docs/BACKLOG.md` "Cal", README "Cal state races (Phase 2)" and "Known
+  product bugs").
+- **Red run 117** (push, `main`, head `dc95c29`, feat #34, run `39923528658`): `medusa-smoke` (2 failed) and
+  `medusa-cancel-extras` (1 failed). Cause proven from the log: `"beforeAll" hook timeout of 60000ms exceeded` in
+  `med-race-008`, `-009` and `-014`. The describe-level `timeout` does not cover hooks; the hooks needed their own timeout.
+  Fixed by PR #36 (`97d7a48`, on `main` as `73db10f`): the hooks call `test.setTimeout`. Evidence after the fix: PR run
+  `39925017942` (`97d7a48`) green in both jobs; `main` runs `39927945708` (`73db10f`) and `39930717584` (`73db10f`) green.
+  The `User with email: admin@qa.local, already exists` lines in the same logs are logged by the seed and are not failures.
+- **Red run 121** (pull_request, `docs/2026-10-23-p6-task3b-closeout`, head `1bd71e4`, run `39926614996`): `medusa-smoke`
+  one failed: `med-race-001` extra `S=1 vs N=2` returned verdict `fail`. Its histogram (`extra-s1-n2.json`, from artifact
+  `race-histograms-medusa`) shows a product oversell: 2 orders for 1 unit (`PRODUCT BUG: oversold; ... orderCount 2 !== S 1;
+reservationQty 1 !== orderCount 2`) in the warm-up and in the trials, and a TEST BUG line `leak live orders` for the
+  case's own leftover orders. Classification: an intermittent product race (oversell under contention), not a test bug;
+  the leftover-order leak is not explained. The same extra passed in runs `39927945708`, `39930717584`, `39932990882`,
+  `39935674101` and `39938126238` (`medusa-smoke` green in each). Not labelled; the owner decides whether it becomes a
+  backlog item.
+- **Environment note:** at the start of the local labelled-spec run the Docker daemon was down (`Cannot connect to the Docker
+daemon`), so `up:cal` exited 1 in 1 second. The session-start hook's `sudo dockerd` brought it back; the retry exited 0.
+  Not a product or CI issue.
+- **Deviation (labels):** `test.fail()` wraps the labelled assertion, not the whole case (see O6 above).
 - **Deviations added in the build:** Documenso change limited to import paths and the `check` argument (7.1 said so); the Cal cancel helper is a copy of a private helper in `run-case.ts` (not edited); `subscribeWebhook`, `unsubscribeWebhook`, `resolveConfirmSetup` and `waitQuiet` were added in step 5 (not in the plan's file list).

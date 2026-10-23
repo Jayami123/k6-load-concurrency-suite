@@ -19,19 +19,21 @@ Open items that a task or the owner deferred. Each line names where it came from
 
 ## Cal
 
-- **F-C1 as a stable expected failure** (from the Task 4 plan, owner O6; SUSPECTED). A private link with `maxUsageCount` N
-  admits every parallel booking, not N: `P6-CAL-RACE-006` (N=1) and `-008` (N=3) in the step-4 local runs and the probe.
-  **Done when** 3 full-count CI runs of `cal-state-races` reproduce it, the owner labels `F-C1` as PRODUCT BUG, and
-  `labelled: ["F-C1"]` (or a `test.fail()` on the guard line) is added to both specs. The arithmetic and the run links go
-  into the plan's closeout.
-- **F-C2 as a stable expected failure** (SUSPECTED). Confirm ‖ cancel on a PENDING booking ends accepted with both
-  `BOOKING_CREATED` and `BOOKING_CANCELLED` delivered: `P6-CAL-RACE-007`. **Done when** the same three-run evidence and an
-  owner label exist, and the spec labels `F-C2`.
-- **F-C3 as a stable expected failure** (SUSPECTED). Confirm ‖ confirm on a PENDING booking delivers two
-  `BOOKING_CREATED` webhooks: `P6-CAL-RACE-009`. **Done when** the same evidence and label exist, and the spec labels `F-C3`.
+- **F-C1, PRODUCT BUG (owner label 2026-10-23, O6).** A private link with `maxUsageCount` N admits every parallel
+  booking, not N: `P6-CAL-RACE-006` (N=1) and `-008` (N=3). Evidence: 150 of 150 attempts across the full-count runs
+  [39932990882](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39932990882),
+  [39935674101](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39935674101) and
+  [39938126238](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39938126238). Today it is a known-bug
+  test under `test.fail()` in each spec. **Done when** a product fix ships, the known-bug tests turn red, and the
+  `test.fail()` and the label are removed in the same change.
+- **F-C2, PRODUCT BUG (owner label 2026-10-23, O6).** Confirm and cancel on one PENDING booking both succeed; the booking
+  ends accepted and both side effects fire: `P6-CAL-RACE-007`. Same evidence runs and the same removal rule.
+- **F-C3, PRODUCT BUG (owner label 2026-10-23, O6).** Two confirms on one PENDING booking both succeed and two
+  `BOOKING_CREATED` webhooks fire: `P6-CAL-RACE-009`. Same evidence runs and the same removal rule.
+- **Run 121 (docs branch, PR, `1bd71e4`) red: an unmapped Medusa extra, not labelled.** `med-race-001` extra `S=1 vs N=2`
+  oversold once (2 orders for 1 unit) in its 3-trial run; a leftover-order leak line was also reported. It passed in every
+  later run. Owner decision: label it or leave it as an observation. Plan closeout records the evidence.
 - **Cal email capture** (harness follow-up H-email, plan D9). The `P6-CAL-RACE-007` email half cannot be asserted until a
   mail catcher runs in `docker/cal.compose.yml`. Not in P6 without a harness change.
 - **Heap default under `NODE_OPTIONS`** (harness follow-up H-heap, plan §3.1.1). The Cal adapter applies its heap default
   only when `NODE_OPTIONS` is unset, so a sandbox that sets `--use-openssl-ca` loses it and `up:cal` runs out of memory.
-- **`cal-smoke` worst-case margin** (plan O10). At the 40-minute `up` cap the job's worst case is 57 min against 60. A 30-min
-  cap would give 47 min. Owner decision.
