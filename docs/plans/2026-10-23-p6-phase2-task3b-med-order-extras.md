@@ -787,8 +787,13 @@ Filled in after the build. PR #34 merged on the owner's word; this closeout was 
 
 - Merge SHA: `dc95c29` (PR #34, merge commit, 2026-10-23, on the owner's word).
 - First full-count `main` run after the merge: [39923528658](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39923528658),
-  `in_progress` when this closeout was written (started 2026-10-23 08:16 UTC). Its result and the `medusa-cancel-extras`
-  step times are to be recorded in a follow-up.
+  `failure` (completed 2026-10-23 08:37 UTC). Two jobs failed, and both were `beforeAll` 60 s hook timeouts, not product
+  or assertion failures:
+  - `medusa-cancel-extras`: `P6-MED-RACE-014` (the `-013` case passed at 50 trials, 56 s in CI).
+  - `medusa-smoke`: `P6-MED-RACE-008` and `-009`.
+    The fix is PR [#36](https://github.com/Jayami123/k6-load-concurrency-suite/pull/36), which gives each `beforeAll` its own
+    timeout. It merged as `73db10f` on the owner's word; its head `97d7a48` had a green run and a clean CodeRabbit review.
+    The local 50-trial proof of `-014` passed in 3.0 min. `medusa-order-races`, `cal-smoke` and `documenso-smoke` passed.
 - Red `main` run found while writing this: [39917207104](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39917207104)
   (push of the docs merge `937b57d`, 2026-10-23 07:21 UTC) finished `failure`. The failing step was `medusa-smoke`'s
   "Race medusa (P6-MED-RACE-001, money, order-state, extras)": `P6-MED-RACE-008` and `-009` hit a 60 s `beforeAll`
