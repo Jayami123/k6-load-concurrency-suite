@@ -415,12 +415,14 @@ returns 404), and the database has no gift-card table. P6 never changes the Medu
 
 Plan: [2026-10-22-p6-phase2-task3-med-budget-order-races.md](docs/plans/2026-10-22-p6-phase2-task3-med-budget-order-races.md).
 
-| Case              | Burst                                                       | Asserted (fails the case)                                         | Labelled bugs (plan D67 to D70) | CI job               |
-| ----------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------- | -------------------- |
-| `P6-MED-RACE-005` | N=10 carts complete with a promotion in a usage budget K=3  | budget `used ≤ K`, HTTP 200s `≤ K`, losers 4xx, setup, cleanup    | F-M2 (annotation)               | `medusa-order-races` |
-| `P6-MED-RACE-012` | N=10 carts complete with a promotion with a usage limit L=3 | `promotion.used ≤ L`, HTTP 200s `≤ L`, losers 4xx, setup, cleanup | F-M2 (annotation)               | `medusa-order-races` |
-| `P6-MED-RACE-008` | two parallel cancels of one order (P1 X04)                  | no 5xx, setup, cleanup                                            | X04, F-M3 (`test.fail()`)       | `medusa-smoke`       |
-| `P6-MED-RACE-009` | one cancel ‖ one fulfil of one order (P1 X05)               | no 5xx, setup, cleanup                                            | X05, F-M3 (`test.fail()`)       | `medusa-smoke`       |
+| Case              | Burst                                                       | Asserted (fails the case)                                                     | Labelled bugs (plan D67 to D70)         | CI job               |
+| ----------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------- | -------------------- |
+| `P6-MED-RACE-005` | N=10 carts complete with a promotion in a usage budget K=3  | budget `used ≤ K`, HTTP 200s `≤ K`, losers 4xx, setup, cleanup                | F-M2 (annotation)                       | `medusa-order-races` |
+| `P6-MED-RACE-012` | N=10 carts complete with a promotion with a usage limit L=3 | `promotion.used ≤ L`, HTTP 200s `≤ L`, losers 4xx, setup, cleanup             | F-M2 (annotation)                       | `medusa-order-races` |
+| `P6-MED-RACE-008` | two parallel cancels of one order (P1 X04)                  | no 5xx, setup, cleanup                                                        | X04, F-M3 (`test.fail()`)               | `medusa-smoke`       |
+| `P6-MED-RACE-009` | one cancel ‖ one fulfil of one order (P1 X05)               | no 5xx, setup, cleanup                                                        | X05, F-M3 (`test.fail()`)               | `medusa-smoke`       |
+| `P6-MED-RACE-013` | ten parallel cancels of one order (authorised)              | `reserved_quantity` = live reservations after cleanup; no 5xx, setup, cleanup | SUSPECTED: X04, F-M3 (annotation)       | `medusa-smoke`       |
+| `P6-MED-RACE-014` | ten parallel cancels of one captured order                  | refunds ≤ captured; no 5xx, setup, cleanup                                    | SUSPECTED: X04, F-M3, F-M4 (annotation) | `medusa-smoke`       |
 
 **Product bugs (labelled by the owner on 2026-10-23 after three full-count runs: [39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008), [39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035), [39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959); plan D67 to D70).** X04,
 X05 and F-M3 are under `test.fail()`; F-M2 is a labelled annotation (see "Known product bugs"). Each spec of `-008` and
