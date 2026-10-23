@@ -14,8 +14,15 @@ import {
   type MedusaCatalog,
 } from "./admin.ts";
 import { checkOversellInvariants, type OversellMode } from "./invariants.ts";
-import { leakCheck, waitForOversellStable } from "./oracle.ts";
-import { caseLeakPattern, casePrefix, cleanupFailure, prefixedEmail } from "./payloads.ts";
+import { selectRows } from "../oracles/pg.ts";
+import { LEAK_LIVE_ORDER_IDS_SQL, leakCheck, waitForOversellStable } from "./oracle.ts";
+import {
+  attemptEmailLike,
+  caseLeakPattern,
+  casePrefix,
+  cleanupFailure,
+  prefixedEmail,
+} from "./payloads.ts";
 import { completeCart, prepareReadyCarts } from "./store.ts";
 
 function parseCompleteBody(body: string): {
@@ -257,6 +264,18 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
 
         return record;
       } finally {
+        // Sweep the attempt's live orders by email (F-M5, plan D48). A losing checkout can leave an order that HTTP
+        // never returned, so the response ids above miss it. A failing sweep is a cleanup violation, never silent.
+        try {
+          const swept = await selectRows<{ id: string }>(input.pool, LEAK_LIVE_ORDER_IDS_SQL, [
+            attemptEmailLike(dataPrefix, trialLeaf),
+          ]);
+          for (const row of swept) {
+            if (!orderIds.includes(row.id)) orderIds.push(row.id);
+          }
+        } catch (err) {
+          cleanupViolations.push(cleanupFailure("order sweep", trialLeaf, err));
+        }
         for (const orderId of [...new Set(orderIds)]) {
           try {
             await cancelAndArchive(input.token, orderId);
