@@ -58,7 +58,7 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   **Test:** `tests/twenty/tw-obs/` (follow-up X8): 8 hang tests under `test.fail()` after the guards and 2 resource tests, run by the `twenty-obs` job.
   **Update 2026-10-24 (X8 probe on the pinned image, plan `docs/plans/2026-10-24-p6-x8-twenty-empty-body.md` §3):** the same requests without `Authorization` hang
   identically (12 of 12; owner-confirmed as the same PRODUCT BUG with a wider precondition). **Unauthenticated clients can hold sockets open indefinitely: 0 of 20 closed after 400 s, past
-  Node's 300 s `requestTimeout`.** Valid queries still answer in 5.5 to 14.0 ms with 20 hung requests held, and the server log has no line for any hang.
+  Node's 300 s `requestTimeout`** (the same 0 of 20 with a signed-in session). Valid queries still answer in 3.9 to 32.2 ms with 20 hung requests held, and the server log has no line for any hang.
 - **P6-TW-RACE-004, PRODUCT BUG (owner label, 2026-10-23, Task 7 plan §3.7 and §6.10).** Ten parallel redemptions of one
   reset token all succeed: 50 of 50 requests in the probe (5 trials), with a check-then-act window in
   `updatePasswordViaResetToken` (validate, update, revoke; no lock). The spec asserts the guards, then `test.fail()`, then

@@ -28,6 +28,8 @@ Recorded from the owner's review message of this session. Only these are owner a
 
 - **Q1** The unauthenticated hang is **confirmed as the same PRODUCT BUG `P6-OBS-TW-001`, with a wider precondition**. All 4 unauthenticated tests stay.
   The BACKLOG entry gains: unauthenticated clients can hold sockets open indefinitely (0 of 20 closed after 400 s, past Node's 300 s `requestTimeout`).
+  Evidence note (review fix, 2026-10-24): the first 400 s watch (§3.4) used a signed-in session and the unauthenticated requests had been watched for 30 s each (§3.2). The unauthenticated 400 s watch
+  was therefore run after the review (§3.4a): also 0 of 20 closed, so the sentence holds for both.
 - **Q2** The plan commit is also pushed to `plan/2026-10-24-p6-twenty-empty-body` (rule A10, no PR for it). The build continues on `feat/2026-10-24-p6-twenty-empty-body`.
 - **Q3** The existing budget convention stays. **Option (b)**: new job `twenty-obs`, timeout 27, worst case 16.43, margin 10.57. **Option (c) is rejected.**
 - **Q4** BACKLOG X8 is flipped to done in the branch's last commit (step 6).
@@ -58,34 +60,35 @@ Recorded from the owner's review message of this session. Only these are owner a
 
 ## 2. Assumptions the build depends on
 
-| #   | Assumption                                                                                              | Probe result                                                                              |
-| --- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| A1  | The hang still reproduces on the pinned image (`twentycrm/twenty:v2.44.0`, digest `sha256:01fb6d2c…`)   | **Yes**: 12 of 12 authenticated, 12 of 12 unauthenticated (§3.1, §3.2)                    |
-| A2  | `{"foo":1}` gets a 400 and a valid query a 200, each in well under 1 s, with and without auth           | **Yes**: 400 in 2.9 to 14.6 ms, 200 in 2.7 to 15.1 ms in every run (§3.1, §3.2)           |
-| A3  | `fetch` with `AbortSignal.timeout(5000)` aborts a hung request at 5 s with `TimeoutError`               | **Yes**: 4 of 4 at 5001 to 5003 ms; other bodies answer (§3.5)                            |
-| A4  | Ten held hung requests on an endpoint do not slow a valid query on that endpoint or the other endpoint  | **Yes**: 3.0 to 8.5 ms with 10 held; 5.5 to 14.0 ms with 20 held for 400 s (§3.3, §3.4)   |
-| A5  | Aborting the hung requests frees the server: a valid query answers 4.4 to 8.0 ms afterwards             | **Yes** (§3.3, §3.4)                                                                      |
-| A6  | The server closes a hung socket by itself at some point                                                 | **No**, 0 of 20 closed in 400 s, past Node's 300 s `requestTimeout` default (§3.4)        |
-| A7  | A hung request leaves no server log line                                                                | **Yes** (§3.6)                                                                            |
-| A8  | The seed login (`signInWorkspace`) works for the spec and no extra data is needed                       | **Yes**: the probe used `src/twenty/auth.ts` after `npm run seed:twenty`                  |
-| A9  | A client built on `node:http` with its own `Agent` can count its in-flight sockets and reach 0 on abort | **Yes** in a scratch prototype: 200 of 200 abort loops ended with 0 active sockets (§6.1) |
+| #   | Assumption                                                                                              | Probe result                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| A1  | The hang still reproduces on the pinned image (`twentycrm/twenty:v2.44.0`, digest `sha256:01fb6d2c…`)   | **Yes**: 12 of 12 authenticated, 12 of 12 unauthenticated (§3.1, §3.2)                                                       |
+| A2  | `{"foo":1}` gets a 400 and a valid query a 200, each in well under 1 s, with and without auth           | **Yes**: 400 in 2.9 to 14.6 ms, 200 in 2.7 to 15.1 ms in every run (§3.1, §3.2)                                              |
+| A3  | `fetch` with `AbortSignal.timeout(5000)` aborts a hung request at 5 s with `TimeoutError`               | **Yes**: 4 of 4 at 5001 to 5003 ms; other bodies answer (§3.5)                                                               |
+| A4  | Ten held hung requests on an endpoint do not slow a valid query on that endpoint or the other endpoint  | **Yes**: 3.0 to 8.5 ms with 10 held; 3.9 to 32.2 ms with 20 held for 400 s (§3.3, §3.4, §3.4a)                               |
+| A5  | Aborting the hung requests frees the server: a valid query answers 4.4 to 8.0 ms afterwards             | **Yes** (§3.3, §3.4)                                                                                                         |
+| A6  | The server closes a hung socket by itself at some point                                                 | **No**, 0 of 20 closed in 400 s, authenticated and unauthenticated, past Node's 300 s `requestTimeout` default (§3.4, §3.4a) |
+| A7  | A hung request leaves no server log line                                                                | **Yes** (§3.6)                                                                                                               |
+| A8  | The seed login (`signInWorkspace`) works for the spec and no extra data is needed                       | **Yes**: the probe used `src/twenty/auth.ts` after `npm run seed:twenty`                                                     |
+| A9  | A client built on `node:http` with its own `Agent` can count its in-flight sockets and reach 0 on abort | **Yes** in a scratch prototype: 200 of 200 abort loops ended with 0 active sockets (§6.1)                                    |
 
 ## 3. Probe results (2026-10-23, live app)
 
 ### 3.0 Commands and exit codes
 
-| #   | Command (in this order)                                           | Exit | Wall time | What it proves                                                                  |
-| --- | ----------------------------------------------------------------- | ---- | --------- | ------------------------------------------------------------------------------- |
-| 1   | `npm run check` on `origin/main` `ad14c6a` (baseline)             | 0    | 28 s      | **452** unit tests pass (`# tests 452`, `# pass 452`, `# fail 0`)               |
-| 2   | `bash scripts/bootstrap.sh twenty`                                | 0    | seconds   | `products/twenty-CRM` was an empty directory; cloned at `TWENTY_REF` `7cbdfec…` |
-| 3   | `npm run up:twenty`                                               | 0    | 3 m 07 s  | Stack up (images pulled inside `up`); image digest `sha256:01fb6d2c…`           |
-| 4   | `npm run seed:twenty`                                             | 0    | 81 s      | `created=true users=4`                                                          |
-| 5   | `probe-x8.mjs auth` (24 requests, 30 s timeout)                   | 0    | 6 m 00 s  | §3.1                                                                            |
-| 6   | `probe-x8.mjs unauth` (24 requests, 30 s timeout)                 | 0    | 6 m 00 s  | §3.2                                                                            |
-| 7   | `probe-x8.mjs parallel` (N=10 per endpoint, 2 s hold)             | 0    | 4 s       | §3.3                                                                            |
-| 8   | `probe-x8.mjs fetchcheck` (`fetch` + `AbortSignal.timeout(5000)`) | 0    | 20 s      | §3.5                                                                            |
-| 9   | `probe-x8.mjs watch 400` (10 held per endpoint, 400 s)            | 0    | 6 m 40 s  | §3.4                                                                            |
-| 10  | `npm run down:twenty`                                             | 0    | 2.2 s     | Stop; `docker ps -a` shows no container left                                    |
+| #   | Command (in this order)                                                                            | Exit    | Wall time      | What it proves                                                                  |
+| --- | -------------------------------------------------------------------------------------------------- | ------- | -------------- | ------------------------------------------------------------------------------- |
+| 1   | `npm run check` on `origin/main` `ad14c6a` (baseline)                                              | 0       | 28 s           | **452** unit tests pass (`# tests 452`, `# pass 452`, `# fail 0`)               |
+| 2   | `bash scripts/bootstrap.sh twenty`                                                                 | 0       | seconds        | `products/twenty-CRM` was an empty directory; cloned at `TWENTY_REF` `7cbdfec…` |
+| 3   | `npm run up:twenty`                                                                                | 0       | 3 m 07 s       | Stack up (images pulled inside `up`); image digest `sha256:01fb6d2c…`           |
+| 4   | `npm run seed:twenty`                                                                              | 0       | 81 s           | `created=true users=4`                                                          |
+| 5   | `probe-x8.mjs auth` (24 requests, 30 s timeout)                                                    | 0       | 6 m 00 s       | §3.1                                                                            |
+| 6   | `probe-x8.mjs unauth` (24 requests, 30 s timeout)                                                  | 0       | 6 m 00 s       | §3.2                                                                            |
+| 7   | `probe-x8.mjs parallel` (N=10 per endpoint, 2 s hold)                                              | 0       | 4 s            | §3.3                                                                            |
+| 8   | `probe-x8.mjs fetchcheck` (`fetch` + `AbortSignal.timeout(5000)`)                                  | 0       | 20 s           | §3.5                                                                            |
+| 9   | `probe-x8.mjs watch 400` (10 held per endpoint, 400 s)                                             | 0       | 6 m 40 s       | §3.4                                                                            |
+| 10  | `npm run down:twenty`                                                                              | 0       | 2.2 s          | Stop; `docker ps -a` shows no container left                                    |
+| 11  | (2026-10-24, after the review) `up:twenty` 2 m 28 s, `probe-x8.mjs watchunauth 400`, `down:twenty` | 0, 0, 0 | 6 m 41 s watch | §3.4a: 20 held with no `Authorization`, 400 s                                   |
 
 The stack was started and stopped only with `npm run up:twenty` and `npm run down:twenty`. Row 2 is the harness's own bootstrap script (the
 checkout was empty in this session). Read-only inspection: `docker logs` (§3.6) and one `docker exec` that counted established connections
@@ -138,12 +141,23 @@ endpoint, 3 on the other endpoint, one `{"foo":1}`, then all 10 aborted by the c
   `requestTimeout` (300 s), so the hang is not subject to that timer either. Every request stayed open until the client aborted it
   (`aborted` at 400.09 s for all 20).
 - **Valid queries at 400 s, with 20 held:** `/metadata` 14.0, 5.5, 6.4 ms; `/graphql` 7.2, 7.0, 6.2 ms (all 200). **Largest valid-query time seen
-  with hung requests in flight, anywhere in the probe: 14.0 ms.**
+  with hung requests in flight in this authenticated watch: 14.0 ms.** (The unauthenticated watch of §3.4a had a larger one, 32.2 ms; the probe maximum is 32.2 ms.)
 - **After the abort:** `/metadata` 8.0, 4.7, 6.4 ms; `/graphql` 4.6, 4.4, 6.1 ms (all 200).
 - **Server side:** after the probe process exited, `docker exec … /proc/net/tcp` counted **0** established connections to the app port, so the aborted
   sockets are closed on the server too (one read, not a continuous trace).
 - Consequence for the spec: a hung request that a test does not abort pins a server socket for as long as the client keeps it, so every hung
   request is aborted in `finally` (§4 D8).
+
+### 3.4a The same 400 s hold without `Authorization` (added after the review, 2026-10-24)
+
+A code review noted that the 400 s watch of §3.4 used a signed-in session and that the unauthenticated requests had only been watched for 30 s each (§3.2). The watch was repeated with no `Authorization`
+header on a freshly started stack (`probe-x8.mjs watchunauth 400`: 10 empty-body requests on each endpoint, 20 sockets, client timeout above 400 s so only the server could end them).
+
+- **Server closed 0 of 20 sockets in 400 s** (no server-side `end` or `close`); every request stayed open until the client aborted it (`aborted` at 400.10 s for all 20). So the sentence "unauthenticated clients can
+  hold sockets open indefinitely" is now backed by a 400 s observation, not only by the 30 s of §3.2.
+- **Valid queries (also without `Authorization`) at 400 s, with 20 held:** `/metadata` 32.2, 8.0, 3.9 ms; `/graphql` 6.0, 5.3, 6.9 ms (all 200). **Largest valid-query time seen with hung requests in flight, anywhere
+  in the probe: 32.2 ms** (the first query of the batch; the other five are 3.9 to 8.0 ms).
+- **After the abort:** `/metadata` 7.5, 4.1, 6.5 ms; `/graphql` 3.7, 5.0, 3.0 ms (all 200). Server log for the window: 0 lines. Established connections to the app port afterwards: 0.
 
 ### 3.5 The client the spec will use: `fetch` with `AbortSignal.timeout(5000)`
 
@@ -166,10 +180,10 @@ any of the 68 hung requests (12 + 12 in the two matrices, 20 held for 2 s, 4 thr
 ### 3.7 What the probe proves, and what it does not
 
 - **Proves.** The hang reproduces on the pinned image, with and without auth, on both endpoints, for an empty body and `{}`; only those two bodies hang
-  of the four tried; the server stays responsive with 10 and 20 hung requests in flight; the server does not end a hung request within 400 s; aborting
+  of the four tried; the server stays responsive with 10 and 20 hung requests in flight; the server does not end a hung request within 400 s, with or without `Authorization` (§3.4, §3.4a); aborting
   frees the sockets; `fetch` + `AbortSignal.timeout` is a valid client for the spec; no log line marks the hang.
 - **Does not prove.** The cause (no source read); behaviour with N above 20 (descriptor or worker limits are untested); other methods, content types or
-  paths; a hang longer than 400 s; CI behaviour (runner speed). The 14.0 ms and 8.5 ms figures are one VM's numbers and are used only to set a
+  paths; a hang longer than 400 s; CI behaviour (runner speed). The 32.2 ms and 8.5 ms figures are one VM's numbers and are used only to set a
   threshold with headroom (§4 D4), never published.
 
 ### 3.8 Differences from the backlog evidence
@@ -195,7 +209,7 @@ the sense of a different outcome, and "hung requests block valid ones"; none occ
     15.1 ms (§3.1, `/graphql` valid query). 1000 / 15.1 = **66×** headroom for a slower CI runner, while a real stall (a hang lasts 5 s or more) is still
     5× or more above the bound.
   - **Resource threshold: the same 1000 ms** for a valid query while 10 requests are hung and after they are aborted. Largest valid-query time with
-    hung requests in flight: 14.0 ms (§3.4). 1000 / 14.0 = **71×** headroom. Using the guard value (not a looser one) means the resource test
+    hung requests in flight: 32.2 ms (§3.4a; 14.0 ms in the authenticated watch of §3.4). 1000 / 32.2 = **31×** headroom (71× over the authenticated maximum). Using the guard value (not a looser one) means the resource test
     asserts "no slower than the healthy server", which is the claim. If the hung requests did block the server, the valid query would not answer
     within its own 5 s client timeout, and the test would fail on `outcome` before the time check.
   - **Hang limit: 5000 ms** (brief). A 4xx must arrive before the `AbortSignal.timeout(5000)` fires.
@@ -950,7 +964,7 @@ New subsection text (no timing claims; numbers only come from GitHub Actions run
 **BACKLOG** (`docs/BACKLOG.md`).
 
 - Step 5, in the `P6-OBS-TW-001` entry: replace "**Test:** none in Task 7 (it is not a race). The guarded spec is follow-up X8 below." with the spec's location (`tests/twenty/tw-obs/`, 8 hang tests and 2 resource tests,
-  X8). Add the new evidence, one sentence each: the unauthenticated requests hang the same way (12 of 12, owner-confirmed as the same PRODUCT BUG with a wider precondition), valid queries still answer in 5.5 to 14.0 ms with
+  X8). Add the new evidence, one sentence each: the unauthenticated requests hang the same way (12 of 12, owner-confirmed as the same PRODUCT BUG with a wider precondition), valid queries still answer in 3.9 to 32.2 ms with
   20 hung requests held, and **unauthenticated clients can hold sockets open indefinitely (0 of 20 closed after 400 s, past Node's 300 s `requestTimeout`)**. Keep the label text unchanged.
 - Step 5, in X8: describe what was built (the job is `twenty-obs`), and change "expect `{}` to get a 400" to "a 4xx" (owner Q6).
 - Step 6 (after the PR exists): X8 line starts with `**X8 done in [PR #<n>](https://github.com/Jayami123/k6-load-concurrency-suite/pull/<n>)**` and keeps its "Done when" text. It is true on merge; if the owner prefers the flip after
@@ -1008,7 +1022,7 @@ last commit, Q5 socket check only, Q6 any 4xx and the post-abort query stays, Q7
   environment because it needs GraphQL). **Merge SHA:** not applicable yet (merge only on the owner's word, rule A6).
 - **Build commits (step: SHA):** 0b `4f04f4c` owner decisions; 1 `dd49f39` helper and 18 unit tests; 2 `e76c2c3` hang specs, project and script; 3 `6250705` resource check;
   4 `e2c1494` job `twenty-obs`; 5 `e5ade13` README and BACKLOG; 6 this closeout and the X8 flip. The plan is also on `plan/2026-10-24-p6-twenty-empty-body` (owner Q2).
-- **Unit tests:** 452 → 470 (+18: 5 `classify`, 13 client). `npm run check` exited 0 after every step with `# tests 470`, `# pass 470`, `# fail 0`. The new unit file also passed 20 runs in a row before its commit.
+- **Unit tests:** 452 → 470 (+18: 5 `classify`, 13 client) at the planned steps; **471 after the review fixes below** (+1: the https test, a count the plan did not list; the plan's per-step 470 is left as written). `npm run check` exited 0 after every step with `# tests 470`, `# pass 470`, `# fail 0`. The new unit file also passed 20 runs in a row before its commit.
 - **Live run through the harness (cloud VM, proof only, not published):** `npm run up:twenty` exit 0 (1 m 46 s); `npm run seed:twenty` exit 0 (`created=false`: the database volume
   persisted from the probe, so this was not a fresh DB); step 2 alone (8 tests): **8 passed in 42.1 s**, each hang test 5.0 s; step 3 (the whole project, 10 tests): **10 passed in 42.9 s**,
   8 hang tests 5.0 s each (expected failures), 2 resource tests 548 ms and 580 ms; `npm run down:twenty` exit 0, no container left. Playwright JSON: 8 × expected `failed`/`expected`,
@@ -1023,6 +1037,11 @@ last commit, Q5 socket check only, Q6 any 4xx and the post-abort query stays, Q7
   2. Prettier realigned the width of the README "Known product bugs" table when the two new rows were added; the only non-whitespace change in the existing rows is the separator line.
   3. `gh pr create` failed (GraphQL not available); the REST fallback of rule A3 was used with the same title and body.
   4. The step 2 and step 3 live runs were made on one stack start (step 2 by running the hang file alone), then the commits for steps 3 and 4 followed the run.
+  5. Review fixes on PR #50 (CodeRabbit, 2026-10-23): (a) **https:** `createPostClient` used `http.request` for every URL, so a remote `https:` base URL (allowed by `twentyBaseUrlFromEnv`) would have sent the bearer
+     header in cleartext to port 80. It now uses `https.request` and an `https.Agent` for `https:` URLs. A new unit test (471) points an `https:` URL at a raw TCP server and asserts the first byte is `0x16` (a TLS
+     ClientHello); on the old helper the same test sees `0x50` ("P" of POST) and fails. (b) **evidence:** the 400 s watch had used a signed-in session, so the unauthenticated 400 s claim was not yet observed;
+     §3.4a records the unauthenticated 400 s watch (0 of 20 closed), and the largest valid-query time with hung requests in flight is now 32.2 ms (D4: 31× headroom), updated in the plan, the `GUARD_MS` comment and BACKLOG.
+     (c) The "Docstring Coverage" warning (77.78% against 80%) was not acted on: the repo has no docstring rule and the warning is not a failure of any check.
 - **Rule slips:** my first evidence one-liner failed on the Playwright JSON (an annotation without a description); I fixed the script and re-ran it. No product result or committed file was affected.
 
 ## 13. Self-check (rule 20)

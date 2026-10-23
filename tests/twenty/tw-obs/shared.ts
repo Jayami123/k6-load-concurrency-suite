@@ -17,7 +17,7 @@ export type Endpoint = (typeof ENDPOINTS)[number];
 
 export const VALID_QUERY = '{"query":"{ __typename }"}';
 export const UNKNOWN_FIELD_BODY = '{"foo":1}';
-/** Guard and resource time limit (plan D4): 66x the largest guard time and 71x the largest valid-query time with hung requests, seen in the probe. */
+/** Guard and resource time limit (plan D4): 66x the largest guard time (15.1 ms) and 31x the largest valid-query time with hung requests in flight (32.2 ms), seen in the probe. */
 export const GUARD_MS = 1_000;
 /** Client timeout for a request that is expected to hang (brief): a 4xx must arrive before it. */
 export const HANG_LIMIT_MS = 5_000;
