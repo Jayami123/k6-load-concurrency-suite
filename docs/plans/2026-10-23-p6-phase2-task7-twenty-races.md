@@ -13,6 +13,10 @@ final version, `probe7-run1-INVALID.mjs` is the first run that the helper bug in
 
 Version 2 of this plan (2026-10-23), after the owner's decisions on version 1 (d82d3eb). The build follows §7 on the feature branch.
 
+**Build status (2026-10-23):** steps 1 to 11 are committed on the feature branch (`808a880` to `79baed2`) and pushed. Unit tests
+431 → 451. `npm run check` exits 0 after every step. No PR was requested, so none is open, and the `twenty-races` job has not run on
+GitHub yet (see §14).
+
 ### 0.1 Owner decisions applied in this version
 
 - **Labels.** `P6-TW-RACE-004` is **PRODUCT BUG** (50 of 50 parallel redemptions succeeded, §3.7). The spec runs all trials, asserts the
@@ -296,33 +300,34 @@ owner's call.
 
 ## 5. Files (exact paths)
 
-| Path                                                        | Status  | Step | Notes                                                                                                  |
-| ----------------------------------------------------------- | ------- | ---- | ------------------------------------------------------------------------------------------------------ |
-| `src/twenty/env.ts`                                         | CHANGED | 1    | `twentyMailpitUrlFromEnv`                                                                              |
-| `tests/unit/twenty-env.test.ts`                             | CHANGED | 1    | +1 test (Mailpit URL rule)                                                                             |
-| `src/twenty/mailpit.ts`                                     | NEW     | 2    | `latestMessageFor`, `resetTokenFrom`, `inviteFrom`, `waitForMessage`                                   |
-| `tests/unit/twenty-mailpit.test.ts`                         | NEW     | 2    | 5 tests                                                                                                |
-| `src/twenty/payloads.ts`                                    | NEW     | 3    | names, addresses, passwords (in memory)                                                                |
-| `tests/unit/twenty-payloads.test.ts`                        | NEW     | 3    | 3 tests                                                                                                |
-| `src/twenty/invariants.ts`                                  | NEW     | 4    | one `assert…` per oracle rule, and `overlapped`                                                        |
-| `tests/unit/twenty-invariants.test.ts`                      | NEW     | 4    | 7 tests                                                                                                |
-| `src/twenty/api.ts`                                         | NEW     | 5    | REST PATCH/POST/GET/DELETE, GraphQL calls, invitation, reset                                           |
-| `tests/unit/twenty-api.test.ts`                             | NEW     | 5    | 3 tests (fake fetch)                                                                                   |
-| `src/twenty/oracle.ts`                                      | CHANGED | 6    | `passwordHashMd5`, `resetTokenCounts`, `companyLiveRows`, `companyRowsByPrefix`, `memberCountByPrefix` |
-| `tests/unit/twenty-oracle.test.ts`                          | CHANGED | 6    | +1 test (SELECT-only and schema guard)                                                                 |
-| `src/twenty/member.ts`                                      | NEW     | 7    | `createInvitedMember`, `requestResetToken` (setup, TEST BUG on failure)                                |
-| `src/twenty/run-case.ts`                                    | NEW     | 7    | `setupTwentyContext`, `timed`, `runTwentyTrials`                                                       |
-| `playwright.config.ts`                                      | CHANGED | 7    | project `twenty-tw-races`, testDir `tests/twenty/tw-races`                                             |
-| `package.json`                                              | CHANGED | 7    | script `race:twenty-tw`                                                                                |
-| `tests/twenty/tw-races/tw-race-001-lost-update.spec.ts`     | NEW     | 7    | §6.9                                                                                                   |
-| `tests/twenty/tw-races/tw-race-005-disjoint-fields.spec.ts` | NEW     | 7    | §6.9                                                                                                   |
-| `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts`     | NEW     | 8    | §6.10 (PRODUCT BUG)                                                                                    |
-| `tests/twenty/tw-races/tw-race-006-reset-replay.spec.ts`    | NEW     | 8    | §6.11                                                                                                  |
-| `tests/twenty/tw-races/tw-race-002-kanban-position.spec.ts` | NEW     | 9    | §6.12                                                                                                  |
-| `tests/twenty/tw-races/tw-race-003-merge.spec.ts`           | NEW     | 9    | §6.13                                                                                                  |
-| `.github/workflows/perf.yml`                                | CHANGED | 10   | new job `twenty-races` (§8); `twenty-smoke` untouched                                                  |
-| `README.md`                                                 | CHANGED | 11   | "Twenty races" section, no timing claims                                                               |
-| `docs/BACKLOG.md`                                           | CHANGED | 11   | P6-OBS-TW-001 to PRODUCT BUG; follow-up task (§12.2 X7)                                                |
+| Path                                                        | Status  | Step | Notes                                                                                                                                               |
+| ----------------------------------------------------------- | ------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/twenty/env.ts`                                         | CHANGED | 1    | `twentyMailpitUrlFromEnv`                                                                                                                           |
+| `tests/unit/twenty-env.test.ts`                             | CHANGED | 1    | +1 test (Mailpit URL rule)                                                                                                                          |
+| `src/twenty/mailpit.ts`                                     | NEW     | 2    | `latestMessageFor`, `resetTokenFrom`, `inviteFrom`, `waitForMessage`                                                                                |
+| `tests/unit/twenty-mailpit.test.ts`                         | NEW     | 2    | 5 tests                                                                                                                                             |
+| `src/twenty/payloads.ts`                                    | NEW     | 3    | names, addresses, passwords (in memory)                                                                                                             |
+| `tests/unit/twenty-payloads.test.ts`                        | NEW     | 3    | 3 tests                                                                                                                                             |
+| `src/twenty/invariants.ts`                                  | NEW     | 4    | one `assert…` per oracle rule, and `overlapped`                                                                                                     |
+| `tests/unit/twenty-invariants.test.ts`                      | NEW     | 4    | 7 tests                                                                                                                                             |
+| `src/twenty/api.ts`                                         | NEW     | 5    | REST PATCH/POST/GET/DELETE, GraphQL calls, invitation, reset                                                                                        |
+| `tests/unit/twenty-api.test.ts`                             | NEW     | 5    | 3 tests (fake fetch)                                                                                                                                |
+| `src/twenty/oracle.ts`                                      | CHANGED | 6    | `passwordHashMd5`, `resetTokenCounts`, `companyLiveRows`, `companyRowsByPrefix`, `memberCountByPrefix`                                              |
+| `tests/unit/twenty-oracle.test.ts`                          | CHANGED | 6    | +1 test (SELECT-only and schema guard)                                                                                                              |
+| `src/twenty/member.ts`                                      | NEW     | 7    | `createInvitedMember`, `requestResetToken` (setup, TEST BUG on failure)                                                                             |
+| `src/twenty/run-case.ts`                                    | NEW     | 7    | `setupTwentyContext`, `timed`, `runTwentyTrials`                                                                                                    |
+| `tests/twenty/tw-races/guards.ts`                           | NEW     | 7    | shared guards: every trial ok, every burst overlapped, leak count 0 (deviation: not in `run-case.ts`, so `src/` does not import `@playwright/test`) |
+| `playwright.config.ts`                                      | CHANGED | 7    | project `twenty-tw-races`, testDir `tests/twenty/tw-races`                                                                                          |
+| `package.json`                                              | CHANGED | 7    | script `race:twenty-tw`                                                                                                                             |
+| `tests/twenty/tw-races/tw-race-001-lost-update.spec.ts`     | NEW     | 7    | §6.9                                                                                                                                                |
+| `tests/twenty/tw-races/tw-race-005-disjoint-fields.spec.ts` | NEW     | 7    | §6.9                                                                                                                                                |
+| `tests/twenty/tw-races/tw-race-004-reset-token.spec.ts`     | NEW     | 8    | §6.10 (PRODUCT BUG)                                                                                                                                 |
+| `tests/twenty/tw-races/tw-race-006-reset-replay.spec.ts`    | NEW     | 8    | §6.11                                                                                                                                               |
+| `tests/twenty/tw-races/tw-race-002-kanban-position.spec.ts` | NEW     | 9    | §6.12                                                                                                                                               |
+| `tests/twenty/tw-races/tw-race-003-merge.spec.ts`           | NEW     | 9    | §6.13                                                                                                                                               |
+| `.github/workflows/perf.yml`                                | CHANGED | 10   | new job `twenty-races` (§8); `twenty-smoke` untouched                                                                                               |
+| `README.md`                                                 | CHANGED | 11   | "Twenty races" section, no timing claims                                                                                                            |
+| `docs/BACKLOG.md`                                           | CHANGED | 11   | P6-OBS-TW-001 to PRODUCT BUG; follow-up task (§12.2 X7)                                                                                             |
 
 Unchanged: `src/races/*` (the shared race code; `dispatchSpreadMs`, `fireTogether`, `recordTrial`, `createRerunRunner` are used as they are),
 `src/twenty/auth.ts`, `scripts/*`, `scripts/ci/compose-pull.sh` (used as it is), `tests/twenty/races/` (the smoke self-test), the harness pin.
@@ -1148,6 +1153,11 @@ Step caps add up to more than the job timeout; that is deliberate (a step that h
 
 ### 8.6 Closeout values to fill in from the first `main` run
 
+Local proof run (cloud VM, not published, not a CI number): `RACE_TRIALS=50 npm run race:twenty-tw`, all six specs in one Playwright run,
+**173 s wall time** (2.9 min, including Playwright start-up), against the §8.4 estimate of 5.0 min and the 9-minute cap. Per spec, from the
+Playwright list: `-001` 4.8 s, `-002` 4.4 s, `-003` 8.7 s, `-004` 1.4 min, `-005` 3.7 s, `-006` 1.1 min. The first `main` run on GitHub is the
+number that counts; the rows of §8.3 stay as the budget until then.
+
 Measured row by row (pull, first boot, seed, race at 50 trials, total job time), with the run id. Until then §8.3 is the budget, and the estimates
 in §8.4 are not published numbers.
 
@@ -1241,16 +1251,30 @@ in §8.4 are not published numbers.
   and carried unchanged, with `overlapped` added (§6.6a).
 - **(e) Owner answers.** Only the decisions in §0.1 and §12.3 are recorded. Anything else is a plan decision, marked as such.
 
-## 14. Closeout notes (fill in before the PR merges)
+## 14. Closeout notes
 
-- **Merge SHA:** _pending_ (the build PR; this plan has no PR).
-- **CI runs:** _pending_. The first `main` run of `twenty-races` gives the measured rows for §8.6.
+- **Merge SHA:** not applicable yet. No PR was requested for the build, so nothing is merged. The feature branch head is `79baed2`.
+- **CI runs:** **none.** The branch has no CI runs (the read after the push returned 0), and nothing triggers `perf.yml` for a feature-branch push
+  without a PR. The `twenty-races` job is **unverified on GitHub**. Its first run is the measured row set for §8.6; a `workflow_dispatch` or a PR is
+  the owner's call.
+- **Local proof (not published):** unit tests 431 → 451 (+20: env 1, Mailpit 5, payloads 3, invariants 7, API 3, oracle 1). Full-count local race run
+  (50 trials): all six specs pass as the probe predicts. All 50 trials of `-001`, `-002`, `-003`, `-005` are valid and every burst overlapped;
+  `-004` shows 10 of 10 successes in every attempt (51 attempts: one spread-invalid attempt was rerun) and is recorded as the expected failure
+  with `test.fail()`; `-006` passes; the leak check (company rows with the run prefix) is 0 in every case. Throwaway members counted by prefix:
+  52 for `-004` (50 trials, one warm-up, one rerun).
 - **Findings (owner labels):**
-  - `P6-TW-RACE-004`: **PRODUCT BUG** (50 of 50 parallel redemptions accepted in the probe, §3.7). Expected failure recorded with `test.fail()`.
-  - `P6-OBS-TW-001`: **PRODUCT BUG** (12 of 12 hangs for empty and `{}` bodies on both endpoints, §3.9). BACKLOG updated; follow-up X7.
-  - `-001`, `-005`, `-006`, `-002`, `-003`: no bug in the probe (§3.3, §3.4, §3.6, §3.8).
-- **Deviations from the plan's first version:** spec location `tests/twenty/tw-races/` with project `twenty-tw-races` (§0.1); the job is new,
-  `twenty-smoke` unchanged; the guards run before `test.fail()` (owner); the overlap guard applies to every parallel case (D15).
-- **Environment note.** The session's instructions name `claude/awesome-noether-tu22g0`; the feature branch `feat/2026-10-23-p6-twenty-races`
-  is used (repo rule A1). No attribution lines on commits (repo rule A3).
-- **Rule slips:** none recorded so far.
+  - `P6-TW-RACE-004`: **PRODUCT BUG**. Expected failure recorded with `test.fail()` after the guards. A fix turns it red as "unexpectedly passed".
+  - `P6-OBS-TW-001`: **PRODUCT BUG** (BACKLOG). Follow-up X7 listed, not built (owner: "add a backlog follow-up task").
+  - `-001`, `-002`, `-003`, `-005`, `-006`: no bug in the probe or the local full-count run.
+- **Q6 answered by evidence:** `destroyTask` exists and returned no error in 50 of 50 trials of `-002`.
+- **Deviations from the plan:**
+  1. Specs live in `tests/twenty/tw-races/` with project `twenty-tw-races` (§0.1, C7). `twenty-smoke` untouched; its `race:twenty` still runs only the self-test.
+  2. `guards` is in `tests/twenty/tw-races/guards.ts`, not `src/twenty/run-case.ts` (no `@playwright/test` import in `src/`).
+  3. `runTwentyTrials` got a `parallel` flag (sequential cases record dispatch spread 0). Reason: the first local run of `-006` failed every trial as "runner too noisy": the gap between two sequential requests was counted as a dispatch spread. The guard caught it as TEST BUG; the fix is in `src/twenty/run-case.ts`.
+  4. The overlap guard runs on every parallel case (D15), not only `-004`. It is not applied to `-006`, which is sequential.
+  5. A `dispatchSpread`-invalid attempt is rerun by the framework (`-004`: 51 attempts for 50 trials). Recorded in the histogram, as the framework does.
+  6. The `-002` and `-003` specs are in the build (owner Q4).
+- **Rule slips:**
+  - Rule 11 (unit count): the plan said 5 tests for `tests/unit/twenty-mailpit.test.ts`, and the file first had 6. I did **not** edit the expected number. I merged two `latestMessageFor` tests into one that keeps every assertion, which gives the planned 5 and 437 after step 2.
+  - Two probe runs and one spec run failed on my own mistakes (a POST for PATCH, a wrong endpoint, a wrong mail filter, and the sequential spread). Each is recorded above or in §3.0; none changed a product result.
+- **Budget (§8.3):** worst case 22.63 min against a 33-minute job timeout, margin 10.37 min (≥ 10). The pull is counted at its 6-minute cap, as the owner asked. The race row is the 9-minute cap. No timeout was raised for `twenty-smoke`.
