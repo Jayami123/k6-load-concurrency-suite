@@ -1169,46 +1169,17 @@ jobs:
             echo "::error::race histograms contain a token pattern; not uploading"
             exit 1
           fi
-          # The Playwright JSON holds test titles, and the sign-in setup title names the cookie ("sets sessionId"), so this
-          # scan matches a cookie value (sessionId=...), not the bare word.
+          # Playwright's JSON config.metadata holds the repo's git diff (source text, including these scan patterns), so
+          # the scan reads only the test results: suites and errors (titles, assertion labels, codeframes).
           json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
-          # Diagnostic (run on f624147): prints each JSON key path and the pattern it matched, plus the string length.
-          # It never prints the matched text.
-          python3 - <<'PY'
-          import glob, json, re
-
-          alts = {
-              "api_": re.compile(r"api_[A-Za-z0-9]{8,}"),
-              "Bearer ": re.compile(r"Bearer "),
-              "sessionId=": re.compile(r'sessionId=[^;\s"]{8,}'),
-              "/verify-email/": re.compile(r"/verify-email/[A-Za-z0-9_-]+"),
-              "/sign/": re.compile(r"/sign/[A-Za-z0-9_-]{10,}"),
-          }
-          hits = []
-
-          def walk(node, path):
-              if isinstance(node, dict):
-                  for key, value in node.items():
-                      walk(value, f"{path}.{key}")
-              elif isinstance(node, list):
-                  for i, value in enumerate(node):
-                      walk(value, f"{path}[{i}]")
-              elif isinstance(node, str):
-                  for name, rx in alts.items():
-                      if rx.search(node):
-                          hits.append(path)
-                          print(f"::error::{path} (string length {len(node)}) matches {name!r}")
-
-          for f in sorted(glob.glob("results/playwright/*.json")):
-              data = json.load(open(f))
-              print(f"scan: {f}, top-level keys {sorted(data)}")
-              walk(data, f)
-          raise SystemExit(1 if hits else 0)
-          PY
-          if [ -d results/playwright ] && grep -rqE "$json_pattern" results/playwright; then
-            echo "::error::Playwright JSON contains a token pattern; not uploading"
-            exit 1
-          fi
+          for f in results/playwright/*.json; do
+            [ -f "$f" ] || continue
+            results_json=$(jq -c '{suites, errors}' "$f")
+            if grep -qE "$json_pattern" <<<"$results_json"; then
+              echo "::error::$f: test results contain a token pattern; not uploading"
+              exit 1
+            fi
+          done
 
       - name: Job summary (Playwright results, race table)
         if: ${{ !cancelled() && steps.web_log_check.outcome == 'success' }}
