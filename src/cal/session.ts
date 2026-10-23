@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 /**
  * Reads the seeded host password from the fork's seed text. The value is read at run time and never printed,
  * logged or written to a file (D-C6, owner O4). Throws TEST BUG when the user's line is missing.
@@ -48,4 +51,11 @@ export async function loginAsHost(
     );
   }
   return cookieHeader();
+}
+
+/** The host password from the fork's seed file under PRODUCTS_ROOT (the root the harness uses). Never printed. */
+export function hostPasswordFromProducts(env: NodeJS.ProcessEnv = process.env): string {
+  const root = env.PRODUCTS_ROOT?.trim() || "../products";
+  const seed = readFileSync(path.resolve(process.cwd(), root, "cal", "scripts", "seed.ts"), "utf8");
+  return extractHostPassword(seed);
 }
