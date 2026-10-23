@@ -16,3 +16,22 @@ Open items that a task or the owner deferred. Each line names where it came from
   by the D65 formula: 28 + 1 warm-up + 6 reruns allowed = 35 attempts, about 5 to 5.5 min on CI at the measured 8.3 to 9.5 s per `-012` trial (dispatch runs above). **Done
   when** `-012` (or a dedicated spec) asserts F-M2 under `test.fail()` without random PR failures, with the PR count and
   its arithmetic in the plan, and the owner agrees to the PR-time cost.
+
+## Cal
+
+- **F-C1 as a stable expected failure** (from the Task 4 plan, owner O6; SUSPECTED). A private link with `maxUsageCount` N
+  admits every parallel booking, not N: `P6-CAL-RACE-006` (N=1) and `-008` (N=3) in the step-4 local runs and the probe.
+  **Done when** 3 full-count CI runs of `cal-state-races` reproduce it, the owner labels `F-C1` as PRODUCT BUG, and
+  `labelled: ["F-C1"]` (or a `test.fail()` on the guard line) is added to both specs. The arithmetic and the run links go
+  into the plan's closeout.
+- **F-C2 as a stable expected failure** (SUSPECTED). Confirm ‖ cancel on a PENDING booking ends accepted with both
+  `BOOKING_CREATED` and `BOOKING_CANCELLED` delivered: `P6-CAL-RACE-007`. **Done when** the same three-run evidence and an
+  owner label exist, and the spec labels `F-C2`.
+- **F-C3 as a stable expected failure** (SUSPECTED). Confirm ‖ confirm on a PENDING booking delivers two
+  `BOOKING_CREATED` webhooks: `P6-CAL-RACE-009`. **Done when** the same evidence and label exist, and the spec labels `F-C3`.
+- **Cal email capture** (harness follow-up H-email, plan D9). The `P6-CAL-RACE-007` email half cannot be asserted until a
+  mail catcher runs in `docker/cal.compose.yml`. Not in P6 without a harness change.
+- **Heap default under `NODE_OPTIONS`** (harness follow-up H-heap, plan §3.1.1). The Cal adapter applies its heap default
+  only when `NODE_OPTIONS` is unset, so a sandbox that sets `--use-openssl-ca` loses it and `up:cal` runs out of memory.
+- **`cal-smoke` worst-case margin** (plan O10). At the 40-minute `up` cap the job's worst case is 57 min against 60. A 30-min
+  cap would give 47 min. Owner decision.
