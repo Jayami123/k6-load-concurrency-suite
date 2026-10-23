@@ -59,7 +59,7 @@ test("P6-OBS-DOC-001: wrong password is 401, never 5xx", async () => {
   test.info().annotations.push({
     type: "issue",
     description:
-      "PRODUCT BUG P6-OBS-DOC-001 (low): wrong password returns 500 INVALID_CREDENTIALS, not 401. Cause: AppError without statusCode, onError maps it to 500.",
+      "P6-OBS-DOC-001: PRODUCT BUG (low), wrong password returns 500 INVALID_CREDENTIALS, not 401. Cause: AppError without statusCode, onError maps it to 500.",
   });
   test.fail(); // Known bug at the fork pin. Remove this line when upstream fixes it (README).
   expect(r.status, "wrong password must be 401 (roadmap D8)").toBe(401);
@@ -74,7 +74,7 @@ test("P6-OBS-DOC-001: bad CSRF is 400 or 403, never 5xx", async () => {
   test.info().annotations.push({
     type: "issue",
     description:
-      "PRODUCT BUG P6-OBS-DOC-001 (low): bad CSRF returns 500 INVALID_REQUEST, not 400 or 403. Cause: AppError without statusCode (line 94), onError maps it to 500.",
+      "P6-OBS-DOC-001: PRODUCT BUG (low), bad CSRF returns 500 INVALID_REQUEST, not 400 or 403. Cause: AppError without statusCode (line 94), onError maps it to 500.",
   });
   test.fail(); // Known bug at the fork pin. Remove this line when upstream fixes it.
   expect([400, 403], "bad CSRF must be 400 or 403 (roadmap D8)").toContain(r.status);
