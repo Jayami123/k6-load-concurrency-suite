@@ -1169,7 +1169,10 @@ jobs:
             echo "::error::race histograms contain a token pattern; not uploading"
             exit 1
           fi
-          if [ -d results/playwright ] && grep -rqE "$pattern" results/playwright; then
+          # The Playwright JSON holds test titles, and the sign-in setup title names the cookie ("sets sessionId"), so this
+          # scan matches a cookie value (sessionId=...), not the bare word.
+          json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
+          if [ -d results/playwright ] && grep -rqE "$json_pattern" results/playwright; then
             echo "::error::Playwright JSON contains a token pattern; not uploading"
             exit 1
           fi
