@@ -758,9 +758,17 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
 
 ## 14. Closeout notes (fill in before the PR merges)
 
-- **Merge SHA:** _pending_
-- **CI runs (3 required, PR + main, both negative tests expected failures):** _pending_
-- **README run links:** _pending_
+- **Merge SHA:** `92a9a93` (merge commit of PR #41, merged 2026-10-23 as a merge commit at the reviewed head `b0937e0`).
+- **CI runs (3 required, PR + main, both negative tests expected failures): met.**
+  1. PR #41, head `4671661`: `documenso-smoke` success; 3 passed, both negative tests expected failures.
+  2. PR #41, head `b0937e0`: `documenso-smoke` success; same result.
+  3. `main`, run [39961527451](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39961527451), attempt 2:
+     `documenso-smoke` success ([job](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39961527451/job/120451886357));
+     3 passed, both negative tests expected failures.
+     Attempt 1 of the same `main` run failed in `documenso-smoke` and `cal-smoke` at `Start … (harness up)`: Docker registry
+     pull of `postgres` returned `500 Internal Server Error`, before any test body ran. Attempt 2 re-ran only the failed jobs
+     (repo flake rule); both passed. The other `main` jobs passed in attempt 1.
+- **README run links:** _pending_ (the run links above can go into the README row; the owner decides the README edit)
 - **Findings:** _pending_ (the cleanup probe result; the summary output check from Q1)
 - **Deviations from this plan:** the plan branch (C6); the local heap flags (§3.1, R5); _add more as they happen_
   - **E2 scan false positives (three CI runs on PR #41; the first fix was incomplete).**
