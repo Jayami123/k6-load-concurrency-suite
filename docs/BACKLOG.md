@@ -39,3 +39,23 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   mail catcher runs in `docker/cal.compose.yml`. Not in P6 without a harness change.
 - **Heap default under `NODE_OPTIONS`** (harness follow-up H-heap, plan §3.1.1). The Cal adapter applies its heap default
   only when `NODE_OPTIONS` is unset, so a sandbox that sets `--use-openssl-ca` loses it and `up:cal` runs out of memory.
+
+## Twenty
+
+- **P6-OBS-TW-001, SUSPECTED (Task 6 plan §3.5; owner decision O-T6; no label, no test).** `POST /metadata` and
+  `POST /graphql` with an empty JSON object `{}` or an empty body get no response: `curl` gives up at 20 s, and the Node
+  client gives up at its 300-second headers timeout. `{"foo":1}` gets a 400 in about 13 ms. Reproduced in three runs on
+  2026-10-23, with no error line in the server log. **Done when** the owner decides whether it is a product bug. A label
+  and a `test.fail()` then follow the Phase 2 convention, with the evidence in the plan.
+- **H-twenty-auth (harness follow-up).** The harness `authenticate()` (v0.2.12) returns the workspace-agnostic token when
+  signIn gives one, and that token cannot read data (500 "No data sources found" on REST). P6 works around it in
+  `src/twenty/auth.ts`. **Done when** the harness returns a workspace token for data calls, and P6 can use the adapter's
+  `authenticate()` directly.
+- **X1 digest pin for the Twenty images (proposed in the Task 6 plan §12; a harness change).** Pin `twentycrm/twenty`,
+  `postgres`, `redis` and `axllent/mailpit` by digest (the Twenty digest is in plan §3.9). **Done when** the harness overlay
+  uses digests.
+- **X5 pull retry for the other jobs (owner request, Task 6).** `twenty-smoke` retries `docker compose pull` (3 tries, 15 s
+  then 30 s, 4-minute cap per try). **Done when** `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`, `cal-smoke`,
+  `cal-state-races` and `documenso-smoke` have the same step, each with `timeout-minutes`.
+- **X6 one token scanner (proposed in the Task 6 plan §12).** Make `scripts/evidence-token-scan.mjs` value-only, so one scanner
+  serves every job. **Done when** the owner accepts it.

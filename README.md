@@ -281,6 +281,31 @@ expected failure):
 Plan and evidence: `docs/plans/2026-10-21-p6-phase1-task7-doc-races.md` §2 and §10. Timings are in
 [Phase 1 results](#phase-1-results); numbers come only from GitHub Actions runs (median of at least 3).
 
+## Run Twenty
+
+Needs Docker and these harness ports: 3002 (app), 5434 (Postgres), 8025 and 1025 (Mailpit). Node 22 (`.nvmrc`), as for the other products.
+
+```bash
+export PATH="/usr/local/bin:$PATH"
+bash scripts/bootstrap.sh twenty   # clones the pinned fork (once)
+npm run up:twenty                  # starts the stack and returns when the app is healthy
+npm run seed:twenty                # seeds the dev workspace (once per fresh database)
+npm run smoke:twenty               # k6: GET /healthz
+npm run race:twenty                # the unmapped self-test (no race yet)
+npm run down:twenty                # always; TWENTY_DOWN_VOLUMES=1 also removes the volumes
+```
+
+- **Login.** P6 reads `TWENTY_EMAIL` and `TWENTY_PASSWORD` when they are set. Otherwise it uses the dev-seed login that
+  `qa-portfolio-harness` (v0.2.12) exports. The password is never printed.
+- **Sign-in.** The harness `authenticate()` returns a workspace-agnostic token, which cannot read data. P6 signs in,
+  picks the workspace and exchanges the login token itself (`src/twenty/auth.ts`).
+- **Rate limit.** Twenty limits API keys to 100 requests per second and 100 per 60 seconds. The self-test uses a login
+  session, which the limiter does not count, and P6 creates no API key. A 429 is never a pass.
+
+CI runs the self-test in the `twenty-smoke` job, which uses a pull retry, a token scan before upload and a
+`down` that removes the volumes. Timings are not published here; numbers come only from GitHub Actions runs (median
+of at least 3).
+
 ## Phase 1 results
 
 Every number here comes from a GitHub Actions run on `main` (push, schedule or `workflow_dispatch`). No number
