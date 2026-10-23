@@ -748,7 +748,14 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
 - **README run links:** _pending_
 - **Findings:** _pending_ (the cleanup probe result; the summary output check from Q1)
 - **Deviations from this plan:** the plan branch (C6); the local heap flags (§3.1, R5); _add more as they happen_
-- **Rule slips:** _pending_ (none recorded so far)
+  - **E2 scan false positive (first CI run on PR #41, head `688e3df`).** The Playwright JSON scan (E2, owner-accepted) used the
+    bare pattern `sessionId`. The JSON holds the test title "setup: a correct sign-in is 201 and sets sessionId", so the
+    documenso-smoke job failed at "Check Documenso artefacts for tokens" with "Playwright JSON contains a token pattern". The
+    tests were correct (3 passed; both `test.fail()` tests expected failures). Root cause: the scan pattern was too broad for
+    JSON that names the cookie. Fix (commit `55edc8f`): the JSON scan alone uses `sessionId=[^;[:space:]"]{8,}`, a cookie value.
+    The web-log and race-histogram scans are unchanged. Local proof: a `Set-Cookie: sessionId=…` line matches (exit 0); the
+    current test title does not (exit 1); `Bearer x` and `/verify-email/abc123` still match in both scans. The test title is
+    not renamed, and the JSON scan is not removed.
 
 ## Appendix A. Draft upstream issue for `P6-OBS-DOC-001` (for the owner to file; not filed by P6)
 
