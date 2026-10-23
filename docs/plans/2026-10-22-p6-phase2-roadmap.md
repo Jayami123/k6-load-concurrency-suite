@@ -515,6 +515,9 @@ Every number below is from that probe (cloud VM, proof only, `MEDUSA_REF` `f677d
 
 ## Task 4: Cal state races (`P6-CAL-RACE-006` to `-009`) + shared webhook receiver
 
+- **Status (2026-10-23, merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) as `0728ebe`; first `main` full-count run [39948384170](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39948384170) `success`).** Build plan:
+  [2026-10-23-p6-phase2-task4-cal-state-races.md](2026-10-23-p6-phase2-task4-cal-state-races.md). All four cases land. Owner labels (O6, 2026-10-23): F-C1 (`-006`, `-008`), F-C2 (`-007`) and F-C3 (`-009`) are PRODUCT BUG, from 150 of 150 attempts in three full-count runs; each spec keeps a known-bug test under `test.fail()`. Shared receiver moved to `src/receivers/`; `documenso-smoke` green.
+
 - **Goal.** Prove a single-use link admits one booking under contention, and confirm vs cancel ends
   in one state with one set of side effects.
 - **Cases.** `P6-CAL-RACE-006` (P1), `P6-CAL-RACE-007` (P1), `P6-CAL-RACE-008` (accepted extra,
