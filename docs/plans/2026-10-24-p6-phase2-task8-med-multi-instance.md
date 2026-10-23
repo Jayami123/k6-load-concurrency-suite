@@ -234,10 +234,27 @@ Where they go:
 - Same file, next to `writeMedusaBackendPid` (line 109), reusing `writeMedusaPid` (line 97):
 
   ```ts
-  export function writeMedusaBackend2Pid(pid: number, harnessRoot: string = HARNESS_ROOT): void {
-    writeMedusaPid(MEDUSA_BACKEND_2_PID_BASENAME, pid, harnessRoot);
+  export function writeMedusaBackend2Pid(
+    pid: number,
+    baseUrl: string,
+    harnessRoot: string = HARNESS_ROOT,
+  ): void {
+    // The URL it started with, so down() finds its port even when MEDUSA_SECOND_BASE_URL is unset or changed later.
+    writeMedusaPid(MEDUSA_BACKEND_2_PID_BASENAME, pid, harnessRoot, { baseUrl });
+  }
+
+  export function readMedusaBackend2Record(
+    harnessRoot: string = HARNESS_ROOT,
+  ): MedusaBackend2Record | undefined {
+    return readMedusaPidRecord(MEDUSA_BACKEND_2_PID_BASENAME, harnessRoot) as
+      MedusaBackend2Record | undefined;
   }
   ```
+
+- Record format: `{ "pid", "startMark", "baseUrl" }`, typed as `type MedusaBackend2Record = MedusaBackendPidRecord & { baseUrl?: string }`.
+  H3 extends `writeMedusaPid` with an optional extra-fields argument
+  and `parseMedusaBackendPidFileText` (`medusa-backend-pid.ts` line 46) so it also reads `baseUrl`. Today's parser keeps
+  only `pid` and `startMark`.
 
 - Same file, next to `stopMedusaBackendFromPidFile` (line 212), reusing `stopMedusaPidFile` (line 160):
 
@@ -276,7 +293,7 @@ private startSecondBackend(): void {
     },
   );
   if (this.secondBackendProcess.pid !== undefined) {
-    writeMedusaBackend2Pid(this.secondBackendProcess.pid);
+    writeMedusaBackend2Pid(this.secondBackendProcess.pid, url);
   }
   this.secondBackendProcess.unref();
 }
@@ -290,10 +307,12 @@ the second port gets the same "in use but not 200, do not stop" check as the bas
 Order: `stopStorefront()`, `stopBackend()`, **`stopSecondBackend()` (NEW)**, then compose `down`.
 
 ```ts
-// NEW. Stops only the recorded second backend. Success means its port closed, not that its pid is gone.
+// NEW. Stops the recorded second backend, even when MEDUSA_SECOND_BASE_URL is unset or changed since it started.
+// Success means its port closed, not that its pid is gone.
 private async stopSecondBackend(): Promise<void> {
-  const url = this.cfg.secondBaseUrl;
-  if (url === undefined) return; // env unset: no-op, nothing changes for existing runs
+  const record = readMedusaBackend2Record(HARNESS_ROOT); // undefined when there is no pid file
+  const url = record?.baseUrl ?? this.cfg.secondBaseUrl; // what was started wins over the current env
+  if (url === undefined) return; // nothing recorded and nothing configured: no-op
   const { host, port } = medusaListen(url);
   // A recorded pid that cannot be stopped throws here (MedusaBackendStopError). Nothing is reaped after that.
   stopMedusaBackend2FromPidFile(HARNESS_ROOT);
@@ -308,7 +327,9 @@ private async stopSecondBackend(): Promise<void> {
 
 Rules, in words:
 
-- Env unset: nothing happens, so existing runs do not change.
+- Nothing recorded and `MEDUSA_SECOND_BASE_URL` unset: no-op, so existing runs do not change.
+- A pid file exists but `MEDUSA_SECOND_BASE_URL` is now unset or different: the recorded `baseUrl` is used, so the
+  recorded backend is still stopped. The current env never decides what to stop.
 - No pid file and the port is open: reap only listeners whose argv or cwd is in `productRoot`
   (`reapProductListeners`, line 731, the same check `stopBackend` uses today). Any other process on the port **throws;
   nothing is killed.**
@@ -365,8 +386,13 @@ Named test files in the pinned package, each with what it adds. Counts are for H
   `@medusajs/medusa/locking-redis` only when `lock === "redis"`.
 - `src/adapters/medusa-backend-pid.test.ts`: the new basename and the write and stop helpers, using the injected `deps`
   as the existing tests do.
-- `src/adapters/medusa.adapter.test.ts`: `stopSecondBackend` is a no-op when the env is unset; it throws when the pid file
-  is missing and the port is open; it succeeds when the port closes.
+- `src/adapters/medusa.adapter.test.ts`, `stopSecondBackend` cases:
+  (a) nothing recorded and env unset: no-op;
+  (b) a record exists and env is now unset: still stops the recorded pid and waits on the recorded port (the
+  changed-environment case; not a no-op);
+  (c) no pid file, env set, port open, listener not from `productRoot`: throws, nothing is killed;
+  (d) the pid stop throws: no reap is called and the error propagates;
+  (e) the port closes: success.
 
 ## 6. Phase 3: what `P6-MED-RACE-002` and `-003` need, risks, contradictions, questions
 
@@ -471,7 +497,7 @@ Every existing name below was grepped in this session, with its line in the pinn
   `dist/modules/locking.js` (the shims).
 
 NEW (not in the pinned package; planned for H3): `MEDUSA_SECOND_BASE_URL`, `MEDUSA_LOCK`, `startSecondBackend`,
-`stopSecondBackend`, `writeMedusaBackend2Pid`, `stopMedusaBackend2FromPidFile`, `MEDUSA_BACKEND_2_PID_BASENAME`.
+`stopSecondBackend`, `writeMedusaBackend2Pid`, `readMedusaBackend2Record`, `stopMedusaBackend2FromPidFile`, `MEDUSA_BACKEND_2_PID_BASENAME`.
 
 Names in P6 that a Phase 3 race uses: `src/races/fire-together.ts`, `src/medusa/admin.ts`, `src/medusa/store.ts`,
 `src/oracles/pg.ts`. These are the ones the Task 3 probe imported. Phase 3 re-greps them.
