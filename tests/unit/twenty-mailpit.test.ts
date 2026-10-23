@@ -15,11 +15,14 @@ const list: MailpitSummary[] = [
 ];
 
 describe("twenty mailpit reader", () => {
-  it("latestMessageFor returns the newest match, skips other subjects, and returns null with no mail", () => {
+  it("latestMessageFor returns the newest match for the address, and null when the address has no mail", () => {
     assert.equal(latestMessageFor(list, "m@apple.dev", /password/i)?.ID, "new");
+    assert.equal(latestMessageFor(list, "other@apple.dev", /.*/), null);
+  });
+
+  it("latestMessageFor skips a message whose subject does not match, and returns null when none matches", () => {
     assert.equal(latestMessageFor(list, "m@apple.dev", /join/i)?.ID, "old");
     assert.equal(latestMessageFor(list.slice(0, 1), "m@apple.dev", /join/i), null);
-    assert.equal(latestMessageFor(list, "other@apple.dev", /.*/), null);
   });
 
   it("resetTokenFrom returns the 64-hex value, and null when the body has none", () => {
