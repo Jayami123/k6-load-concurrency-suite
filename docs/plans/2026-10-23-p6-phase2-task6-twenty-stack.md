@@ -1407,6 +1407,11 @@ Every question is answered by the owner's decisions in §0. Routine choices are 
   - My earlier read of attempt 1 of run `39961527451` said the cause was unexplained. The raw logs (§3.10) show the registry 500. The earlier read used the `--log` view, which omits those lines.
   - The plan commit goes to two refs (O-T1, both accepted).
   - Step 1a (the pin bump) was added after the owner's approval, as its own commit before the env step.
+  - **Review fixes on PR #44 (CodeRabbit, valid ones):** (a) the self-test `if` gets `!cancelled()`, so it still runs after a
+    smoke failure; (b) the container-log capture passes the Compose files and no longer hides errors with `|| true`; (c)
+    `twentyBaseUrlFromEnv` refuses cleartext `http://` to a non-loopback host, because credentials are sent to that URL. Fix (c)
+    adds one env unit test, so the unit count is **431** from step 1 on (the plan's 423 / 427 / 430 are now 424 / 428 / 431).
+    The skipped suggestion (none) is recorded here as nothing skipped.
   - **CI failure on the first PR run (fixed in `fix(ci)`):** `setup-node` in `twenty-smoke` had no `cache-dependency-path`, so it looked for
     the lockfile at the repository root and failed (`Dependencies lock file is not found`). `npm ci` never ran, so the Stop step's
     `down` found no `scripts/down.mjs`. The skeleton in §8.2 omitted the line that every other job has. Fixed in the workflow and in the skeleton.

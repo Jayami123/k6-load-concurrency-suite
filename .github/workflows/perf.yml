@@ -1335,7 +1335,7 @@ jobs:
 
       - name: Twenty self-test (twenty-race)
         id: twenty_races
-        if: ${{ steps.twenty_seed.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.twenty_seed.outcome == 'success' }}
         timeout-minutes: 5
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
@@ -1353,7 +1353,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p results/twenty
-          docker compose -p qa-harness-twenty logs --no-color > results/twenty/containers.log 2>&1 || true
+          docker compose -p qa-harness-twenty -f "${PRODUCTS_ROOT}/twenty-CRM/packages/twenty-docker/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml" \
+            logs --no-color > results/twenty/containers.log
 
       - name: Check Twenty artefacts for tokens (values, not names)
         id: token_scan

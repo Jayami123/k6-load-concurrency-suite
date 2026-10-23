@@ -26,6 +26,21 @@ describe("twenty env", () => {
     );
   });
 
+  it("refuses cleartext http to a non-loopback host, and allows loopback and https", () => {
+    assert.equal(
+      twentyBaseUrlFromEnv({ TWENTY_BASE_URL: "http://localhost:3002" }),
+      "http://localhost:3002",
+    );
+    assert.equal(
+      twentyBaseUrlFromEnv({ TWENTY_BASE_URL: "https://twenty.example.test" }),
+      "https://twenty.example.test",
+    );
+    assert.throws(
+      () => twentyBaseUrlFromEnv({ TWENTY_BASE_URL: "http://twenty.example.test" }),
+      /https:\/\//,
+    );
+  });
+
   it("prefers the P6 override, then TWENTY_DB_URL, then the harness default", () => {
     assert.equal(
       twentyDatabaseUrlFromEnv({}),

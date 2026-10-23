@@ -5,7 +5,16 @@ const val = (env: NodeJS.ProcessEnv, name: string) => env[name]?.trim() || undef
 
 /** Harness address (harness docker/twenty.compose.yml maps the app to 3002). */
 export function twentyBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  return strip(val(env, "TWENTY_BASE_URL") ?? "http://127.0.0.1:3002");
+  const url = strip(val(env, "TWENTY_BASE_URL") ?? "http://127.0.0.1:3002");
+  const { protocol, hostname } = new URL(url);
+  const loopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+  // The login and the bearer token are sent to this URL, so cleartext is allowed only on loopback.
+  if (protocol === "http:" && !loopback) {
+    throw new Error(
+      "ENV: TWENTY_BASE_URL must use https:// unless it is a loopback address (credentials are sent to it)",
+    );
+  }
+  return url;
 }
 
 /** P6 override first, then the harness variable, then the harness default (published on 5434). Not a secret. */
