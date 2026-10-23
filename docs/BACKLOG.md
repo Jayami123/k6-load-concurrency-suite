@@ -19,6 +19,8 @@ Open items that a task or the owner deferred. Each line names where it came from
 
 ## Cal
 
+Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) as `0728ebe`; first `main` full-count run [39948384170](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39948384170) `success`.
+
 - **F-C1, PRODUCT BUG (owner label 2026-10-23, O6).** A private link with `maxUsageCount` N admits every parallel
   booking, not N: `P6-CAL-RACE-006` (N=1) and `-008` (N=3). Evidence: 150 of 150 attempts across the full-count runs
   [39932990882](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39932990882),

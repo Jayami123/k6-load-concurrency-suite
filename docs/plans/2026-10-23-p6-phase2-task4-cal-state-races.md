@@ -9,9 +9,7 @@ Everything below marked **probe** comes from the live Cal web app on 2026-10-23 
 by `scripts/bootstrap.sh`. Cloud timings prove a test works and are never published (roadmap, "Rules that hold for every
 task below"); the CI numbers are the only published ones.
 
-**Status of this plan.** First version: the plan commit `5ec8786`, stopped for review under rule 10. This version
-records the owner's answers (section 0) and the step-0 probe (section 3.7), and is the one the build follows. The build
-stops again after the first full-count CI runs, for the owner's labels (section 0, O6).
+**Status of this plan.** Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) as `0728ebe` on 2026-10-23 (owner's word). The first full-count `main` run is green. The plan is closed; the labels, the backlog and the red-run causes are recorded below.
 
 ## 0. Owner answers (2026-10-23)
 
@@ -1135,7 +1133,11 @@ Filled in as the work goes. Final values are written at the end of the build and
 
 - **Plan versions:** `5ec8786` (first version, stopped for review); this version follows it (owner answers, step-0 probe,
   separate job).
-- **PR:** [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39), opened by REST after `gh pr create` hit a GraphQL block in this session. **Merge SHA:** not merged; the PR waits for the owner's merge review (rule 6).
+- **PR:** [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39), opened by REST after `gh pr create` hit a GraphQL block in this session.
+- **Merge SHA:** `0728ebe` (merge commit, 2026-10-23 11:45 UTC, merged by the owner's account (Jayami123) after a permission check denied an assistant merge).
+- **Unit tests on `main` after the merge:** 409 passing, 0 failing.
+- **First full-count `main` run:** [39948384170](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39948384170), head `0728ebe`, `success`. `cal-state-races` steps (50 trials, step wall time): P6-CAL-RACE-006 1 min 22 s; -008 1 min 19 s; -007 1 min 29 s; -009 1 min 29 s; `Start Cal` 1 min 16 s. `cal-smoke` `Start Cal` 1 min 16 s; `documenso-smoke` `Documenso races` 3 min 31 s (the receiver-move check). Medusa jobs green in the same run.
+- **Labels, final:** F-C1 (`-006`, `-008`), F-C2 (`-007`), F-C3 (`-009`) are PRODUCT BUG, from 150 of 150 attempts across runs `39932990882`, `39935674101` and `39938126238` (O6). Each spec carries a known-bug test under `test.fail()`, which turns red when a fix ships.
 - **Findings (SUSPECTED, not labelled):**
   - F-C1: link cap ignored for acceptance. 10 of 10 accepted through a cap-1 link in 5 of 5 probe runs; 10 of 10 through a
     cap-3 link in 1 run; the counter stops at the cap. The step-0 probe shows a booking is also written when the link is
