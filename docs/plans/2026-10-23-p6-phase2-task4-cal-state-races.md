@@ -1129,90 +1129,77 @@ Open:
 
 ## 16. Closeout notes
 
-Filled in as the work goes. Final values are written at the end of the build and after the three full-count runs.
+Written after the merge, in the follow-up docs PR ([#40](https://github.com/Jayami123/k6-load-concurrency-suite/pull/40)),
+as for Task 3. The deviations, review fixes and rule slips were recorded during the build; the merge SHA, the first `main`
+run and the final labels were added after the merge.
 
-- **Plan versions:** `5ec8786` (first version, stopped for review); this version follows it (owner answers, step-0 probe,
-  separate job).
-- **PR:** [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39), opened by REST after `gh pr create` hit a GraphQL block in this session.
-- **Merge SHA:** `0728ebe` (merge commit, 2026-10-23 11:45 UTC, merged by the owner's account (Jayami123) after a permission check denied an assistant merge).
-- **Unit tests on `main` after the merge:** 409 passing, 0 failing.
-- **First full-count `main` run:** [39948384170](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39948384170), head `0728ebe`, `success`. `cal-state-races` steps (50 trials, step wall time): P6-CAL-RACE-006 1 min 22 s; -008 1 min 19 s; -007 1 min 29 s; -009 1 min 29 s; `Start Cal` 1 min 16 s. `cal-smoke` `Start Cal` 1 min 16 s; `documenso-smoke` `Documenso races` 3 min 31 s (the receiver-move check). Medusa jobs green in the same run.
-- **Labels, final:** F-C1 (`-006`, `-008`), F-C2 (`-007`), F-C3 (`-009`) are PRODUCT BUG, from 150 of 150 attempts across runs `39932990882`, `39935674101` and `39938126238` (O6). Each spec carries a known-bug test under `test.fail()`, which turns red when a fix ships.
-- **Findings (SUSPECTED, not labelled):**
-  - F-C1: link cap ignored for acceptance. 10 of 10 accepted through a cap-1 link in 5 of 5 probe runs; 10 of 10 through a
-    cap-3 link in 1 run; the counter stops at the cap. The step-0 probe shows a booking is also written when the link is
-    already full (section 3.7).
-  - F-C2: confirm ‖ cancel on a PENDING booking: both 200 and both side-effect sets in 4 of 4 rounds; final `accepted`.
-  - F-C3: confirm ‖ confirm on a PENDING booking: both 200 and two `BOOKING_CREATED` deliveries in 4 of 4 rounds.
-- **Environment finding:** `up:cal` heap OOM in this sandbox (section 3.1.1); harness follow-up H-heap.
-- **Deviations:**
-  - D-C14: branch `feat/...` for the plan commit (rules 1 and 10 name `plan/...`). Owner's instruction, same as Task 3b.
+- Merge SHA: `0728ebe` (merge commit of PR [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39), 2026-10-23
+  11:45 UTC, merged by the owner after a permission check denied an assistant merge). Unit tests on `main` after the merge:
+  409 passing, 0 failing.
+- First full-count `main` run after the merge:
+  [39948384170](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39948384170), head `0728ebe`, `success`.
+  `cal-state-races` step times (50 trials): P6-CAL-RACE-006 1 min 22 s; -008 1 min 19 s; -007 1 min 29 s; -009 1 min 29 s;
+  `Start Cal` 1 min 16 s. Medusa jobs green in the same run.
+- Findings (final labels and CI evidence). Three full-count `workflow_dispatch` runs on the branch, all jobs green:
+  [39932990882](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39932990882) (head `57826b4`),
+  [39935674101](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39935674101) and
+  [39938126238](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39938126238) (head `48845c0`). Every
+  case: 50 of 50 valid trials, 0 invalid, 0 reruns, verdict `pass`, no invariant violations, HTTP 200 on every request.
+  The three runs' histograms (`race-histograms-cal-state`) are identical.
+  - **F-C1, PRODUCT BUG** (`-006` cap 1, `-008` cap 3): 10 of 10 parallel bookings are accepted through a link that has
+    one or three uses; the link's counter stops at the cap. 50 of 50 attempts per run (150 in total). Known-bug tests under
+    `test.fail()`.
+  - **F-C2, PRODUCT BUG** (`-007`): confirm and cancel both succeed on one PENDING booking; it ends `accepted` with one
+    `BOOKING_CREATED` and one `BOOKING_CANCELLED`. 50 of 50 attempts per run. Known-bug test under `test.fail()`.
+  - **F-C3, PRODUCT BUG** (`-009`): two confirms both succeed; the booking ends `accepted` with two `BOOKING_CREATED`.
+    50 of 50 attempts per run. Known-bug test under `test.fail()`.
+  - Email is not observed (`emailObservable: false`, D9); the gap is recorded, not asserted.
+- Deviations from this plan:
+  - D-C14: branch `feat/...` for the plan commit (rules 1 and 10 name `plan/...`), on the owner's instruction, same as Task 3b.
+  - Labels (O6): `test.fail()` wraps the labelled assertion only, not the whole case, so guard failures (setup, 5xx, cleanup,
+    leak check) stay visible. Same pattern as Medusa X04.
   - Probe error (section 3.3): the first link-burst run did not set `hasHashedBookingLink`. Its rows are not evidence of F-C1.
   - Step-0 probe script had a stray booking call; removed before the run (section 3.7).
-  - The first `up:cal` attempt ran with the sandbox `NODE_OPTIONS`; the later attempts with an explicit heap value.
-- **Rule slips (honest record):**
-  - Two duplicate Monitor watches and one stray one-minute reminder were created during the Cal start; all three were
-    stopped or deleted before the probe ran, and none wrote to the repo or to Cal.
-  - A harness command launched in a subshell reported "completed (exit 0)" before the real command finished. The real exit
-    codes were read from the exit files. Reports use the real codes only.
-  - The plan's time figures are planning assumptions (section 9.2), not measured values, and are labelled as such.
-  - Section 9.2: the `cal-smoke` worst-case margin (3 min) does not meet the 10-minute rule; it is O10, not yet decided.
-- **Steps:** step 0 (section 3.7) and steps 1 to 7 are done and pushed (`e06df42` to `57826b4`). Step 1 had a Prettier slip, amended before any push.
-- **O10 applied (`14c5a9a`):** `cal-smoke` `HARNESS_UP_TIMEOUT_MS` is 1800000 (30 min). Gate: the slowest recent Cal start must be under 20 min. Start Cal times checked (`Start Cal (harness up)` step, from the job list of each run):
-  - run 117 (push, main `dc95c29`), cal-smoke: 83 s (the slowest checked);
-  - run 119 (pull_request, `fix/2026-10-23-p6-cancel-extras-hook-timeout`), cal-smoke: 62 s;
-  - run 124 (workflow_dispatch, main `73db10f`), cal-smoke: 67 s;
-  - run 125 (workflow_dispatch, main `73db10f`), cal-smoke: 78 s;
-  - run 127 (workflow_dispatch, this branch, `57826b4`), cal-smoke: 64 s; cal-state-races: 76 s.
-    Largest observed: 83 s, far below the 20-min gate. The new job keeps its 40-min cap (worst case 71 min against 85).
-- **Run 1, full count (`39932990882`, workflow_dispatch, head `57826b4`): conclusion success.** Every job succeeded: `cal-state-races`, `cal-smoke`, `documenso-smoke`, `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`.
-  - `cal-state-races` steps (50 trials, step wall time from the job list): P6-CAL-RACE-006 1 min 45 s; -008 1 min 38 s; -007 1 min 32 s; -009 1 min 32 s. `Start Cal` 76 s. These are single-run observations, not a median (rule: median of at least 3). The planning figure in section 9.2 (about 5 min per case) was an overestimate.
-  - **O12, receiver-move check:** `documenso-smoke` succeeded in run 1, including `Documenso races (documenso-race)` (3 min 42 s), which runs the Documenso self-test on the moved receiver (`src/receivers/webhook-receiver.ts`).
-  - Labels: not applied (see the full-count runs below).
-- **Full-count runs for the labels (O6, O11), all on head `48845c0` or `57826b4`, all `workflow_dispatch`, all conclusion success:**
-  - run 1: `39932990882` (head `57826b4`), finished 09:55 UTC;
-  - run 2: `39935674101` (head `48845c0`), finished 10:12 UTC;
-  - run 3: `39938126238` (head `48845c0`), finished 10:33 UTC.
-    Per-case step time (50 trials), run 2 / run 3: P6-CAL-RACE-006 1 min 44 s / 1 min 24 s; -008 1 min 40 s / 1 min 20 s; -007 1 min 32 s / 1 min 29 s; -009 1 min 32 s / 1 min 29 s. `Start Cal`: run 2 1 min 18 s, run 3 1 min 14 s. `documenso-smoke` succeeded in runs 2 and 3 (the receiver-move check, O12); its `Documenso races` step took 3 min 40 s and 3 min 27 s.
-- **Histograms (`race-histograms-cal-state`), checked per run from the artifact, all three runs identical:** every case has 50 valid trials, 0 invalid, 0 reruns, verdict `pass`, no invariant violations, status 200 for every request. 51 SUSPECTED lines per case (50 trials plus the warm-up), and every attempt reproduces its finding:
-  - F-C1 (`-006`, cap 1): 10 accepted per attempt, `usageCount` 1 at the end, 50 of 50 attempts;
-  - F-C1 (`-008`, cap 3): 10 accepted per attempt, `usageCount` 3 at the end, 50 of 50 attempts;
-  - F-C2 (`-007`): final `accepted` with one `BOOKING_CREATED` and one `BOOKING_CANCELLED` in 50 of 50 attempts;
-  - F-C3 (`-009`): final `accepted` with two `BOOKING_CREATED` and zero `BOOKING_CANCELLED` in 50 of 50 attempts.
-    Email is not observed (`emailObservable: false`, D9).
-- **Labels: not applied.** O6 asks for the owner's decision after these three runs. No test has changed to assert or use `test.fail()`.
-- **Labels applied (O6, O13):** `labelled` set per spec (`F-C1` for `-006` and `-008`, `F-C2` for `-007`, `F-C3` for `-009`);
-  the runner keeps labelled lines out of the guards verdict and returns them as `labelled`; each spec has a known-bug test
-  under `test.fail()`. Local run with `RACE_TRIALS=3` (Cal up, then down, exit 0): 12 of 12 expected outcomes, no unexpected
-  pass or fail. Backlog and README rows updated (`docs/BACKLOG.md` "Cal", README "Cal state races (Phase 2)" and "Known
-  product bugs").
-- **Red run 117** (push, `main`, head `dc95c29`, feat #34, run `39923528658`): `medusa-smoke` (2 failed) and
-  `medusa-cancel-extras` (1 failed). Cause proven from the log: `"beforeAll" hook timeout of 60000ms exceeded` in
-  `med-race-008`, `-009` and `-014`. The describe-level `timeout` does not cover hooks; the hooks needed their own timeout.
-  Fixed by PR #36 (`97d7a48`, on `main` as `73db10f`): the hooks call `test.setTimeout`. Evidence after the fix: PR run
-  `39925017942` (`97d7a48`) green in both jobs; `main` runs `39927945708` (`73db10f`) and `39930717584` (`73db10f`) green.
-  The `User with email: admin@qa.local, already exists` lines in the same logs are logged by the seed and are not failures.
-- **Red run 121** (pull_request, `docs/2026-10-23-p6-task3b-closeout`, head `1bd71e4`, run `39926614996`): `medusa-smoke`
-  one failed: `med-race-001` extra `S=1 vs N=2` returned verdict `fail`. Its histogram (`extra-s1-n2.json`, from artifact
-  `race-histograms-medusa`) shows a product oversell: 2 orders for 1 unit (`PRODUCT BUG: oversold; ... orderCount 2 !== S 1;
-reservationQty 1 !== orderCount 2`) in the warm-up and in the trials, and a TEST BUG line `leak live orders` for the
-  case's own leftover orders. Classification: an intermittent product race (oversell under contention), not a test bug;
-  the leftover-order leak is not explained. The same extra passed in runs `39927945708`, `39930717584`, `39932990882`,
-  `39935674101` and `39938126238` (`medusa-smoke` green in each). Not labelled; the owner decides whether it becomes a
-  backlog item.
-- **PR review (CodeRabbit, review at 2026-10-23 11:00 UTC, head `aac16dd`) triage:**
-  - README table: four `P6-CAL-RACE` rows had 4 of 6 cells (markdownlint MD056). Fixed: Test and Evidence cells added, with the
-    run links. Valid.
-  - Security architecture review (low): the link runner replaced the event type's whole link list and cleared it to empty
-    after each attempt, which would remove other links on a reused fixture. Valid. Fixed: the runner reads the prior links
-    (`readEventLinks`, read-only), refuses to run on a time-limited link (a replace can't restore it faithfully), and puts the
-    prior list back after every attempt. Limit: restoring the links through the replace call is verified only for the local
-    fixture run recorded below; a process killed mid-attempt cannot restore.
-  - Docstring coverage 75% (warning, threshold 80%): doc comments added to the flagged exported functions. Valid.
-  - Security note on replays (not changed): signatures prove authenticity, not exactly-once delivery. The oracle counts
-    deliveries per booking UID and asserts counts only, so a replay would show as an extra count. No code change.
-- **Environment note:** at the start of the local labelled-spec run the Docker daemon was down (`Cannot connect to the Docker
-daemon`), so `up:cal` exited 1 in 1 second. The session-start hook's `sudo dockerd` brought it back; the retry exited 0.
-  Not a product or CI issue.
-- **Deviation (labels):** `test.fail()` wraps the labelled assertion, not the whole case (see O6 above).
-- **Deviations added in the build:** Documenso change limited to import paths and the `check` argument (7.1 said so); the Cal cancel helper is a copy of a private helper in `run-case.ts` (not edited); `subscribeWebhook`, `unsubscribeWebhook`, `resolveConfirmSetup` and `waitQuiet` were added in step 5 (not in the plan's file list).
+  - Step 5 added `subscribeWebhook`, `unsubscribeWebhook`, `resolveConfirmSetup` and `waitQuiet` (not in the plan's file list).
+  - The Documenso change was limited to import paths and the `check` argument (7.1 said so). The Cal cancel helper is a copy
+    of a private helper in `run-case.ts` (not edited).
+  - The plan's "about 5 min per case" (section 9.2) was an overestimate; measured step times are 1 min 20 s to 1 min 45 s.
+- Review fixes (CodeRabbit on PR #39, review at head `aac16dd`, triaged under rule 16):
+  - README: four `P6-CAL-RACE` rows had 4 of 6 cells (MD056). Fixed, with the Test and Evidence cells and run links. Valid.
+  - Security architecture review (low): the link runner replaced the event type's whole link list and cleared it after each
+    attempt. Valid. Fixed: the prior links are read first (read-only), a time-limited link refuses the run (a replace cannot
+    restore it), and the prior list is restored after every attempt. Checked locally with a prior link present (it survived
+    the run). Limit: a process killed mid-attempt cannot restore the links.
+  - Docstring coverage 75% (threshold 80%): doc comments added to the flagged exported functions. Valid.
+  - Replay note (not changed): signatures prove authenticity, not exactly-once delivery. The oracle counts per booking UID,
+    so a replay would show as an extra count.
+- `cal-smoke` harness-up cap (O10, `14c5a9a`): 30 min. Start Cal times checked (`Start Cal (harness up)` step, job lists):
+  run `39923528658` (117) 83 s, `39925017942` (119) 62 s, `39927945708` (124) 67 s, `39930717584` (125) 78 s, `39932990882`
+  (127) 64 s. The largest is 83 s, far under the 20-min gate.
+- Red runs checked (not rerun):
+  - Run [39923528658](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39923528658) (push, `main`, head
+    `dc95c29`): `medusa-smoke` (2 failed) and `medusa-cancel-extras` (1 failed). Cause from the log: `"beforeAll" hook timeout
+of 60000ms exceeded` in `med-race-008`, `-009` and `-014`. A describe-level `timeout` does not cover hooks. Fixed by PR #36
+    (`97d7a48`, `main` as `73db10f`), which gives the hooks their own timeout. Green after the fix: PR run
+    [39925017942](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39925017942) (`97d7a48`), and `main` runs
+    [39927945708](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39927945708) and
+    [39930717584](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39930717584) (`73db10f`).
+  - Run [39926614996](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39926614996) (pull_request,
+    `docs/2026-10-23-p6-task3b-closeout`, head `1bd71e4`): `medusa-smoke`, one failed: `med-race-001` extra `S=1 vs N=2`
+    returned verdict `fail`. Its histogram shows a product oversell (2 orders for 1 unit, `PRODUCT BUG: oversold`) in the
+    warm-up and the trials, and a `TEST BUG` line `leak live orders` for the case's own leftover orders. Classified as an
+    intermittent product race under contention, not a test bug; the leftover-order leak is not explained. The same extra passed
+    in runs `39927945708`, `39930717584`, `39932990882`, `39935674101`, `39938126238` and `39948384170`. Not labelled; the
+    owner decides whether it becomes a backlog item.
+- Environment notes (not product or CI issues): `up:cal` heap OOM in the sandbox, because the sandbox `NODE_OPTIONS` removed
+  the adapter's heap default (section 3.1.1; harness follow-up H-heap). The Docker daemon was down once; the session-start
+  hook's `sudo dockerd` brought it back.
+- Rule slips (honest record):
+  - Duplicate Monitor watches and a stray one-minute reminder were created during the Cal start and later; each was stopped or
+    deleted, and none wrote to the repo or to Cal.
+  - A harness command in a subshell reported "completed (exit 0)" before the real command finished; the real exit codes were
+    read from the exit files.
+  - Step 1 was committed before its check passed and amended before any push; the check then passed.
+  - Section 9.2's `cal-smoke` worst-case margin (3 min) did not meet the 10-minute rule until O10 was applied.
+- Status: merged. Labels applied (O6). Open for the owner: whether the Medusa oversell in run `39926614996` becomes a backlog
+  item. The known-bug tests and the backlog's removal rule apply when a product fix ships.
