@@ -871,8 +871,14 @@ A different count at any step: stop and explain (rule 11).
 
 ## 12. Closeout notes (filled in by the build)
 
-- Build branch head, PR link, PR CI run: _fill in_.
-- Release run id and result: _fill in after step 8_.
+- Build branch `docs/2026-10-23-p6-phase2-closeout`, cut from `main` `a82521a`. Commits: the two plan commits (cherry-picked),
+  then `test: start every issue annotation with its case id`, `ci(release): take the title from the notes heading`,
+  `docs(releases): add the p6-phase2 evidence notes`, `docs(readme): add the phase 2 results`, `docs: update the backlog for
+the phase 2 closeout`, `docs(plans): add the phase 2 closeout report`. `npm run check` after each: exit 0, 471 tests.
+- Release title check (step 2): `docs/releases/p6-phase2.md` → `P6 Phase 2 evidence (CI)`; `docs/releases/p6-phase1.md` → `P6
+Phase 1 evidence (CI)`; a file without an H1 → the error message.
+- Phase closeout report: [2026-10-23-p6-phase2-closeout.md](2026-10-23-p6-phase2-closeout.md) (build day 2026-10-23).
+- PR link and its CI run: in the PR. Release run id and URL: reported to the owner after step 8 (owner gate).
 
 ## 13. Risks
 
