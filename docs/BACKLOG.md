@@ -46,12 +46,12 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   empty body or an empty JSON object `{}` get no response on any run: 12 of 12 hangs in the Task 7 repro (3 runs each, 30 s
   client timeout, `curl` exit 28 at 30.0 s, TTFB none), and Task 6 §3.5 saw the same in three sessions. `{"foo":1}` gets a
   400 in 4 to 9 ms and a valid query a 200 in 5 to 12 ms, both in the same runs. The server log has no line for the hang.
-  **Test:** none in Task 7 (it is not a race). The guarded spec is follow-up X7 below.
+  **Test:** none in Task 7 (it is not a race). The guarded spec is follow-up X8 below.
 - **P6-TW-RACE-004, PRODUCT BUG (owner label, 2026-10-23, Task 7 plan §3.7 and §6.10).** Ten parallel redemptions of one
   reset token all succeed: 50 of 50 requests in the probe (5 trials), with a check-then-act window in
   `updatePasswordViaResetToken` (validate, update, revoke; no lock). The spec asserts the guards, then `test.fail()`, then
   exactly one success per trial. A fix turns that test red as "unexpectedly passed".
-- **X7 (follow-up from Task 7 §12.2, not built).** A P6 spec for P6-OBS-TW-001 with three parts: (a) guards: a valid query
+- **X8 (follow-up from Task 7 §12.2, not built).** A P6 spec for P6-OBS-TW-001 with three parts: (a) guards: a valid query
   returns 200 and `{"foo":1}` returns 400, both fast; (b) then `test.fail()` and expect `{}` to get a 400 within a 5-second
   client timeout, never 30 s; (c) a probe of the same requests without auth, and a P6-style check that N parallel
   empty-body requests do not stop a valid request from answering. **Done when** the spec is merged and CI runs it.
