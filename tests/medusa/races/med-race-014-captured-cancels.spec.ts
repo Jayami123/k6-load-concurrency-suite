@@ -1,19 +1,19 @@
 import { test, expect } from "@playwright/test";
 import { seedAndLogin, loadCatalog } from "../../../src/medusa/admin.ts";
-import {
-  runCancelBurstCase,
-  type RunCancelBurstResult,
-} from "../../../src/medusa/run-cancel-burst.ts";
+import { runOrderCase, type RunOrderCaseResult } from "../../../src/medusa/run-order-case.ts";
 import { closePool, createReadOnlyPool } from "../../../src/oracles/pg.ts";
 import { p6RunPrefix } from "../../../src/races/prefix.ts";
 import { raceTrialsFromEnv } from "../../../src/races/env.ts";
 
 const trials = raceTrialsFromEnv();
 
+/** Owner-labelled PRODUCT BUG signals (plan D67, D68): annotated as product-bug, never asserted here (D54). */
+const KNOWN_BUG = /\((X04|F-M3)\)$/;
+
 test.describe("Medusa captured cancel burst", () => {
   let token: string;
   let catalog: Awaited<ReturnType<typeof loadCatalog>>;
-  let result: RunCancelBurstResult;
+  let result: RunOrderCaseResult;
   const runPrefix = p6RunPrefix();
   const pool = createReadOnlyPool();
 
@@ -30,13 +30,14 @@ test.describe("Medusa captured cancel burst", () => {
     test.beforeAll(async () => {
       token = await seedAndLogin();
       catalog = await loadCatalog(token);
-      result = await runCancelBurstCase({
+      result = await runOrderCase({
         pool,
         token,
         catalog,
         runPrefix,
         caseId: "P6-MED-RACE-014",
         title: "ten parallel cancels of a captured order → refunds ≤ captured",
+        mode: "double-cancel",
         concurrency: 10,
         captureFirst: true,
         trials,
@@ -46,7 +47,12 @@ test.describe("Medusa captured cancel burst", () => {
 
     test("P6-MED-RACE-014 ten parallel cancels of a captured order → refunds ≤ captured", () => {
       for (const line of result.suspected) {
-        test.info().annotations.push({ type: "suspected-bug", description: line });
+        const known = KNOWN_BUG.test(line);
+        const description = known ? line.replace("SUSPECTED PRODUCT BUG:", "PRODUCT BUG:") : line;
+        test.info().annotations.push({
+          type: known ? "product-bug" : "suspected-bug",
+          description,
+        });
       }
       for (const line of result.reportedLeaked) {
         test.info().annotations.push({ type: "leaked-data", description: line });
