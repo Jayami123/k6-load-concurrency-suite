@@ -1,4 +1,5 @@
 import http from "node:http";
+import https from "node:https";
 
 export type PostOutcome = "response" | "timeout" | "aborted" | "error";
 
@@ -50,10 +51,13 @@ const countOf = (m: NodeJS.ReadOnlyDict<unknown[]>): number =>
  * The result resolves from the request's "close" event plus one setImmediate, after the Agent has
  * released the socket, so activeSockets() is already accurate when the promise settles.
  * `Content-Length` is always sent, so an empty body is `Content-Length: 0`.
+ * An `https:` base URL is sent over TLS (https.request and an https.Agent); `http:` is cleartext and is only reachable on loopback.
  */
 export function createPostClient(baseUrl: string): PostClient {
   const url = new URL(baseUrl);
-  const agent = new http.Agent({ keepAlive: true, maxSockets: Infinity });
+  // twentyBaseUrlFromEnv() allows a remote https:// base URL (cleartext only on loopback), so an https URL must be sent over TLS.
+  const transport = url.protocol === "https:" ? https : http;
+  const agent = new transport.Agent({ keepAlive: true, maxSockets: Infinity });
 
   const start = (path: string, body: string, opts: PostOptions): PostHandle => {
     const began = performance.now();
@@ -70,9 +74,9 @@ export function createPostClient(baseUrl: string): PostClient {
       let ttfbMs: number | null = null;
       let ended = false;
       let error: string | undefined;
-      const req = http.request({
+      const req = transport.request({
         host: url.hostname,
-        port: url.port,
+        port: url.port || undefined,
         path,
         method: "POST",
         headers,

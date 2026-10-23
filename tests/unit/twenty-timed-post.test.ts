@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+import net, { type AddressInfo } from "node:net";
 import { afterEach, describe, it } from "node:test";
 import { classify, createPostClient, type PostClient } from "../../src/twenty/timed-post.ts";
 
@@ -159,6 +159,28 @@ describe("createPostClient", () => {
     assert.equal(r.outcome, "error");
     assert.equal(r.status, null);
     assert.equal(typeof r.error, "string");
+  });
+
+  it("speaks TLS to an https base URL and never sends cleartext HTTP", async () => {
+    // A raw TCP server needs no certificate: it records the first byte of the connection and hangs up.
+    // A TLS ClientHello starts with 0x16; a cleartext HTTP request starts with "P" (POST).
+    const firstBytes: number[] = [];
+    const server = net.createServer((socket) => {
+      socket.once("data", (chunk) => {
+        firstBytes.push(chunk[0] ?? -1);
+        socket.destroy();
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const c = clientFor(`https://127.0.0.1:${port}`);
+      const r = await c.post("/x", "{}", { timeoutMs: 1000, authorization: "Bearer t" });
+      assert.equal(r.outcome, "error");
+      assert.deepEqual(firstBytes, [0x16]);
+    } finally {
+      server.close();
+    }
   });
 
   it("counts the requests still in flight in activeSockets", async () => {
