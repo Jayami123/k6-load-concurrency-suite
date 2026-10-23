@@ -1399,7 +1399,7 @@ Every question is answered by the owner's decisions in §0. Routine choices are 
 - **Merge SHA:** `38533b0`, the merge commit of PR #44 (merged 2026-10-23 as a merge commit, from PR head `4672b4d`).
 - **CI runs:**
   - PR #44 head `4672b4d`: all seven jobs success on the last read. `cal-smoke` failed once on this head with a Docker Hub timeout
-    fetching the `postgres:18` manifest, before any test ran (run `39979511916` attempt, job `120495914291`). A later check run for the
+    fetching the `postgres:18` manifest, before any test ran (PR run `39977522483`, job `120495914291`). A later check run for the
     same head showed success. This session did not trigger a re-run, so the cause of that change is not recorded.
   - Main push run `39979511916` (merge commit `38533b0`): all seven jobs success. The `twenty-smoke` job at full count (50 trials):
     pull 41 s, harness up 103 s, seed 50 s, k6 smoke under 1 s, self-test 4 s, down 1 s, job 3 min 40 s (proof only; not published).
