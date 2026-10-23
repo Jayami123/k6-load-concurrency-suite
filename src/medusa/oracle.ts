@@ -357,6 +357,27 @@ export async function readOrderState(
   };
 }
 
+/** $1 order id. The latest order_summary refund (plan D3b-3): highest version, then latest created_at, then id. */
+export const LATEST_SUMMARY_SQL = `
+SELECT os.totals->>'refunded_total' AS refunded_total
+FROM order_summary os
+WHERE os.order_id = $1 AND os.deleted_at IS NULL
+ORDER BY os.version DESC, os.created_at DESC, os.id DESC
+LIMIT 1
+`;
+
+/** Latest order_summary refunded_total of an order, or null when the order has no summary row. */
+export async function readLatestSummaryRefund(
+  pool: pg.Pool,
+  orderId: string,
+): Promise<number | null> {
+  const rows = await selectRows<{ refunded_total: string | null }>(pool, LATEST_SUMMARY_SQL, [
+    orderId,
+  ]);
+  const value = rows[0]?.refunded_total;
+  return value == null ? null : parseWholeAmount(value, "latest refunded_total");
+}
+
 /** Leak check for -005 / -012 (the moneyLeakCheck shape). Every leftover is a TEST BUG. */
 export async function promoLeakCheck(pool: pg.Pool, likePrefix: string): Promise<string[]> {
   const [products, customers, orders, promotions, campaigns] = await Promise.all([
