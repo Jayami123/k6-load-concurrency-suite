@@ -1653,3 +1653,171 @@ jobs:
         run: |
           set -euo pipefail
           npm run down:twenty
+
+  # Plan 2026-10-24 X8 (§8): the Twenty empty-body spec (P6-OBS-TW-001), separate from twenty-races.
+  # Worst-case budget 16.43 min: pull at its 6-min cap, spec step at its 3-min cap, first boot and seed at their measured worst
+  # (plan §8.3). Margin 27 - 16.43 = 10.57 min. Measured rows are recorded in the plan closeout after the first main run.
+  twenty-obs:
+    name: twenty-obs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      TWENTY_REF: 7cbdfec6f346b43715bc2056932f4fad5886f733
+      TWENTY_IMAGE_TAG: v2.44.0
+      TAG: v2.44.0
+      TWENTY_BASE_URL: http://127.0.0.1:3002
+      # Public harness default database URL (docker/twenty.compose.yml), not a secret.
+      P6_TWENTY_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/default
+      # Removes the volumes on every run, so no state carries between runs.
+      TWENTY_DOWN_VOLUMES: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Verify TWENTY_REF matches bootstrap.sh
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if ! grep -q "^TWENTY_REF=\"${TWENTY_REF}\"$" scripts/bootstrap.sh; then
+            echo "::error::TWENTY_REF in perf.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 5
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Prepare harness roots (Twenty fork at TWENTY_REF)
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh twenty
+          head="$(git -C "${PRODUCTS_ROOT}/twenty-CRM" rev-parse HEAD)"
+          if [ "$head" != "${TWENTY_REF}" ]; then
+            echo "::error::Twenty HEAD ${head} does not match TWENTY_REF ${TWENTY_REF}"
+            exit 1
+          fi
+
+      - name: Pull Twenty images (3 tries, 15 s then 30 s)
+        id: twenty_pull
+        timeout-minutes: 6
+        working-directory: ${{ env.PRODUCTS_ROOT }}/twenty-CRM/packages/twenty-docker
+        env:
+          OVERLAY: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-twenty -f docker-compose.yml -f "$OVERLAY"
+
+      - name: Start Twenty (harness up)
+        id: twenty_up
+        if: ${{ steps.twenty_pull.outcome == 'success' }}
+        timeout-minutes: 12
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run up:twenty
+
+      - name: Seed Twenty (harness seed)
+        id: twenty_seed
+        if: ${{ steps.twenty_up.outcome == 'success' }}
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run seed:twenty
+
+      - name: Twenty empty-body spec (twenty-tw-obs)
+        id: twenty_obs
+        if: ${{ !cancelled() && steps.twenty_seed.outcome == 'success' }}
+        timeout-minutes: 3
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          P6_PLAYWRIGHT_JSON: results/playwright/twenty-tw-obs.json
+        run: |
+          set -euo pipefail
+          npm run test:twenty-obs
+
+      - name: Capture container logs (before the scan and the down)
+        if: ${{ always() && steps.twenty_pull.outcome == 'success' }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          mkdir -p results/twenty
+          docker compose -p qa-harness-twenty -f "${PRODUCTS_ROOT}/twenty-CRM/packages/twenty-docker/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml" \
+            logs --no-color > results/twenty/containers.log
+
+      - name: Check Twenty artefacts for tokens (values, not names)
+        id: token_scan
+        if: ${{ always() }}
+        timeout-minutes: 3
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          value='Bearer [A-Za-z0-9._~+/=-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|reset-password/[0-9a-f]{64}|passwordResetToken"?[:=] ?"?[0-9a-f]{64}|inviteToken=[0-9a-f]{64}'
+          for f in results/twenty/containers.log results/harness/twenty-up.log; do
+            [ -f "$f" ] || continue
+            if grep -qE "$value" "$f"; then
+              echo "::error::${f} contains a token value; not uploading"
+              exit 1
+            fi
+          done
+          if [ -d results/races ] && grep -rqE "$value" results/races; then
+            echo "::error::race histograms contain a token value; not uploading"
+            exit 1
+          fi
+          # Playwright's JSON config.metadata holds the repo's git diff: scan only suites and errors (Task 5 closeout).
+          for f in results/playwright/*.json; do
+            [ -f "$f" ] || continue
+            results_json=$(jq -c '{suites, errors}' "$f")
+            if grep -qE "$value" <<<"$results_json"; then
+              echo "::error::$f: test results contain a token value; not uploading"
+              exit 1
+            fi
+          done
+
+      - name: Job summary (Playwright results, race table)
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/write-ci-job-summary.ts
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 5
+        if: ${{ always() && steps.token_scan.outcome == 'success' }}
+        with:
+          name: twenty-obs-container-log
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/twenty/containers.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Twenty (harness down, volumes removed)
+        if: ${{ always() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:twenty

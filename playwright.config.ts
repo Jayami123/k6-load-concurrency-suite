@@ -51,5 +51,11 @@ export default defineConfig({
       retries: 0,
       use: { baseURL: twentyBaseUrlFromEnv() },
     },
+    {
+      name: "twenty-tw-obs",
+      testDir: "tests/twenty/tw-obs",
+      retries: 0,
+      use: { baseURL: twentyBaseUrlFromEnv() },
+    },
   ],
 });
