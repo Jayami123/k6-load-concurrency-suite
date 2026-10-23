@@ -370,18 +370,21 @@ first full-count Actions run.
 
 ## Task 3: Medusa budget + order-state races (`P6-MED-RACE-005`, `-008`, `-009`, `-012`)
 
-**Status (2026-10-22, build on `feat/2026-10-22-p6-med-budget-order-races`).** Build plan:
+**Status (2026-10-23, build on `feat/2026-10-22-p6-med-budget-order-races`).** Build plan:
 [2026-10-22-p6-phase2-task3-med-budget-order-races.md](2026-10-22-p6-phase2-task3-med-budget-order-races.md). All four
-cases land; `-012` was cheap (same setup as `-005`, one oracle field) and is in scope (plan D44). `-005` holds at the probe
-and PR counts. `-012`'s usage counter holds, but a losing checkout can leave an unpaid order carrying the promotion
-(F-M2, suspected). X04 (`-008`) and X05 (`-009`) reproduce at `MEDUSA_REF`, and a losing cancel or fulfil restores a
-canceled order's reservation (F-M3, suspected). Suspected signals are annotated until the owner labels them from three
-full-count `workflow_dispatch` runs; labelled X04 and F-M3 then get `test.fail()` in this PR (plan D54, D64), and
-`-009`'s PR trial count is set from the measured rate so a PR run misses under 1 % (D65). CI (plan D60, D66): `-008`
-and `-009` run in the `medusa-smoke` race step; `-005` and `-012` run in a new job `medusa-order-races`; both race steps
-have step timeouts. Accepted extras for a follow-up task, now **Task 3b** (D13): `P6-MED-RACE-013` (N=10 cancels, F-M3) and
-`P6-MED-RACE-014` (captured-order cancels, F-M4); `P6-MED-RACE-015` (spend budget) is in "Later" (plan D57). Priorities: `-008` P1,
-`-009` P1, `-012` P2 (plan D58).
+cases land; `-012` was cheap and is in scope (plan D44). Three full-count `workflow_dispatch` runs on the branch
+([39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008),
+[39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035),
+[39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959)) were green, and the
+owner labelled (plan D67 to D70): **X04** (`-008`, 113 of 150 trials), **F-M3** (a losing cancel or fulfil restores a
+canceled order's reservation; 37 of 150 in `-008`, 7 of 150 in `-009`) and **X05** (`-009`, 50 of 150) are PRODUCT BUG
+under `test.fail()`, with `-009`'s PR count raised to 13 so a PR run misses under 1 % (plan D65, D69). **F-M2** (a
+losing checkout leaves an unpaid order carrying the promotion, so live orders exceed its limit; 32 of 150 in `-012`, 1
+of 150 in `-005`) is PRODUCT BUG as a labelled annotation without `test.fail()`; making it a stable expected failure is
+a BACKLOG item (plan D70). The budget and limit counters never went over the cap. CI (plan D60, D66): `-008` and `-009`
+run in the `medusa-smoke` race step; `-005` and `-012` run in a new job `medusa-order-races`; both race steps have step
+timeouts. Accepted extras `P6-MED-RACE-013` and `-014` are **Task 3b** (D13); `P6-MED-RACE-015` (spend budget) is in
+"Later" (plan D57). Priorities: `-008` P1, `-009` P1, `-012` P2 (plan D58).
 
 - **Goal.** Prove a shared budget is not overdrawn and an order cannot take two exclusive
   transitions at once.

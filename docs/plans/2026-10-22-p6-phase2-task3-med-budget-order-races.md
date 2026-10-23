@@ -1,4 +1,4 @@
-# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 3, owner answers recorded)
+# P6 Phase 2 Task 3: Medusa budget and order-state races (plan, revision 3, owner answers and labels recorded)
 
 This is the implementation plan a weaker model will build from. The owner reviewed revision 1 (rule 10: this task adds
 a CI job and proposes product-bug labels, §11 and §10) and **agreed to every proposed answer in §21 on 2026-10-22**.
@@ -6,8 +6,8 @@ Revision 2 records those answers (D54 to D59). Revision 3 answers the owner's re
 contradiction (§21 contradiction 5, open questions 7 and 8), a redone time budget with the rerun allowance and setup
 (§11, §12, proposal D60), the `moneyPost` rename kept inside `admin.ts` (§8.2), full skeletons for the new checks and
 both attempt bodies (§8.5, §8.6), and exact commands per build step (§14). The owner answered revision 3 on
-2026-10-22: questions 7 and 9 agreed, question 8 option (a) (D64 to D66). The build starts after this commit and stops
-after the three dispatch runs of §14 Step 12 for the owner's labels.
+2026-10-22: questions 7 and 9 agreed, question 8 option (a) (D64 to D66). After the three dispatch runs of §14 Step 12
+the owner labelled the signals (D67 to D70, §10). The build continues with Step 13 and Step 14.
 
 Structure follows [2026-10-22-p6-phase2-task2-med-money-races.md](2026-10-22-p6-phase2-task2-med-money-races.md). The
 source of this task is [2026-10-22-p6-phase2-roadmap.md](2026-10-22-p6-phase2-roadmap.md), section "Task 3: Medusa budget +
@@ -1205,20 +1205,22 @@ test.describe("Medusa double cancel", () => {
 
 ## 10. Labels and the evidence each needs
 
-| Observation                                                         | Label now                  | Evidence before a stronger label                                                                        |
-| ------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Budget or limit counter above the cap; HTTP 200s above the cap      | PRODUCT BUG                | Never seen live (16 runs). The request bodies and DB rows of the failing attempt.                       |
-| Orders with the promotion above the cap; ghost order (F-M2)         | **SUSPECTED PRODUCT BUG**  | Seen 2 of 8 (`-012`). PRODUCT BUG only after full-count CI runs reproduce it (D40 rule).                |
-| Two cancels both 200, pending credit_line change (X04)              | **SUSPECTED PRODUCT BUG**  | Seen 7 of 8; was a P1 expected failure. Full-count CI runs, then the owner decides `test.fail()` (D47). |
-| Canceled with an open fulfillment (X05)                             | **SUSPECTED PRODUCT BUG**  | Seen 1 of 5; was a P1 expected failure. As X04.                                                         |
-| Reservation restored or `reserved_quantity` drift (F-M3)            | **SUSPECTED PRODUCT BUG**  | Seen 2 of 13 at N=2, 9 of 9 at N=10. As X04.                                                            |
-| `order_summary.refunded_total` above the refund rows (F-M4)         | not asserted in this task  | Only in the follow-up `-014` (D57). Seen 2 of 3.                                                        |
-| 5xx on a raced request                                              | PRODUCT BUG                | The status and body. Not seen live.                                                                     |
-| Setup step fails (campaign, promotion, apply code, checkout)        | TEST BUG                   | The step name (D37). Never rerun (rule 13).                                                             |
-| Leftover product, customer, promotion, campaign not explained above | TEST BUG (cleanup)         | The leftover rows.                                                                                      |
-| F-M3 product, X05 fulfillment, X04 pending change after cleanup     | REPORTED LEAKED DATA (D49) | The ids and the failed route bodies in the histogram.                                                   |
+| Observation                                                         | Label now                  | Evidence before a stronger label                                                                      |
+| ------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Budget or limit counter above the cap; HTTP 200s above the cap      | PRODUCT BUG                | Never seen live (16 runs). The request bodies and DB rows of the failing attempt.                     |
+| Orders with the promotion above the cap; ghost order (F-M2)         | **PRODUCT BUG** (D70)      | 32 of 150 trials in `-012`, 1 of 150 in `-005` (Step 12 runs). Labelled annotation, no `test.fail()`. |
+| Two cancels both 200, pending credit_line change (X04)              | **PRODUCT BUG** (D67)      | 113 of 150 trials (Step 12 runs); P1 X04. `test.fail()` in `-008`.                                    |
+| Canceled with an open fulfillment (X05)                             | **PRODUCT BUG** (D69)      | 50 of 150 trials (Step 12 runs); P1 X05. `test.fail()` in `-009`, PR count 13.                        |
+| Reservation restored or `reserved_quantity` drift (F-M3)            | **PRODUCT BUG** (D68)      | 37 of 150 trials in `-008`, 7 of 150 in `-009` (Step 12 runs). `test.fail()` in `-008` and `-009`.    |
+| `order_summary.refunded_total` above the refund rows (F-M4)         | not asserted in this task  | Only in the follow-up `-014` (D57). Seen 2 of 3.                                                      |
+| 5xx on a raced request                                              | PRODUCT BUG                | The status and body. Not seen live.                                                                   |
+| Setup step fails (campaign, promotion, apply code, checkout)        | TEST BUG                   | The step name (D37). Never rerun (rule 13).                                                           |
+| Leftover product, customer, promotion, campaign not explained above | TEST BUG (cleanup)         | The leftover rows.                                                                                    |
+| F-M3 product, X05 fulfillment, X04 pending change after cleanup     | REPORTED LEAKED DATA (D49) | The ids and the failed route bodies in the histogram.                                                 |
 
-**This plan does not apply `PRODUCT BUG` or `test.fail()` to anything.** Rule 13 needs repeated full-count CI runs;
+**Labels (owner, after the three full-count runs of Step 12, D67 to D70):** X04, F-M3 and X05 are PRODUCT BUG under
+`test.fail()`; F-M2 is PRODUCT BUG as a labelled annotation without `test.fail()`. The text below is the rule as it
+stood before the labels. Rule 13 needs repeated full-count CI runs;
 rule 9 needs the owner for any product-bug label. Agreed rule (D54): until then, suspected signals are annotations and do
 not change the verdict. After 3 full-count CI runs the owner labels X04, X05, F-M2 and F-M3; each labelled signal then
 becomes an asserted invariant under `test.fail()` with the run links. Where that commit lands is the open contradiction
@@ -1310,7 +1312,15 @@ of Step 12, so a PR run misses the labelled `-009` signals with probability unde
 3. PR count `n = max(3, ceil(ln 0.01 / ln(1 − p_L)))`. Then the miss probability is `(1 − p_L)ⁿ < 1 %`.
 4. PR time of `-009`: `(n + 1 + max(2, ceil(0.2 n))) × 2.9 s + 6 s`.
 
-Worked values for m = 150 (Step 13 records the real k, m, p_L and n):
+**Measured (Step 12 runs [39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008), [39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035), [39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959)):** X05 or F-M3 in `k = 57` of `m = 150` valid `-009` trials (20 + 19 + 18);
+`p = 0.380`, `p_L = 0.306`, `n = ceil(ln 0.01 / ln(1 − 0.306)) = ceil(12.65) = 13`; miss probability `0.694¹³ = 0.86 %`.
+`-009` PR time: `(13 + 1 + max(2, 3)) × 2.9 s + 6 s = 17 × 2.9 + 6 = 55.3 s`; `medusa-smoke` PR race step ≈ 2:15 + 23.4 s
+
+- 55.3 s ≈ 3 min 34 s (10-minute step timeout). The owner set the count to 13 with both signals labelled (D69).
+  For `-008`, X04 or F-M3 showed in all 150 trials (`p_L ≈ 0.975`), so 3 PR trials miss with probability ≈ 0.002 %: no
+  raise.
+
+Worked values for m = 150 (for reference):
 
 | k of 150 | k / m | p_L   | n   | (1 − p_L)ⁿ | `-009` PR attempts | `-009` PR time | `medusa-smoke` PR race step |
 | -------- | ----- | ----- | --- | ---------- | ------------------ | -------------- | --------------------------- |
@@ -1609,11 +1619,16 @@ stops reproducing, it turns red, which is the signal to remove `test.fail()`. Th
 the labelled signals stay out of the guards' verdict and are counted in `suspected`; `classifyFindings` with a
 non-empty `labelled` is used only if the owner prefers the single-test form.
 
+As labelled (D67 to D70): `-008` and `-009` get the two-test shape; `-005` and `-012` keep one test and annotate F-M2
+lines as `product-bug` (labelled, D70); `docs/BACKLOG.md` is new.
+
 ```bash
-npx prettier --write tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts README.md
+npx prettier --write tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts \
+  tests/medusa/races/med-race-005-campaign-budget.spec.ts tests/medusa/races/med-race-012-usage-limit.spec.ts README.md docs/BACKLOG.md
 npm run check                  # exit 0; # tests 383 / # pass 383 / # fail 0
 npx playwright test --list --project=medusa-race | tail -1   # Step 9 total + 1 per spec given the two-test shape
-git add tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts README.md
+git add tests/medusa/races/med-race-008-double-cancel.spec.ts tests/medusa/races/med-race-009-cancel-vs-fulfil.spec.ts \
+  tests/medusa/races/med-race-005-campaign-budget.spec.ts tests/medusa/races/med-race-012-usage-limit.spec.ts README.md docs/BACKLOG.md
 git commit -m "test(races): mark the labelled medusa order-state bugs as expected failures"
 git push
 ```
@@ -1727,6 +1742,24 @@ Owner answers to revision 3 (agreed 2026-10-22):
 - **D66 CI layout (Q9, agreed).** D60 as proposed: `-008`/`-009` in the `medusa-smoke` race step, a new job for
   `-005`/`-012` only, per-step timeouts.
 
+Owner labels after the three full-count runs of Step 12 ([39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008), [39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035), [39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959); 2026-10-23, rules 9 and 13):
+
+- **D67 X04 (`-008`): PRODUCT BUG.** `test.fail()` in `-008`, with the dispatch run links and the P1 reference
+  (`docs/reference/p1-plan-example-medusa.md` line 365: P1 X04, `statuses [200, 200]` with a pending `credit_line`
+  change). 113 of 150 trials.
+- **D68 F-M3 (`-008`, `-009`): PRODUCT BUG.** `test.fail()` where it is asserted (`-008` and `-009`), with the run links
+  and the rollback source: `@medusajs/core-flows` 2.21.2 `dist/reservation/steps/delete-reservations-by-line-items.js`
+  lines 10 to 29 (its compensation calls `restoreReservationItemsByLineItem`), run in `parallelize` by
+  `dist/order/workflows/cancel-order.js` lines 107 to 109; and `dist/reservation/steps/delete-reservations.js` line 28
+  (`restoreReservationItems`), run by `dist/order/workflows/create-fulfillment.js` line 395. A losing cancel or fulfil
+  rolls back and restores the reservation the winner removed. 37 of 150 trials in `-008`, 7 of 150 in `-009`.
+- **D69 X05 (`-009`): PRODUCT BUG.** `test.fail()` in `-009`; with both X05 and F-M3 labelled, `-009`'s PR trial count is
+  **13** (§12 arithmetic). 50 of 150 trials; P1 X05 (same reference line).
+- **D70 F-M2 (`-012`, `-005`): PRODUCT BUG, no `test.fail()`.** Live orders carrying the promotion exceed its limit.
+  At about 11 % per trial (33 of 300) a PR run cannot hold an expected failure stable without about 40 trials, so
+  `-012`'s counter assertions stay green and F-M2 is reported as a labelled annotation (`product-bug`) with the run
+  links. A BACKLOG item (`docs/BACKLOG.md`) tracks making it a stable expected failure later.
+
 ## 21. Contradictions with the roadmap, and open questions (answered)
 
 **Contradictions:**
@@ -1791,7 +1824,28 @@ No open questions remain. The build runs §14 Steps 0 to 12 and stops after Step
 
 Filled in before the PR merges.
 
-- Merge SHA: _pending_
-- Findings (final labels and CI evidence): _pending_
-- Deviations from this plan: _pending_
-- Rule slips: _pending_
+- Merge SHA: _pending_ (filled when the owner merges).
+- Findings (final labels and CI evidence). Three full-count `workflow_dispatch` runs on the branch, all jobs green:
+  [39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008), [39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035), [39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959). Per 150 valid trials:
+  - **X04** (`-008`): 113 (39 / 39 / 35). **PRODUCT BUG**, `test.fail()` (D67).
+  - **F-M3**: 37 in `-008` (11 / 11 / 15), 7 in `-009` (4 / 2 / 1). **PRODUCT BUG**, `test.fail()` (D68).
+  - **X05** (`-009`): 50 (16 / 17 / 17). **PRODUCT BUG**, `test.fail()`, PR count 13 (D69).
+  - **F-M2**: 32 in `-012` (11 / 9 / 12) and **1 in `-005`** (run 2, trial 13; the probe had 0 of 8). **PRODUCT BUG**,
+    labelled annotation, no `test.fail()`; BACKLOG item (D70).
+  - Counters never over the cap (`-005` budget, `-012` `promotion.used`) in 300 trials; no 5xx; leak checks clean; one
+    spread rerun in 450 Medusa trials per run (run 3, `-001`).
+  - Step times: `medusa-smoke` race step 13:05 / 11:58 / 19:17 (run 3 slower across every case on that runner, `-001`
+    724 s against 443 to 485 s); `medusa-order-races` race step 15:32 / 14:26 / 15:16. All under the §11 stop rules.
+  - F-M4 (not in this task): carried to Task 3b (roadmap D13).
+- Deviations from this plan:
+  - Docker had stopped after a container restart; it was started as `.claude/hooks/session-start.sh` does before Step 0.
+  - Medusa stayed up across Steps 5 to 8 instead of up/down per step.
+  - `PHANTOM_RESERVED_SQL` uses `SELECT DISTINCT`; the product-id leak query is a constant `LEAK_PRODUCT_IDS_SQL`.
+  - The new job's k6 summary artefact is `k6-summary-medusa-budget-health` (the copied name would clash with
+    `medusa-smoke`'s artefact in the same run).
+  - The roadmap gained Task 3b on this branch (owner request), not on a separate `docs/` branch.
+- Rule slips:
+  - The plan went on the `feat/...` branch, not `plan/...` (rule 10; owner instruction, §21 contradiction 4).
+  - The probe's first script left 3 test customers in the local database (§2.6; local only).
+  - PR #31 (agent rules) was opened through `gh api`; the session proxy appended a "Generated by Claude Code" footer
+    that rule 3 forbids, and it could not be removed from the session (the owner was asked to remove it by hand).
