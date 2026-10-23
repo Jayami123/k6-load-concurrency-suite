@@ -54,7 +54,7 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   reset token all succeed: 50 of 50 requests in the probe (5 trials), with a check-then-act window in
   `updatePasswordViaResetToken` (validate, update, revoke; no lock). The spec asserts the guards, then `test.fail()`, then
   exactly one success per trial. A fix turns that test red as "unexpectedly passed".
-- **X8 (follow-up from Task 7 §12.2; built on `feat/2026-10-24-p6-twenty-empty-body`, job `twenty-obs`).** A P6 spec for P6-OBS-TW-001 with three parts:
+- **X8 done in [PR #50](https://github.com/Jayami123/k6-load-concurrency-suite/pull/50)** (follow-up from Task 7 §12.2; job `twenty-obs`). A P6 spec for P6-OBS-TW-001 with three parts:
   (a) guards: a valid query returns 200 and `{"foo":1}` returns 400, both under 1 s; (b) then `test.fail()` and expect an empty body and `{}` to get a 4xx (owner: any
   4xx) within a 5-second client timeout, never 30 s; (c) the same requests without auth (they hang too, so they are tests under the same pattern), and a P6-style check
   that N=10 parallel empty-body requests do not stop a valid request from answering. Plan: `docs/plans/2026-10-24-p6-x8-twenty-empty-body.md`. **Done when** the spec is merged and CI runs it.

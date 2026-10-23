@@ -13,6 +13,8 @@ Probe date: 2026-10-23 (cloud VM, Docker, Node 22.23.3, 4 vCPU, 16 GB). Probe sc
 ## 0. Status
 
 Version 2 of this plan, after the owner's review of version 1 (`f458060`): **approved**, with the answers in §0.1. The build follows §7 on the feature branch.
+**Build status (2026-10-24):** steps 0b to 6 are committed on the feature branch and PR [#50](https://github.com/Jayami123/k6-load-concurrency-suite/pull/50) is open. Unit tests 452 → 470.
+Live run: 10 passed (8 expected failures, 2 passes). Details in §12.
 Version 1 stopped for review under rule 10 (the plan adds a CI job, and the spec carries a product-bug label).
 
 The live probe found **no difference from the backlog evidence** on the pinned image: the hang reproduces (24 of 24 empty and `{}` requests),
@@ -1000,15 +1002,28 @@ last commit, Q5 socket check only, Q6 any 4xx and the post-abort query stays, Q7
 - **X10** A higher-N sweep (100, 1000 held) to find where the server stops answering valid queries; not needed for the label.
 - **X11** The same probe for other methods and content types (`GET` with a body, `application/x-www-form-urlencoded`).
 
-## 12. Closeout (placeholders, filled after the PR exists and CI is read once)
+## 12. Closeout
 
-- **Head SHA of the branch:** `<fill>`. **PR:** `<fill>`. **Merge SHA:** `<fill>` (only after the owner says merge).
-- **CI runs read (once, rule 15):** `<run id and link>` conclusion `<fill>`; jobs `twenty-obs` `<fill>`, others `<fill>`.
-- **Measured rows of `twenty-obs` from the first `main` run** (for §8.3, not published): pull `<fill>`, boot `<fill>`, seed `<fill>`, spec step `<fill>`, job `<fill>`.
-- **Unit tests:** 452 → `<fill>` (planned 470). **Playwright:** `<fill>` of 10 (8 expected failures, 2 passing).
-- **Control run result:** `<fill>`. **Token scan and leak check on the evidence:** `<fill>`.
-- **Owner answers recorded:** `<fill: only those given in this session>`.
-- **Deviations from this plan:** `<fill>`. **Rule slips:** `<fill>`.
+- **Head SHA at the PR:** `e5ade13`. **PR:** [#50](https://github.com/Jayami123/k6-load-concurrency-suite/pull/50) (opened through the REST API: `gh pr create` fails in this
+  environment because it needs GraphQL). **Merge SHA:** not applicable yet (merge only on the owner's word, rule A6).
+- **Build commits (step: SHA):** 0b `4f04f4c` owner decisions; 1 `dd49f39` helper and 18 unit tests; 2 `e76c2c3` hang specs, project and script; 3 `6250705` resource check;
+  4 `e2c1494` job `twenty-obs`; 5 `e5ade13` README and BACKLOG; 6 this closeout and the X8 flip. The plan is also on `plan/2026-10-24-p6-twenty-empty-body` (owner Q2).
+- **Unit tests:** 452 → 470 (+18: 5 `classify`, 13 client). `npm run check` exited 0 after every step with `# tests 470`, `# pass 470`, `# fail 0`. The new unit file also passed 20 runs in a row before its commit.
+- **Live run through the harness (cloud VM, proof only, not published):** `npm run up:twenty` exit 0 (1 m 46 s); `npm run seed:twenty` exit 0 (`created=false`: the database volume
+  persisted from the probe, so this was not a fresh DB); step 2 alone (8 tests): **8 passed in 42.1 s**, each hang test 5.0 s; step 3 (the whole project, 10 tests): **10 passed in 42.9 s**,
+  8 hang tests 5.0 s each (expected failures), 2 resource tests 548 ms and 580 ms; `npm run down:twenty` exit 0, no container left. Playwright JSON: 8 × expected `failed`/`expected`,
+  2 × `passed`/`expected`, 8 `issue` annotations starting `P6-OBS-TW-001: PRODUCT BUG`.
+- **Control run (not committed):** with the empty-body case changed to `{"foo":1}` (answers 400) the test reported "Expected to fail, but passed", exit 1. The file was restored with `git checkout`; `git status` was clean.
+- **Token scan and secrets:** the `twenty-obs` scan pattern found nothing in the container log (4677 lines) or in the Playwright JSON (`suites`, `errors`); `scripts/evidence-token-scan.mjs` over `results/playwright` exited 0; the seed password (13 characters, value not printed) occurs in none of the result files or logs.
+- **Leak check:** the client socket count is asserted in every test (0 after each request and after each abort). No company-row check (owner Q5).
+- **CI:** `perf.yml` runs on the PR; the jobs and their conclusions are read once after the push and reported in the PR report, not polled. The measured rows of `twenty-obs` for §8.3 (pull, boot, seed, spec step, job) come from the first `main` run and are recorded then.
+- **Owner answers recorded:** §0.1 only.
+- **Deviations from this plan:**
+  1. The unit-test file has a small `recorder()` helper (headers and body of the last request) that the skeleton only described. No test was added, merged or split.
+  2. Prettier realigned the width of the README "Known product bugs" table when the two new rows were added; the only non-whitespace change in the existing rows is the separator line.
+  3. `gh pr create` failed (GraphQL not available); the REST fallback of rule A3 was used with the same title and body.
+  4. The step 2 and step 3 live runs were made on one stack start (step 2 by running the hang file alone), then the commits for steps 3 and 4 followed the run.
+- **Rule slips:** my first evidence one-liner failed on the Playwright JSON (an annotation without a description); I fixed the script and re-ran it. No product result or committed file was affected.
 
 ## 13. Self-check (rule 20)
 
