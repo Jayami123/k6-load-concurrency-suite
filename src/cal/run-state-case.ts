@@ -41,9 +41,11 @@ export type StateCaseResult = {
   histogram: RaceHistogram;
   /** SUSPECTED PRODUCT BUG lines of every attempt, invalid and warm-up included (D3). Annotated by the spec. */
   suspected: string[];
+  /** The owner-labelled lines among `suspected`. Asserted only by the case known-bug test (test.fail), never by the guards. */
+  labelled: string[];
 };
 
-/** Keeps the lines whose tag the owner labelled (D-C7). A labelled line is asserted; the rest never change the verdict. */
+/** Keeps the lines whose tag the owner labelled. The guards verdict never reads them; the known-bug test asserts them. */
 export function labelledLines(suspected: readonly string[], labelled: readonly string[]): string[] {
   return suspected.filter((line) => labelled.some((tag) => line.includes(`(${tag})`)));
 }
@@ -182,11 +184,7 @@ export async function runLinkBurstCase(input: {
       suspectedLines: suspected.length, // every attempt, including invalid ones
       labelledLines: labelledLines(suspected, input.labelled).length,
     };
-    histogram.invariantViolations.push(
-      ...cleanupViolations,
-      ...leak,
-      ...labelledLines(suspected, input.labelled),
-    );
+    histogram.invariantViolations.push(...cleanupViolations, ...leak);
 
     const trialsOk = trialResults.every((t) => t.ok);
     histogram.verdict = trialsOk && histogram.invariantViolations.length === 0 ? "pass" : "fail";
@@ -195,7 +193,7 @@ export async function runLinkBurstCase(input: {
     await writeHistogram(histogram);
   }
 
-  return { histogram, suspected };
+  return { histogram, suspected, labelled: labelledLines(suspected, input.labelled) };
 }
 
 /** Waits until no new delivery arrived for `quietMs`, or `maxMs` passed. Returns how many deliveries the receiver holds. */
@@ -411,11 +409,7 @@ export async function runPendingRaceCase(input: {
       suspectedLines: suspected.length,
       labelledLines: labelledLines(suspected, input.labelled).length,
     };
-    histogram.invariantViolations.push(
-      ...cleanupViolations,
-      ...leak,
-      ...labelledLines(suspected, input.labelled),
-    );
+    histogram.invariantViolations.push(...cleanupViolations, ...leak);
     histogram.verdict =
       trialResults.every((t) => t.ok) && histogram.invariantViolations.length === 0
         ? "pass"
@@ -425,5 +419,5 @@ export async function runPendingRaceCase(input: {
     await writeHistogram(histogram);
   }
 
-  return { histogram, suspected };
+  return { histogram, suspected, labelled: labelledLines(suspected, input.labelled) };
 }

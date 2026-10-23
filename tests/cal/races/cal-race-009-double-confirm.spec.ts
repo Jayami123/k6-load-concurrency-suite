@@ -25,8 +25,9 @@ import { readFile } from "node:fs/promises";
 const trials = raceTrialsFromEnv();
 const runPrefix = p6RunPrefix();
 const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
-// Owner labels go here after 3 full-count CI runs (D-C7, O6). Empty until then.
-const labelled: readonly string[] = [];
+// Owner label (O6, 2026-10-23): F-C3 is PRODUCT BUG after three full-count runs; see the known-bug test.
+const labelled: readonly string[] = ["F-C3"];
+let labelledFound: string[] = [];
 const secret = randomBytes(16).toString("hex"); // per run, never printed (the receiver verifies the HMAC)
 const base = calBaseUrlFromEnv();
 let setup: Awaited<ReturnType<typeof resolveConfirmSetup>>;
@@ -57,14 +58,13 @@ test.afterAll(async () => {
 });
 
 const CASE = "P6-CAL-RACE-009";
-const TITLE =
-  "confirm || confirm on one PENDING booking → one ACCEPTED, one webhook (SUSPECTED F-C3 recorded)";
+const TITLE = "confirm || confirm on one PENDING booking → one ACCEPTED, one webhook";
 
 test.describe.serial(`${CASE} Cal confirm vs cancel`, () => {
   test.describe.configure({ timeout: 120_000 + trials * 15_000 });
 
   test(`${CASE} ${TITLE}`, async () => {
-    const { histogram, suspected } = await runPendingRaceCase({
+    const result = await runPendingRaceCase({
       pool,
       setup,
       slots,
@@ -77,11 +77,26 @@ test.describe.serial(`${CASE} Cal confirm vs cancel`, () => {
       trials,
       labelled,
     });
+    const { histogram, suspected } = result;
+    labelledFound = result.labelled;
     for (const line of suspected) {
-      test.info().annotations.push({ type: "suspected-bug", description: line });
+      const type = labelledFound.includes(line) ? "product-bug" : "suspected-bug";
+      test.info().annotations.push({ type, description: line });
     }
     expect(histogram.invariantViolations, histogram.invariantViolations.join("; ")).toEqual([]);
     expect(histogram.verdict).toBe("pass");
+  });
+
+  // PRODUCT BUG F-C3 (double confirm): two confirms on one PENDING booking both succeed and two BOOKING_CREATED webhooks fire.
+  // Labelled by the owner (O6, 2026-10-23) after three full-count runs, one attempt each in 50 trials:
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39932990882
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39935674101
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39938126238
+  // Trials 50 of 50 per run (150 of 150 attempts). When this test turns red ("expected to fail but passed"), the bug is
+  // fixed: remove test.fail() and the label.
+  test("P6-CAL-RACE-009 known bug F-C3: two confirms both succeed reproduces", async () => {
+    test.fail();
+    expect(labelledFound, labelledFound.join("; ")).toEqual([]);
   });
 
   test(`${CASE} histogram artefact`, async () => {

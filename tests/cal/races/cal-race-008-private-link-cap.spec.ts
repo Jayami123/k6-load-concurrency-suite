@@ -15,8 +15,9 @@ import { p6RunPrefix } from "../../../src/races/prefix.ts";
 const trials = raceTrialsFromEnv();
 const runPrefix = p6RunPrefix();
 const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
-// Owner labels go here after 3 full-count CI runs (D-C7, O6). Empty until then.
-const labelled: readonly string[] = [];
+// Owner label (O6, 2026-10-23): F-C1 is PRODUCT BUG after three full-count runs; see the known-bug test.
+const labelled: readonly string[] = ["F-C1"];
+let labelledFound: string[] = [];
 let setup: Awaited<ReturnType<typeof resolveHostSetup>>;
 let slots: ReturnType<typeof createSlotAllocator>;
 let cookie: string;
@@ -29,14 +30,13 @@ test.beforeAll(async () => {
 test.afterAll(async () => closePool(pool));
 
 const CASE = "P6-CAL-RACE-008";
-const TITLE =
-  "private link cap 3, N=10 parallel bookings → three accepted (SUSPECTED F-C1 recorded)";
+const TITLE = "private link cap 3, N=10 parallel bookings → three accepted";
 
 test.describe.serial(`${CASE} Cal private link single use`, () => {
   test.describe.configure({ timeout: 120_000 + trials * 15_000 });
 
   test(`${CASE} ${TITLE}`, async () => {
-    const { histogram, suspected } = await runLinkBurstCase({
+    const result = await runLinkBurstCase({
       pool,
       setup,
       slots,
@@ -49,11 +49,26 @@ test.describe.serial(`${CASE} Cal private link single use`, () => {
       trials,
       labelled,
     });
+    const { histogram, suspected } = result;
+    labelledFound = result.labelled;
     for (const line of suspected) {
-      test.info().annotations.push({ type: "suspected-bug", description: line });
+      const type = labelledFound.includes(line) ? "product-bug" : "suspected-bug";
+      test.info().annotations.push({ type, description: line });
     }
     expect(histogram.invariantViolations, histogram.invariantViolations.join("; ")).toEqual([]);
     expect(histogram.verdict).toBe("pass");
+  });
+
+  // PRODUCT BUG F-C1 (private link cap): a link with maxUsageCount 3 admits all 10 parallel bookings; the counter stops at 3.
+  // Labelled by the owner (O6, 2026-10-23) after three full-count runs, one attempt each in 50 trials:
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39932990882
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39935674101
+  // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39938126238
+  // Trials 50 of 50 per run (150 of 150 attempts). When this test turns red ("expected to fail but passed"), the bug is
+  // fixed: remove test.fail() and the label.
+  test("P6-CAL-RACE-008 known bug F-C1: cap-3 link admits three bookings reproduces", async () => {
+    test.fail();
+    expect(labelledFound, labelledFound.join("; ")).toEqual([]);
   });
 
   test(`${CASE} histogram artefact`, async () => {
