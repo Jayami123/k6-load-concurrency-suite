@@ -1139,6 +1139,19 @@ jobs:
           npm run race:documenso || status=$?
           exit "$status"
 
+      # Phase 2 Task 5 (P6-OBS-DOC-001): after the races, so a failure here cannot skip them (a step without a status
+      # function gets an implicit success()). A failure fails the job directly.
+      - name: Documenso sign-in error contract (documenso-api)
+        id: documenso_api
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: 5
+        env:
+          P6_PLAYWRIGHT_JSON: results/playwright/documenso-api.json
+        run: |
+          set -euo pipefail
+          npm run test:documenso-api
+
       # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
       - name: Check Documenso artefacts for tokens
         id: web_log_check
@@ -1154,6 +1167,10 @@ jobs:
           fi
           if [ -d results/races ] && grep -rqE "$pattern" results/races; then
             echo "::error::race histograms contain a token pattern; not uploading"
+            exit 1
+          fi
+          if [ -d results/playwright ] && grep -rqE "$pattern" results/playwright; then
+            echo "::error::Playwright JSON contains a token pattern; not uploading"
             exit 1
           fi
 
