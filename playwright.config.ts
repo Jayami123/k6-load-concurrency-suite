@@ -32,5 +32,11 @@ export default defineConfig({
       retries: 0,
       use: { baseURL: documensoBaseUrlFromEnv() },
     },
+    {
+      name: "documenso-api",
+      testDir: "tests/documenso/api",
+      retries: 0,
+      use: { baseURL: documensoBaseUrlFromEnv() },
+    },
   ],
 });
