@@ -40,9 +40,16 @@ test.describe("Medusa promotion usage limit", () => {
         trials,
         labelled: [],
       });
-      // D54: suspected signals (F-M2) are annotated, not asserted. Counters, 5xx and setup are asserted.
+      // F-M2 is a PRODUCT BUG (plan D70, labelled 2026-10-23) but has no test.fail(): at about 11 % per trial a PR run
+      // cannot hold an expected failure stable (docs/BACKLOG.md). It is annotated as a labelled product bug with the
+      // three full-count runs that showed it (32 of 150 trials in -012, 1 of 150 in -005):
+      // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008
+      // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035
+      // https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959
+      // Counters, HTTP 200s against the cap, 5xx, setup and cleanup are asserted.
       for (const line of suspected) {
-        test.info().annotations.push({ type: "suspected-bug", description: line });
+        const type = /\(F-M2\)$/.test(line) ? "product-bug" : "suspected-bug";
+        test.info().annotations.push({ type, description: line });
       }
       expect(histogram.verdict).toBe("pass");
     });
