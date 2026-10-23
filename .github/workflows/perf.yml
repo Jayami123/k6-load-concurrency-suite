@@ -135,8 +135,17 @@ jobs:
           echo "::add-mask::${pw}"
           echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
 
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 6
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
       - name: Start Medusa (harness up)
         id: medusa_up
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -204,6 +213,7 @@ jobs:
         if: >-
           ${{ github.ref == 'refs/heads/main' && steps.medusa_pnpm.outputs.cache-hit != 'true' }}
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.PNPM_STORE_PATH }}
@@ -215,6 +225,7 @@ jobs:
           && steps.medusa_build.outputs.cache-hit != 'true'
           && hashFiles(format('{0}/apps/backend/.medusa/server/harness-build.json', env.MEDUSA_CHECKOUT_PATH)) != '' }}
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
@@ -320,8 +331,17 @@ jobs:
           echo "::add-mask::${pw}"
           echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
 
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 6
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
       - name: Start Medusa (harness up)
         id: medusa_up
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -486,8 +506,17 @@ jobs:
           echo "::add-mask::${pw}"
           echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
 
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 6
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
       - name: Start Medusa (harness up)
         id: medusa_up
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
         timeout-minutes: 10
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
@@ -666,8 +695,19 @@ jobs:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
           key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.11
 
+      - name: Pull Cal images (3 tries, 15 s then 30 s)
+        id: cal_pull
+        timeout-minutes: 6
+        working-directory: ${{ env.PRODUCTS_ROOT }}/cal/packages/prisma
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-cal \
+            -f "${{ env.PRODUCTS_ROOT }}/cal/packages/prisma/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/cal.compose.yml"
+
       - name: Start Cal (harness up)
         id: cal_up
+        if: ${{ steps.cal_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
@@ -776,6 +816,7 @@ jobs:
         if: >-
           ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cal_yarn.outputs.cache-hit != 'true' }}
         continue-on-error: true
+        timeout-minutes: 5
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/.yarn/cache
@@ -785,6 +826,7 @@ jobs:
         if: >-
           ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cal_nm.outputs.cache-hit != 'true' }}
         continue-on-error: true
+        timeout-minutes: 5
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
@@ -796,6 +838,7 @@ jobs:
           && steps.cal_build.outputs.cache-hit != 'true'
           && hashFiles(format('{0}/apps/web/.next/harness-build.json', env.CAL_CHECKOUT_PATH)) != '' }}
         continue-on-error: true
+        timeout-minutes: 5
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
@@ -920,8 +963,19 @@ jobs:
           echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
           getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
 
+      - name: Pull Cal images (3 tries, 15 s then 30 s)
+        id: cal_pull
+        timeout-minutes: 6
+        working-directory: ${{ env.PRODUCTS_ROOT }}/cal/packages/prisma
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-cal \
+            -f "${{ env.PRODUCTS_ROOT }}/cal/packages/prisma/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/cal.compose.yml"
+
       - name: Start Cal (harness up)
         id: cal_up
+        if: ${{ steps.cal_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
           # 40 min here (plan O10 caps cal-smoke only). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
@@ -1100,8 +1154,17 @@ jobs:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
           key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.11
 
+      - name: Pull Documenso images (3 tries, 15 s then 30 s)
+        id: documenso_pull
+        timeout-minutes: 6
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-documenso -f documenso.compose.yml
+
       - name: Start Documenso (harness up)
         id: documenso_up
+        if: ${{ steps.documenso_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -1217,6 +1280,7 @@ jobs:
           && steps.documenso_build.outputs.cache-hit != 'true'
           && hashFiles(format('{0}/apps/remix/build/harness-build.json', env.DOCUMENSO_CHECKOUT_PATH)) != '' }}
         continue-on-error: true
+        timeout-minutes: 5
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
@@ -1290,22 +1354,13 @@ jobs:
 
       - name: Pull Twenty images (3 tries, 15 s then 30 s)
         id: twenty_pull
-        timeout-minutes: 14
+        timeout-minutes: 6
         working-directory: ${{ env.PRODUCTS_ROOT }}/twenty-CRM/packages/twenty-docker
         env:
           OVERLAY: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if timeout 240 docker compose -p qa-harness-twenty -f docker-compose.yml -f "${OVERLAY}" pull; then
-              exit 0
-            fi
-            [ "$attempt" -lt 3 ] || break
-            echo "pull attempt ${attempt} failed; retrying"
-            sleep $(( attempt == 1 ? 15 : 30 ))
-          done
-          echo "::error::docker compose pull failed after 3 attempts"
-          exit 1
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-twenty -f docker-compose.yml -f "$OVERLAY"
 
       - name: Start Twenty (harness up)
         id: twenty_up
