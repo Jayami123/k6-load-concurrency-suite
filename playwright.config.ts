@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { documensoBaseUrlFromEnv } from "./src/documenso/env.ts";
 import { calBaseUrlFromEnv, medusaBaseUrlFromEnv } from "./src/races/env.ts";
+import { twentyBaseUrlFromEnv } from "./src/twenty/env.ts";
 
 export default defineConfig({
   fullyParallel: false,
@@ -37,6 +38,12 @@ export default defineConfig({
       testDir: "tests/documenso/api",
       retries: 0,
       use: { baseURL: documensoBaseUrlFromEnv() },
+    },
+    {
+      name: "twenty-race",
+      testDir: "tests/twenty/races",
+      retries: 0,
+      use: { baseURL: twentyBaseUrlFromEnv() },
     },
   ],
 });

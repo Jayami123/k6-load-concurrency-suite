@@ -17,6 +17,11 @@
     "down:documenso": "node scripts/harness.mjs down documenso",
     "smoke:documenso": "k6 run --summary-export results/documenso-health-summary.json k6/smoke/documenso-health.js",
     "race:documenso": "playwright test --project=documenso-race",
+    "up:twenty": "node scripts/harness.mjs up twenty",
+    "down:twenty": "node scripts/harness.mjs down twenty",
+    "seed:twenty": "node scripts/seed-twenty.mjs",
+    "race:twenty": "playwright test --project=twenty-race",
+    "smoke:twenty": "k6 run --summary-export results/twenty-health-summary.json k6/smoke/twenty-health.js",
     "test:documenso-api": "playwright test --project=documenso-api",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -30,7 +35,7 @@
     "check": "npm run format:check && npm run lint:actions && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },
   "dependencies": {
-    "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.11"
+    "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.12"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
