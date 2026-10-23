@@ -1394,25 +1394,38 @@ Every question is answered by the owner's decisions in §0. Routine choices are 
   paths, the commit command and the expected count. Every CI step has `timeout-minutes` (§8.2, §8.4).
 - **(e) Owner answers.** Recorded in §0 (decisions 1 to 6) and §13. No answer is recorded beyond what the owner gave in this session.
 
-## 16. Closeout notes (fill in before the PR merges)
+## 16. Closeout notes
 
-- **Merge SHA:** _pending_ (the PR is opened after the build; the owner says "merge" to merge it).
-- **CI runs:** _pending_. The first run is on the PR. The main run and the nightly run follow the merge.
-- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5; `docs/BACKLOG.md`): malformed `{}` and empty bodies on `/metadata` and
-  `/graphql` get no response, reproduced three times.
-- **Deviations from this plan so far:**
-  - The owner's `up:twenty` / `down:twenty` scripts did not exist; the probe called `scripts/harness.mjs` directly (§3.1).
-  - The probe's first `auth` run had a bug of its own: the probe truncated the response body to 300 characters before parsing
-    it, so the sign-in looked empty. Fixed in the probe and re-run (`auth-warm.out`). No product data changed.
-  - My earlier read of attempt 1 of run `39961527451` said the cause was unexplained. The raw logs (§3.10) show the registry 500. The earlier read used the `--log` view, which omits those lines.
-  - The plan commit goes to two refs (O-T1, both accepted).
+- **Merge SHA:** `38533b0`, the merge commit of PR #44 (merged 2026-10-23 as a merge commit, from PR head `4672b4d`).
+- **CI runs:**
+  - PR #44 head `4672b4d`: all seven jobs success on the last read. `cal-smoke` failed once on this head with a Docker Hub timeout
+    fetching the `postgres:18` manifest, before any test ran (PR run `39977522483`, job `120495914291`). Attempt 2 of the same run (`39977522483`) passed; this session did not trigger that re-run.
+  - Main push run `39979511916` (merge commit `38533b0`): all seven jobs success. The `twenty-smoke` job at full count (50 trials):
+    pull 41 s, harness up 103 s, seed 50 s, k6 smoke under 1 s, self-test 4 s, down 1 s, job 3 min 40 s (proof only; not published).
+  - Nightly full-count run (02:17 UTC): **pending**. To be read once it finishes.
+- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5; `docs/BACKLOG.md`): malformed `{}` and empty bodies on `/metadata` and `/graphql` get
+  no response, reproduced three times.
+- **Post-merge follow-ups:**
+  - X5 pull retry for the other product jobs: done in PR #45 (`ci/2026-10-23-p6-pull-retry`), with the budget correction below.
+  - X1 digest pin; X6 value-only shared scanner; H-twenty-auth (harness); P6-OBS-TW-001 (owner decision).
+  - The Cursor Cloud first run (O-T9), to confirm the Docker Hub pulls work there.
+  - Task 7 planning (Twenty races), which depends on this task.
+- **Deviations from this plan:**
+  - The owner's `up:twenty` / `down:twenty` scripts did not exist at probe time; the probe called `scripts/harness.mjs` directly (§3.1).
+  - The probe's first `auth` run had a bug: the probe truncated the response to 300 characters before parsing it, so the sign-in looked
+    empty. Fixed in the probe and re-run (`auth-warm.out`). No product data changed.
+  - My earlier read of attempt 1 of run `39961527451` said the cause was unexplained. The raw logs (§3.10) show the registry 500. The
+    earlier read used the `--log` view, which omits those lines.
+  - The plan commit went to two refs (O-T1, both accepted).
   - Step 1a (the pin bump) was added after the owner's approval, as its own commit before the env step.
-  - **Review fixes on PR #44 (CodeRabbit, valid ones):** (a) the self-test `if` gets `!cancelled()`, so it still runs after a
-    smoke failure; (b) the container-log capture passes the Compose files and no longer hides errors with `|| true`; (c)
-    `twentyBaseUrlFromEnv` refuses cleartext `http://` to a non-loopback host, because credentials are sent to that URL. Fix (c)
-    adds one env unit test, so the unit count is **431** from step 1 on (the plan's 423 / 427 / 430 are now 424 / 428 / 431).
-    The skipped suggestion (none) is recorded here as nothing skipped.
-  - **CI failure on the first PR run (fixed in `fix(ci)`):** `setup-node` in `twenty-smoke` had no `cache-dependency-path`, so it looked for
-    the lockfile at the repository root and failed (`Dependencies lock file is not found`). `npm ci` never ran, so the Stop step's
-    `down` found no `scripts/down.mjs`. The skeleton in §8.2 omitted the line that every other job has. Fixed in the workflow and in the skeleton.
-- **Rule slips:** none recorded. The first `npm run up:twenty` and `down:twenty` calls used the harness directly (above).
+  - **Review fixes on PR #44 (CodeRabbit, valid ones):** (a) the self-test `if` gets `!cancelled()`, so it still runs after a smoke
+    failure; (b) the container-log capture passes the Compose files and no longer hides errors with `|| true`; (c)
+    `twentyBaseUrlFromEnv` refuses cleartext `http://` to a non-loopback host. Fix (c) adds one env unit test, so the unit count is
+    **431** from step 1 on (the plan's 423 / 427 / 430 are now 424 / 428 / 431). No suggestion was skipped.
+  - **CI failure on the first PR run (fixed in `00e5d3f`):** `setup-node` in `twenty-smoke` had no `cache-dependency-path`, so the
+    lockfile was not found and `npm ci` never ran. The Stop step's `down` then found no `scripts/down.mjs`. The §8.2 skeleton had
+    omitted the line that every other job has; fixed in the workflow and in the skeleton.
+  - **Budget correction:** §8.3 used the measured pull time (34 s), not the 14-minute cap, so the 11.8-minute margin was overstated.
+    PR #45 corrects it: every pull step is now capped at 6 min, and `twenty-smoke`'s worst case is 9.08 min (margin 10.92).
+- **Rule slips:** none recorded beyond the deviations above. The first `npm run up:twenty` and `down:twenty` calls used the harness
+  directly, as noted.
