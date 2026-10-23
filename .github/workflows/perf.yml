@@ -670,8 +670,9 @@ jobs:
         id: cal_up
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
-          # 40 min, below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
-          HARNESS_UP_TIMEOUT_MS: "2400000"
+          # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
+          # Below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
+          HARNESS_UP_TIMEOUT_MS: "1800000"
         run: |
           set -euo pipefail
           SECONDS=0
@@ -923,7 +924,7 @@ jobs:
         id: cal_up
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         env:
-          # Same cap as cal-smoke (40 min). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
+          # 40 min here (plan O10 caps cal-smoke only). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
           HARNESS_UP_TIMEOUT_MS: "2400000"
         run: |
           set -euo pipefail
