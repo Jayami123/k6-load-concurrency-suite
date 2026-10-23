@@ -307,8 +307,9 @@ private async stopSecondBackend(): Promise<void> {
 Rules, in words:
 
 - Env unset: nothing happens, so existing runs do not change.
-- Pid file missing and port open: **throw; do not kill.** The harness only signals processes it recorded
-  (`reapProductListeners`, line 731, checks argv and cwd against `productRoot`).
+- No pid file and the port is open: reap only listeners whose argv or cwd is in `productRoot`
+  (`reapProductListeners`, line 731, the same check `stopBackend` uses today). Any other process on the port **throws;
+  nothing is killed.**
 - Success is the port closing (`waitForPortClosed`, line 778). A zombie still answers `kill(pid, 0)`, so a pid check would
   report a stopped process as running.
 
@@ -327,6 +328,7 @@ Rules, in words:
             {
               resolve: "@medusajs/medusa/locking-redis",
               id: "locking-redis",
+              is_default: true,
               options: { redisUrl: process.env.REDIS_URL },
             },
           ],
@@ -334,6 +336,8 @@ Rules, in words:
       }
   ```
 
+- `is_default: true` makes the Redis provider the module's default (as Medusa's Redis locking provider docs set it,
+  per the owner's review). Without it, the in-memory lock may stay the default even with the entry present.
 - **The live probe must confirm** that Medusa accepts this shape, and that the startup log stops saying
   `Locking module: Using "in-memory" as default.` and names `locking-redis` instead. If it does not, H3 is not done.
   This is a harness question; P6 does not work around it.
@@ -343,8 +347,8 @@ Rules, in words:
 | Need                                                                                                        | `P6-MED-RACE-002` (two instances, Redis lock)                     | `P6-MED-RACE-003` (two instances, in-memory lock)                                                                                             |
 | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Second backend started and stopped by the harness (§5.4, §5.5)                                              | Yes                                                               | Yes                                                                                                                                           |
-| `MEDUSA_REDIS=1`                                                                                            | Yes: same bus, cache and workflow engine through one Redis (§4.2) | Open question Q6                                                                                                                              |
-| `MEDUSA_LOCK=redis` (§5.6)                                                                                  | Yes                                                               | No, default `memory`                                                                                                                          |
+| `MEDUSA_REDIS=1`                                                                                            | Yes: same bus, cache and workflow engine through one Redis (§4.2) | Yes, same as `-002` (the two cases differ only in the lock provider; Q6 answer)                                                               |
+| `MEDUSA_LOCK=redis` (§5.6)                                                                                  | Yes                                                               | Yes, set explicitly to `memory`                                                                                                               |
 | Race spec sees both URLs (`MEDUSA_BASE_URL`, `MEDUSA_SECOND_BASE_URL`) and alternates requests between them | Yes                                                               | Yes                                                                                                                                           |
 | Invariant                                                                                                   | Single winner across both instances                               | Characterization: record whether two in-memory locks let two winners through. No `test.fail()` until repeated CI runs reproduce it (rule 13). |
 | Shared-state proof before the race (the §4.1 read through each port)                                        | Yes                                                               | Yes                                                                                                                                           |
@@ -378,9 +382,11 @@ Named test files in the pinned package, each with what it adds. Counts are for H
    about 6 s of boot each and the extra trials. Phase 3's CI estimate must stay under 35 min (45 min minus the 10 min
    margin, rule F(c)). **Not estimated here.**
 5. **No-Redis event bus is local.** The log says `Local Event Bus installed`. A subscriber or workflow started on one
-   instance does not run on the other. `-003` measures the lock only if its effect on events is accounted for (Q6).
-6. **Search seeding runs on the first instance only.** The second instance logged no `[Search]` lines (§4.1). Two instances
-   starting on a fresh database at the same moment were not tried, so the seeding race is open.
+   instance does not run on the other. Resolved for `-003` by the Q6 answer: it runs with `MEDUSA_REDIS=1`, so the bus is
+   shared. The unset run (extra E1) keeps this risk.
+6. **Search seeding runs on the first instance only.** The second instance logged no `[Search]` lines (§4.1). Under H3 the
+   second backend starts only after the first passes health (§5.4), so the fresh-database seeding race does not apply to
+   harness starts. It remains only for starts outside the harness, which were not tried.
 7. **Zombies and pid liveness.** Stop by port, not pid (§4.4, §5.5).
 8. **Inherited `PORT`.** `startSecondBackend` sets `PORT` explicitly (§5.4). A shell `PORT` would otherwise move the first
    backend.
@@ -408,21 +414,22 @@ and the starter's empty `medusa-config.ts` are all as the roadmap describes.
 
 ### 6.5 Proposed extras (not in scope until accepted)
 
-- **E1.** Run `-003` in both modes (no Redis, and `MEDUSA_REDIS=1`), to show whether the event bus changes the result.
+- **E1.** Run `-003` with `MEDUSA_REDIS` unset as well (per-process event bus). The main `-003` run uses `MEDUSA_REDIS=1`
+  (Q6 answer), so E1 shows whether the event bus changes the result.
 - **E2.** A cross-instance token check: sign in on one instance and call an authenticated route on the other. The two share
   `JWT_SECRET`, so it should pass. It is a cheap smoke test for the shared-state claim.
 
 ### 6.6 Open questions, with proposed answers
 
-| Q   | Question                                                                                    | Proposed answer                                                                                                                                              | Who decides                                             |
-| --- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| Q1  | Does `-002` keep "Redis lock" (the roadmap's name)?                                         | Yes, gated on H3's `MEDUSA_LOCK=redis` and on the Phase 3 probe confirming it. If H3 cannot wire the lock, record it as a harness gap, not a product result. | Owner: this changes what the case tests.                |
-| Q2  | Is `MEDUSA_SECOND_BASE_URL` set by default?                                                 | No. Env only; 9001 is the example. A silent second backend in other stacks would be a surprise.                                                              | Decided here (routine).                                 |
-| Q3  | Should `down` stop a second backend whose pid file is missing but whose port is open?       | No. Throw and leave it running. The harness never kills what it did not record (§5.5).                                                                       | Decided here (routine; matches today's base-port rule). |
-| Q4  | Does H3 set `PORT` explicitly for both backends?                                            | Yes (§5.4).                                                                                                                                                  | Decided here (routine).                                 |
-| Q5  | Who measures memory under race load, and where?                                             | Phase 3 records VmRSS during a race, on the runner, before any runner figure is quoted.                                                                      | Decided here (routine).                                 |
-| Q6  | Does `-003` run with `MEDUSA_REDIS` unset (per-process event bus) or set?                   | Unset, because it is the default and the case is about the lock. The case text must say the event bus is per process. E1 would compare.                      | Owner: this changes what the characterization measures. |
-| Q7  | Does Medusa register `@medusajs/medusa/locking-redis` from the array-style `modules` entry? | Unknown until the Phase 3 probe. Expected yes, given the three Redis entries already work the same way.                                                      | Phase 3 probe (not a question for the owner).           |
+| Q   | Question                                                                                    | Proposed answer                                                                                                                                                                    | Who decides                                             |
+| --- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Q1  | Does `-002` keep "Redis lock" (the roadmap's name)?                                         | **Answer (owner): yes.** `-002` keeps the Redis lock, gated on `MEDUSA_LOCK=redis` and the Phase 3 probe. If H3 cannot wire the lock, it is a harness gap, not a product result.   | Owner, answered in review.                              |
+| Q2  | Is `MEDUSA_SECOND_BASE_URL` set by default?                                                 | No. Env only; 9001 is the example. A silent second backend in other stacks would be a surprise.                                                                                    | Decided here (routine).                                 |
+| Q3  | Should `down` stop a second backend whose pid file is missing but whose port is open?       | Only listeners whose argv or cwd is in `productRoot` are reaped; anything else throws and nothing is killed (§5.5).                                                                | Decided here (routine; matches today's base-port rule). |
+| Q4  | Does H3 set `PORT` explicitly for both backends?                                            | Yes (§5.4).                                                                                                                                                                        | Decided here (routine).                                 |
+| Q5  | Who measures memory under race load, and where?                                             | Phase 3 records VmRSS during a race, on the runner, before any runner figure is quoted.                                                                                            | Decided here (routine).                                 |
+| Q6  | Does `-003` run with `MEDUSA_REDIS` unset (per-process event bus) or set?                   | **Answer (owner): set.** `-003` runs with `MEDUSA_REDIS=1` and `MEDUSA_LOCK=memory`, so `-002` and `-003` differ only in the lock provider. The unset run stays optional extra E1. | Owner, answered in review.                              |
+| Q7  | Does Medusa register `@medusajs/medusa/locking-redis` from the array-style `modules` entry? | Unknown until the Phase 3 probe. Expected yes, given the three Redis entries already work the same way.                                                                            | Phase 3 probe (not a question for the owner).           |
 
 ## 7. Decisions made in this task (with reasons)
 
@@ -480,7 +487,9 @@ and §6.3.
 
 ### 8.5 (e) Owner answers
 
-None were given in this session. Every question in §6.6 is open, and each proposed answer is labelled as a proposal.
+Owner answers, from the review of PR #48, recorded as given: **Q1** (yes, `-002` keeps the Redis lock, gated on
+`MEDUSA_LOCK=redis` and the Phase 3 probe) and **Q6** (`-003` runs with `MEDUSA_REDIS=1` and `MEDUSA_LOCK=memory`; the
+unset run is extra E1). No other owner answer was given. Q2 to Q5 and Q7 remain as labelled in §6.6.
 
 ## 9. Closeout notes
 
