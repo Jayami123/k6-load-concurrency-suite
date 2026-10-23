@@ -549,6 +549,14 @@ Phase 1 of the master plan is **done**. The six cases are evidenced from `main` 
 `P6-CAL-RACE-001`, `P6-CAL-RACE-002`, `P6-CAL-RACE-003`, `P6-DOC-RACE-001`, `P6-DOC-RACE-002`. Closeout runs:
 [39577832657](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39577832657) and [39580025937](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39580025937). Open product bugs: the five above.
 
+## Phase 3 (next)
+
+1. `P6-MED-RACE-002` and `P6-MED-RACE-003`: two Medusa backends on one database. `-002` uses a Redis lock; `-003`
+   characterizes the in-memory lock. They need the harness to start and stop a second Medusa instance (D11). The input
+   spec is in the [Task 8 probe report](docs/plans/2026-10-24-p6-phase2-task8-med-multi-instance.md) §5 (harness
+   proposal H3). Today the harness registers no Redis lock in either mode, so `-002` also needs H3's lock switch. Not run
+   in Phase 2.
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),
