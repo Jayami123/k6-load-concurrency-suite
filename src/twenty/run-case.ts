@@ -96,6 +96,8 @@ export async function runTwentyTrials(opts: {
   caseId: string;
   title: string;
   concurrency: number;
+  /** False for sequential cases: the gap between sequential requests is not a dispatch spread, so it is recorded as 0. */
+  parallel?: boolean;
   attempt: (
     trial: number,
   ) => Promise<{ requests: RaceRequestResult[]; oracle: Record<string, RaceOracleValue> }>;
@@ -117,7 +119,11 @@ export async function runTwentyTrials(opts: {
       const { requests, oracle } = await opts.attempt(trial);
       const record = recordTrial(
         trial,
-        { requests, dispatchSpreadMs: dispatchSpreadMs(requests.map((r) => r.startedAtMs)) },
+        {
+          requests,
+          dispatchSpreadMs:
+            opts.parallel === false ? 0 : dispatchSpreadMs(requests.map((r) => r.startedAtMs)),
+        },
         () => {},
       );
       record.oracle = oracle;
