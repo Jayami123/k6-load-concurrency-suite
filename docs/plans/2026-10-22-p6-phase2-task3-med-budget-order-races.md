@@ -1828,8 +1828,8 @@ were added after the merge, in the follow-up docs PR.
 - Merge SHA: `8cccc568f5bf36440080e14bb34e9127bc1c82fb` (PR
   [#32](https://github.com/Jayami123/k6-load-concurrency-suite/pull/32), merge commit, 2026-10-23, on the owner's word).
   First full-count `main` run after the merge:
-  [39914092582](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39914092582) — still in progress
-  (started 2026-10-23 06:51 UTC) when this record was written; its result and step times are to be recorded in a follow-up.
+  [39914092582](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39914092582) — `success` (completed
+  2026-10-23 07:11 UTC); `medusa-smoke` race step 16 min 55 s, `medusa-order-races` race step 10 min 58 s.
 - Findings (final labels and CI evidence). Three full-count `workflow_dispatch` runs on the branch, all jobs green:
   [39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008), [39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035), [39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959). Per 150 valid trials:
   - **X04** (`-008`): 113 (39 / 39 / 35). **PRODUCT BUG**, `test.fail()` (D67).

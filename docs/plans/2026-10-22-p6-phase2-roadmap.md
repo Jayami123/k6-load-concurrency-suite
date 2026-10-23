@@ -372,8 +372,7 @@ first full-count Actions run.
 
 **Status (2026-10-23, merged in [#32](https://github.com/Jayami123/k6-load-concurrency-suite/pull/32) as
 `8cccc56`; first `main` full-count run
-[39914092582](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39914092582) still in progress when
-this was written).** Build plan:
+[39914092582](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39914092582) `success`).** Build plan:
 [2026-10-22-p6-phase2-task3-med-budget-order-races.md](2026-10-22-p6-phase2-task3-med-budget-order-races.md). All four
 cases land; `-012` was cheap and is in scope (plan D44). Three full-count `workflow_dispatch` runs on the branch
 ([39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008),
