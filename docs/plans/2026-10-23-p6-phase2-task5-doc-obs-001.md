@@ -793,6 +793,12 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
     `product-bug` → `issue`, so the job summary lists `P6-OBS-DOC-001` as a known bug. (e) The JSON scan reads only `suites`
     and `errors`, and skips `config`, because Playwright writes the repo's git diff into `config.metadata.gitDiff` on CI
     (about 50 KB, with this workflow's own scan patterns in it). Accepted by the owner. Test output is still scanned.
+  - **CI and summary, head `b0937e0` (2026-10-23).** `documenso-smoke` success (all six steps, including the sign-in step, the
+    token scan and the job summary). The job summary check was a local render of the same script from a local run of the spec
+    at this head (the CI summary page is not readable from here): it counts `documenso-api.json` (1 passed, 2 expected
+    failures) and lists both `P6-OBS-DOC-001` tests under "Known product bugs still reproducing". Cosmetic gap: each line shows
+    the whole annotation description (`PRODUCT BUG P6-OBS-DOC-001 (low)`) rather than a short ID, because
+    `issueIdFromDescription` takes the text before the colon. Not changed here; owner decision.
 
 ## Appendix A. Draft upstream issue for `P6-OBS-DOC-001` (for the owner to file; not filed by P6)
 
