@@ -32,9 +32,11 @@ for file in "${files[@]}"; do
   compose+=(-f "$file")
 done
 
+# Worst CI pull measured 66 s (twenty-smoke, PR #44 head 4672b4d); 120 s per try leaves room above it.
+per_try_seconds=120
 max_tries=3
 for attempt in 1 2 3; do
-  if timeout 240 "${compose[@]}" pull --ignore-buildable; then
+  if timeout "$per_try_seconds" "${compose[@]}" pull --ignore-buildable; then
     exit 0
   fi
   if [ "$attempt" -lt "$max_tries" ]; then
