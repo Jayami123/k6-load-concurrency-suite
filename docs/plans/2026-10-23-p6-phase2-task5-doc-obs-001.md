@@ -600,12 +600,21 @@ export NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192"
     ```
     (The block above is indented by four extra spaces only because it sits in this list; in the file, `- name:` starts at column 7,
     the same as the other steps.) No `|| status=$?`: a failure fails the job (D13).
-  - (b) In `Check Documenso artefacts for tokens`, after the race-histogram check, add the Playwright JSON check (E2, owner-accepted):
+  - (b) In `Check Documenso artefacts for tokens`, after the race-histogram check, add the Playwright JSON check (E2, owner-accepted).
+    **As merged** (the first draft recursed over all of `results/playwright`; that failed on CI, see §14): the scan reads
+    only `suites` and `errors`, because `config.metadata.gitDiff` holds the repo diff. The value-bearing pattern is
+    `json_pattern` (cookie values, not the bare word `sessionId`), and `jq` output is captured before `grep -q` so that
+    `pipefail` cannot hide a match:
     ```bash
-              if [ -d results/playwright ] && grep -rqE "$pattern" results/playwright; then
-                echo "::error::Playwright JSON contains a token pattern; not uploading"
-                exit 1
-              fi
+              json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
+              for f in results/playwright/*.json; do
+                [ -f "$f" ] || continue
+                results_json=$(jq -c '{suites, errors}' "$f")
+                if grep -qE "$json_pattern" <<<"$results_json"; then
+                  echo "::error::$f: test results contain a token pattern; not uploading"
+                  exit 1
+                fi
+              done
     ```
 - Commands:
   ```bash
@@ -768,8 +777,15 @@ The owner reviewed plan `213189c` on 2026-10-23 and gave these answers in this s
      Attempt 1 of the same `main` run failed in `documenso-smoke` and `cal-smoke` at `Start … (harness up)`: Docker registry
      pull of `postgres` returned `500 Internal Server Error`, before any test body ran. Attempt 2 re-ran only the failed jobs
      (repo flake rule); both passed. The other `main` jobs passed in attempt 1.
-- **README run links:** _pending_ (the run links above can go into the README row; the owner decides the README edit)
-- **Findings:** _pending_ (the cleanup probe result; the summary output check from Q1)
+- **README run links:** met (the `P6-OBS-DOC-001` row links the three runs above).
+- **Findings:**
+  - Cleanup probe (owner Q4): passed. `deleteAccount` ran in `afterAll` and removed the throwaway user (the row count for
+    `%-signin@example.com` returned to 0 after the run). A positive control (one created user, counted, then deleted through
+    `deleteAccount`) showed the count sees users, so the 0 is not a false negative. A sign-in check was not used: the spec's
+    password is not kept after the run.
+  - Summary (Q1): the job summary counts `documenso-api.json` and lists `P6-OBS-DOC-001` under known product bugs (checked by a
+    local render of the same script at `b0937e0`; the CI summary page is not readable from here). Cosmetic: each line shows the
+    whole annotation description, not a short ID.
 - **Deviations from this plan:** the plan branch (C6); the local heap flags (§3.1, R5); _add more as they happen_
   - **E2 scan false positives (three CI runs on PR #41; the first fix was incomplete).**
     1. Head `688e3df`: the JSON scan (E2, owner-accepted) failed on the bare word `sessionId`, which appears in the setup test
