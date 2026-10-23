@@ -13,11 +13,13 @@ export function signinPayload(input: { email: string; password: string; csrfToke
 }
 
 /**
- * Pure. 201/200 is success. A known `code` wins over the status: INVALID_CREDENTIALS is bad-credentials
- * (even though the status is 500 today), INVALID_REQUEST is bad-csrf. A zod `error` array is validation.
- * Anything else is server-error. The body is parsed and never returned.
+ * Pure. 200/201 is always success, whatever the body, so a wrong password that succeeds can never pass the guard.
+ * Otherwise a known `code` decides: INVALID_CREDENTIALS is bad-credentials (even though the status is 500 today),
+ * INVALID_REQUEST is bad-csrf. A zod `error` array is validation. Anything else is server-error.
+ * The body is parsed and never returned.
  */
 export function classifySignin(status: number, text: string): SigninOutcome {
+  if (status === 200 || status === 201) return { kind: "success", code: null };
   let code: string | null = null;
   let zodIssues = false;
   try {
@@ -30,7 +32,6 @@ export function classifySignin(status: number, text: string): SigninOutcome {
   if (code === "INVALID_CREDENTIALS") return { kind: "bad-credentials", code };
   if (code === "INVALID_REQUEST") return { kind: "bad-csrf", code };
   if (zodIssues) return { kind: "validation", code: null };
-  if (status === 200 || status === 201) return { kind: "success", code: null };
   return { kind: "server-error", code };
 }
 

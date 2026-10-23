@@ -42,6 +42,9 @@ describe("classifySignin", () => {
       code: null,
     });
   });
+  it("201 with an INVALID_CREDENTIALS body is still success (a success never passes the guard as bad-credentials)", () => {
+    assert.deepEqual(classifySignin(201, INVALID_CREDENTIALS), { kind: "success", code: null });
+  });
   it("never reports success for 4xx or 5xx", () => {
     for (const status of [400, 401, 403, 500]) {
       assert.notEqual(classifySignin(status, INVALID_CREDENTIALS).kind, "success");

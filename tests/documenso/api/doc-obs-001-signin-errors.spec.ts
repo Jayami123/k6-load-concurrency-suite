@@ -55,8 +55,9 @@ test("P6-OBS-DOC-001: wrong password is 401, never 5xx", async () => {
   expect(classifySignin(r.status, r.text).kind, "guard: known credentials contract").toBe(
     "bad-credentials",
   );
+  expect(r.setCookieNames, "guard: no session on a rejected sign-in").not.toContain("sessionId");
   test.info().annotations.push({
-    type: "product-bug",
+    type: "issue",
     description:
       "PRODUCT BUG P6-OBS-DOC-001 (low): wrong password returns 500 INVALID_CREDENTIALS, not 401. Cause: AppError without statusCode, onError maps it to 500.",
   });
@@ -69,8 +70,9 @@ test("P6-OBS-DOC-001: bad CSRF is 400 or 403, never 5xx", async () => {
   const bogus = { jar: session.jar, token: "bogus-csrf-value" };
   const r = await signinAttempt(BASE, bogus, { email, password });
   expect(classifySignin(r.status, r.text).kind, "guard: CSRF contract").toBe("bad-csrf");
+  expect(r.setCookieNames, "guard: no session on a rejected sign-in").not.toContain("sessionId");
   test.info().annotations.push({
-    type: "product-bug",
+    type: "issue",
     description:
       "PRODUCT BUG P6-OBS-DOC-001 (low): bad CSRF returns 500 INVALID_REQUEST, not 400 or 403. Cause: AppError without statusCode (line 94), onError maps it to 500.",
   });
