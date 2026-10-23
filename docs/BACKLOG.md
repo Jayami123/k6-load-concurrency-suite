@@ -54,8 +54,6 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
 - **X1 digest pin for the Twenty images (proposed in the Task 6 plan §12; a harness change).** Pin `twentycrm/twenty`,
   `postgres`, `redis` and `axllent/mailpit` by digest (the Twenty digest is in plan §3.9). **Done when** the harness overlay
   uses digests.
-- **X5 pull retry for the other jobs (owner request, Task 6).** `twenty-smoke` retries `docker compose pull` (3 tries, 15 s
-  then 30 s, 4-minute cap per try). **Done when** `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`, `cal-smoke`,
-  `cal-state-races` and `documenso-smoke` have the same step, each with `timeout-minutes`.
+- **X5 pull retry for the other jobs: done in [PR #45](https://github.com/Jayami123/k6-load-concurrency-suite/pull/45).** Every product job pulls its images with 3 tries (100 s per try, 15 s then 30 s backoff, 6-minute step cap) before harness up. Plan: `docs/plans/2026-10-23-p6-x5-pull-retry.md`.
 - **X6 one token scanner (proposed in the Task 6 plan §12).** Make `scripts/evidence-token-scan.mjs` value-only, so one scanner
   serves every job. **Done when** the owner accepts it.
