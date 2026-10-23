@@ -45,5 +45,11 @@ export default defineConfig({
       retries: 0,
       use: { baseURL: twentyBaseUrlFromEnv() },
     },
+    {
+      name: "twenty-tw-races",
+      testDir: "tests/twenty/tw-races",
+      retries: 0,
+      use: { baseURL: twentyBaseUrlFromEnv() },
+    },
   ],
 });

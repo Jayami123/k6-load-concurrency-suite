@@ -291,7 +291,8 @@ bash scripts/bootstrap.sh twenty   # clones the pinned fork (once)
 npm run up:twenty                  # starts the stack and returns when the app is healthy
 npm run seed:twenty                # seeds the dev workspace (once per fresh database)
 npm run smoke:twenty               # k6: GET /healthz
-npm run race:twenty                # the unmapped self-test (no race yet)
+npm run race:twenty                # the unmapped self-test
+npm run race:twenty-tw           # the Task 7 race cases (tests/twenty/tw-races)
 npm run down:twenty                # always; TWENTY_DOWN_VOLUMES=1 also removes the volumes
 ```
 
@@ -305,6 +306,24 @@ npm run down:twenty                # always; TWENTY_DOWN_VOLUMES=1 also removes 
 CI runs the self-test in the `twenty-smoke` job, which uses a pull retry, a token scan before upload and a
 `down` that removes the volumes. Timings are not published here; numbers come only from GitHub Actions runs (median
 of at least 3).
+
+### Twenty races
+
+Cases in `tests/twenty/tw-races/` (project `twenty-tw-races`), run by the `twenty-races` job on every push to `main`, nightly and on
+dispatch with 50 trials, and on pull requests with 5:
+
+| Case             | What it checks                                                      | Status                                           |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| `P6-TW-RACE-001` | two PATCH of one name end on one of the two values, no 5xx          | passes in the probe                              |
+| `P6-TW-RACE-005` | PATCH of name and PATCH of another field both persist               | passes in the probe                              |
+| `P6-TW-RACE-002` | two PATCH of one task's position end on one of the two values       | passes in the probe                              |
+| `P6-TW-RACE-003` | two parallel merges of one pair leave one live row and one survivor | passes in the probe                              |
+| `P6-TW-RACE-006` | a replayed reset token is refused and changes nothing               | passes in the probe                              |
+| `P6-TW-RACE-004` | ten parallel redemptions of one reset token admit exactly one       | **PRODUCT BUG** (`test.fail()` after the guards) |
+
+Every parallel case asserts that its requests overlapped, that every trial's setup ran, and that no company row with the run
+prefix is left. Throwaway members are created through the invitation flow and are not removed (CI removes the volumes).
+Timings are not published here; numbers come only from GitHub Actions runs.
 
 ## Phase 1 results
 

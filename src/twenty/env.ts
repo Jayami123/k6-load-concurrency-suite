@@ -17,6 +17,19 @@ export function twentyBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): stri
   return url;
 }
 
+/** Mailpit address (harness overlay publishes it on 8025). The reset token is read from its API, so cleartext is loopback only. */
+export function twentyMailpitUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const url = strip(val(env, "P6_TWENTY_MAILPIT_URL") ?? "http://127.0.0.1:8025");
+  const { protocol, hostname } = new URL(url);
+  const loopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+  if (protocol === "http:" && !loopback) {
+    throw new Error(
+      "ENV: P6_TWENTY_MAILPIT_URL must use https:// unless it is a loopback address (the reset token is read from it)",
+    );
+  }
+  return url;
+}
+
 /** P6 override first, then the harness variable, then the harness default (published on 5434). Not a secret. */
 export function twentyDatabaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   return (

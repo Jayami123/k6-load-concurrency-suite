@@ -5,6 +5,7 @@ import {
   twentyBaseUrlFromEnv,
   twentyDatabaseUrlFromEnv,
   twentyEmailFromEnv,
+  twentyMailpitUrlFromEnv,
   twentyPasswordFromEnv,
   twentySubdomainFromEnv,
   twentyWorkspaceNameFromEnv,
@@ -69,6 +70,14 @@ describe("twenty env", () => {
     assert.equal(twentyEmailFromEnv({ TWENTY_EMAIL: "   " }), TWENTY_DEFAULT_ADMIN_EMAIL);
     assert.equal(twentyPasswordFromEnv({}), TWENTY_DEV_SEED_PASSWORD);
     assert.equal(twentyPasswordFromEnv({ TWENTY_PASSWORD: "  " }), TWENTY_DEV_SEED_PASSWORD);
+  });
+
+  it("defaults the Mailpit address to loopback 8025 and refuses a remote cleartext host", () => {
+    assert.equal(twentyMailpitUrlFromEnv({}), "http://127.0.0.1:8025");
+    assert.throws(
+      () => twentyMailpitUrlFromEnv({ P6_TWENTY_MAILPIT_URL: "http://mail.example.test" }),
+      /ENV:/,
+    );
   });
 
   it("never prints the password", () => {
