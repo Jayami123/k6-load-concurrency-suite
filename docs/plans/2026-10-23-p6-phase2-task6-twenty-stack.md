@@ -1070,6 +1070,7 @@ twenty-smoke:
       with:
         node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
         cache: npm
+        cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
 
     - name: Install P6 dependencies
       timeout-minutes: 10
@@ -1406,4 +1407,7 @@ Every question is answered by the owner's decisions in §0. Routine choices are 
   - My earlier read of attempt 1 of run `39961527451` said the cause was unexplained. The raw logs (§3.10) show the registry 500. The earlier read used the `--log` view, which omits those lines.
   - The plan commit goes to two refs (O-T1, both accepted).
   - Step 1a (the pin bump) was added after the owner's approval, as its own commit before the env step.
+  - **CI failure on the first PR run (fixed in `fix(ci)`):** `setup-node` in `twenty-smoke` had no `cache-dependency-path`, so it looked for
+    the lockfile at the repository root and failed (`Dependencies lock file is not found`). `npm ci` never ran, so the Stop step's
+    `down` found no `scripts/down.mjs`. The skeleton in §8.2 omitted the line that every other job has. Fixed in the workflow and in the skeleton.
 - **Rule slips:** none recorded. The first `npm run up:twenty` and `down:twenty` calls used the harness directly (above).

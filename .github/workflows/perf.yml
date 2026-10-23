@@ -1260,6 +1260,7 @@ jobs:
         with:
           node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
           cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
 
       - name: Install P6 dependencies
         timeout-minutes: 10
