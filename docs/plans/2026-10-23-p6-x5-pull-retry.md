@@ -522,4 +522,4 @@ Older steps with no `timeout-minutes` (the owner's rule: list them, do not fix t
 
 ## 8. Backlog
 
-X5 in [BACKLOG.md](../BACKLOG.md) stays open until the decision and the PR. It is not marked done.
+X5 is marked done in [BACKLOG.md](../BACKLOG.md), referencing PR #45.
