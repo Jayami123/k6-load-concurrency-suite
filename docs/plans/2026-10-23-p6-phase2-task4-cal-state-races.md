@@ -1198,6 +1198,17 @@ reservationQty 1 !== orderCount 2`) in the warm-up and in the trials, and a TEST
   the leftover-order leak is not explained. The same extra passed in runs `39927945708`, `39930717584`, `39932990882`,
   `39935674101` and `39938126238` (`medusa-smoke` green in each). Not labelled; the owner decides whether it becomes a
   backlog item.
+- **PR review (CodeRabbit, review at 2026-10-23 11:00 UTC, head `aac16dd`) triage:**
+  - README table: four `P6-CAL-RACE` rows had 4 of 6 cells (markdownlint MD056). Fixed: Test and Evidence cells added, with the
+    run links. Valid.
+  - Security architecture review (low): the link runner replaced the event type's whole link list and cleared it to empty
+    after each attempt, which would remove other links on a reused fixture. Valid. Fixed: the runner reads the prior links
+    (`readEventLinks`, read-only), refuses to run on a time-limited link (a replace can't restore it faithfully), and puts the
+    prior list back after every attempt. Limit: restoring the links through the replace call is verified only for the local
+    fixture run recorded below; a process killed mid-attempt cannot restore.
+  - Docstring coverage 75% (warning, threshold 80%): doc comments added to the flagged exported functions. Valid.
+  - Security note on replays (not changed): signatures prove authenticity, not exactly-once delivery. The oracle counts
+    deliveries per booking UID and asserts counts only, so a replay would show as an extra count. No code change.
 - **Environment note:** at the start of the local labelled-spec run the Docker daemon was down (`Cannot connect to the Docker
 daemon`), so `up:cal` exited 1 in 1 second. The session-start hook's `sudo dockerd` brought it back; the retry exited 0.
   Not a product or CI issue.
