@@ -932,5 +932,7 @@ reviewer's review. Product bug labelling is also YES: X04 and F-M3 appear as `pr
 ### 16.4 Open questions after the decisions
 
 - Q1 agreed (§16.1 item 1). Q2 withdrawn (§16.1 item 2). Q3 agreed (§16.1 item 2). Q4 fine. Q5 yes.
-- Still open for the owner: whether the F-M3 and X04 annotations should also get a `test.fail()` in these cases, as
-  `-008` has. The decision above says annotations only; a `test.fail()` would be a follow-up with the F-M4 label.
+- Answered by the owner (2026-10-23): no second `test.fail()` in `-013` or `-014`. `-008` already holds X04 and F-M3 as
+  expected failures. In `-013` and `-014` they stay `product-bug` annotations with the existing labels. A second
+  `test.fail()` would repeat the same bug in another spec, and with F-M4 still suspected it could make PR runs fail at
+  random. The follow-up is F-M4's `test.fail()`, once three full-count runs confirm it.
