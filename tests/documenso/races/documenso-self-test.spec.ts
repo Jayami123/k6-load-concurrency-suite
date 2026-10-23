@@ -22,7 +22,10 @@ import {
   webhookHostFromEnv,
 } from "../../../src/documenso/env.ts";
 import { createInbucketClient, mailboxName } from "../../../src/documenso/inbucket.ts";
-import { startWebhookReceiver } from "../../../src/documenso/webhook-receiver.ts";
+import {
+  headerSecretCheck,
+  startWebhookReceiver,
+} from "../../../src/receivers/webhook-receiver.ts";
 import {
   createApiToken,
   createWebhook,
@@ -186,7 +189,10 @@ test("documenso self-test (unmapped): health burst, oracle, one email, one webho
 
     // 5. One webhook: testWebhook must deliver once, signed, and leave one SUCCESS WebhookCall.
     const secret = randomBytes(16).toString("hex");
-    receiver = await startWebhookReceiver({ publicHost: webhookHost, expectedSecret: secret });
+    receiver = await startWebhookReceiver({
+      publicHost: webhookHost,
+      check: headerSecretCheck("x-documenso-secret", secret),
+    });
     const hook = await createWebhook(base, account, {
       webhookUrl: receiver.url,
       eventTriggers: [WEBHOOK_EVENT],

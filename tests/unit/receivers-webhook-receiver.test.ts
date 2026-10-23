@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
-import { parseDelivery, startWebhookReceiver } from "../../src/documenso/webhook-receiver.ts";
+import {
+  headerSecretCheck,
+  hmacSignatureCheck,
+  parseDelivery,
+  startWebhookReceiver,
+} from "../../src/receivers/webhook-receiver.ts";
 
-const base = { path: "/hook", receivedAt: 1, expectedSecret: "s" };
+const base = { path: "/hook", receivedAt: 1, check: headerSecretCheck("x-documenso-secret", "s") };
 
 describe("parseDelivery", () => {
   it("matches the expected secret and reads the event", () => {
@@ -39,7 +45,7 @@ describe("startWebhookReceiver", () => {
   it("is addressed by the public host and records a real POST", async () => {
     const receiver = await startWebhookReceiver({
       publicHost: "p6-webhook.test",
-      expectedSecret: "s",
+      check: headerSecretCheck("x-documenso-secret", "s"),
     });
     try {
       assert.match(receiver.url, /^http:\/\/p6-webhook\.test:\d+\/hook$/);
@@ -57,5 +63,20 @@ describe("startWebhookReceiver", () => {
     } finally {
       await receiver.close();
     }
+  });
+});
+
+describe("hmacSignatureCheck", () => {
+  it("accepts the HMAC of the raw body and rejects any other body", () => {
+    const check = hmacSignatureCheck("s3cret");
+    const body = '{"triggerEvent":"BOOKING_CREATED"}';
+    const sig = createHmac("sha256", "s3cret").update(body).digest("hex");
+    assert.equal(check({ "x-cal-signature-256": sig }, body), true);
+    assert.equal(check({ "x-cal-signature-256": sig }, body + " "), false);
+    assert.equal(check({}, body), false);
+  });
+
+  it("rejects a signature of a different length without throwing", () => {
+    assert.equal(hmacSignatureCheck("s3cret")({ "x-cal-signature-256": "00" }, "{}"), false);
   });
 });
