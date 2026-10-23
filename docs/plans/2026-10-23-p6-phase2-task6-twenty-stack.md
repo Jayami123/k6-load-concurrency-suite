@@ -69,10 +69,10 @@ Each row is probed in §3 unless marked.
 
 ## 3. Probe results (2026-10-23, live app)
 
-Probe scripts are outside the repo, in
-`/tmp/claude-0/-home-user-k6-load-concurrency-suite/e2d91dd0-e98c-52af-aeb4-09f5ad131ec1/scratchpad/probe/`
-(`probe.mjs`, `exchange.mjs`, `api-burst.mjs`, `apikey.mjs`, `revoke.mjs`, `malformed.sh`, `cold-cycle.sh`; outputs
-`*.out` and `*.log` next to them). The owner's `npm run up:twenty` / `down:twenty` scripts did not exist yet, so the probe
+The probe scripts (`probe.mjs`, `exchange.mjs`, `api-burst.mjs`, `apikey.mjs`, `revoke.mjs`, `malformed.sh`,
+`cold-cycle.sh`) were scratch files of the planning session and are not in the repo. Their results are the tables in this
+section. The repo keeps the code that grew out of them: `src/twenty/auth.ts` (sign-in and token exchange) and the
+`twenty-smoke` job. The owner's `npm run up:twenty` / `down:twenty` scripts did not exist yet, so the probe
 called the same entry point they will call: `node scripts/harness.mjs up twenty` and `… down twenty`.
 
 ### 3.1 Commands and exit codes
