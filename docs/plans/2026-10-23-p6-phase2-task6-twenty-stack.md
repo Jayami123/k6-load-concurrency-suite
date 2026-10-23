@@ -1396,9 +1396,13 @@ Every question is answered by the owner's decisions in §0. Routine choices are 
 
 ## 16. Closeout notes (fill in before the PR merges)
 
-- **Merge SHA:** _pending_ (the PR is opened after the build; the owner says "merge" to merge it).
-- **CI runs:** _pending_. The first run is on the PR. The main run and the nightly run follow the merge.
-- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5; `docs/BACKLOG.md`): malformed `{}` and empty bodies on `/metadata` and
+- **Merge SHA:** `38533b0` (merge commit of PR #44, merged 2026-10-23 at PR head `4672b4d`, as a merge commit).
+- **CI runs:** PR #44 head `4672b4d`: all seven jobs success. Main push run `39979511916` (merge commit `38533b0`): all seven
+  success. Twenty job on `main` (full count, 50 trials): pull 41 s, harness up 103 s, seed 50 s, k6 smoke under 1 s, self-test 4 s,
+  down 1 s, job 3 min 40 s (proof only; not published). Nightly run (full count) still to be read.
+- **Post-merge follow-ups (not in this PR):** X5 pull retry for the other jobs (the cal-smoke registry timeout on the PR head,
+  §16 deviations); X1 digest pin; X6 value-only shared scanner; H-twenty-auth (harness); the Cursor Cloud first run (O-T9); P6-OBS-TW-001
+  owner decision; Task 7 planning (Twenty races), which depends on this task.- **Findings:** P6-OBS-TW-001 (SUSPECTED, §3.5; `docs/BACKLOG.md`): malformed `{}` and empty bodies on `/metadata` and
   `/graphql` get no response, reproduced three times.
 - **Deviations from this plan so far:**
   - The owner's `up:twenty` / `down:twenty` scripts did not exist; the probe called `scripts/harness.mjs` directly (§3.1).
