@@ -102,3 +102,38 @@ export function captureBody(amount: number) {
 export function refundBody(amount: number) {
   return { amount };
 }
+
+/** Promotion code for one attempt. Codes are case sensitive (live, plan §2.2), so always lowercase. */
+export function promoCode(prefix: string, leaf: string): string {
+  const code = `${prefix.toLowerCase()}-${leaf}-code`;
+  if (!/^[a-z0-9-]+$/.test(code)) {
+    throw new Error(`TEST BUG: promo code "${code}" is not [a-z0-9-]`);
+  }
+  return code;
+}
+
+/** Body of POST /admin/campaigns with a usage budget. Live: 200; a currency_code on a usage budget is a 400. */
+export function campaignCreateBody(identifier: string, limit: number) {
+  return { name: identifier, campaign_identifier: identifier, budget: { type: "usage", limit } };
+}
+
+/** Body of POST /admin/promotions: 10 % off the order in EUR, active; either a campaign or a usage limit. */
+export function promotionCreateBody(code: string, cap: { campaignId: string } | { limit: number }) {
+  return {
+    code,
+    type: "standard",
+    status: "active",
+    application_method: {
+      type: "percentage",
+      target_type: "order",
+      value: 10,
+      currency_code: "eur",
+    },
+    ...("campaignId" in cap ? { campaign_id: cap.campaignId } : { limit: cap.limit }),
+  };
+}
+
+/** Body of POST /admin/orders/:id/fulfillments. Live: 200 with the checkout line item id and the stock location. */
+export function fulfillmentBody(itemId: string, quantity: number, locationId: string) {
+  return { items: [{ id: itemId, quantity }], location_id: locationId };
+}

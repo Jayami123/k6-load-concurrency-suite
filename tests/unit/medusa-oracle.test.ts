@@ -3,6 +3,18 @@ import { describe, it } from "node:test";
 import type pg from "pg";
 import { assertSelectOnly } from "../../src/oracles/pg.ts";
 import {
+  LEAK_CAMPAIGNS_SQL,
+  LEAK_PRODUCT_IDS_SQL,
+  LEAK_PROMOTIONS_SQL,
+  LIVE_ORDERS_FOR_EMAIL_SQL,
+  OPEN_FULFILLMENTS_SQL,
+  ORDER_LINE_ITEM_SQL,
+  ORDER_RESERVATIONS_SQL,
+  ORDER_STATE_SQL,
+  PHANTOM_RESERVED_SQL,
+  PROMO_SNAPSHOT_SQL,
+  orderStateLeakCheck,
+  promoLeakCheck,
   LEAK_LIVE_ORDER_IDS_SQL,
   MONEY_PAYMENT_FOR_ORDER_SQL,
   MONEY_SNAPSHOT_SQL,
@@ -80,5 +92,54 @@ describe("money oracle SQL", () => {
     assert.match(LEAK_LIVE_ORDER_IDS_SQL, /SELECT id FROM "order"/);
     assert.match(LEAK_LIVE_ORDER_IDS_SQL, /email LIKE \$1/);
     assert.match(LEAK_LIVE_ORDER_IDS_SQL, /status <> 'archived' AND status <> 'canceled'/);
+  });
+});
+
+/** Fake pool that answers id queries from `rows` and count queries from `counts`. */
+function rowsPool(rows: Map<string, Array<{ id: string }>>, counts: Map<string, number>): pg.Pool {
+  return {
+    query: async (sql: string) => ({ rows: rows.get(sql) ?? [{ n: counts.get(sql) ?? 0 }] }),
+  } as unknown as pg.Pool;
+}
+
+describe("promotion and order-state oracle", () => {
+  it("the promotion and order-state reads are SELECT only", () => {
+    for (const sql of [PROMO_SNAPSHOT_SQL, LIVE_ORDERS_FOR_EMAIL_SQL, ORDER_STATE_SQL]) {
+      assert.doesNotThrow(() => assertSelectOnly(sql));
+    }
+  });
+
+  it("the cleanup and leak queries are SELECT only", () => {
+    for (const sql of [
+      ORDER_LINE_ITEM_SQL,
+      ORDER_RESERVATIONS_SQL,
+      OPEN_FULFILLMENTS_SQL,
+      PHANTOM_RESERVED_SQL,
+      LEAK_PROMOTIONS_SQL,
+      LEAK_CAMPAIGNS_SQL,
+      LEAK_PRODUCT_IDS_SQL,
+    ]) {
+      assert.doesNotThrow(() => assertSelectOnly(sql));
+    }
+  });
+
+  it("promoLeakCheck passes a clean case", async () => {
+    assert.deepEqual(await promoLeakCheck(fakePool(new Map(), []), pattern), []);
+  });
+
+  it("promoLeakCheck names a leaked promotion", async () => {
+    const counts = new Map([[LEAK_PROMOTIONS_SQL, 1]]);
+    assert.deepEqual(await promoLeakCheck(fakePool(counts, []), pattern), [
+      `TEST BUG: leak promotion LIKE ${pattern}`,
+    ]);
+  });
+
+  it("orderStateLeakCheck reports a reported phantom product as leaked data, not a violation", async () => {
+    const rows = new Map([
+      [LEAK_PRODUCT_IDS_SQL, [{ id: "prod_1" }]],
+      [PHANTOM_RESERVED_SQL, [{ id: "prod_1" }]],
+    ]);
+    const out = await orderStateLeakCheck(rowsPool(rows, new Map()), pattern, ["prod_1"]);
+    assert.deepEqual(out, { violations: [], reportedLeaked: ["prod_1"] });
   });
 });

@@ -106,6 +106,8 @@ What Phase 2 reuses as-is (extend only where a probe proves a gap):
 | `P6-MED-RACE-008` | P1 X04 (`tests/medusa/api/races.spec.ts`) | Double cancel of one order: one cancel takes effect, no duplicate side effects                    | —   |
 | `P6-MED-RACE-009` | P1 X05 (`tests/medusa/api/races.spec.ts`) | Cancel ‖ fulfil on one order: never `canceled` with an open fulfillment                           | —   |
 | `P6-MED-RACE-012` | MED06 (accepted extra)                    | Promotion usage limit under N parallel carts: usage ≤ limit (only if the probe shows it is cheap) | —   |
+| `P6-MED-RACE-013` | Task 3 probe (accepted extra, D13)        | N=10 parallel cancels of one order: `reserved_quantity` equals the live reservations (Task 3b)    | P2  |
+| `P6-MED-RACE-014` | Task 3 probe (accepted extra, D13)        | N=10 parallel cancels of a captured order: refunds ≤ captured, order `refunded_total` = refunds   | P1  |
 | `P6-CAL-RACE-006` | CAL06                                     | Private link `maxUsageCount=1`, N=10 parallel bookings through it: exactly 1 success              | P1  |
 | `P6-CAL-RACE-007` | CAL18                                     | Confirm ‖ cancel on a PENDING booking: one terminal state, never both side-effect sets            | P1  |
 | `P6-CAL-RACE-008` | CAL06 (accepted extra)                    | Private link `maxUsageCount=3`, N=10 parallel: exactly 3 bookings, `usageCount = 3`               | —   |
@@ -135,12 +137,13 @@ Task 8 only writes the input spec for that harness change.
 | 1    | Framework: rerun-on-spread         | none (framework; all existing cases re-run under it)                 | —          | `feat/<date>-p6-rerun-on-spread`        | 2, 6 (probe + plan only)        |
 | 2    | Medusa money races                 | `P6-MED-RACE-006` (gated), `-007`, `-010` (gated), `-011`            | 1          | `feat/<date>-p6-med-money-races`        | 4, 6                            |
 | 3    | Medusa budget + order-state races  | `P6-MED-RACE-005`, `-008`, `-009` (+ `-012` if cheap)                | 2          | `feat/<date>-p6-med-budget-order-races` | 4, 5, 6                         |
+| 3b   | Medusa order-state extras          | `P6-MED-RACE-013`, `-014`                                            | 3          | `feat/<date>-p6-med-order-extras`       | 4, 5, 6                         |
 | 4    | Cal state races + shared receiver  | `P6-CAL-RACE-006`, `-007`, `-008`, `-009`                            | 1          | `feat/<date>-p6-cal-state-races`        | 2, 3, 6                         |
 | 5    | Documenso `P6-OBS-DOC-001` CI test | `P6-OBS-DOC-001`                                                     | 1          | `test/<date>-p6-doc-obs-001`            | any                             |
 | 6    | Twenty stack in P6                 | none (stack + oracle + self-test + token scan)                       | 1          | `feat/<date>-p6-twenty-stack`           | 2, 3, 4, 5                      |
 | 7    | Twenty races                       | `P6-TW-RACE-001`, `-004`, `-005`, `-006` (+ `-002`, `-003` if cheap) | 6          | `feat/<date>-p6-twenty-races`           | 8                               |
 | 8    | Multi-instance Medusa probe        | none (read-only; harness spec for Phase 3 `P6-MED-RACE-002/003`)     | 3          | `docs/<date>-p6-med-multi-instance`     | 7                               |
-| 9    | Phase 2 closeout                   | all Phase 2 cases (evidence only)                                    | 2–8        | `docs/<date>-p6-phase2-closeout`        | —                               |
+| 9    | Phase 2 closeout                   | all Phase 2 cases (evidence only)                                    | 2–8, 3b    | `docs/<date>-p6-phase2-closeout`        | —                               |
 
 Task 5 is a `test` branch because it adds a test and no feature code; Task 8 is `docs` because it
 only writes a probe report (D11: no P6 code for a second instance). Only one product stack runs at a time on a cloud VM (memory); probes for two
@@ -154,12 +157,14 @@ flowchart LR
   T1 --> T5["Task 5<br/>OBS-DOC-001 test"]
   T1 --> T6["Task 6<br/>Twenty stack"]
   T6 --> T7["Task 7<br/>TW-RACE-001/004/005/006"]
+  T3 --> T3b["Task 3b<br/>MED-RACE-013/014"]
   T3 --> T8["Task 8<br/>multi-instance probe<br/>(harness spec)"]
   T3 --> T9["Task 9<br/>closeout"]
   T4 --> T9
   T5 --> T9
   T7 --> T9
   T8 --> T9
+  T3b --> T9
 ```
 
 ### Notes on the agreed order (kept as is)
@@ -365,6 +370,22 @@ first full-count Actions run.
 
 ## Task 3: Medusa budget + order-state races (`P6-MED-RACE-005`, `-008`, `-009`, `-012`)
 
+**Status (2026-10-23, build on `feat/2026-10-22-p6-med-budget-order-races`).** Build plan:
+[2026-10-22-p6-phase2-task3-med-budget-order-races.md](2026-10-22-p6-phase2-task3-med-budget-order-races.md). All four
+cases land; `-012` was cheap and is in scope (plan D44). Three full-count `workflow_dispatch` runs on the branch
+([39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008),
+[39845815035](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39845815035),
+[39848223959](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39848223959)) were green, and the
+owner labelled (plan D67 to D70): **X04** (`-008`, 113 of 150 trials), **F-M3** (a losing cancel or fulfil restores a
+canceled order's reservation; 37 of 150 in `-008`, 7 of 150 in `-009`) and **X05** (`-009`, 50 of 150) are PRODUCT BUG
+under `test.fail()`, with `-009`'s PR count raised to 13 so a PR run misses under 1 % (plan D65, D69). **F-M2** (a
+losing checkout leaves an unpaid order carrying the promotion, so live orders exceed its limit; 32 of 150 in `-012`, 1
+of 150 in `-005`) is PRODUCT BUG as a labelled annotation without `test.fail()`; making it a stable expected failure is
+a BACKLOG item (plan D70). The budget and limit counters never went over the cap. CI (plan D60, D66): `-008` and `-009`
+run in the `medusa-smoke` race step; `-005` and `-012` run in a new job `medusa-order-races`; both race steps have step
+timeouts. Accepted extras `P6-MED-RACE-013` and `-014` are **Task 3b** (D13); `P6-MED-RACE-015` (spend budget) is in
+"Later" (plan D57). Priorities: `-008` P1, `-009` P1, `-012` P2 (plan D58).
+
 - **Goal.** Prove a shared budget is not overdrawn and an order cannot take two exclusive
   transitions at once.
 - **Cases.** `P6-MED-RACE-005` (P1, campaign budget not overdrawn); `P6-MED-RACE-008` (P1 X04,
@@ -424,6 +445,71 @@ first full-count Actions run.
   listed in the Task 9 closeout; `npm run check` green.
 - **Main risks.** X04/X05 behaviour changed between P1's runs and today; budget currency vs usage
   budgets (two budget types); fulfil needing a stock location and shipping option per trial.
+
+## Task 3b: Medusa order-state extras (`P6-MED-RACE-013`, `-014`)
+
+Added 2026-10-22 (D13) so the two extras the Task 3 probe found are not lost. Source: the Task 3 plan
+[2026-10-22-p6-phase2-task3-med-budget-order-races.md](2026-10-22-p6-phase2-task3-med-budget-order-races.md) §2.3
+(probe output), §2.5 (cleanup routes), §5 (the proposals) and D57 (accepted for a follow-up task after the Task 3 PR).
+Every number below is from that probe (cloud VM, proof only, `MEDUSA_REF` `f677db43`); the Task 3b plan re-probes.
+
+- **Goal.** Prove that a burst of cancels on one order releases its stock exactly once (`-013`) and that the order's
+  own money accounting agrees with the payment module when a captured order is cancelled in parallel (`-014`).
+- **Cases.** `P6-MED-RACE-013` (accepted extra, proposed **P2**): N=10 parallel cancels of one authorised order.
+  `P6-MED-RACE-014` (accepted extra, proposed **P1**, money): N=10 parallel cancels of an order whose payment was
+  captured first.
+- **What it proves / transfers.** "Side-effect exactly-once" on inventory (a void or reversal that releases a hold
+  once; a cancelled prescription that returns stock once) and "money never over-returned" on the order ledger (a
+  ledger that books one reversal per cancel, not one per request).
+- **Depends on.** Task 3 (`src/medusa/run-order-case.ts`, the order-state oracle and invariants, `classifyFindings`,
+  the labelling flow D54/D64/D65) and Task 2 (`capturePayment`, `checkRefundCap`, the money snapshot).
+- **What the Task 3 probe saw.**
+  - **`-013` (F-M3 at N=10).** Three runs of 10 parallel cancels on a quantity-1 order (stock 50): statuses
+    `{200: 2–3, 400: 7–8}`, losers 400 "Order (...) already has an existing active order change"; the order ends
+    `canceled` with 2–3 credit lines and 1–2 `pending` `credit_line` changes (X04 at N=10). After the burst one live
+    reservation was restored, and after cleanup (archive, delete that reservation) `inventory_level.reserved_quantity`
+    stayed at **6–7 with 0 live reservations**. Three more runs of 5 cancels ‖ 5 fulfils left 4–6. So **9 of 9** bursts
+    of 10 left phantom reserved stock. The product then cannot be deleted: level delete, inventory-item delete and a
+    reservation create-then-delete all fail or change nothing (Task 3 plan §2.5).
+  - **`-014` (F-M4).** Three runs: capture X = 1010, then 10 parallel cancels: statuses `{200: 2–3, 400: 7–8}`; the
+    payment module holds **one** refund of 1010 (refunded 1010 of captured 1010, so Task 2's money invariant holds), but
+    the order has 2–5 credit lines (amount 0 each) and `order_summary.totals.refunded_total` = **2020** (and
+    `pending_difference` 2020) in **2 of 3** runs (1010 in the third). The order's ledger says twice the money went back.
+- **Scope.**
+  - `-013`: per attempt one checkout order (authorised, not captured, quantity 1), then N=10 parallel
+    `POST /admin/orders/:id/cancel`. Oracle (Task 3 `readOrderState`): `reserved_quantity` equals the sum of live
+    reservations (after the burst and after cleanup), a canceled order keeps 0 live reservations, exactly one HTTP 200,
+    no `pending` change left, no 5xx. Signals: F-M3, X04 (suspected until labelled, D54).
+  - `-014`: per attempt one checkout order, `capturePayment(X)` before the burst, then N=10 parallel cancels. Oracle:
+    refunds ≤ captured (asserted, Task 2 `checkRefundCap`); the latest `order_summary.totals.refunded_total` equals the
+    refund rows' sum (F-M4, suspected until labelled); credit lines = 1; no 5xx.
+  - Cleanup: Task 3 order (§9 of the Task 3 plan). A product left with phantom `reserved_quantity` is reported leaked
+    data (Task 3 D49), never a failure. At N=10 nearly every attempt leaves one (9 of 9 in the probe), so a 50-trial run
+    reports about 61 leaked products per case; CI databases are throwaway, local volumes keep them.
+- **Files likely touched.** `src/medusa/run-order-case.ts` (N becomes a parameter, fixed at 2 today; a
+  `captureFirst` option), `src/medusa/oracle.ts` (an `order_summary` read of the latest version's `refunded_total`),
+  `src/medusa/invariants.ts` (`checkSummaryRefund`), `tests/medusa/races/med-race-013-cancel-burst.spec.ts`,
+  `tests/medusa/races/med-race-014-captured-cancels.spec.ts`, the matching `tests/unit/*.test.ts`, `README.md`.
+- **The live probe must confirm.** That F-M3 and F-M4 still reproduce on the branch; how many `order_summary` rows the
+  latest version has (the Task 3 probe query returned 2–3 rows for one order, so "latest" must be defined, for example
+  by `version` then `created_at`); the per-attempt time at N=10 (the Task 3 probe's cancel bursts took about 1.8 s setup,
+  0.9–1.3 s burst and 0.2–0.4 s cleanup, about 3.3 s per attempt); whether cancels of a captured order ever over-refund
+  in the payment module (0 of 3 so far).
+- **Build plan.** `docs/plans/<date>-p6-phase2-task3b-med-order-extras.md`, starting with the live probe; a
+  junior-engineer guide with the rule 20 self-check (agent rules).
+- **CI change.** None expected: both specs run in the `medusa-smoke` race step (its `--grep-invert` only excludes `-005`
+  and `-012`). Estimate at 50 trials: 61 attempts × about 3.3 s + 6 s ≈ 3.5 min per case, about 7 min for both. Task 3
+  dispatch run 1 ([39843267008](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/39843267008)) took
+  13 min 05 s for that step, so about 20 min, under the step's 24-minute stop rule and 30-minute timeout. If the plan's
+  probe disagrees, the plan proposes a job split, never fewer trials (Task 2 D39).
+- **Labels.** Both signals start as SUSPECTED (D54 of the Task 3 plan). The Task 3 flow applies: three full-count
+  `workflow_dispatch` runs, the owner labels, then `test.fail()` in the same PR; a PR trial count is raised only when the
+  measured rate needs it so a PR run misses under 1 % (Task 3 D65 formula). F-M3 at N=10 (9 of 9) needs no raise.
+- **Done when.** `-013` and `-014` land with the labelled signals under `test.fail()` and run links, histograms in
+  `race-histograms-medusa`, the leak report naming every phantom-reserved product, README rows, `npm run check` green.
+- **Main risks.** Leaked products piling up locally at N=10; `order_summary` versioning (several rows per version);
+  F-M4 is 2 of 3 runs on a small sample, so its per-trial rate decides the PR count; the cancel of a captured order runs
+  `refundCapturedPaymentsWorkflow`, so a 5xx there is a PRODUCT BUG with its body.
 
 ## Task 4: Cal state races (`P6-CAL-RACE-006` to `-009`) + shared webhook receiver
 
@@ -742,8 +828,8 @@ first full-count Actions run.
 ## Task 9: Phase 2 closeout
 
 - **Goal.** Phase 2 is evidenced, not just merged.
-- **Cases.** All Phase 2 cases that landed in Tasks 2–8. No new cases.
-- **Depends on.** Tasks 2–8.
+- **Cases.** All Phase 2 cases that landed in Tasks 2–8 and 3b. No new cases.
+- **Depends on.** Tasks 2–8 and 3b.
 - **Scope.**
   - Two full-count CI runs, **A** (push to `main`) and **B** (`workflow_dispatch` on `main`), with
     every product job green (or proven bugs under `test.fail()`).
@@ -787,7 +873,7 @@ first full-count Actions run.
 - `P6-MED-RACE-006` if the Task 2 gate confirms the pinned Medusa has no gift-card or store-credit
   feature (D5), with that evidence.
 - `P6-MED-RACE-010` if the Task 2 probe shows capture is automatic with the configured provider.
-- `P6-MED-RACE-012` if the Task 3 probe finds it not cheap.
+- `P6-MED-RACE-015` spend budget (EUR) under N parallel carts (Task 3 plan D57; held 3 of 3 in the probe).
 - `P6-TW-RACE-002`, `P6-TW-RACE-003` if the Task 7 probe finds them not cheap.
 - All k6 LOAD work (`P6-*-LOAD-*`, baselines, `baseline.json`, dashboards, `P6-RULE-001/002`):
   Phase 3 to 5, per the agreed Phase 3–4 proposal.
@@ -834,3 +920,6 @@ task's probe" means the task's plan confirms or replaces it after its probe.
   `P6-MED-RACE-011` and `P6-MED-RACE-010` (gated on capture being a separate step); Task 3
   `P6-MED-RACE-012` (only if cheap); Task 4 `P6-CAL-RACE-008`, `-009`; Task 7 `P6-TW-RACE-005`,
   `-006`.
+- **D13 Task 3b (agreed 2026-10-22).** The Task 3 probe's extras `P6-MED-RACE-013` and `-014` (accepted in the Task 3
+  plan, D57) get their own task, Task 3b, after the Task 3 PR merges and before the Task 9 closeout. `P6-MED-RACE-015`
+  (spend budget) stays in "Later". Priorities proposed in Task 3b: `-013` P2, `-014` P1.

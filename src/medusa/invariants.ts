@@ -200,3 +200,149 @@ export function checkLoserStatuses(statuses: Array<number | null>): string[] {
   }
   return violations;
 }
+
+/** -005 / -012. The counter and the HTTP count are asserted (PRODUCT BUG); the order count is a suspected signal. */
+export function checkPromoCap(input: {
+  cap: number;
+  counterUsed: number;
+  ordersWithPromo: number;
+  httpSuccesses: number;
+  label: string;
+}): string[] {
+  const out: string[] = [];
+  if (input.counterUsed > input.cap) {
+    out.push(`PRODUCT BUG: ${input.label}: usage counter ${input.counterUsed} of cap ${input.cap}`);
+  }
+  if (input.httpSuccesses > input.cap) {
+    out.push(
+      `PRODUCT BUG: ${input.label}: ${input.httpSuccesses} checkouts returned 200, cap ${input.cap}`,
+    );
+  }
+  if (input.ordersWithPromo > input.cap) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.label}: ${input.ordersWithPromo} orders carry the promotion, cap ${input.cap} (F-M2)`,
+    );
+  }
+  return out;
+}
+
+/** -005 / -012. Every live order of the attempt must be one a checkout returned with 200. */
+export function checkGhostOrders(input: {
+  liveOrderIds: readonly string[];
+  httpOrderIds: readonly string[];
+}): string[] {
+  const returned = new Set(input.httpOrderIds);
+  return input.liveOrderIds
+    .filter((id) => !returned.has(id))
+    .map((id) => `SUSPECTED PRODUCT BUG: order ${id} exists but no checkout returned it (F-M2)`);
+}
+
+/** -008. One of two cancels takes effect, once. */
+export function checkSingleCancel(input: {
+  status: string;
+  httpSuccesses: number;
+  pendingChanges: number;
+  creditLines: number;
+}): string[] {
+  const out: string[] = [];
+  if (input.status !== "canceled") {
+    out.push(
+      `SUSPECTED PRODUCT BUG: order status ${input.status} after two cancels, expected canceled (X04)`,
+    );
+  }
+  if (input.httpSuccesses !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.httpSuccesses} cancels returned 200, expected 1 (X04)`,
+    );
+  }
+  if (input.pendingChanges !== 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.pendingChanges} pending order change(s) left after cancel (X04)`,
+    );
+  }
+  if (input.creditLines !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${input.creditLines} credit lines after cancel, expected 1 (X04)`,
+    );
+  }
+  return out;
+}
+
+/** -009. Cancel and fulfil are exclusive: exactly one takes effect, and never "canceled with an open fulfillment". */
+export function checkCancelFulfilExclusive(input: {
+  status: string;
+  openFulfillments: number;
+  fulfilledQuantity: number;
+  cancelStatus: number | null;
+  fulfilStatus: number | null;
+}): string[] {
+  const out: string[] = [];
+  if (input.status === "canceled" && input.openFulfillments > 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: order canceled with ${input.openFulfillments} open fulfillment(s) (X05)`,
+    );
+  }
+  const wins = [input.cancelStatus, input.fulfilStatus].filter((s) => s === 200).length;
+  if (wins !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: ${wins} of cancel ‖ fulfil returned 200, expected exactly 1 (X05)`,
+    );
+  }
+  if (wins === 1 && input.fulfilStatus === 200 && input.fulfilledQuantity !== 1) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: fulfil won but fulfilled_quantity is ${input.fulfilledQuantity} (X05)`,
+    );
+  }
+  if (wins === 1 && input.cancelStatus === 200 && input.fulfilledQuantity !== 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: cancel won but fulfilled_quantity is ${input.fulfilledQuantity} (X05)`,
+    );
+  }
+  return out;
+}
+
+/** -008 / -009. Stock bookkeeping after the burst (F-M3). */
+export function checkReservationDrift(input: {
+  status: string;
+  liveReservations: number;
+  liveReservationQty: number;
+  reservedQuantity: number;
+}): string[] {
+  const out: string[] = [];
+  if (input.status === "canceled" && input.liveReservations > 0) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: canceled order keeps ${input.liveReservations} live reservation(s) (F-M3)`,
+    );
+  }
+  if (input.reservedQuantity !== input.liveReservationQty) {
+    out.push(
+      `SUSPECTED PRODUCT BUG: reserved_quantity ${input.reservedQuantity} but live reservations sum ${input.liveReservationQty} (F-M3)`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Splits finding lines. `labelled` holds the signal tags the owner has labelled: a SUSPECTED line with a labelled tag
+ * is promoted to "PRODUCT BUG" and asserted. Everything else keeps its label (plan §8.5, D54).
+ */
+export function classifyFindings(
+  lines: readonly string[],
+  labelled: readonly string[],
+): { violations: string[]; suspected: string[] } {
+  const violations: string[] = [];
+  const suspected: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("SUSPECTED PRODUCT BUG:")) {
+      violations.push(line);
+      continue;
+    }
+    const tag = /\(([A-Z0-9-]+)\)$/.exec(line)?.[1];
+    if (tag && labelled.includes(tag)) {
+      violations.push(line.replace("SUSPECTED PRODUCT BUG:", "PRODUCT BUG:"));
+    } else {
+      suspected.push(line);
+    }
+  }
+  return { violations, suspected };
+}

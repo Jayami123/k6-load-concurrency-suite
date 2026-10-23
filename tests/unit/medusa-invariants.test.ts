@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  checkCancelFulfilExclusive,
+  checkGhostOrders,
+  checkPromoCap,
+  checkReservationDrift,
+  checkSingleCancel,
+  classifyFindings,
   checkCaptureCap,
   checkLoserStatuses,
   checkOversellInvariants,
@@ -252,5 +258,174 @@ describe("money invariants", () => {
     assert.deepEqual(checkLoserStatuses([302]), [
       "PRODUCT BUG: unexpected status on a racing money request: 302",
     ]);
+  });
+});
+
+describe("budget and order-state invariants", () => {
+  const cap = {
+    cap: 3,
+    counterUsed: 3,
+    ordersWithPromo: 3,
+    httpSuccesses: 3,
+    label: "P6-MED-RACE-005",
+  };
+
+  it("checkPromoCap passes at the cap", () => {
+    assert.deepEqual(checkPromoCap(cap), []);
+  });
+
+  it("checkPromoCap flags a counter above the cap as a PRODUCT BUG", () => {
+    const out = checkPromoCap({ ...cap, counterUsed: 4 });
+    assert.equal(out.length, 1);
+    assert.match(out[0]!, /^PRODUCT BUG: P6-MED-RACE-005: usage counter 4 of cap 3$/);
+  });
+
+  it("checkPromoCap flags more orders than the cap as suspected F-M2", () => {
+    const out = checkPromoCap({ ...cap, ordersWithPromo: 4 });
+    assert.equal(out.length, 1);
+    assert.match(out[0]!, /^SUSPECTED PRODUCT BUG: .*\(F-M2\)$/);
+  });
+
+  it("checkGhostOrders passes when every live order came back from a checkout", () => {
+    assert.deepEqual(
+      checkGhostOrders({ liveOrderIds: ["o1", "o2"], httpOrderIds: ["o2", "o1"] }),
+      [],
+    );
+  });
+
+  it("checkGhostOrders names a live order no checkout returned", () => {
+    const out = checkGhostOrders({ liveOrderIds: ["o1", "o9"], httpOrderIds: ["o1"] });
+    assert.deepEqual(out, [
+      "SUSPECTED PRODUCT BUG: order o9 exists but no checkout returned it (F-M2)",
+    ]);
+  });
+
+  it("checkSingleCancel passes one cancel, no pending change, one credit line", () => {
+    assert.deepEqual(
+      checkSingleCancel({
+        status: "canceled",
+        httpSuccesses: 1,
+        pendingChanges: 0,
+        creditLines: 1,
+      }),
+      [],
+    );
+  });
+
+  it("checkSingleCancel flags two successful cancels as X04", () => {
+    const out = checkSingleCancel({
+      status: "canceled",
+      httpSuccesses: 2,
+      pendingChanges: 1,
+      creditLines: 2,
+    });
+    assert.ok(out.length >= 1);
+    assert.ok(out.every((l) => l.startsWith("SUSPECTED PRODUCT BUG:") && l.endsWith("(X04)")));
+    assert.ok(out.some((l) => l.includes("2 cancels returned 200")));
+  });
+
+  it("checkSingleCancel names a status that is not canceled", () => {
+    const out = checkSingleCancel({
+      status: "pending",
+      httpSuccesses: 1,
+      pendingChanges: 0,
+      creditLines: 1,
+    });
+    assert.deepEqual(out, [
+      "SUSPECTED PRODUCT BUG: order status pending after two cancels, expected canceled (X04)",
+    ]);
+  });
+
+  const exclusive = {
+    status: "canceled",
+    openFulfillments: 0,
+    fulfilledQuantity: 0,
+    cancelStatus: 200,
+    fulfilStatus: 400,
+  };
+
+  it("checkCancelFulfilExclusive passes when the cancel wins cleanly", () => {
+    assert.deepEqual(checkCancelFulfilExclusive(exclusive), []);
+  });
+
+  it("checkCancelFulfilExclusive passes when the fulfil wins cleanly", () => {
+    assert.deepEqual(
+      checkCancelFulfilExclusive({
+        status: "pending",
+        openFulfillments: 1,
+        fulfilledQuantity: 1,
+        cancelStatus: 400,
+        fulfilStatus: 200,
+      }),
+      [],
+    );
+  });
+
+  it("checkCancelFulfilExclusive flags canceled with an open fulfillment as X05", () => {
+    const out = checkCancelFulfilExclusive({ ...exclusive, openFulfillments: 1 });
+    assert.ok(
+      out.some(
+        (l) => l === "SUSPECTED PRODUCT BUG: order canceled with 1 open fulfillment(s) (X05)",
+      ),
+    );
+  });
+
+  it("checkCancelFulfilExclusive flags two winners", () => {
+    const out = checkCancelFulfilExclusive({
+      ...exclusive,
+      fulfilStatus: 200,
+      openFulfillments: 1,
+      fulfilledQuantity: 1,
+    });
+    assert.ok(out.some((l) => l.includes("2 of cancel ‖ fulfil returned 200")));
+  });
+
+  it("checkReservationDrift passes consistent stock", () => {
+    assert.deepEqual(
+      checkReservationDrift({
+        status: "canceled",
+        liveReservations: 0,
+        liveReservationQty: 0,
+        reservedQuantity: 0,
+      }),
+      [],
+    );
+  });
+
+  it("checkReservationDrift flags reserved_quantity without reservations as F-M3", () => {
+    const out = checkReservationDrift({
+      status: "canceled",
+      liveReservations: 0,
+      liveReservationQty: 0,
+      reservedQuantity: 6,
+    });
+    assert.deepEqual(out, [
+      "SUSPECTED PRODUCT BUG: reserved_quantity 6 but live reservations sum 0 (F-M3)",
+    ]);
+  });
+
+  it("classifyFindings keeps suspected lines apart from violations when nothing is labelled", () => {
+    const out = classifyFindings(
+      ["SUSPECTED PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)", "PRODUCT BUG: 5xx"],
+      [],
+    );
+    assert.deepEqual(out, {
+      violations: ["PRODUCT BUG: 5xx"],
+      suspected: ["SUSPECTED PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)"],
+    });
+  });
+
+  it("classifyFindings promotes a labelled tag and leaves the others suspected", () => {
+    const out = classifyFindings(
+      [
+        "SUSPECTED PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)",
+        "SUSPECTED PRODUCT BUG: order canceled with 1 open fulfillment(s) (X05)",
+      ],
+      ["X04"],
+    );
+    assert.deepEqual(out, {
+      violations: ["PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)"],
+      suspected: ["SUSPECTED PRODUCT BUG: order canceled with 1 open fulfillment(s) (X05)"],
+    });
   });
 });

@@ -4,7 +4,15 @@ import {
   medusaAdminEmailFromEnv,
   medusaAdminPasswordFromEnv,
 } from "../races/env.ts";
-import { captureBody, productCreateBody, prefixedHandle, refundBody } from "./payloads.ts";
+import {
+  campaignCreateBody,
+  captureBody,
+  fulfillmentBody,
+  productCreateBody,
+  prefixedHandle,
+  promotionCreateBody,
+  refundBody,
+} from "./payloads.ts";
 
 export interface MedusaCatalog {
   token: string;
@@ -232,10 +240,10 @@ export async function deleteCustomersByEmail(token: string, email: string): Prom
 export type MoneyResult = { status: number; body: string };
 
 /**
- * Raced money call: never throws on 5xx, so fireTogether records the real status and body.
+ * Raced or cleanup POST: never throws on 4xx or 5xx, so fireTogether records the real status and body.
  * The admin base path is the same as adminJson's.
  */
-async function moneyPost(path: string, token: string, body: unknown): Promise<MoneyResult> {
+async function rawPost(path: string, token: string, body: unknown): Promise<MoneyResult> {
   const res = await fetch(`${medusaBaseUrlFromEnv()}/admin${path}`, {
     method: "POST",
     headers: {
@@ -249,11 +257,11 @@ async function moneyPost(path: string, token: string, body: unknown): Promise<Mo
 }
 
 export function capturePayment(token: string, paymentId: string, amount: number) {
-  return moneyPost(`/payments/${paymentId}/capture`, token, captureBody(amount));
+  return rawPost(`/payments/${paymentId}/capture`, token, captureBody(amount));
 }
 
 export function refundPayment(token: string, paymentId: string, amount: number) {
-  return moneyPost(`/payments/${paymentId}/refund`, token, refundBody(amount));
+  return rawPost(`/payments/${paymentId}/refund`, token, refundBody(amount));
 }
 
 /**
@@ -261,5 +269,84 @@ export function refundPayment(token: string, paymentId: string, amount: number) 
  * Called only when the database shows a pending change.
  */
 export function confirmPendingOrderChange(token: string, orderId: string) {
-  return moneyPost(`/order-edits/${orderId}/confirm`, token, {});
+  return rawPost(`/order-edits/${orderId}/confirm`, token, {});
+}
+
+export async function createCampaign(
+  token: string,
+  identifier: string,
+  limit: number,
+): Promise<string> {
+  const res = await adminJson("/campaigns", token, {
+    method: "POST",
+    body: campaignCreateBody(identifier, limit),
+  });
+  const id = (res.json as { campaign?: { id?: string } }).campaign?.id;
+  if (res.status !== 200 || !id) {
+    throw new Error(`TEST BUG: POST /admin/campaigns HTTP ${res.status}`);
+  }
+  return id;
+}
+
+export async function createPromotion(
+  token: string,
+  code: string,
+  cap: { campaignId: string } | { limit: number },
+): Promise<string> {
+  const res = await adminJson("/promotions", token, {
+    method: "POST",
+    body: promotionCreateBody(code, cap),
+  });
+  const id = (res.json as { promotion?: { id?: string } }).promotion?.id;
+  if (res.status !== 200 || !id) {
+    throw new Error(`TEST BUG: POST /admin/promotions HTTP ${res.status}`);
+  }
+  return id;
+}
+
+export async function deletePromotion(token: string, id: string): Promise<void> {
+  const res = await adminJson(`/promotions/${id}`, token, { method: "DELETE" });
+  if (res.status !== 200) {
+    throw new Error(`TEST BUG: DELETE promotion ${id} HTTP ${res.status}`);
+  }
+}
+
+/** The campaign's budget row stays after the delete (live, plan §2.1 Q7); that is expected. */
+export async function deleteCampaign(token: string, id: string): Promise<void> {
+  const res = await adminJson(`/campaigns/${id}`, token, { method: "DELETE" });
+  if (res.status !== 200) {
+    throw new Error(`TEST BUG: DELETE campaign ${id} HTTP ${res.status}`);
+  }
+}
+
+/** Raced. */
+export function cancelOrder(token: string, orderId: string) {
+  return rawPost(`/orders/${orderId}/cancel`, token, {});
+}
+
+/** Raced. */
+export function createFulfillment(
+  token: string,
+  orderId: string,
+  itemId: string,
+  locationId: string,
+) {
+  return rawPost(`/orders/${orderId}/fulfillments`, token, fulfillmentBody(itemId, 1, locationId));
+}
+
+export function cancelFulfillment(token: string, orderId: string, fulfillmentId: string) {
+  return rawPost(`/orders/${orderId}/fulfillments/${fulfillmentId}/cancel`, token, {});
+}
+
+export async function archiveOrder(token: string, orderId: string): Promise<void> {
+  const res = await adminJson(`/orders/${orderId}/archive`, token, { method: "POST", body: {} });
+  if (res.status !== 200) {
+    throw new Error(`TEST BUG: archive order ${orderId} HTTP ${res.status}`);
+  }
+}
+
+/** Returns the status (live 200). The caller decides what a non-200 means. */
+export async function deleteReservation(token: string, id: string): Promise<number> {
+  const res = await adminJson(`/reservations/${id}`, token, { method: "DELETE" });
+  return res.status;
 }
