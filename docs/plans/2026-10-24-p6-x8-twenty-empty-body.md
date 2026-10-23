@@ -12,13 +12,28 @@ Probe date: 2026-10-23 (cloud VM, Docker, Node 22.23.3, 4 vCPU, 16 GB). Probe sc
 
 ## 0. Status
 
-Version 1 of this plan, written before the owner's review. **Nothing is built.** Stop for review is required by rule 10 (the plan adds a CI
-job, and the spec carries a product-bug label), so the build starts only after the owner answers §11.2.
+Version 2 of this plan, after the owner's review of version 1 (`f458060`): **approved**, with the answers in §0.1. The build follows §7 on the feature branch.
+Version 1 stopped for review under rule 10 (the plan adds a CI job, and the spec carries a product-bug label).
 
 The live probe found **no difference from the backlog evidence** on the pinned image: the hang reproduces (24 of 24 empty and `{}` requests),
 `{"foo":1}` and a valid query answer fast, and the server log has no line for any hang. Two results are new and are reported in §3: the
 **unauthenticated** requests hang identically (§3.2), and **10 and 20 held hung requests do not slow a valid query** (§3.3, §3.4), so the
 stop condition in the brief ("hung requests DO block valid ones") did not trigger.
+
+### 0.1 Owner decisions applied in this version
+
+Recorded from the owner's review message of this session. Only these are owner answers (rule 20e).
+
+- **Q1** The unauthenticated hang is **confirmed as the same PRODUCT BUG `P6-OBS-TW-001`, with a wider precondition**. All 4 unauthenticated tests stay.
+  The BACKLOG entry gains: unauthenticated clients can hold sockets open indefinitely (0 of 20 closed after 400 s, past Node's 300 s `requestTimeout`).
+- **Q2** The plan commit is also pushed to `plan/2026-10-24-p6-twenty-empty-body` (rule A10, no PR for it). The build continues on `feat/2026-10-24-p6-twenty-empty-body`.
+- **Q3** The existing budget convention stays. **Option (b)**: new job `twenty-obs`, timeout 27, worst case 16.43, margin 10.57. **Option (c) is rejected.**
+- **Q4** BACKLOG X8 is flipped to done in the branch's last commit (step 6).
+- **Q5** Socket-count check only (D8). No company-row check.
+- **Q6** The spec asserts **any 4xx** and says why in a comment (the label is about the hang, any 4xx ends it); the BACKLOG wording changes from "400" to "4xx". The post-abort query stays inside
+  the resource test (D7). The README "Known product bugs" table gets rows for `P6-OBS-TW-001` and `P6-TW-RACE-004` (Q7 of version 1, now in scope; §9).
+- **Review instructions for the build:** live-run the spec through the harness before the PR and record outcomes and times; `npm run check` exits 0; PR title
+  `test(twenty): add the guarded empty-body hang spec (x8)`; no owner name, footers or trailers; `git add` by path; no force-push.
 
 ## 1. Goal, scope and the cases covered
 
@@ -913,19 +928,29 @@ New subsection text (no timing claims; numbers only come from GitHub Actions run
 > Cases in `tests/twenty/tw-obs/` (project `twenty-tw-obs`), run by the `twenty-obs` job. Each hang test first asserts that a valid query answers 200 and `{"foo":1}` answers 400, each under one
 > second, then expects a 4xx within a 5-second client timeout.
 >
-> | Case                                               | What it checks                                                                                              | Status                                                      |
-> | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-> | `P6-OBS-TW-001` (4 tests, authenticated)           | `POST /metadata` and `POST /graphql` with an empty body or `{}` get a 4xx within 5 s                        | **PRODUCT BUG** (`test.fail()` after the guards)            |
-> | `P6-OBS-TW-001` (4 tests, without `Authorization`) | the same four requests without credentials                                                                  | **PRODUCT BUG**, wider precondition (label to be confirmed) |
-> | `P6-OBS-TW-001` resource (2 tests)                 | ten hung empty-body requests do not stop a valid query (200 under 1 s); aborting them leaves no open socket | passes in the probe                                         |
+> | Case                                               | What it checks                                                                                              | Status                                                |
+> | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+> | `P6-OBS-TW-001` (4 tests, authenticated)           | `POST /metadata` and `POST /graphql` with an empty body or `{}` get a 4xx within 5 s                        | **PRODUCT BUG** (`test.fail()` after the guards)      |
+> | `P6-OBS-TW-001` (4 tests, without `Authorization`) | the same four requests without credentials                                                                  | **PRODUCT BUG**, wider precondition (owner-confirmed) |
+> | `P6-OBS-TW-001` resource (2 tests)                 | ten hung empty-body requests do not stop a valid query (200 under 1 s); aborting them leaves no open socket | passes in the probe                                   |
 
-(The build runs `npx prettier --write README.md`, which realigns the table; the "to be confirmed" wording is dropped if the owner confirms Q1.)
+(The build runs `npx prettier --write README.md`, which realigns the table. Q1 is confirmed, so the status cell reads "wider precondition (owner-confirmed)" with no "to be confirmed".)
+
+**README "Known product bugs" table** (owner Q6/Q7, step 5): two new rows at the end of the table, in its six columns (ID, Severity, Upstream, What happens, Test, Evidence):
+
+| ID               | Severity                  | Upstream  | What happens                                                                                                                                                            | Test                                                                                                                                              | Evidence                                                                                                                                     |
+| ---------------- | ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P6-OBS-TW-001`  | PRODUCT BUG (owner label) | not filed | `POST /metadata` and `POST /graphql` with an empty body or `{}` get no response, with or without `Authorization`; the server never closes the socket (0 of 20 in 400 s) | `tw-obs-001-empty-body-hang.spec.ts`: 8 tests under `test.fail()` after the guards; resource check in `tw-obs-001-hung-requests-resource.spec.ts` | 24 of 24 hangs in the 2026-10-23 probe (plan `2026-10-24-p6-x8-twenty-empty-body.md` §3.1, §3.2, §3.4); 12 of 12 in the Task 7 repro         |
+| `P6-TW-RACE-004` | PRODUCT BUG (owner label) | not filed | Ten parallel redemptions of one password-reset token all succeed (check-then-act in `updatePasswordViaResetToken`, no lock)                                             | `tw-race-004-reset-token.spec.ts`: `test.fail()` after the guards                                                                                 | 50 of 50 requests in the Task 7 probe (5 trials, plan `2026-10-23-p6-phase2-task7-twenty-races.md` §3.7); `twenty-races` job green on `main` |
+
+**README sentence** under the new rows' table: none. The evidence cells carry no timing claim.
 
 **BACKLOG** (`docs/BACKLOG.md`).
 
 - Step 5, in the `P6-OBS-TW-001` entry: replace "**Test:** none in Task 7 (it is not a race). The guarded spec is follow-up X8 below." with the spec's location (`tests/twenty/tw-obs/`, 8 hang tests and 2 resource tests,
-  X8), add the new evidence in one sentence each (unauthenticated hangs too, 12 of 12; 20 held for 400 s, never closed by the server, valid queries 5.5 to 14.0 ms), and keep the label text unchanged.
-- Step 5, in X8: describe what was built and that the job is `twenty-obs`.
+  X8). Add the new evidence, one sentence each: the unauthenticated requests hang the same way (12 of 12, owner-confirmed as the same PRODUCT BUG with a wider precondition), valid queries still answer in 5.5 to 14.0 ms with
+  20 hung requests held, and **unauthenticated clients can hold sockets open indefinitely (0 of 20 closed after 400 s, past Node's 300 s `requestTimeout`)**. Keep the label text unchanged.
+- Step 5, in X8: describe what was built (the job is `twenty-obs`), and change "expect `{}` to get a 400" to "a 4xx" (owner Q6).
 - Step 6 (after the PR exists): X8 line starts with `**X8 done in [PR #<n>](https://github.com/Jayami123/k6-load-concurrency-suite/pull/<n>)**` and keeps its "Done when" text. It is true on merge; if the owner prefers the flip after
   merge instead, step 6 moves to a `docs/` branch with its own PR (Q4).
 
@@ -956,7 +981,10 @@ New subsection text (no timing claims; numbers only come from GitHub Actions run
 - **C5 The brief's "run the existing leak check".** The existing check counts records this spec never creates (D9). Replaced by a socket leak check. Q5.
 - **C6 Issue-id format.** `P6-TW-RACE-004`'s annotation is `P6-TW-RACE-004 PRODUCT BUG: …`, so the job summary shows the id as `P6-TW-RACE-004 PRODUCT BUG`; this plan's annotation is `P6-OBS-TW-001: PRODUCT BUG …`, so the id is `P6-OBS-TW-001`. Not changed in `-004` (out of scope); noted.
 
-### 11.2 Open questions, each with a proposed answer
+### 11.2 Open questions of version 1: answered by the owner (§0.1)
+
+The text below is version 1's wording, kept for the record. Each question is closed by the answer in §0.1: Q1 confirmed, Q2 pushed, Q3 option (b) approved and (c) rejected, Q4 flip in the
+last commit, Q5 socket check only, Q6 any 4xx and the post-abort query stays, Q7 (README rows) now in scope.
 
 - **Q1 Unauthenticated label.** The same hang with no `Authorization` header is the same bug with a wider precondition. _Proposal:_ keep the label `P6-OBS-TW-001`, state the precondition in the annotation, and keep the 4 unauthenticated tests. The owner confirms or removes them. Not recorded as decided.
 - **Q2 Plan branch.** _Proposal:_ keep the plan on the feature branch as instructed; on the owner's word, push the identical commit to `plan/2026-10-24-p6-twenty-empty-body` to satisfy rule A10 (no PR for it).
@@ -988,4 +1016,4 @@ New subsection text (no timing claims; numbers only come from GitHub Actions run
 - **(b) Names and paths (grep-checked in this session).** Existing and present: `playwright.config.ts` (project `twenty-tw-races` is the last), `package.json` (`race:twenty-tw`, `test:documenso-api`), `src/twenty/auth.ts` (`signInWorkspace` line 75), `src/twenty/env.ts` (`twentyBaseUrlFromEnv`, `twentyEmailFromEnv`, `twentyPasswordFromEnv`, `twentyWorkspaceNameFromEnv`), `scripts/ci/compose-pull.sh`, `scripts/write-ci-job-summary.ts`, `scripts/evidence-token-scan.mjs`, `src/ci/playwright-json-summary.ts` (issue id = text before the first colon), `tests/twenty/tw-races/guards.ts`, `tests/twenty/races/twenty-self-test.spec.ts`, `.github/workflows/perf.yml` (`twenty-races` at line 1481, timeout 33; `twenty-smoke` at 1289, timeout 20; file ends at line 1655), `README.md` ("Twenty races" section), `docs/BACKLOG.md` (X8, `P6-OBS-TW-001`). **NEW (each has a skeleton in §6):** `src/twenty/timed-post.ts` (`createPostClient`, `classify`), `tests/unit/twenty-timed-post.test.ts`, `tests/twenty/tw-obs/shared.ts` (`setupObs`, `assertGuards`, `measureHang`, `waitUntil`), `tests/twenty/tw-obs/tw-obs-001-empty-body-hang.spec.ts`, `tests/twenty/tw-obs/tw-obs-001-hung-requests-resource.spec.ts`, project `twenty-tw-obs`, script `test:twenty-obs`, job `twenty-obs`.
 - **(c) CI estimate.** §8.3: worst case 16.43 min with the pull at its 6-minute cap, setup and boot rows as in Task 7, the new step at its 3-minute cap; timeout 27; margin 10.57 min (≥ 10). No rerun is built into the job (X5's pull retry is inside the 6-minute cap; the spec has no rerun); the same figures appear in §8.3, §8.6 and the job comment. `twenty-races` (33, 22.63) and `twenty-smoke` (20) are unchanged. Option (a) fails (7.37 to 9.37 min), option (c) works numerically but lacks evidence.
 - **(d) Skeletons and commands.** Every new function (`createPostClient`, `classify`, `setupObs`, `assertGuards`, `measureHang`, `waitUntil`) and every test (18 unit tests in §6.2, 8 hang tests in §6.4, 2 resource tests in §6.5) has a skeleton or an exact description; every step in §7 has its `git add` paths, commit subject, the commands and the expected `npm run check` and unit-count output (470 from step 1 on). Baseline `npm run check` on `ad14c6a`: exit 0, **452** tests (§3.0 row 1).
-- **(e) Owner answers.** None are recorded as given in this session. The only owner decision cited is the one already in `docs/BACKLOG.md`: the `P6-OBS-TW-001` label (PRODUCT BUG, 2026-10-23), not relabelled. Q1 to Q7 are open.
+- **(e) Owner answers.** Recorded in §0.1 only, from the owner's review message of this session (Q1 to Q6 and the build instructions). The earlier decision cited is the one already in `docs/BACKLOG.md`: the `P6-OBS-TW-001` label (PRODUCT BUG, 2026-10-23). Nothing else is attributed to the owner.
