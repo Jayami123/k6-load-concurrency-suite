@@ -1146,4 +1146,16 @@ Filled in as the work goes. Final values are written at the end of the build and
     codes were read from the exit files. Reports use the real codes only.
   - The plan's time figures are planning assumptions (section 9.2), not measured values, and are labelled as such.
   - Section 9.2: the `cal-smoke` worst-case margin (3 min) does not meet the 10-minute rule; it is O10, not yet decided.
-- **Step results (filled in during the build):** step 0 done (section 3.7). Steps 1 to 7, CI runs and labels: pending.
+- **Steps:** step 0 (section 3.7) and steps 1 to 7 are done and pushed (`e06df42` to `57826b4`). Step 1 had a Prettier slip, amended before any push.
+- **O10 applied (`14c5a9a`):** `cal-smoke` `HARNESS_UP_TIMEOUT_MS` is 1800000 (30 min). Gate: the slowest recent Cal start must be under 20 min. Start Cal times checked (`Start Cal (harness up)` step, from the job list of each run):
+  - run 117 (push, main `dc95c29`), cal-smoke: 83 s (the slowest checked);
+  - run 119 (pull_request, `fix/2026-10-23-p6-cancel-extras-hook-timeout`), cal-smoke: 62 s;
+  - run 124 (workflow_dispatch, main `73db10f`), cal-smoke: 67 s;
+  - run 125 (workflow_dispatch, main `73db10f`), cal-smoke: 78 s;
+  - run 127 (workflow_dispatch, this branch, `57826b4`), cal-smoke: 64 s; cal-state-races: 76 s.
+    Largest observed: 83 s, far below the 20-min gate. The new job keeps its 40-min cap (worst case 71 min against 85).
+- **Run 1, full count (`39932990882`, workflow_dispatch, head `57826b4`): conclusion success.** Every job succeeded: `cal-state-races`, `cal-smoke`, `documenso-smoke`, `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`.
+  - `cal-state-races` steps (50 trials, step wall time from the job list): P6-CAL-RACE-006 1 min 45 s; -008 1 min 38 s; -007 1 min 32 s; -009 1 min 32 s. `Start Cal` 76 s. These are single-run observations, not a median (rule: median of at least 3). The planning figure in section 9.2 (about 5 min per case) was an overestimate.
+  - **O12, receiver-move check:** `documenso-smoke` succeeded in run 1, including `Documenso races (documenso-race)` (3 min 42 s), which runs the Documenso self-test on the moved receiver (`src/receivers/webhook-receiver.ts`).
+  - Labels: not applied. Runs 2 and 3 are pending (O6, O11: sequential dispatches).
+- **Deviations added in the build:** Documenso change limited to import paths and the `check` argument (7.1 said so); the Cal cancel helper is a copy of a private helper in `run-case.ts` (not edited); `subscribeWebhook`, `unsubscribeWebhook`, `resolveConfirmSetup` and `waitQuiet` were added in step 5 (not in the plan's file list).
