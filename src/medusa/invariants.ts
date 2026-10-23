@@ -163,6 +163,20 @@ export function checkRefundCap(input: { capturedSum: number; refundedSum: number
     : [];
 }
 
+/** -014. The order's latest order_summary refunded_total must equal the refund rows' sum (F-M4, SUSPECTED). */
+export function checkSummaryRefund(input: {
+  latestRefunded: number | null;
+  refundRowsSum: number;
+}): string[] {
+  if (input.latestRefunded === null) {
+    return ["TEST BUG: order has no order_summary row"];
+  }
+  if (input.latestRefunded === input.refundRowsSum) return [];
+  return [
+    `SUSPECTED PRODUCT BUG: order refunded_total ${input.latestRefunded} but refund rows sum ${input.refundRowsSum} (F-M4)`,
+  ];
+}
+
 /** Captures of one authorised payment may not add up to more than was authorised. */
 export function checkCaptureCap(input: {
   authorizedAmount: number;

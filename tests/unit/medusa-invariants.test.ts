@@ -11,6 +11,7 @@ import {
   checkLoserStatuses,
   checkOversellInvariants,
   checkRefundCap,
+  checkSummaryRefund,
   checkSuccessCount,
 } from "../../src/medusa/invariants.ts";
 
@@ -427,5 +428,23 @@ describe("budget and order-state invariants", () => {
       violations: ["PRODUCT BUG: 2 cancels returned 200, expected 1 (X04)"],
       suspected: ["SUSPECTED PRODUCT BUG: order canceled with 1 open fulfillment(s) (X05)"],
     });
+  });
+});
+
+describe("checkSummaryRefund (F-M4)", () => {
+  it("equal refunded totals give no line", () => {
+    assert.deepEqual(checkSummaryRefund({ latestRefunded: 1010, refundRowsSum: 1010 }), []);
+  });
+
+  it("a latest refunded_total above the refund rows is a SUSPECTED F-M4 line", () => {
+    const lines = checkSummaryRefund({ latestRefunded: 2020, refundRowsSum: 1010 });
+    assert.equal(lines.length, 1);
+    assert.match(lines[0]!, /^SUSPECTED PRODUCT BUG: .*\(F-M4\)$/);
+  });
+
+  it("no order_summary row is a TEST BUG", () => {
+    assert.deepEqual(checkSummaryRefund({ latestRefunded: null, refundRowsSum: 1010 }), [
+      "TEST BUG: order has no order_summary row",
+    ]);
   });
 });
