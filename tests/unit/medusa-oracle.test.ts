@@ -22,6 +22,7 @@ import {
   LEAK_LIVE_ORDERS_SQL,
   LEAK_LIVE_RESERVATIONS_SQL,
   LEAK_PRODUCTS_SQL,
+  LATEST_SUMMARY_SQL,
   leakCheck,
 } from "../../src/medusa/oracle.ts";
 
@@ -107,6 +108,11 @@ describe("promotion and order-state oracle", () => {
     for (const sql of [PROMO_SNAPSHOT_SQL, LIVE_ORDERS_FOR_EMAIL_SQL, ORDER_STATE_SQL]) {
       assert.doesNotThrow(() => assertSelectOnly(sql));
     }
+  });
+
+  it("the latest order_summary read is SELECT only and orders by version, then created_at, then id", () => {
+    assert.doesNotThrow(() => assertSelectOnly(LATEST_SUMMARY_SQL));
+    assert.match(LATEST_SUMMARY_SQL, /ORDER BY os\.version DESC, os\.created_at DESC, os\.id DESC/);
   });
 
   it("the cleanup and leak queries are SELECT only", () => {
