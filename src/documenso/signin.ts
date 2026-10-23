@@ -18,7 +18,6 @@ export function signinPayload(input: { email: string; password: string; csrfToke
  * Anything else is server-error. The body is parsed and never returned.
  */
 export function classifySignin(status: number, text: string): SigninOutcome {
-  if (status === 200 || status === 201) return { kind: "success", code: null };
   let code: string | null = null;
   let zodIssues = false;
   try {
@@ -31,6 +30,7 @@ export function classifySignin(status: number, text: string): SigninOutcome {
   if (code === "INVALID_CREDENTIALS") return { kind: "bad-credentials", code };
   if (code === "INVALID_REQUEST") return { kind: "bad-csrf", code };
   if (zodIssues) return { kind: "validation", code: null };
+  if (status === 200 || status === 201) return { kind: "success", code: null };
   return { kind: "server-error", code };
 }
 
