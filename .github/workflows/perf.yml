@@ -1172,6 +1172,14 @@ jobs:
           # The Playwright JSON holds test titles, and the sign-in setup title names the cookie ("sets sessionId"), so this
           # scan matches a cookie value (sessionId=...), not the bare word.
           json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
+          # Diagnostic (run on 55edc8f failed here): names each file and the pattern alternative that matched. Never the matched text.
+          for f in results/playwright/*.json; do
+            [ -f "$f" ] || continue
+            echo "scan: $f ($(wc -c < "$f") bytes)"
+            for alt in 'api_[A-Za-z0-9]{8,}' 'Bearer ' 'sessionId=[^;[:space:]"]{8,}' '/verify-email/[A-Za-z0-9_-]+' '/sign/[A-Za-z0-9_-]{10,}'; do
+              if grep -qE "$alt" "$f"; then echo "::error::$f matches alternative: $alt"; fi
+            done
+          done
           if [ -d results/playwright ] && grep -rqE "$json_pattern" results/playwright; then
             echo "::error::Playwright JSON contains a token pattern; not uploading"
             exit 1
