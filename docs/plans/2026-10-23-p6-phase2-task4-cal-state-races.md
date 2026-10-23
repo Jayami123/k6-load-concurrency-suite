@@ -1135,7 +1135,7 @@ Filled in as the work goes. Final values are written at the end of the build and
 
 - **Plan versions:** `5ec8786` (first version, stopped for review); this version follows it (owner answers, step-0 probe,
   separate job).
-- **Merge SHA:** not merged. No PR (the task asked for none; the labels wait for the owner).
+- **PR:** [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39), opened by REST after `gh pr create` hit a GraphQL block in this session. **Merge SHA:** not merged; the PR waits for the owner's merge review (rule 6).
 - **Findings (SUSPECTED, not labelled):**
   - F-C1: link cap ignored for acceptance. 10 of 10 accepted through a cap-1 link in 5 of 5 probe runs; 10 of 10 through a
     cap-3 link in 1 run; the counter stops at the cap. The step-0 probe shows a booking is also written when the link is
