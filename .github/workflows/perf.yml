@@ -165,7 +165,8 @@ jobs:
       # themselves at 3 in the spec (Task 2 D15). The money cases (P6-MED-RACE-007, -010, -011) run in this same
       # project and follow this count; D39: at 50 trials the three take about 7 minutes, so no separate job.
       # Task 3 plan D60/D66: the order-state cases (P6-MED-RACE-008, -009) run here too (about 6 min at 50 trials);
-      # -005 and -012 run in medusa-order-races. Plan §12: race step about 22 min at 50 trials, 3 min on PRs.
+      # -005 and -012 run in medusa-order-races; -013 and -014 run in medusa-cancel-extras (plan 3b §16).
+      # Plan §12: race step about 22 min at 50 trials, 3 min on PRs.
       - name: Race medusa (P6-MED-RACE-001, money, order-state, extras)
         if: ${{ steps.medusa_up.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
@@ -175,7 +176,7 @@ jobs:
           P6_PLAYWRIGHT_JSON: results/playwright/medusa-race.json
         run: |
           set -euo pipefail
-          npm run race:medusa -- --grep-invert "P6-MED-RACE-0(05|12)"
+          npm run race:medusa -- --grep-invert "P6-MED-RACE-0(05|12|13|14)"
 
       - name: Job summary (Playwright results, race table)
         if: ${{ !cancelled() }}
@@ -373,6 +374,176 @@ jobs:
 
       - name: Stop Medusa (harness down)
         if: ${{ always() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+
+  # Task 3b (plan §16, owner-agreed 2026-10-23): P6-MED-RACE-013 and -014 run here, not in medusa-smoke.
+  # Time budget at 50 trials (plan §16.2): 51 attempts per case expected, 61 at most (1 warm-up + 50 + 10 reruns);
+  # per attempt 3.2 s (-013) and 3.5 s (-014), setup included (cloud probe means, an estimate until the first CI run).
+  # Race step: 5 min 42 s expected, 6 min 49 s worst. Job: about 8 min 12 s expected, 9 min 19 s worst, with the
+  # 1 min 26 s measured before the race step on medusa-smoke and an estimated 1 min after it. Job timeout 30 min
+  # leaves 20 min of margin; the race step's 20 min timeout puts its 80 % stop rule at 16 min.
+  medusa-cancel-extras:
+    name: medusa-cancel-extras
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      MEDUSA_CHECKOUT_PATH: products/medusa-dtc-starter
+      MEDUSA_BASE_URL: http://127.0.0.1:9000
+      # Public harness default database URL, not a secret.
+      MEDUSA_DB_URL: postgres://medusa:medusa@127.0.0.1:5433/medusa
+      MEDUSA_ADMIN_EMAIL: admin@qa.local
+      MEDUSA_SKIP_STOREFRONT: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+    # Same pins as medusa-smoke and medusa-order-races; caches are restored, never saved (medusa-smoke saves them).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Medusa fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/medusa-dtc-starter
+          ref: ${{ env.MEDUSA_REF }}
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Medusa fork HEAD
+        run: |
+          set -euo pipefail
+          head="$(git -C "${MEDUSA_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${MEDUSA_REF}" ]; then
+            echo "::error::Medusa HEAD ${head} does not match MEDUSA_REF ${MEDUSA_REF}"
+            exit 1
+          fi
+
+      - name: Stub harness product roots
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRODUCTS_ROOT}/cal" "${PRODUCTS_ROOT}/documenso" "${PRODUCTS_ROOT}/twenty-CRM"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          k6-version: ${{ env.K6_VERSION }}
+
+      - name: Enable pnpm via corepack
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.11.1 --activate
+          version="$(pnpm --version)"
+          if [ "$version" != "10.11.1" ]; then
+            echo "::error::pnpm ${version} is not the 10.11.1 the Medusa fork pins"
+            exit 1
+          fi
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Restore pnpm store cache
+        id: medusa_pnpm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
+
+      - name: Install Medusa dependencies
+        timeout-minutes: 15
+        working-directory: ${{ env.MEDUSA_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Restore Medusa build cache
+        id: medusa_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.11
+
+      - name: Generate the CI admin password
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::${pw}"
+          echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Start Medusa (harness up)
+        id: medusa_up
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          SECONDS=0
+          npm run up:medusa
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
+
+      - name: k6 smoke (GET /health)
+        if: ${{ steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run smoke:medusa
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        with:
+          name: k6-summary-medusa-cancel-extras-health
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/medusa-health-summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Expected 5 min 42 s, worst 6 min 49 s at 50 trials (plan §16.2). 3 trials on PRs, 50 on main, nightly and
+      # workflow_dispatch. The step timeout is 20 min (stop rule 16 min); a PR run is capped at 10 min.
+      - name: Race medusa cancel extras (P6-MED-RACE-013, -014)
+        if: ${{ steps.medusa_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 20 }}
+        env:
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '3' || '50' }}
+          P6_PLAYWRIGHT_JSON: results/playwright/medusa-cancel-extras.json
+        run: |
+          set -euo pipefail
+          npm run race:medusa -- --grep "P6-MED-RACE-01(3|4)"
+
+      - name: Job summary (Playwright results, race table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/write-ci-job-summary.ts
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        with:
+          name: race-histograms-medusa-cancel-extras
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Medusa (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 5
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
