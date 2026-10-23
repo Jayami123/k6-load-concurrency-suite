@@ -4,8 +4,16 @@ import { runOversellCase } from "../../../src/medusa/run-case.ts";
 import { closePool, createReadOnlyPool } from "../../../src/oracles/pg.ts";
 import { p6RunPrefix } from "../../../src/races/prefix.ts";
 import { raceTrialsFromEnv } from "../../../src/races/env.ts";
+import type { RaceHistogram } from "../../../src/races/types.ts";
 
 const trials = raceTrialsFromEnv();
+
+/** SUSPECTED findings (F-M5 orphan orders) as annotations. They never fail the case. */
+function annotateSuspected(histogram: RaceHistogram): void {
+  for (const line of histogram.suspected ?? []) {
+    test.info().annotations.push({ type: "suspected-bug", description: line });
+  }
+}
 
 test.describe("Medusa oversell", () => {
   test.describe.configure({ timeout: 180_000 });
@@ -41,6 +49,7 @@ test.describe("Medusa oversell", () => {
         mode: "qty1",
         trials,
       });
+      annotateSuspected(histogram);
       expect(histogram.verdict).toBe("pass");
     });
   });
@@ -62,6 +71,7 @@ test.describe("Medusa oversell", () => {
         mode: "qty1",
         trials,
       });
+      annotateSuspected(histogram);
       expect(histogram.verdict).toBe("pass");
     });
 
@@ -79,6 +89,7 @@ test.describe("Medusa oversell", () => {
         mode: "s0",
         trials,
       });
+      annotateSuspected(histogram);
       expect(histogram.verdict).toBe("pass");
     });
 
@@ -97,6 +108,7 @@ test.describe("Medusa oversell", () => {
         quantities: [3, 1, 1, 1, 1],
         trials,
       });
+      annotateSuspected(histogram);
       expect(histogram.verdict).toBe("pass");
     });
 
@@ -114,6 +126,7 @@ test.describe("Medusa oversell", () => {
         mode: "sameCart",
         trials,
       });
+      annotateSuspected(histogram);
       expect(histogram.verdict).toBe("pass");
     });
   });
