@@ -800,6 +800,211 @@ jobs:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
           key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.11
 
+  cal-state-races:
+    name: cal-state-races
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      CAL_CHECKOUT_PATH: products/cal
+      CAL_BASE_URL: http://127.0.0.1:3000
+      # Fork trust-auth local DB (no password). Not a secret.
+      CAL_DB_URL: postgresql://postgres@127.0.0.1:5450/calendso
+      P6_WEBHOOK_HOST: p6-webhook.test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+      TURBO_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Cal fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/cal
+          ref: ${{ env.CAL_REF }}
+          path: ${{ env.CAL_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Cal fork HEAD
+        run: |
+          set -euo pipefail
+          head="$(git -C "${CAL_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${CAL_REF}" ]; then
+            echo "::error::Cal HEAD ${head} does not match CAL_REF ${CAL_REF}"
+            exit 1
+          fi
+
+      - name: Verify CAL_REF matches bootstrap.sh
+        run: |
+          set -euo pipefail
+          if ! grep -q "^CAL_REF=\"${CAL_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"; then
+            echo "::error::CAL_REF in perf.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      # Corepack downloads the Yarn the Cal fork pins from repo.yarnpkg.com.
+      - name: Enable corepack
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          corepack enable
+          version="$(yarn --version)"
+          if [ "$version" != "4.12.0" ]; then
+            echo "::error::yarn ${version} is not the 4.12.0 the Cal fork pins"
+            exit 1
+          fi
+
+      - name: Restore Cal Yarn cache
+        id: cal_yarn
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/.yarn/cache
+          key: cal-yarn-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      - name: Restore Cal node_modules cache
+        id: cal_nm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
+          key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      # Always run: the node_modules cache holds only the root folder, not workspace-local
+      # node_modules (e.g. a nested React copy). With both caches warm this is a quick link check.
+      - name: Install Cal dependencies
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn install --immutable
+
+      - name: Generate Cal Prisma client
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn workspace @calcom/prisma prisma generate
+
+      - name: Prepare Cal product .env and harness roots
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh cal
+
+      - name: Restore Cal build cache
+        id: cal_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.11
+      - name: Map the webhook host
+        run: |
+          set -euo pipefail
+          echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
+
+      - name: Start Cal (harness up)
+        id: cal_up
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          # Same cap as cal-smoke (40 min). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
+          HARNESS_UP_TIMEOUT_MS: "2400000"
+        run: |
+          set -euo pipefail
+          npm run up:cal
+
+      # Plan D-C11 / O5: 5 trials on PRs, 50 on main, nightly and dispatch. Step timeouts: 5 min PR, 10 min otherwise.
+      - name: Race P6-CAL-RACE-006 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+        env:
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-006.json
+        run: |
+          set -euo pipefail
+          npm run race:cal -- tests/cal/races/cal-race-006-private-link.spec.ts
+
+      - name: Race P6-CAL-RACE-008 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+        env:
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-008.json
+        run: |
+          set -euo pipefail
+          npm run race:cal -- tests/cal/races/cal-race-008-private-link-cap.spec.ts
+
+      - name: Race P6-CAL-RACE-007 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+        env:
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-007.json
+        run: |
+          set -euo pipefail
+          npm run race:cal -- tests/cal/races/cal-race-007-confirm-vs-cancel.spec.ts
+
+      - name: Race P6-CAL-RACE-009 (cal-race)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 10 }}
+        env:
+          RACE_TRIALS: ${{ github.event_name == 'pull_request' && '5' || '50' }}
+          P6_PLAYWRIGHT_JSON: results/playwright/cal-race-009.json
+        run: |
+          set -euo pipefail
+          npm run race:cal -- tests/cal/races/cal-race-009-double-confirm.spec.ts
+
+      - name: Stop Cal (harness down)
+        if: ${{ always() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        with:
+          name: race-histograms-cal-state
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: cal-state-harness-log
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: cal-state-web-log
+          path: ${{ env.P6_WORKING_DIRECTORY }}/node_modules/qa-portfolio-harness/.harness/cal-web.log
+          if-no-files-found: warn
+          retention-days: 14
+
   documenso-smoke:
     name: documenso-smoke
     runs-on: ubuntu-24.04
