@@ -1159,8 +1159,24 @@ Local proof run (cloud VM, not published, not a CI number): `RACE_TRIALS=50 npm 
 Playwright list: `-001` 4.8 s, `-002` 4.4 s, `-003` 8.7 s, `-004` 1.4 min, `-005` 3.7 s, `-006` 1.1 min. The first `main` run on GitHub is the
 number that counts; the rows of §8.3 stay as the budget until then.
 
-Measured row by row (pull, first boot, seed, race at 50 trials, total job time), with the run id. Until then §8.3 is the budget, and the estimates
-in §8.4 are not published numbers.
+First `main` run: [40006260061](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40006260061), push of merge commit `4b09d34`,
+50 trials, attempt 1. Job `twenty-races` (`120594825707`): **success**. Step times from the job's step timestamps (GitHub Actions, one run; the
+median of at least 3 runs is still needed before any number is published):
+
+| Step                                  | Time (this run) | §8.3 budget / cap           |
+| ------------------------------------- | --------------- | --------------------------- |
+| Prepare harness roots (Twenty fork)   | 11 s            | bootstrap cap 10 min        |
+| Pull Twenty images                    | 44 s            | 6 min cap                   |
+| Start Twenty (harness up)             | 1 min 43 s      | 12 min cap                  |
+| Seed Twenty (harness seed)            | 51 s            | 10 min cap                  |
+| Twenty race cases (`twenty-tw-races`) | 2 min 22 s      | 9 min cap; estimate 5.0 min |
+| Down (volumes removed)                | 2 s             |                             |
+| **Job, start to finish**              | **6 min 7 s**   | timeout 33 min              |
+
+The race step took 2 min 22 s against the 5.0 min estimate and the 9-minute cap (the local proof run was 173 s). The job took 6 min 7 s against
+the worst case of 22.63 min. The race step concluded `success`; this read took step times and the outcome from the job record, not
+the per-spec Playwright list, so per-spec times are not recorded here. Until three `main` runs exist, §8.3 stays the budget and these times are
+proof that the job works, not published performance numbers.
 
 ## 9. Test strategy (what each layer proves)
 
@@ -1254,10 +1270,10 @@ in §8.4 are not published numbers.
 
 ## 14. Closeout notes
 
-- **Merge SHA:** not applicable yet. No PR was requested for the build, so nothing is merged. The feature branch head is `79baed2`.
-- **CI runs:** **none.** The branch has no CI runs (the read after the push returned 0), and nothing triggers `perf.yml` for a feature-branch push
-  without a PR. The `twenty-races` job is **unverified on GitHub**. Its first run is the measured row set for §8.6; a `workflow_dispatch` or a PR is
-  the owner's call.
+- **Merge SHA:** `4b09d34`, the merge commit of PR #47 (merged 2026-10-23 as a merge commit). The feature branch head at the build push was `79baed2`.
+- **CI runs:** the build push had no CI runs (nothing triggers `perf.yml` for a feature-branch push without a PR), so the job was unverified until
+  the merge. The first run on GitHub is the `main` push run [40006260061](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40006260061)
+  (merge commit `4b09d34`, 50 trials): all eight jobs `success`, including `twenty-races` (job `120594825707`, 6 min 7 s). The row set is in §8.6.
 - **Local proof (not published):** unit tests 431 → 452 (+21: env 1, Mailpit 6, payloads 3, invariants 7, API 3, oracle 1). Full-count local race run
   (50 trials): all six specs pass as the probe predicts. All 50 trials of `-001`, `-002`, `-003`, `-005` are valid and every burst overlapped;
   `-004` shows 10 of 10 successes in every attempt (51 attempts: one spread-invalid attempt was rerun) and is recorded as the expected failure
