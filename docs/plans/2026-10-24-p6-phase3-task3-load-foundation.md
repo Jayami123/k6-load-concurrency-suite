@@ -1017,8 +1017,8 @@ three `workflow_dispatch` runs of the branch to confirm the margins of §7 on th
 
 **Proposed extras (out of scope until the owner accepts them; new IDs).**
 
-- `P6-X-LOAD-007`: the self-test also runs a `ramping-arrival-rate` leg and checks the achieved rate against the schedule (the library ships `rampingOpenScenario`; Phase 4 needs it proven).
-- `P6-X-LOAD-008`: a weekly job that downloads the newest k6 release checksums and opens an issue when `.k6-version` is behind (no auto-bump).
+- `P6-X-LOAD-010`: the self-test also runs a `ramping-arrival-rate` leg and checks the achieved rate against the schedule (the library ships `rampingOpenScenario`; Phase 4 needs it proven).
+- `P6-X-LOAD-011`: a weekly job that downloads the newest k6 release checksums and opens an issue when `.k6-version` is behind (no auto-bump).
 
 **Open questions for the owner.**
 
