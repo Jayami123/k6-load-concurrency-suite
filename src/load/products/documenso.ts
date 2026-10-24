@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { failFirstPerEvent, type Responder } from "../../receivers/webhook-receiver.ts";
 import { caseDataPrefix } from "../../../k6/lib/pure/prefix.js";
 import {
   documensoBaseUrlFromEnv,
@@ -29,6 +30,7 @@ export interface DocumensoDeps {
     runPrefix: string;
     pool: pg.Pool;
     webhookHost: string;
+    respond?: Responder;
   }) => Promise<RunContext>;
   end: (ctx: RunContext, mailboxes: string[]) => Promise<string[]>;
   leak: (
@@ -48,7 +50,21 @@ const message = (err: unknown): string =>
   (err instanceof Error ? err.message : String(err)).slice(0, 200);
 
 /** The per-run account, API token, webhook and receiver. The token goes to ctx.secrets; the run stays in ctx.handles. */
-export async function documensoSetupWith(ctx: LoadContext, deps: DocumensoDeps): Promise<StageResult> {
+/** "ok": the receiver answers 200 (P6-DOC-LOAD-001, -002). "fail-first": 500 for the first delivery of each event (P6-DOC-LOAD-008). */
+export type WebhookMode = "ok" | "fail-first";
+
+const responderFor = (mode: WebhookMode): Responder | undefined =>
+  mode === "fail-first"
+    ? failFirstPerEvent(
+        (d) => `${d.event}:${String((d.body as { payload?: { id?: unknown } } | null)?.payload?.id ?? "")}`,
+      )
+    : undefined;
+
+export async function documensoSetupWith(
+  ctx: LoadContext,
+  deps: DocumensoDeps,
+  webhookMode: WebhookMode = "ok",
+): Promise<StageResult> {
   loadRepoEnv();
   const pool = deps.openPool();
   try {
@@ -60,6 +76,7 @@ export async function documensoSetupWith(ctx: LoadContext, deps: DocumensoDeps):
       runPrefix: dataPrefix,
       pool,
       webhookHost: webhookHostFromEnv(),
+      respond: responderFor(webhookMode),
     });
     ctx.handles.documensoRun = run;
     ctx.secrets.DOCUMENSO_API_TOKEN = run.apiToken;
@@ -115,7 +132,12 @@ export async function documensoCleanupWith(ctx: LoadContext, deps: DocumensoDeps
   return reasons.length === 0 ? { ok: true, reasons: [] } : { ok: false, kind: "TEST BUG", reasons };
 }
 
-export const documensoSetup = (ctx: LoadContext): Promise<StageResult> =>
-  documensoSetupWith(ctx, defaultDeps);
+/** The setup stage of a Documenso case (plan task 9 §6.5). */
+export const makeDocumensoSetup =
+  (opts: { webhookMode: WebhookMode }) =>
+  (ctx: LoadContext): Promise<StageResult> =>
+    documensoSetupWith(ctx, defaultDeps, opts.webhookMode);
+
+export const documensoSetup = makeDocumensoSetup({ webhookMode: "ok" });
 export const documensoCleanup = (ctx: LoadContext): Promise<StageResult> =>
   documensoCleanupWith(ctx, defaultDeps);

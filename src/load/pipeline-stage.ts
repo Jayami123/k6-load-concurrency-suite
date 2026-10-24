@@ -8,6 +8,7 @@ import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
 import type { RunContext } from "../documenso/run-case.ts";
 import { closePool, createReadOnlyPool, selectRows } from "../oracles/pg.ts";
 import { waitForDrainPool } from "./reconcile/documenso.ts";
+import { judgeWebhookRetry, type RetryInput } from "./webhook-retry.ts";
 import {
   joinStages,
   STAGES,
@@ -280,3 +281,63 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
 export const pipelineStage: Stage = makePipelineStage();
 export const readPipelineFile = (dir: string) =>
   JSON.parse(readFileSync(path.join(dir, "pipeline-lag.json"), "utf8"));
+
+/** Maps the pipeline rows to the webhook-retry judge's input (one event per document, keyed by document id). */
+export function retryInputOf(input: StageInput): RetryInput {
+  return {
+    events: input.documents.length,
+    deliveries: input.deliveries.map((d) => ({ eventKey: String(d.documentId), status: d.status })),
+    calls: input.webhookCalls.map((c) => ({
+      eventKey: String(c.documentId),
+      status: c.status,
+      responseCode: c.responseCode,
+    })),
+    jobs: input.webhookJobs.map((j) => ({
+      eventKey: String(j.documentId),
+      status: j.status,
+      retried: j.retried,
+    })),
+    completedEnvelopes: input.documents.filter((d) => d.completedAtMs !== null).length,
+    documents: input.documents.length,
+  };
+}
+
+/** The webhook-retry stage of P6-DOC-LOAD-008: judges each event's delivery, call and job (plan task 9 §6.4). */
+export function makeWebhookRetryStage(
+  deps: Pick<PipelineDeps, "openPool" | "readInput"> = defaultDeps,
+): Stage {
+  return async (ctx: LoadContext): Promise<StageResult> => {
+    const run = ctx.handles.documensoRun as RunContext | undefined;
+    const prefixLike = String(
+      (ctx.config.audit as { prefixLike?: unknown } | undefined)?.prefixLike ?? "",
+    );
+    if (!run || !prefixLike)
+      return {
+        ok: false,
+        kind: "TEST BUG",
+        reasons: ["TEST BUG: webhook retry stage has no run or prefix"],
+      };
+    const pool = deps.openPool();
+    try {
+      const { input } = await deps.readInput(pool, run, prefixLike);
+      const verdict = judgeWebhookRetry(retryInputOf(input));
+      const failed = verdict.findings.filter((f) => !f.ok);
+      return {
+        ok: verdict.ok,
+        kind: verdict.ok ? undefined : "PRODUCT BUG",
+        reasons: failed.map((f) => `PRODUCT BUG: ${f.check}: ${f.detail}`),
+        data: {
+          webhookRetry: verdict.findings.map((f) => ({
+            check: f.check,
+            ok: f.ok,
+            detail: f.detail,
+          })),
+        },
+      };
+    } finally {
+      await closePool(pool);
+    }
+  };
+}
+
+export const webhookRetryStage: Stage = makeWebhookRetryStage();

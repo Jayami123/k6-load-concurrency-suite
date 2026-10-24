@@ -1596,6 +1596,28 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
+      - name: LOAD journey P6-DOC-LOAD-002 (pipeline lag, functional load, not capacity)
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:documenso-pipeline -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
+      - name: LOAD journey P6-DOC-LOAD-008 (webhook retry, functional load, not capacity)
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:documenso-webhook-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}

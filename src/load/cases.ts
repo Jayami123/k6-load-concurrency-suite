@@ -7,7 +7,8 @@ import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
-import { documensoCleanup, documensoSetup } from "./products/documenso.ts";
+import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
+import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { conservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage } from "./reconcile/index.ts";
@@ -352,6 +353,56 @@ export const MED_LOAD_002: LoadCase = {
   },
 };
 
+/** P6-DOC-LOAD-002: the pipeline lag at a steady rate; every stage exactly once, within the contract (plan task 9 §6.5). */
+export const DOC_LOAD_002: LoadCase = {
+  id: "P6-DOC-LOAD-002",
+  title: "Documenso pipeline lag at a steady rate",
+  product: "documenso",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 3000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 3000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-002.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    reconcile: composeStages([reconcileStage, pipelineStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
+/** P6-DOC-LOAD-008: the receiver answers 500 to the first delivery of each event; Documenso must retry it (plan task 9 §3.5). */
+export const DOC_LOAD_008: LoadCase = {
+  id: "P6-DOC-LOAD-008",
+  title: "Documenso webhook retry after one 500",
+  product: "documenso",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 3000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 3000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-008.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "fail-first" }),
+    reconcile: composeStages([reconcileStage, webhookRetryStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -361,4 +412,6 @@ export const CASES: Record<string, LoadCase> = {
   [MED_LOAD_001.id]: MED_LOAD_001,
   [DOC_LOAD_001.id]: DOC_LOAD_001,
   [MED_LOAD_002.id]: MED_LOAD_002,
+  [DOC_LOAD_002.id]: DOC_LOAD_002,
+  [DOC_LOAD_008.id]: DOC_LOAD_008,
 };

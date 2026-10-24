@@ -71,7 +71,11 @@ import {
   type CompletionMode,
   type TrialSnapshot,
 } from "./invariants.ts";
-import { headerSecretCheck, startWebhookReceiver } from "../receivers/webhook-receiver.ts";
+import {
+  headerSecretCheck,
+  startWebhookReceiver,
+  type Responder,
+} from "../receivers/webhook-receiver.ts";
 
 export type RunContext = {
   baseUrl: string;
@@ -133,6 +137,8 @@ export async function startRun(
     runPrefix: string;
     pool: pg.Pool;
     webhookHost: string;
+    /** Chooses the webhook receiver's answer per delivery (task 9, -008); default 200. */
+    respond?: Responder;
   },
   deps: StartRunDeps = REAL_START_RUN_DEPS,
 ): Promise<RunContext> {
@@ -142,6 +148,7 @@ export async function startRun(
   const receiver = await deps.startReceiver({
     publicHost: input.webhookHost,
     check: headerSecretCheck("x-documenso-secret", secret),
+    respond: input.respond,
   });
   const inbucket = createInbucketClient(input.inbucketUrl);
   // Filled by signUp's onVerified hook, so a later setup failure can still delete the verified owner.
