@@ -2,7 +2,7 @@
 
 P6 of the QA portfolio: load, concurrency and performance tests with [k6](https://grafana.com/docs/k6/)
 against self-hosted products started by
-[qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.12`.
+[qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.14`.
 
 Phase 0 proved the harness and k6 smoke. Phase 1 is done: the race framework and the six race cases for Medusa, Cal and
 Documenso (see "Phase 1 results"). Phase 2 is done: concurrency races for Medusa, Cal and Twenty and two error-contract
@@ -625,9 +625,9 @@ product bugs".
 ## Phase 3 (next)
 
 1. `P6-MED-RACE-002` and `P6-MED-RACE-003`: two Medusa backends on one database. `-002` uses a Redis lock; `-003`
-   characterizes the in-memory lock. They need the harness to start and stop a second Medusa instance (D11). The input
-   spec is in the [Task 8 probe report](docs/plans/2026-10-24-p6-phase2-task8-med-multi-instance.md) §5 (harness
-   proposal H3). Today the harness registers no Redis lock in either mode, so `-002` also needs H3's lock switch. Not run
+   characterizes the in-memory lock. The harness `v0.2.14` starts and stops a second Medusa backend
+   (`MEDUSA_SECOND_BASE_URL`) and registers a Redis lock (`MEDUSA_LOCK=redis`); the races are Task 2. The input spec is in
+   the [Task 8 probe report](docs/plans/2026-10-24-p6-phase2-task8-med-multi-instance.md) §5 (harness proposal H3). Not run
    in Phase 2.
 
 ## Rule for numbers
