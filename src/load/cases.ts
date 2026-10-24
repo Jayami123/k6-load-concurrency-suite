@@ -10,6 +10,7 @@ import { calCleanup, calSetup } from "./products/cal.ts";
 import { documensoCleanup, documensoSetup } from "./products/documenso.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { conservationStage } from "./med-conservation.ts";
+import { composeStages, reconcileStage } from "./reconcile/index.ts";
 import type { LoadCase, Stage } from "./types.ts";
 
 const SERVICE_MS = 25;
@@ -294,7 +295,7 @@ export const CAL_LOAD_001: LoadCase = {
     full: { rate: 2, durationSec: 30, maxLatencyMs: 1000 },
   },
   runs: () => [{ label: "main", script: "k6/cases/cal-load-001.js", env: {} }],
-  stages: { setup: calSetup, cleanup: calCleanup },
+  stages: { setup: calSetup, reconcile: reconcileStage, cleanup: calCleanup },
 };
 
 /** P6-MED-LOAD-001: one checkout per iteration against a stocked variant (plan §6.2). */
@@ -308,7 +309,7 @@ export const MED_LOAD_001: LoadCase = {
     full: { rate: 1, durationSec: 30, maxLatencyMs: 4000 },
   },
   runs: () => [{ label: "main", script: "k6/cases/med-load-001.js", env: {} }],
-  stages: { setup: medusaSetup, cleanup: medusaCleanup },
+  stages: { setup: medusaSetup, reconcile: reconcileStage, cleanup: medusaCleanup },
 };
 
 /** P6-DOC-LOAD-001: create, distribute, both recipients sign, the envelope completes once (plan §6.4). */
@@ -329,11 +330,11 @@ export const DOC_LOAD_001: LoadCase = {
       secretEnv: ["DOCUMENSO_API_TOKEN"],
     },
   ],
-  stages: { setup: documensoSetup, cleanup: documensoCleanup },
+  stages: { setup: documensoSetup, reconcile: reconcileStage, cleanup: documensoCleanup },
 };
 
 /** P6-MED-LOAD-002: a stream of checkouts against stock S = ceil(planned / 2), so the stock runs out (plan task 8 §6.4).
- * The reconcile stage is the conservation judge alone: Task 6's medusa audit stage is not built in this stack. */
+ * The reconcile stage is the post-load audit followed by the conservation judge. */
 export const MED_LOAD_002: LoadCase = {
   id: "P6-MED-LOAD-002",
   title: "Inventory conservation under constant-arrival checkouts",
@@ -346,7 +347,7 @@ export const MED_LOAD_002: LoadCase = {
   runs: () => [{ label: "main", script: "k6/cases/med-load-002.js", env: {} }],
   stages: {
     setup: makeMedusaSetup({ stockFor: (planned) => Math.ceil(planned / 2) }),
-    reconcile: conservationStage,
+    reconcile: composeStages([reconcileStage, conservationStage]),
     cleanup: medusaCleanup,
   },
 };
