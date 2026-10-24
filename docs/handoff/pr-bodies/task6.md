@@ -68,3 +68,20 @@ None for Cursor Cloud or Claude Code cloud.
 - Unexplained red CI: the cal jobs are red from the inherited Task 1 pin (explained in Task 1's body).
 - Timeout raised, test merged or split, or assertion weakened: no.
 - Secret printed, the owner name or footer line added, git add -A, or force-push: no.
+
+## RACE-003 red on run 40081928914 (memory lock, two instances)
+
+Artifact `race-histograms-medusa-multi-instance-memory` (id 12555533333) of run 40081928914, head cd63a80. Source file
+`races/P6-MED-RACE-003.json` in the artifact; verdict `fail`.
+
+- 45 of 50 trials oversold (1 unit over stock): the expected characterization. The characterization assertion
+  (`expect(oversold).toBeGreaterThanOrEqual(1)`) is not what failed.
+- Two trials (17 and 20) failed the per-trial invariant `src/medusa/invariants.ts:443-446`:
+  `PRODUCT BUG: 7 orders exceed instances x S = 6` (`uniqueOrderIds > instances * s`, with s = 3, instances = 2).
+  Evidence: trial 17 `statusCounts {200: 7, 400: 8}`, `i0_200 = 4`, `i1_200 = 3`; trial 20 `i0_200 = 3`, `i1_200 = 4`.
+  In both, `reserved = 3` and `available = 0` on the stock row, yet 7 orders were accepted with 7 reservation rows.
+- Label: **PRODUCT BUG (SUSPECTED)**. The bound `instances x S` assumes each instance admits at most S orders, which a
+  per-process memory lock does not guarantee: both instances can read the stock before either reserves. Seven accepted orders
+  against three units is a real oversell beyond the expected characterization. Whether the bound itself is too tight is an
+  open question for the owner; no assertion was changed.
+- The top-level `expect(histogram.verdict).toBe("pass")` stays and stays red for this run. Not weakened.
