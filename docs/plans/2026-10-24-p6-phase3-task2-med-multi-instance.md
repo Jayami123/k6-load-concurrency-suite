@@ -19,8 +19,8 @@ D14, "Rules that hold for every task". Input report:
 - **Harness pin assumed.** The first released tag that contains harness H3 (`51b7d1e`). **`v0.2.13` does not exist today**:
   the newest tag is `v0.2.12` (§3.1). This task is **blocked until Task 1 has bumped the pin**. Every harness fact below
   was probed on harness `main` `51b7d1e`, installed into a throwaway copy of this repo (§3.2), not on a tag.
-- **Unit tests.** Baseline 471 on `main` (`npm run check`, exit 0, §3.9). The two env readers were moved to Task 1 (plan `…task1-harness-bump.md` §6.4), so the baseline for this task is the
-  count Task 1 part A leaves: **481**. This plan adds **+21** (§12). Expected after the build: **502**.
+- **Unit tests.** B = count on main when the build starts (today's chain: 471 on `main`, 481 after Task 1 part A; the two env readers were moved to Task 1, plan `…task1-harness-bump.md` §6.4). This plan adds **+22** (§12): 21 plus one routing test for the second leg (`pickInstance`, §6.3). Expected after the build: B + 22 (**503** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 separate job: yes. Q2 yes, `-003` asserts `oversold >= 1` with 8 PR trials. Q3 yes, the "characterization" annotation, no `test.fail()`. Q4 `P6-MED-RACE-016` later. Q5 the maintainer cuts the harness release after the consumer check. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): the plan adds a CI job to `perf.yml` and depends on a harness pin bump.
 
 ## 2. What it proves
@@ -215,7 +215,7 @@ and both pids' RSS at the end of each leg (§10, step "Log memory").
 - `src/races/env.ts` line 65 `medusaBaseUrlFromEnv`; `requiredEnv` (1) and `intFromEnv` (13) are the style to copy.
 - `src/ci/race-table.ts` `MEDUSA_OVERSELL_CASES` (line 18) counts "oversold" as `available < 0`; with the `memory` lost
   update `available` stays 0 although 6 orders exist, so `-003` needs its own summary row (§6.6).
-- `.github/workflows/perf.yml`: `medusa-smoke` (line 34, timeout 45) already measures 26.2 min worst case and a race step
+- `.github/workflows/perf.yml`: `medusa-smoke` (line 34, timeout 45) already measures 26.2 min worst case (closeout §2.7; 33.0 with the Task 1 cold start and the pull at its cap) and a race step
   estimate of 24.1 min against a 24.0 stop rule (Phase 2 closeout §2.7, Q7). **`-002`/`-003` do not go into `medusa-smoke`** (§10).
 - CI measured values used in §10 (GitHub Actions run data, `gh api .../actions/runs/<id>/jobs`): `Start Medusa (harness up)`
   30 s (run 40037355173), 49 s (39927945708, slowest), 39 s (39961527451); race step 1085 s, 1184 s, 1193 s; `medusa-smoke`
@@ -312,6 +312,17 @@ export async function completeCart(publishableKey: string, cartId: string, baseU
 
 Existing callers pass two arguments and are unchanged. Why: the smallest change that lets one cart be completed on either
 backend; cart setup keeps using the primary.
+
+The routing of request `i` to a backend is a pure function, so the second leg's route to `MEDUSA_SECOND_BASE_URL` is unit-tested
+(the run-case code can call it, so the test is possible and is added; the typecheck alone would not prove which URL is used):
+
+```ts
+/** Pure. Request i goes to instances[i % instances.length]; throws TEST BUG on an empty list. */
+export function pickInstance(instances: readonly string[], i: number): string {
+  if (instances.length === 0) throw new Error("TEST BUG: no Medusa instance to send to");
+  return instances[i % instances.length]!;
+}
+```
 
 ### 6.4 `src/medusa/harness-log.ts` (NEW): read the harness logs
 
@@ -486,7 +497,7 @@ export type RunOversellCaseInput = {
 ```
 
 Inside `runAttempt`, replace `completeCart(input.catalog.publishableKey, cartId)` by
-`completeCart(input.catalog.publishableKey, cartId, instances[i % instances.length])`, count `sent[i % n] += 1` (a closure
+`completeCart(input.catalog.publishableKey, cartId, pickInstance(instances, i))`, count `sent[i % n] += 1` (a closure
 array shared by warm-up and every attempt), and make the `warm` function hit `/health` of **each** instance. In the
 `recordTrial` callback:
 
@@ -712,25 +723,23 @@ backend logs (the only proof of per-instance traffic; ≈ 3 MB and 0.2 MB after 
 
 ### 10.1 Why a separate job, with numbers
 
-Convention (Phase 2 closeout §2.7, Task 3 §11): worst case = job overhead measured worst, with the image pull at its cap, plus
-the race step at (trials + 1 warm-up + invalid budget) × per-trial time; at least 10 min under the job timeout; the race step
-under 80 % of its step timeout; no timeout raised.
+Convention (every Phase 3 plan): worst case = Phase 2 closeout §2.7 worst case (slowest green `main` job + rerun allowance; runs 39927945708 `medusa-smoke` 22.0 + 4.2 = 26.2, 39923528658 `medusa-order-races` 17.9 + 3.3 = 21.3, 40037355173 `medusa-cancel-extras` 6.7 + 1.0 = 7.7) + the cold start after the Task 1 suffix bump (Medusa +1.1) + the image pull at its 6-minute cap minus the measured 0.3 (+5.7) + each new step at its cap. For a race step the "cap" column uses the closeout's own rule instead of the 30-minute step timeout: trials + 1 warm-up + the full invalid budget (`invalidBudget(50, 20, 2)` = 10 attempts) at the slowest per-trial time; the step timeout is a kill switch and is checked against the 80 % stop rule (24.0). At least 10 minutes under the job timeout; no timeout raised.
 
-Inputs (all measured, §3.9): job overhead = `medusa-smoke` slowest green job 22.0 min − its race step 1184 s (19.7 min) = 2.3
-min, of which the pull is < 20 s; pull at the cap (6 min) → **8.0 min**. Start Medusa (slowest 49 s, plus 10 s for the second
-backend) → **1.0 min**. `down` 1.3 s → **0.1 min**. Per trial 16.51 s (slowest known `-001`; build-time probe confirms).
-Invalid budget at 50 trials: `invalidBudget(50, 20, 2)` = 10. One case: (50 + 1 + 10) × 16.51 s + 6 s setup = 1013 s = **16.9 min**.
+Inputs (all measured, §3.9): job overhead = `medusa-smoke` slowest green job 22.0 min (run 39927945708) − its race step 1184 s (19.7 min) = 2.3 min, of which the pull is under 20 s; with the pull at its cap, 2.3 + 5.7 = **8.0 min**. Cold start after the suffix bump **+1.1**. Start Medusa (slowest 49 s, plus 10 s for the second backend) → **1.0 min**. `down` 1.3 s → **0.1 min**. Per trial 16.51 s (slowest known `-001`; build-time probe confirms). One case, no reruns: (50 + 1) × 16.51 s + 6 s setup = 848 s = **14.1 min**; with the full invalid budget (50 + 1 + 10) × 16.51 s + 6 s = 1013 s = **16.9 min**.
 
-| Design                                            | Worst case (min)                  | Timeout | Margin   | Verdict |
-| ------------------------------------------------- | --------------------------------- | ------- | -------- | ------- |
-| Add both cases to `medusa-smoke`                  | 26.2 + 2 × 16.9 + 2.2 = 62.2      | 45      | −17.2    | no      |
-| One new job, both modes in sequence               | 8.0 + 2.0 + 33.8 + 0.2 = 44.0     | 45      | 1.0      | no      |
-| **One job, two matrix legs, one runner per mode** | 8.0 + 1.0 + 16.9 + 0.1 = **26.0** | 45      | **19.0** | **yes** |
+| Design                                            | Worst, estimates (min)                  | Worst, at caps (min)                    | Timeout | Margin (caps) | Verdict |
+| ------------------------------------------------- | --------------------------------------- | --------------------------------------- | ------- | ------------- | ------- |
+| Add both cases to `medusa-smoke`                  | 33.0 + 2 × 14.1 + 2.2 = 63.4            | 33.0 + 2 × 16.9 + 2.2 = 69.0            | 45      | −24.0         | no      |
+| One new job, both modes in sequence               | 8.0 + 1.1 + 2.0 + 28.2 + 0.2 = 39.5     | 8.0 + 1.1 + 2.0 + 33.8 + 0.2 = 45.1     | 45      | −0.1          | no      |
+| **One job, two matrix legs, one runner per mode** | 8.0 + 1.1 + 1.0 + 14.1 + 0.1 = **24.3** | 8.0 + 1.1 + 1.0 + 16.9 + 0.1 = **27.1** | 45      | **17.9**      | **yes** |
 
-`medusa-smoke` is already at 26.2 min worst case and a 24.1 min race-step estimate against a 24.0 stop rule (closeout §2.7), so
-nothing is added to it (Q1). Race step of a leg: 16.9 min against a 30-min step timeout (stop rule 24.0) → under it. PR
-legs: `-002` (3 + 1 + 2) × 16.51 + 6 = 105 s = 1.8 min; `-003` (8 + 1 + 2) × 16.51 + 6 = 188 s = 3.1 min; step timeout 10 min
-(stop rule 8.0) → under it. Both legs run in parallel, so the workflow wall time is the longer leg.
+(`medusa-smoke` base 33.0 = 26.2 + 1.1 + 5.7.) `medusa-smoke` is already at 26.2 min worst case and a 24.1 min race-step estimate against a 24.0 stop rule (closeout §2.7), so nothing is added to it (Q1, closed: separate job). Race step of a leg: 14.1 min estimate, 16.9 min with the full invalid budget, against a 30-min step timeout (stop rule 24.0) → under it. PR legs: `-002` (3 + 1 + 2) × 16.51 + 6 = 105 s = 1.8 min; `-003` (8 + 1 + 2) × 16.51 + 6 = 188 s = 3.1 min; step timeout 10 min (stop rule 8.0) → under it. Both legs run in parallel, so the workflow wall time is the longer leg.
+
+**Phase 2 follow-ups that stack on the existing Medusa jobs (listed so the budget is read together; this task adds nothing to these jobs).**
+
+- `medusa-cancel-extras`, PR only: the `test.fail()` annotation for F-M4 in `P6-MED-RACE-014` with 5 PR trials (about 5 × 1.80 s = 9 s, under 0.2 min). Not touched here.
+- `medusa-smoke` race step, PR only: `P6-MED-RACE-009` PR trials 13 → 20 (about 7 × 1.12 s = 8 s, 0.13 min), inside the PR step cap of 10 min. Not touched here.
+- `medusa-smoke` race step 24.1 vs the 24.0 stop rule stays a BACKLOG item; Phase 3 adds nothing to it (this is why the two new cases go to their own job).
 
 ### 10.2 `perf.yml` changes (exact)
 
@@ -821,8 +830,24 @@ summary step reads it as the other jobs do. The Documenso job's `jq '{suites, er
 owner wants the JSON uploaded.) 3. The `Stop Medusa` step is `if: always()`, `npm run down:medusa || true`, as in the other jobs (X7 is a known harness item,
 not this task's). 4. Trial counts: PR `-002` 3, `-003` 8; `main`, schedule, `workflow_dispatch` 50 for both (Phase 1 D2). No job timeout raised. 5. `actionlint` runs inside `npm run check`; expected output is empty.
 
-Worst case, restated: **job `medusa-multi-instance` leg, 26.0 min against a 45-min timeout, margin 19.0 min**; race step 16.9
-min against a 30-min timeout (stop rule 24.0).
+Every new step, with its estimate and its 80 % stop rule (80 % of its `timeout-minutes`; estimates are the measured worst of the same step in `medusa-order-races`/`medusa-smoke`, else marked estimate):
+
+| Step                              | `timeout-minutes` | Estimate (min)                     | 80 % stop rule (min) |
+| --------------------------------- | ----------------- | ---------------------------------- | -------------------- |
+| Image pull                        | 6                 | 0.3 (measured max 22 s)            | 4.8                  |
+| Start Medusa (both backends)      | 10                | 1.0 (49 s + 10 s)                  | 8.0                  |
+| Guard                             | 2                 | 0.1 (estimate)                     | 1.6                  |
+| Race, `main` / dispatch (per leg) | 30                | 14.1; 16.9 with the invalid budget | 24.0                 |
+| Race, PR `-002`                   | 10                | 1.8                                | 8.0                  |
+| Race, PR `-003`                   | 10                | 3.1                                | 8.0                  |
+| Log memory, token scan, summary   | 1, 2, 2           | 0.1, 0.1, 0.1 (estimate)           | 0.8, 1.6, 1.6        |
+| Uploads, Stop Medusa              | 3, 3              | 0.2, 0.1 (estimate)                | 2.4, 2.4             |
+
+The setup steps before Start Medusa (checkout, fork checkout, verify, stub roots, setup-node, `npm ci`, corepack, pnpm store, Medusa
+deps, build cache, admin password) are the 2.3 min of measured overhead above; their caps are copied from `medusa-order-races`.
+
+Worst case, restated: **job `medusa-multi-instance` leg, 24.3 min (estimates) and 27.1 min (at caps) against a 45-min timeout,
+margin 17.9 min**; race step 14.1 to 16.9 min against a 30-min timeout (stop rule 24.0).
 
 ## 11. Environment changes
 
@@ -842,23 +867,23 @@ first (§3.7). Timings on a cloud VM prove a test works and are never published.
 ## 12. Build order (one commit per step; `npm run check` after each)
 
 Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-multi-instance origin/main`.
-Unit counts are relative to the baseline B measured in §5 check 4 (481 once Task 1 part A is merged).
+Unit counts are relative to the baseline B measured in §5 check 4 (B = count on main when the build starts; 481 once Task 1 part A is merged, so the final count is 503 today).
 
-| Step | Commit subject                                                                       | `git add` paths                                                                                                                                                                                 | `npm run check` expected                                                          |
-| ---- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 0    | (none) bring this plan onto the branch                                               | `git checkout origin/plan/2026-10-24-p6-phase3-plans -- docs/plans/2026-10-24-p6-phase3-task2-med-multi-instance.md`, commit `docs(plans): bring the phase 3 task 2 plan onto the build branch` | exit 0, B tests                                                                   |
-| 1    | `feat(medusa): let cart completion target a chosen backend`                          | `src/medusa/store.ts tests/unit/medusa-store-base-url.test.ts`                                                                                                                                  | exit 0, **B + 2**                                                                 |
-| 2    | `feat(medusa): read the lock provider and request counts from the harness logs`      | `src/medusa/harness-log.ts tests/unit/medusa-harness-log.test.ts`                                                                                                                               | exit 0, **B + 9**                                                                 |
-| 3    | `feat(medusa): add the two-instance traffic and memory-lock characterization checks` | `src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts`                                                                                                                                 | exit 0, **B + 18**                                                                |
-| 4    | `feat(medusa): run oversell trials across several backends`                          | `src/medusa/run-case.ts`                                                                                                                                                                        | exit 0, B + 18 (no new unit test; typecheck proves the shape)                     |
-| 5    | `feat(ci): summarise the two-instance cases`                                         | `src/ci/race-table.ts tests/unit/race-table.test.ts`                                                                                                                                            | exit 0, **B + 21**                                                                |
-| 6    | `test(medusa): add P6-MED-RACE-002 and P6-MED-RACE-003`                              | `tests/medusa/races/med-race-002-two-instances-redis.spec.ts tests/medusa/races/med-race-003-two-instances-memory.spec.ts`                                                                      | exit 0, B + 21; `npx playwright test --project=medusa-race --list` shows both ids |
-| 7    | `ci(perf): run the two-instance races in a two-leg job`                              | `.github/workflows/perf.yml`                                                                                                                                                                    | exit 0 (actionlint silent), B + 21                                                |
-| 8    | `docs: document the two-instance races`                                              | `README.md`                                                                                                                                                                                     | exit 0, B + 21                                                                    |
+| Step | Commit subject                                                                       | `git add` paths                                                                                                                                                                                 | `npm run check` expected                                                                              |
+| ---- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 0    | (none) bring this plan onto the branch                                               | `git checkout origin/plan/2026-10-24-p6-phase3-plans -- docs/plans/2026-10-24-p6-phase3-task2-med-multi-instance.md`, commit `docs(plans): bring the phase 3 task 2 plan onto the build branch` | exit 0, B tests                                                                                       |
+| 1    | `feat(medusa): let cart completion target a chosen backend`                          | `src/medusa/store.ts tests/unit/medusa-store-base-url.test.ts`                                                                                                                                  | exit 0, **B + 3**                                                                                     |
+| 2    | `feat(medusa): read the lock provider and request counts from the harness logs`      | `src/medusa/harness-log.ts tests/unit/medusa-harness-log.test.ts`                                                                                                                               | exit 0, **B + 10**                                                                                    |
+| 3    | `feat(medusa): add the two-instance traffic and memory-lock characterization checks` | `src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts`                                                                                                                                 | exit 0, **B + 19**                                                                                    |
+| 4    | `feat(medusa): run oversell trials across several backends`                          | `src/medusa/run-case.ts`                                                                                                                                                                        | exit 0, B + 19 (no new unit test; `pickInstance` is tested in step 1, the typecheck proves the shape) |
+| 5    | `feat(ci): summarise the two-instance cases`                                         | `src/ci/race-table.ts tests/unit/race-table.test.ts`                                                                                                                                            | exit 0, **B + 22**                                                                                    |
+| 6    | `test(medusa): add P6-MED-RACE-002 and P6-MED-RACE-003`                              | `tests/medusa/races/med-race-002-two-instances-redis.spec.ts tests/medusa/races/med-race-003-two-instances-memory.spec.ts`                                                                      | exit 0, B + 22; `npx playwright test --project=medusa-race --list` shows both ids                     |
+| 7    | `ci(perf): run the two-instance races in a two-leg job`                              | `.github/workflows/perf.yml`                                                                                                                                                                    | exit 0 (actionlint silent), B + 22                                                                    |
+| 8    | `docs: document the two-instance races`                                              | `README.md`                                                                                                                                                                                     | exit 0, B + 22                                                                                        |
 
-New unit tests, by name (these are the 21):
+New unit tests, by name (these are the 22):
 
-- `tests/unit/medusa-store-base-url.test.ts` (+2): `completeCart posts to the given base URL` (local `node:http` server on port 0 records the path and the `x-publishable-api-key` header); `completeCart falls back to MEDUSA_BASE_URL`.
+- `tests/unit/medusa-store-base-url.test.ts` (+3): `completeCart posts to the given base URL` (local `node:http` server on port 0 records the path and the `x-publishable-api-key` header); `completeCart falls back to MEDUSA_BASE_URL`; `pickInstance sends even requests to the first URL and odd requests to MEDUSA_SECOND_BASE_URL` (two local servers, the second URL taken from `medusaSecondBaseUrlFromEnv()` with the variable set; each server records its own requests, 4 requests give 2 and 2, and an empty list is a TEST BUG).
 - `tests/unit/medusa-harness-log.test.ts` (+7): `lastSpawnSection returns the text after the last marker`; `lockProviderFromLog reads redis from the real locking-redis line`; `… reads memory from the real in-memory line`; `… ignores an earlier section (append-only log)`; `… returns unknown when neither line exists`; `countCompleteRequests counts only cart completions after the last marker`; `harnessLogDir honours P6_MEDUSA_LOG_DIR`. Fixtures are the real lines quoted in §3.3, §3.4 and §3.6.
 - `tests/unit/medusa-invariants.test.ts` (+9): `checkTwoInstanceTraffic` accepts equal counts; flags a count mismatch; flags an instance with zero requests; `classifyTwoInstanceLoser` returns clean, f-m2-signature and other (3 tests); `checkMemoryLockCharacterization` reports an oversold clean trial as findings only (no violation); flags a 5xx; flags orders above `instances × S`.
 - `tests/unit/race-table.test.ts` (+3): `-002` row with no oversell; `-003` row counts oversold from `oversold`, not from `available`; a two-instance histogram without `oversold` gives n/a.
@@ -888,16 +913,16 @@ After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
 - `P6-MED-RACE-017`: Task 8 report E1, `-003` with `MEDUSA_REDIS` unset (per-process event bus).
 - `P6-MED-RACE-018`: Task 8 report E2, a token issued by one instance is accepted by the other (`JWT_SECRET` shared).
 
-### Open questions for the owner
+### Owner decisions (all five questions closed 2026-10-24)
 
-- **Q1.** Accept a separate two-leg job `medusa-multi-instance` instead of adding the cases to `medusa-smoke`? Numbers in §10.1
-  (62.2 min worst case in `medusa-smoke`, 26.0 min per leg in the new job). Proposed: yes.
-- **Q2.** Accept `-003` asserting `oversold ≥ 1` with 8 PR trials (false red 6e-5 at the probe's lower rate), instead of
+- **Q1 (closed: yes, separate job).** Accept a separate two-leg job `medusa-multi-instance` instead of adding the cases to `medusa-smoke`? Numbers in §10.1
+  (69.0 min worst case at caps in `medusa-smoke`, 27.1 min per leg in the new job).
+- **Q2 (closed: yes, `oversold >= 1` with 8 PR trials).** Accept `-003` asserting `oversold ≥ 1` with 8 PR trials (false red 6e-5 at the probe's lower rate), instead of
   recording only on PRs? Proposed: yes; recording-only would let a silent change of Medusa's default lock pass.
-- **Q3.** `-003` as a Playwright `characterization` annotation (not `test.fail()`, not an issue label): confirm the wording
+- **Q3 (closed: yes, "characterization", no `test.fail()`).** `-003` as a Playwright `characterization` annotation (not `test.fail()`, not an issue label): confirm the wording
   "characterization" for the README row. Proposed: yes.
-- **Q4.** Add `P6-MED-RACE-016` to this task? Proposed: later, after `-002` is green three times.
-- **Q5.** The harness `Unreleased` section also upgrades zod to 4; P6 does not import zod, but P1, P2 and P5 consume the same
+- **Q4 (closed: `-016` later, after `-002` is green three times).** Add `P6-MED-RACE-016` to this task? Proposed: later, after `-002` is green three times.
+- **Q5 (closed: the maintainer cuts the release after the consumer check).** The harness `Unreleased` section also upgrades zod to 4; P6 does not import zod, but P1, P2 and P5 consume the same
   tag. Confirm the harness release is the maintainer's to cut after those consumers are checked (Task 1 plan, Q-list).
 
 ## 14. Done when (roadmap, made measurable)
@@ -912,7 +937,7 @@ After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
       `race-histograms-medusa-multi-instance-{redis,memory}`).
 - [ ] Leak check empty at the end of both cases.
 - [ ] Every new `perf.yml` step has `timeout-minutes`; leg worst case ≤ 35 min against 45 (margin ≥ 10); no existing timeout changed.
-- [ ] `npm run check` exit 0 with **502** unit tests (481 + 21); no skipped test.
+- [ ] `npm run check` exit 0 with **B + 22** unit tests (503 today: 481 + 22); no skipped test.
 
 ## 15. Rule 20 self-check
 
@@ -924,7 +949,6 @@ After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
   `medusa-order-races` job. From Task 1 (not built here): `medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`. NEW:
   `src/medusa/harness-log.ts` and its functions, `checkTwoInstanceTraffic`, `classifyTwoInstanceLoser`, `checkMemoryLockCharacterization`,
   `MEDUSA_TWO_INSTANCE_CASES`, the two specs, the job; each has a skeleton in §6.
-- (c) CI time: §10.1 includes the invalid budget, the warm-up, the pull at its cap and setup; 26.0 min against 45.
+- (c) CI time: §10.1 uses the closeout §2.7 sources, the cold start, the pull at its cap, the invalid budget, the warm-up and setup; 24.3 (estimates) and 27.1 (at caps) minutes against 45.
 - (d) Skeletons: §6. Steps with `git add` paths, commit subjects and expected output: §12.
-- (e) No owner answer is recorded in this plan; §13 holds proposals only (the Task 8 report's Q1 and Q6 answers are cited as
-  given there).
+- (e) The owner's answers to Q1 to Q5 are recorded in §1 and §13 (the Task 8 report's Q1 and Q6 answers are cited as given there).
