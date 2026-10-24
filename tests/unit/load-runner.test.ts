@@ -36,6 +36,7 @@ function ctxWith(over: Partial<LoadContext> = {}, runs: K6RunSpec[] = []): LoadC
     outDir: tmpdir(),
     env: {},
     config: {},
+    handles: {},
     k6: [],
     invalid: [],
     secrets: {},

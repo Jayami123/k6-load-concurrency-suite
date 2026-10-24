@@ -17,6 +17,7 @@ const STALL_MS = 1500;
 const PERIOD_MS = 10000;
 const SELFTEST = "k6/selftest/coordinated-omission.js";
 const TELEMETRY = "k6/selftest/telemetry.js";
+const OVERHEAD = "k6/selftest/sampler-overhead.js";
 
 let stub: { port: number; close(): Promise<void> } | undefined;
 
@@ -248,7 +249,7 @@ export const OVERHEAD_LOAD_006: LoadCase = {
     return [1, 2, 3, 4].flatMap((i) => [
       {
         label: `without-${i}`,
-        script: TELEMETRY,
+        script: OVERHEAD,
         env: base,
         maxVUs: 120,
         telemetry: false,
@@ -256,7 +257,7 @@ export const OVERHEAD_LOAD_006: LoadCase = {
       },
       {
         label: `with-${i}`,
-        script: TELEMETRY,
+        script: OVERHEAD,
         env: base,
         maxVUs: 120,
         telemetry: true,
