@@ -135,7 +135,7 @@ Nothing from P6. Inside the harness: `spawnLogged`, `isPidRunning`, `HARNESS_ROO
 | 4   | Documenso model unchanged               | `grep -n "unref\|writeDocumensoWebPid" src/adapters/documenso.adapter.ts`                                                                      | both found                                                                                                                                            |
 | 5   | P6 consumers of `up:cal` and `down:cal` | in the P6 repo: `grep -n "up:cal\|down:cal\|TEMPORARY BRIDGE\|cal.pgid" package.json scripts/harness.mjs .github/workflows/perf.yml README.md` | the bridge, the `down:cal \|\| true` steps and the `Start Cal (harness up)` steps are the only callers; any new caller is added to the acceptance run |
 | 6   | P1 consumer                             | in the P1 repo (read only): `grep -rn "up cal\|up:cal\|down:cal" package.json scripts .github`                                                 | callers listed in the PR; each still works when `up` returns (none relied on a never-returning `up`)                                                  |
-| 7   | Acceptance on the P6 copy               | the six checks of §7 against a throwaway P6 copy using `node scripts/up.mjs cal` and `down.mjs cal`                                            | all pass; output pasted in the PR                                                                                                                     |
+| 7   | Acceptance on the P6 copy               | the seven checks of §7 against a throwaway P6 copy using `node scripts/up.mjs cal` and `down.mjs cal`                                          | all pass; output pasted in the PR                                                                                                                     |
 
 ## 6. Design (harness repo)
 
@@ -270,14 +270,15 @@ Nothing is killed that the harness did not record (same rule as Documenso: "does
 
 ## 7. Oracles and assertions (what "fixed" means)
 
-| Claim                             | Check                                                                                                                     | Evidence class         |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `up` returns when healthy         | `time node scripts/up.mjs cal` exits 0; after `Cal web is up` no more than 5 s pass                                       | live, exit code + time |
-| `down` stops the web              | after `down`: `lsof -nP -iTCP:3000 -sTCP:LISTEN` empty; `.harness/cal-web.pid` removed; no `next-server`                  | live                   |
-| Second `up` does not double-spawn | start `up` in the background, run a second `up` 20 s later: one `next-server`, both exit 0                                | live                   |
-| Seed check passes on a seeded DB  | second `up`: log has `Cal seed users and API key already present; skipped yarn db-seed.`; no `presence check failed`      | live                   |
-| No key in the log                 | `grep -c "cal_[A-Za-z0-9]\{10,\}" <up log>` is 0; the line `Created seeded API Key: ***` is present                       | live                   |
-| `down` refuses a foreign listener | start any process on :3000 without the harness, `down`: error `Cal web still listening ... not killed`; the process lives | live                   |
+| Claim                                        | Check                                                                                                                                                 | Evidence class         |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `up` returns when healthy                    | `time node scripts/up.mjs cal` exits 0; after `Cal web is up` no more than 5 s pass                                                                   | live, exit code + time |
+| `down` stops the web                         | after `down`: `lsof -nP -iTCP:3000 -sTCP:LISTEN` empty; `.harness/cal-web.pid` removed; no `next-server`                                              | live                   |
+| Second `up` does not double-spawn            | start `up` in the background, run a second `up` 20 s later: one `next-server`, both exit 0                                                            | live                   |
+| Seed check passes on a seeded DB             | second `up`: log has `Cal seed users and API key already present; skipped yarn db-seed.`; no `presence check failed`                                  | live                   |
+| No key in the log                            | `grep -c "cal_[A-Za-z0-9]\{10,\}" <up log>` is 0; the line `Created seeded API Key: ***` is present                                                   | live                   |
+| `down` removes the children of a dead leader | start `up`, wait for ready, `kill -9` the recorded leader pid, run `down`: no `next-server` remains, :3000 is free, `.harness/cal-web.pid` is removed | live                   |
+| `down` refuses a foreign listener            | start any process on :3000 without the harness, `down`: error `Cal web still listening ... not killed`; the process lives                             | live                   |
 
 ## 8. Data isolation, cleanup, leak check
 
@@ -290,7 +291,7 @@ Nothing is killed that the harness did not record (same rule as Documenso: "does
   the same grace period as Documenso), so no `next-server` child survives. A missing, empty or corrupt pid file is not an error.
   A recycled pid is refused by the start-mark check (R3). `down` never kills a listener it did not start (§7, last row).
 - **Leak check.** After `down`: `lsof -nP -iTCP:3000 -sTCP:LISTEN` is empty, `.harness/cal-web.pid` is gone, `pgrep -f next-server`
-  shows no Cal process, and the database container is removed. The group signal (`kill(-pgid)`) is asserted by the existing `running pid killed and file removed` test (injected `deps` record the signalled target); the dead-leader case itself is part of the acceptance run (§7, six checks plus a leader killed with `kill -9` before `down`). No test is added: the count stays 207 -> 220.
+  shows no Cal process, and the database container is removed. The group signal (`kill(-pgid)`) is asserted by the existing `running pid killed and file removed` test (injected `deps` record the signalled target); the dead-leader case itself is part of the acceptance run (§7, the dead-leader row: a leader killed with `kill -9` before `down`). No test is added: the count stays 207 -> 220.
 
 ## 8a. Token scan
 
@@ -332,7 +333,7 @@ Branch: `git switch -c fix/<build date>-harness-cal-up-down origin/main`. Counts
 | 4    | `fix(cal): return from up once cal is healthy`           | `src/adapters/cal.adapter.ts` (detached, unref, waiting branch)                                          | exit 0, B + 13  |
 | 5    | `docs: changelog and readme for the cal up and down fix` | `CHANGELOG.md README.md`                                                                                 | exit 0, B + 13  |
 
-Acceptance (paste the output into the PR, CONTRIBUTING.md "live smoke"): with the P6 copy as in §3, run the six checks of §7.
+Acceptance (paste the output into the PR, CONTRIBUTING.md "live smoke"): with the P6 copy as in §3, run the seven checks of §7.
 CHANGELOG text (under `## Unreleased`):
 
 ```text
@@ -368,7 +369,7 @@ section, tag `vX.Y.Z` on `main`. Then the P6 bump with the bridge deletion (comp
 ## 11. Done when (roadmap, made measurable)
 
 - [ ] This PR is merged with a CHANGELOG entry, and H3 is released as `v0.2.13` and this fix as its own later release (owner decision).
-- [ ] The six checks of §7 pass on Linux, output pasted in the PR.
+- [ ] The seven checks of §7 pass on Linux, output pasted in the PR.
 - [ ] Harness `npm run check` exit 0 with 220 tests (207 + 13), `npm audit --audit-level=high` clean.
 - [ ] The P6 bridge deletion bump (companion plan, Part B) can start: `up:cal` and `down:cal` work through the harness alone.
 
