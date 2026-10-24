@@ -117,7 +117,10 @@ describe("telemetry sampler", () => {
 describe("telemetry sampler sources", () => {
   it("a source that is not configured is absent with a reason", async () => {
     const { startSampler } = await import("../../src/load/telemetry/sampler.ts");
-    const sampler = startSampler({ product: "cal", sleep: () => new Promise((r) => setImmediate(r)) });
+    const sampler = startSampler({
+      product: "cal",
+      sleep: () => new Promise((r) => setImmediate(r)),
+    });
     const file = await sampler.stop();
     assert.equal(file.sources.db?.present, false);
     assert.equal(file.sources.db?.reason, "no database pool");
