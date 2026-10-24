@@ -122,11 +122,11 @@ or test result. The fix landed after this run's head, so the next dispatch of th
 The plan (§12, "the first product run") asks for the live `audit.json` of a product run. The three journey cases of that run produced
 them; artifacts `load-cal`, `load-medusa` (downloaded and read on 2026-10-24).
 
-| Case | Verdict | audit.json: rows | Checks | Violations | knownBugs | Leak |
-| --- | --- | --- | --- | --- | --- | --- |
-| P6-CAL-LOAD-001 (cal) | PASS | 61 live bookings | rows, accepted-only, client-matches-db (61 = 61), no-overlap | none | none | none |
-| P6-MED-LOAD-001 (medusa) | PASS | 31 orders | orders-le-stock (31 of 50), reservations, available, one-payment-per-order, balances, no-ghost-orders (31 = 31) | none | none | none |
-| P6-MED-LOAD-002 (medusa, stock exhausted) | PASS | 15 orders | orders-le-stock (15 of 15), reservations, available 0, one-payment-per-order, balances, no-ghost-orders (15 = 15) | none | none | none |
+| Case                                      | Verdict | audit.json: rows | Checks                                                                                                            | Violations | knownBugs | Leak |
+| ----------------------------------------- | ------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ---------- | --------- | ---- |
+| P6-CAL-LOAD-001 (cal)                     | PASS    | 61 live bookings | rows, accepted-only, client-matches-db (61 = 61), no-overlap                                                      | none       | none      | none |
+| P6-MED-LOAD-001 (medusa)                  | PASS    | 31 orders        | orders-le-stock (31 of 50), reservations, available, one-payment-per-order, balances, no-ghost-orders (31 = 31)   | none       | none      | none |
+| P6-MED-LOAD-002 (medusa, stock exhausted) | PASS    | 15 orders        | orders-le-stock (15 of 15), reservations, available 0, one-payment-per-order, balances, no-ghost-orders (15 = 15) | none       | none      | none |
 
 Documenso: the live `audit.json` of P6-DOC-LOAD-002 came from a local run of this session on the Documenso stack (11 envelopes, sealed
 once, client-matches-db 11 = 11, drain 528 ms, no leak). It is not in CI; the Documenso journey's CI artifact was not read here.
