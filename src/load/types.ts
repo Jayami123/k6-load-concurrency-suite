@@ -93,6 +93,8 @@ export interface LoadContext {
   config: Record<string, unknown>;
   /** Secrets set by setup (an admin token, an API token). Only the k6 process named in secretEnv receives them; never logged or written. */
   secrets: Record<string, string>;
+  /** In-memory handles of a product's run (setup to cleanup). Never serialized: a handle can hold a secret. */
+  handles: Record<string, unknown>;
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
   results: Partial<Record<StageName, StageResult>>;
