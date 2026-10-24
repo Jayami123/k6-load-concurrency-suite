@@ -19,8 +19,8 @@ D14, "Rules that hold for every task". Input report:
 - **Harness pin assumed.** The first released tag that contains harness H3 (`51b7d1e`). **`v0.2.13` does not exist today**:
   the newest tag is `v0.2.12` (§3.1). This task is **blocked until Task 1 has bumped the pin**. Every harness fact below
   was probed on harness `main` `51b7d1e`, installed into a throwaway copy of this repo (§3.2), not on a tag.
-- **Unit tests.** Baseline 471 on `main` (`npm run check`, exit 0, §3.9). This plan adds **+27** (§12). Expected after the
-  build: **498**.
+- **Unit tests.** Baseline 471 on `main` (`npm run check`, exit 0, §3.9). The two env readers were moved to Task 1 (plan `…task1-harness-bump.md` §6.4), so the baseline for this task is the
+  count Task 1 part A leaves: **481**. This plan adds **+21** (§12). Expected after the build: **502**.
 - **Stop for owner review.** Yes (rule 10): the plan adds a CI job to `perf.yml` and depends on a harness pin bump.
 
 ## 2. What it proves
@@ -236,13 +236,14 @@ already produce.
 
 ## 4. Depends on earlier plans
 
-| Needs                        | Exact name                                                                                                                                                                                                                                                                                                                                                                                                                      | From                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Released harness tag with H3 | `package.json` `"qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#<tag>"`; env `MEDUSA_SECOND_BASE_URL`, `MEDUSA_LOCK`; files `.harness/medusa-backend.pid`, `medusa-backend-2.pid`, `medusa-backend.log`, `medusa-backend-2.log`                                                                                                                                                                                  | Phase 3 Task 1 (plan `…task1-harness-bump.md`) |
-| Spread framework             | `createRerunRunner`, `spreadPolicyFromEnv`, `attemptTag`, `invalidBudget` in `src/races/rerun-on-spread.ts`                                                                                                                                                                                                                                                                                                                     | Phase 2 Task 1 (on `main`)                     |
-| Single-instance race code    | `runOversellCase`, `RunOversellCaseInput` (`src/medusa/run-case.ts`); `checkOversellInvariants`, `checkOrphanOrders` (`src/medusa/invariants.ts`); `readOversellSnapshot`, `waitForOversellStable`, `LEAK_LIVE_ORDER_IDS_SQL`, `leakCheck` (`src/medusa/oracle.ts`); `createStockedVariant`, `seedAndLogin`, `loadCatalog` (`src/medusa/admin.ts`); `prepareReadyCarts`, `completeCart` (`src/medusa/store.ts`); `fireTogether` | Phase 1 / 2 (on `main`)                        |
-| Env style and prefix         | `requiredEnv`/`intFromEnv` (`src/races/env.ts`), `casePrefix`/`caseLeakPattern`/`attemptEmailLike` (`src/medusa/payloads.ts`), `p6RunPrefix`                                                                                                                                                                                                                                                                                    | Phase 1 (on `main`)                            |
-| Nothing from Tasks 3 to 10   | the two cases are Playwright races, not LOAD runs                                                                                                                                                                                                                                                                                                                                                                               | —                                              |
+| Needs                        | Exact name                                                                                                                                                                                                                                                                                                                                                                                                                      | From                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Released harness tag with H3 | `package.json` `"qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#<tag>"`; env `MEDUSA_SECOND_BASE_URL`, `MEDUSA_LOCK`; files `.harness/medusa-backend.pid`, `medusa-backend-2.pid`, `medusa-backend.log`, `medusa-backend-2.log`                                                                                                                                                                                  | Phase 3 Task 1 (plan `…task1-harness-bump.md`)      |
+| Spread framework             | `createRerunRunner`, `spreadPolicyFromEnv`, `attemptTag`, `invalidBudget` in `src/races/rerun-on-spread.ts`                                                                                                                                                                                                                                                                                                                     | Phase 2 Task 1 (on `main`)                          |
+| Single-instance race code    | `runOversellCase`, `RunOversellCaseInput` (`src/medusa/run-case.ts`); `checkOversellInvariants`, `checkOrphanOrders` (`src/medusa/invariants.ts`); `readOversellSnapshot`, `waitForOversellStable`, `LEAK_LIVE_ORDER_IDS_SQL`, `leakCheck` (`src/medusa/oracle.ts`); `createStockedVariant`, `seedAndLogin`, `loadCatalog` (`src/medusa/admin.ts`); `prepareReadyCarts`, `completeCart` (`src/medusa/store.ts`); `fireTogether` | Phase 1 / 2 (on `main`)                             |
+| Env readers (Task 1 part A)  | `medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`, `MedusaLockMode` in `src/races/env.ts`; `.env.example` names `MEDUSA_SECOND_BASE_URL`, `MEDUSA_REDIS`, `MEDUSA_LOCK`                                                                                                                                                                                                                                                     | Phase 3 Task 1 (plan `…task1-harness-bump.md` §6.4) |
+| Env style and prefix         | `requiredEnv`/`intFromEnv` (`src/races/env.ts`), `casePrefix`/`caseLeakPattern`/`attemptEmailLike` (`src/medusa/payloads.ts`), `p6RunPrefix`                                                                                                                                                                                                                                                                                    | Phase 1 (on `main`)                                 |
+| Nothing from Tasks 3 to 10   | the two cases are Playwright races, not LOAD runs                                                                                                                                                                                                                                                                                                                                                                               | —                                                   |
 
 ## 5. Build-time recheck (day of the build)
 
@@ -251,11 +252,12 @@ already produce.
 | 1   | Base                         | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                                      | `5acd2a0` or a descendant that still contains `a82521a`                                                                |
 | 2   | Task 1 merged, tag exists    | `git ls-remote --tags https://github.com/Jayami123/qa-portfolio-harness.git \| grep -v '\^{}' \| sed 's#.*/##' \| sort -V \| tail -1` and `grep qa-portfolio-harness package.json` | newest tag ≥ the tag containing `51b7d1e` (`git merge-base --is-ancestor 51b7d1e <tag>`); `package.json` pins that tag |
 | 3   | The tag has the two switches | `grep -n "MEDUSA_SECOND_BASE_URL\|MEDUSA_LOCK" node_modules/qa-portfolio-harness/src/config.ts node_modules/qa-portfolio-harness/src/adapters/medusa-env.ts`                       | both names found                                                                                                       |
-| 4   | Baseline unit count          | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                | exit 0, `# tests 471` (or the count Task 1 left; the deltas below are relative)                                        |
+| 4   | Baseline unit count          | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                | exit 0, `# tests 481` (Task 1 part A leaves 481; the deltas below are relative to whatever it left)                    |
 | 5   | Medusa pin unchanged         | `grep MEDUSA_REF scripts/bootstrap.sh .github/workflows/perf.yml`                                                                                                                  | `f677db438f27294fc50e4c7c6612e71ff38eeff5` in both                                                                     |
 | 6   | Re-run the probe on the tag  | §3.3, §3.4 and §3.7 commands on a clean worktree (copy §3.2 with `#<tag>`), then the two-line race probe                                                                           | `locking-redis` line in redis mode; `Using "in-memory" as default` in memory mode; `down` leaves 0 listeners           |
 | 7   | Existing names still there   | `grep -n "export async function runOversellCase\|export async function completeCart\|MEDUSA_OVERSELL_CASES" src/medusa/run-case.ts src/medusa/store.ts src/ci/race-table.ts`       | three hits                                                                                                             |
 | 8   | No other job grew meanwhile  | `gh run list --workflow perf.yml --branch main --limit 3`                                                                                                                          | green runs; re-read §10 numbers if `medusa-smoke` changed                                                              |
+| 9   | Task 1's env readers exist   | `grep -n "export function medusaSecondBaseUrlFromEnv\|export function medusaLockModeFromEnv" src/races/env.ts`                                                                     | two hits                                                                                                               |
 
 If check 2 fails, stop and report: the task is blocked on the harness release.
 
@@ -264,10 +266,9 @@ If check 2 fails, stop and report: the task is blocked on the harness release.
 ### 6.1 File tree
 
 ```text
-.env.example                                   CHANGED  (names only: MEDUSA_REDIS, MEDUSA_LOCK, MEDUSA_SECOND_BASE_URL)
+.env.example                                   CHANGED  (names only: P6_MEDUSA_LOG_DIR; the three harness names come from Task 1)
 .github/workflows/perf.yml                     CHANGED  (new job medusa-multi-instance, 2 matrix legs)
 README.md                                      CHANGED  (Phase 3 section: two rows; "Run two Medusa backends locally")
-src/races/env.ts                               CHANGED  (+ medusaSecondBaseUrlFromEnv, medusaLockModeFromEnv)
 src/medusa/store.ts                            CHANGED  (completeCart/storeRaw take an optional base URL)
 src/medusa/harness-log.ts                      NEW      (read the two harness logs: lock line, request counts)
 src/medusa/invariants.ts                       CHANGED  (+ checkTwoInstanceTraffic, checkMemoryLockCharacterization, classifyTwoInstanceLoser)
@@ -275,7 +276,6 @@ src/medusa/run-case.ts                         CHANGED  (RunOversellCaseInput.in
 src/ci/race-table.ts                           CHANGED  (+ MEDUSA_TWO_INSTANCE_CASES row)
 tests/medusa/races/med-race-002-two-instances-redis.spec.ts    NEW
 tests/medusa/races/med-race-003-two-instances-memory.spec.ts   NEW
-tests/unit/env.test.ts                         CHANGED  (+6)
 tests/unit/medusa-store-base-url.test.ts       NEW      (+2)
 tests/unit/medusa-harness-log.test.ts          NEW      (+7)
 tests/unit/medusa-invariants.test.ts           CHANGED  (+9)
@@ -286,39 +286,13 @@ Nothing under `k6/`. No change to `playwright.config.ts`: the project `medusa-ra
 picks the new files up. `medusa-smoke` already excludes by `--grep-invert "P6-MED-RACE-0(05|12|13|14)"`; the two new specs
 would match it, so the grep gets `|0(02|03)` added (§10).
 
-### 6.2 `src/races/env.ts` (CHANGED): two readers
+### 6.2 `src/races/env.ts`: two readers (built by Task 1, used here)
 
-```ts
-/** Second Medusa backend, or undefined when the harness runs only one. 127.0.0.1 only, http, a different port. */
-export function medusaSecondBaseUrlFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): string | undefined {
-  const raw = env.MEDUSA_SECOND_BASE_URL?.trim();
-  if (!raw) return undefined;
-  const url = raw.replace(/\/$/, "");
-  const parsed = new URL(url); // throws on garbage; wrap into the TEST BUG message below
-  if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1") {
-    throw new Error(`TEST BUG: MEDUSA_SECOND_BASE_URL must be http://127.0.0.1:<port>, got ${raw}`);
-  }
-  if (url === medusaBaseUrlFromEnv(env)) {
-    throw new Error("TEST BUG: MEDUSA_SECOND_BASE_URL equals MEDUSA_BASE_URL");
-  }
-  return url;
-}
-
-export type MedusaLockMode = "memory" | "redis";
-
-/** Same default and spelling as the harness: unset or blank is "memory". */
-export function medusaLockModeFromEnv(env: NodeJS.ProcessEnv = process.env): MedusaLockMode {
-  const raw = env.MEDUSA_LOCK?.trim();
-  if (!raw) return "memory";
-  if (raw === "memory" || raw === "redis") return raw;
-  throw new Error(`TEST BUG: MEDUSA_LOCK must be "memory" or "redis", got ${raw}`);
-}
-```
-
-Why: the specs must know what the harness was told, so a mismatch between the environment and the observed lock line is
-reported as ENV, not as a product result.
+`medusaSecondBaseUrlFromEnv(env?)` (string or undefined; 127.0.0.1, http, not equal to the primary) and
+`medusaLockModeFromEnv(env?)` (`"memory"` default, or `"redis"`) are added by Task 1 part A with their tests; the skeletons are
+in the Task 1 plan §6.4. This task only imports them. Why: the specs must know what the harness was told, so a mismatch between
+the environment and the observed lock line is reported as ENV, not as a product result. If Task 1 is merged without them, stop
+(§5 check 9).
 
 ### 6.3 `src/medusa/store.ts` (CHANGED): optional base
 
@@ -853,15 +827,10 @@ min against a 30-min timeout (stop rule 24.0).
 ## 11. Environment changes
 
 None for Cursor Cloud or Claude Code cloud: no new tool, no new host (Redis and Postgres run in the harness's containers; the
-second backend needs no image). Names only in `.env.example` (add after the `MEDUSA_BASE_URL` block):
+second backend needs no image). The names `MEDUSA_SECOND_BASE_URL`, `MEDUSA_REDIS` and `MEDUSA_LOCK` are in `.env.example` from
+Task 1. This task adds one test-only name after them:
 
 ```text
-# Second Medusa backend (harness H3). 127.0.0.1 only, a different port, e.g. http://127.0.0.1:9001. Unset = one backend.
-MEDUSA_SECOND_BASE_URL=
-# 1 = Redis for the event bus, cache, workflow engine and (with MEDUSA_LOCK=redis) the lock. Needed for the two-instance races.
-MEDUSA_REDIS=
-# memory (default) or redis. redis needs MEDUSA_REDIS=1.
-MEDUSA_LOCK=
 # Test-only: folder that holds medusa-backend.log and medusa-backend-2.log. Default: node_modules/qa-portfolio-harness/.harness
 P6_MEDUSA_LOG_DIR=
 ```
@@ -873,30 +842,28 @@ first (§3.7). Timings on a cloud VM prove a test works and are never published.
 ## 12. Build order (one commit per step; `npm run check` after each)
 
 Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-multi-instance origin/main`.
-Unit counts are relative to the baseline B measured in §5 check 4 (471 today).
+Unit counts are relative to the baseline B measured in §5 check 4 (481 once Task 1 part A is merged).
 
 | Step | Commit subject                                                                       | `git add` paths                                                                                                                                                                                 | `npm run check` expected                                                          |
 | ---- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | 0    | (none) bring this plan onto the branch                                               | `git checkout origin/plan/2026-10-24-p6-phase3-plans -- docs/plans/2026-10-24-p6-phase3-task2-med-multi-instance.md`, commit `docs(plans): bring the phase 3 task 2 plan onto the build branch` | exit 0, B tests                                                                   |
-| 1    | `feat(races): read the second medusa url and the lock mode from the environment`     | `src/races/env.ts tests/unit/env.test.ts .env.example`                                                                                                                                          | exit 0, **B + 6**                                                                 |
-| 2    | `feat(medusa): let cart completion target a chosen backend`                          | `src/medusa/store.ts tests/unit/medusa-store-base-url.test.ts`                                                                                                                                  | exit 0, **B + 8**                                                                 |
-| 3    | `feat(medusa): read the lock provider and request counts from the harness logs`      | `src/medusa/harness-log.ts tests/unit/medusa-harness-log.test.ts`                                                                                                                               | exit 0, **B + 15**                                                                |
-| 4    | `feat(medusa): add the two-instance traffic and memory-lock characterization checks` | `src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts`                                                                                                                                 | exit 0, **B + 24**                                                                |
-| 5    | `feat(medusa): run oversell trials across several backends`                          | `src/medusa/run-case.ts`                                                                                                                                                                        | exit 0, B + 24 (no new unit test; typecheck proves the shape)                     |
-| 6    | `feat(ci): summarise the two-instance cases`                                         | `src/ci/race-table.ts tests/unit/race-table.test.ts`                                                                                                                                            | exit 0, **B + 27**                                                                |
-| 7    | `test(medusa): add P6-MED-RACE-002 and P6-MED-RACE-003`                              | `tests/medusa/races/med-race-002-two-instances-redis.spec.ts tests/medusa/races/med-race-003-two-instances-memory.spec.ts`                                                                      | exit 0, B + 27; `npx playwright test --project=medusa-race --list` shows both ids |
-| 8    | `ci(perf): run the two-instance races in a two-leg job`                              | `.github/workflows/perf.yml`                                                                                                                                                                    | exit 0 (actionlint silent), B + 27                                                |
-| 9    | `docs: document the two-instance races`                                              | `README.md`                                                                                                                                                                                     | exit 0, B + 27                                                                    |
+| 1    | `feat(medusa): let cart completion target a chosen backend`                          | `src/medusa/store.ts tests/unit/medusa-store-base-url.test.ts`                                                                                                                                  | exit 0, **B + 2**                                                                 |
+| 2    | `feat(medusa): read the lock provider and request counts from the harness logs`      | `src/medusa/harness-log.ts tests/unit/medusa-harness-log.test.ts`                                                                                                                               | exit 0, **B + 9**                                                                 |
+| 3    | `feat(medusa): add the two-instance traffic and memory-lock characterization checks` | `src/medusa/invariants.ts tests/unit/medusa-invariants.test.ts`                                                                                                                                 | exit 0, **B + 18**                                                                |
+| 4    | `feat(medusa): run oversell trials across several backends`                          | `src/medusa/run-case.ts`                                                                                                                                                                        | exit 0, B + 18 (no new unit test; typecheck proves the shape)                     |
+| 5    | `feat(ci): summarise the two-instance cases`                                         | `src/ci/race-table.ts tests/unit/race-table.test.ts`                                                                                                                                            | exit 0, **B + 21**                                                                |
+| 6    | `test(medusa): add P6-MED-RACE-002 and P6-MED-RACE-003`                              | `tests/medusa/races/med-race-002-two-instances-redis.spec.ts tests/medusa/races/med-race-003-two-instances-memory.spec.ts`                                                                      | exit 0, B + 21; `npx playwright test --project=medusa-race --list` shows both ids |
+| 7    | `ci(perf): run the two-instance races in a two-leg job`                              | `.github/workflows/perf.yml`                                                                                                                                                                    | exit 0 (actionlint silent), B + 21                                                |
+| 8    | `docs: document the two-instance races`                                              | `README.md`                                                                                                                                                                                     | exit 0, B + 21                                                                    |
 
-New unit tests, by name (these are the 27):
+New unit tests, by name (these are the 21):
 
-- `tests/unit/env.test.ts` (+6): `medusaSecondBaseUrlFromEnv returns undefined when unset or blank`; `… strips a trailing slash and returns the URL`; `… rejects localhost, https and the primary URL (TEST BUG)`; `medusaLockModeFromEnv defaults to memory`; `… accepts redis and memory`; `… rejects other values (TEST BUG)`.
 - `tests/unit/medusa-store-base-url.test.ts` (+2): `completeCart posts to the given base URL` (local `node:http` server on port 0 records the path and the `x-publishable-api-key` header); `completeCart falls back to MEDUSA_BASE_URL`.
 - `tests/unit/medusa-harness-log.test.ts` (+7): `lastSpawnSection returns the text after the last marker`; `lockProviderFromLog reads redis from the real locking-redis line`; `… reads memory from the real in-memory line`; `… ignores an earlier section (append-only log)`; `… returns unknown when neither line exists`; `countCompleteRequests counts only cart completions after the last marker`; `harnessLogDir honours P6_MEDUSA_LOG_DIR`. Fixtures are the real lines quoted in §3.3, §3.4 and §3.6.
 - `tests/unit/medusa-invariants.test.ts` (+9): `checkTwoInstanceTraffic` accepts equal counts; flags a count mismatch; flags an instance with zero requests; `classifyTwoInstanceLoser` returns clean, f-m2-signature and other (3 tests); `checkMemoryLockCharacterization` reports an oversold clean trial as findings only (no violation); flags a 5xx; flags orders above `instances × S`.
 - `tests/unit/race-table.test.ts` (+3): `-002` row with no oversell; `-003` row counts oversold from `oversold`, not from `available`; a two-instance histogram without `oversold` gives n/a.
 
-After step 9: `git push -u origin feat/<build date>-p6-med-multi-instance`, open the PR with `gh pr create` (rules A3), read CI once
+After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open the PR with `gh pr create` (rules A3), read CI once
 (rule 15), then dispatch three full-count `workflow_dispatch` runs on the branch to measure the per-trial time and the
 `-003` rate before merging (§3.10); record them in the PR body, not in this plan.
 
@@ -945,7 +912,7 @@ After step 9: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
       `race-histograms-medusa-multi-instance-{redis,memory}`).
 - [ ] Leak check empty at the end of both cases.
 - [ ] Every new `perf.yml` step has `timeout-minutes`; leg worst case ≤ 35 min against 45 (margin ≥ 10); no existing timeout changed.
-- [ ] `npm run check` exit 0 with **498** unit tests (471 + 27); no skipped test.
+- [ ] `npm run check` exit 0 with **502** unit tests (481 + 21); no skipped test.
 
 ## 15. Rule 20 self-check
 
@@ -954,8 +921,8 @@ After step 9: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
 - (b) Existing names grepped at `5acd2a0`: `runOversellCase`, `RunOversellCaseInput` (`src/medusa/run-case.ts`), `completeCart`,
   `storeRaw` (`src/medusa/store.ts`), `medusaBaseUrlFromEnv` (`src/races/env.ts`), `checkOversellInvariants`,
   `checkOrphanOrders` (`src/medusa/invariants.ts`), `MEDUSA_OVERSELL_CASES` (`src/ci/race-table.ts`), `evidence-token-scan.mjs`,
-  `medusa-order-races` job. NEW: `src/medusa/harness-log.ts` and its functions, `medusaSecondBaseUrlFromEnv`,
-  `medusaLockModeFromEnv`, `checkTwoInstanceTraffic`, `classifyTwoInstanceLoser`, `checkMemoryLockCharacterization`,
+  `medusa-order-races` job. From Task 1 (not built here): `medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`. NEW:
+  `src/medusa/harness-log.ts` and its functions, `checkTwoInstanceTraffic`, `classifyTwoInstanceLoser`, `checkMemoryLockCharacterization`,
   `MEDUSA_TWO_INSTANCE_CASES`, the two specs, the job; each has a skeleton in §6.
 - (c) CI time: §10.1 includes the invalid budget, the warm-up, the pull at its cap and setup; 26.0 min against 45.
 - (d) Skeletons: §6. Steps with `git add` paths, commit subjects and expected output: §12.
