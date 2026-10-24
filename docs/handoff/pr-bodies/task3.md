@@ -51,8 +51,8 @@ Only one full dispatch was run, not the three the plan asks for (§3.6 item 2): 
 
 ## Budget
 
-Plan §9: `load-selftest` estimate 2.8 min, cap 6.6 min (the job's worst case at caps stays under its 20-minute timeout). Measured:
-see the run's step times in the handoff.
+Plan §9: `load-selftest` estimate 2.8 min, cap 6.6 min; the job's timeout is 20 min. Measured on run 40079793205: job 1 min 49 s;
+install of k6 2 s; the self-test step 1 min 32 s; token scan and upload under 2 s.
 
 ## Deviations
 
