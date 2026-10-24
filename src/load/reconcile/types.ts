@@ -36,3 +36,21 @@ export function addFinding(result: AuditResult, finding: Finding, count = 1): vo
     result.violations.push(finding);
   }
 }
+
+/** What a case's setup stage stores in ctx.config.audit. Plain data, no secrets. */
+export type AuditStageConfig =
+  | { product: "cal"; userId: number; eventTypeId: number; prefixLike: string }
+  | {
+      product: "medusa";
+      prefixLike: string;
+      variantId: string;
+      inventoryItemId: string;
+      locationId: string;
+      stock?: number;
+    }
+  | {
+      product: "documenso";
+      prefixLike: string;
+      drainTimeoutMs?: number;
+      sequentialCompletions: boolean;
+    };
