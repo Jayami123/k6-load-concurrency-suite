@@ -14,7 +14,7 @@ Task 4 plan ([task4](2026-10-24-p6-phase3-task4-load-validity.md) §6.7: the `re
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 and 4 merged (Task 5 is independent).
 - **Harness pin assumed.** Any. No product is started by the build; the unit tests use fixtures.
 - **Environment change.** None (§11).
-- **Unit tests.** B = count on main when the build starts (today's chain: 656 after Tasks 1 to 5; Task 5 is independent, so the deltas are what counts). This plan adds **+33** (§12); expected B + 33 (**689** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784.
+- **Unit tests.** B = count on main when the build starts (today's chain: 657 after Tasks 1 to 5; Task 5 is independent, so the deltas are what counts). This plan adds **+33** (§12); expected B + 33 (**690** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 601 -> T5 657 -> T6 690 -> T7 708 -> T8 728 -> T9 752 -> T10 786.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 known bugs are counted, not failed, **but an `unexpected` entry fails the run** (a known bug seen where it should not occur is new evidence). Q2 (and Task 8 Q2) `F-M2` ghost orders are counted until fixed upstream, then the flag flips to fail (the flip is a recorded follow-up, §13). Q3 accept the 30 s drain contract. Q4 accept. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a shared runner changes, and the owner labels product bugs.
 
@@ -106,7 +106,7 @@ Task 7 (journeys) puts the run prefix into the data and fills `ctx.config.audit`
 | #   | Check                       | Command                                                                                                                                        | Expected                                                                                 |
 | --- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | 1   | Base, Tasks 3 and 4 merged  | `git log -1 --format=%h origin/main; git log --oneline origin/main \| grep -i "validity\|runner core"`                                         | descendant of `5acd2a0`; both tasks present                                              |
-| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                            | exit 0, `# tests` = B (656 once Tasks 1 to 5 are merged)                                 |
+| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                            | exit 0, `# tests` = B (657 once Tasks 1 to 5 are merged)                                 |
 | 3   | Task 3 and 4 interfaces     | `grep -n "reconcile" src/load/stages.ts; grep -n "export function judgeValidity" src/load/validity.ts`                                         | `reconcile` slot present; Task 4's validity wiring present (`composeStages` is new here) |
 | 4   | Money oracles still on main | `grep -n "export function checkRefundCap\|export function checkCaptureCap\|export async function readMoneySnapshot" src/medusa/*.ts`           | three hits (otherwise: the Medusa money clause becomes `pending`, §6.5)                  |
 | 5   | Known-bug ids still current | `grep -n "P6-OBS-CAL-002\|P6-OBS-DOC-002\|F-M2" README.md docs/BACKLOG.md \| head`                                                             | all three present; if a bug is fixed upstream, drop its `knownBugs` entry                |
@@ -418,7 +418,7 @@ None (Cursor Cloud and Claude Code cloud): no tool, host or setting.
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-reconciliation origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 656 today after Tasks 1 to 5).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-reconciliation origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 657 today after Tasks 1 to 5).
 
 | Step | Commit subject                                                              | `git add` paths                                                                                                                                          | `npm run check` expected |
 | ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
@@ -473,7 +473,7 @@ After step 5: `git push -u origin feat/<build date>-p6-load-reconciliation`, `gh
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green with a clean and a violating snapshot per product: `npm run check` exit 0 with **B + 33** (689 on today's chain).
+- [ ] Unit tests green with a clean and a violating snapshot per product: `npm run check` exit 0 with **B + 33** (690 on today's chain).
 - [ ] The runner calls the audit in the `reconcile` slot and maps a `PRODUCT BUG` violation to a `FAIL` outcome with the evidence lines (`reconcile-index` tests).
 - [ ] Known bugs are counted under their ids (`P6-OBS-CAL-002`, `P6-OBS-DOC-002`, `F-M2`) in `audit.json`, `verdict.json` and the job summary column.
 - [ ] Each audit asserts at least one run-created row; scope is the run prefix only.
