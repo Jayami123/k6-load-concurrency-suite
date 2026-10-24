@@ -16,7 +16,8 @@ If the merged Task 3 differs, the build stops at §5 check 3 and reports the dif
 - **Base.** `origin/main` = `5acd2a0`, plus Task 3 merged (this task cannot start before it).
 - **Harness pin assumed.** Any (`v0.2.12` today; Task 1 may bump it). k6 `2.3.0` (Task 3).
 - **Environment change.** None (§11).
-- **Unit tests.** Baseline = Task 3's result (471 + 51 = **522** on today's base). This plan adds **+43** (§12); expected after the build **565**.
+- **Unit tests.** B = count on main when the build starts (today's chain: 554 after Tasks 1 to 3). This plan adds **+43** (§12); expected after the build B + 43 (**597** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 INVALID is a warning with a green job. Q2 accept the `unknown` fallback. Q3 strict `dropped_iterations > 0`. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a CI workflow change and a shared runner change.
 
 ## 2. What it proves
@@ -517,7 +518,7 @@ No `test.fail()`, no skip.
 
 ```yaml
 - name: Validity self-test (P6-X-LOAD-004)
-  timeout-minutes: 8
+  timeout-minutes: 3
   run: |
     set -euo pipefail
     status=0
@@ -538,13 +539,13 @@ No `test.fail()`, no skip.
 
 The `INVALID → warning` wrapper is the pattern Tasks 7 to 10 copy for their LOAD steps (Q1). The self-test case itself exits 0 (both expectations hold), so the wrapper is for the pattern, not for this step.
 
-**Budget** (existing convention: worst = slowest measured + additions at their caps; at least 10 minutes under the job timeout; no timeout raised):
+**Budget** (one convention for every Phase 3 plan, Task 3 §9: Phase 2 closeout §2.7 worst case + cold start + pull at cap minus measured + each new step; "estimates" use measured/estimated durations, "at caps" use `timeout-minutes`; set-up steps of a new job at their measured durations; at least 10 minutes under the job timeout; no timeout raised). This task adds to the new job `load-selftest` only; it adds no step to any existing job:
 
-| Job             | Before this task (Task 3 plan §9) | Added                                                                            | Worst (min) | Timeout | Margin |
-| --------------- | --------------------------------- | -------------------------------------------------------------------------------- | ----------- | ------- | ------ |
-| `load-selftest` | 6.3                               | validity self-test 2 runs × (30 s + 10 s allowance) = 1.3, summary and probe 0.5 | 8.1         | 20      | 11.9   |
+| Job             | Task 3 part (estimates / at caps) | Added by this task (estimate / cap)                                                                                           | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin (caps) |
+| --------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------- | -------------------- | ------- | ------------- |
+| `load-selftest` | 2.8 / 6.6                         | validity self-test 1.3 / **3** (2 runs × (30 s + 10 s allowance) = 1.3); summary and runner identity 0.3 / 0.3 (set-up steps) | 4.4                    | 9.9                  | 20      | 10.1          |
 
-No other job changes. Trial counts: not applicable (no races). PR and `main` run the same self-test.
+Each new step and its 80 % stop rule: validity self-test cap **3** (was 8; estimate 1.3, stop rule 2.4); job summary cap 2 (estimate 0.1, stop rule 1.6); runner identity cap 1 (estimate 0.1, stop rule 0.8). Task 3 §9 holds the whole-phase `load-selftest` row; Task 5's two self-tests do not run here (they run in `load-overhead`). No other job changes. Trial counts: not applicable (no races). PR and `main` run the same self-test.
 
 ## 11. Environment changes
 
@@ -602,26 +603,26 @@ After step 8: `git push -u origin feat/<build date>-p6-load-validity`, `gh pr cr
 - `P6-X-LOAD-012`: record the runner-wide CPU and memory series (not only the summary) in `run-meta.json` so a reviewer can see a noisy neighbour; needs Task 5's sampler.
 - `P6-RULE-007`: a CI check that fails when `README.md` quotes a LOAD number without an adjacent `run-meta` link (generalises the two unit tests of §6.10; belongs with Task 11's `P6-RULE-002`).
 
-**Open questions for the owner.**
+**Owner decisions (all three questions closed 2026-10-24).**
 
-- **Q1.** INVALID handling in CI: exit 3 turned into a `::warning::` and a green job (proposed), or a red job? Green keeps nightly noise from blocking merges; the count of VALID runs still gates the phase exit.
-- **Q2.** If `ImageOS`/`ImageVersion` are missing on the runner, accept the `unknown` fallback (run unpublishable) or parse the "Set up job" log in the closeout tool? Proposed: fallback.
-- **Q3.** Keep `dropped_iterations > 0` as the strict limit (probe: 0 normal, ≥ 4 saturated) or allow 0.5 % of planned? Proposed: strict; revisit only with CI data.
+- **Q1 (closed: a warning with a green job).** INVALID handling in CI: exit 3 turned into a `::warning::` and a green job (proposed), or a red job? Green keeps nightly noise from blocking merges; the count of VALID runs still gates the phase exit.
+- **Q2 (closed: accept the `unknown` fallback).** If `ImageOS`/`ImageVersion` are missing on the runner, accept the `unknown` fallback (run unpublishable) or parse the "Set up job" log in the closeout tool? Proposed: fallback.
+- **Q3 (closed: strict, `dropped_iterations > 0`).** Keep `dropped_iterations > 0` as the strict limit (probe: 0 normal, ≥ 4 saturated) or allow 0.5 % of planned? Proposed: strict; revisit only with CI data.
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green: `npm run check` exit 0 with **B + 43** (565 on today's base).
+- [ ] Unit tests green: `npm run check` exit 0 with **B + 43** (597 on today's chain).
 - [ ] CI on the PR and once on `main`: `P6-X-LOAD-004` `saturated` is INVALID with `dropped_iterations` and `vu_exhausted`; `normal` is VALID; the case outcome is `PASS` (job `load-selftest`).
 - [ ] `run-meta.json` uploaded with every run (artefact `load-selftest`) and passes the token scan (`node scripts/evidence-token-scan.mjs results/load` exit 0).
 - [ ] The LOAD runner orchestrates k6 (setup, preflight, k6, reconcile slot with validity, cleanup, token scan, verdict) and `k6/selftest/coordinated-omission.js` still runs standalone with plain `k6 run` (Task 3 commands unchanged).
 - [ ] `P6-RULE-005`: `scripts/load-medians.ts` on a fixture folder lists the excluded runs with reasons and refuses fewer than 3 valid runs. `P6-RULE-003`: `formatPublishedNumber` and the README tests exist.
-- [ ] `npm run check` green; no job timeout raised; `load-selftest` worst case 8.1 min against 20.
+- [ ] `npm run check` green; no job timeout raised; `load-selftest` worst case 4.4 min (estimates) and 9.9 min (at caps) against 20 (Task 3 §9).
 
 ## 15. Rule 20 self-check
 
 - (a) Done-when in §14; gaps: the CI runner identity and runner-wide CPU level (§3.7), read from the first CI runs.
 - (b) Existing names grepped at `5acd2a0` (Task 3 names are checked at build time, §5 check 3): `scripts/write-ci-job-summary.ts`, `src/ci/race-table.ts` (style), `scripts/evidence-token-scan.mjs` (`findHits`, `PATTERNS`),
   `src/races/prefix.ts`, `src/races/histogram.ts`, `perf.yml` `MEDUSA_REF`/`CAL_REF`/`DOCUMENSO_REF`, `README.md` (no "capacity"). NEW files and functions each have a skeleton in §6.
-- (c) CI time: §9, margin 11.9 min on the only job that changes.
+- (c) CI time: §10, margin 10.1 min at caps on the only job that changes.
 - (d) Skeletons: §6. Steps with `git add` paths, subjects and expected output: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q3 are recorded in §1 and §13.
