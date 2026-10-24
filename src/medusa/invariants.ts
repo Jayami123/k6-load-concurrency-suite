@@ -405,10 +405,14 @@ export function classifyTwoInstanceLoser(
 
 /**
  * -003. Findings are the characterization; violations are what must still hold with a per-process lock.
- * `instances * S` is the bound: each backend admits at most S itself (probe §3.5: 3 + 3 = 6).
+ * Hard invariants (violations): no ghost orders, orderCount = uniqueOrderIds = httpWinnerCount = reservationQty, and orders <= N.
+ * The oversell itself is a characterization (findings): its size per trial and the most any one backend admitted are recorded.
+ * No bound of instances x S is asserted: RACE-003 run 40119155757 has one backend admitting 4 for S=3 (trials 8, 16, 18, 24, 41,
+ * 43, 49), and run 40120499660 has 7 orders in total (trial 45). With a per-process lock and a shared database the only bound is N.
  */
 export function checkMemoryLockCharacterization(input: {
   s: number;
+  n: number;
   instances: number;
   orderCount: number;
   uniqueOrderIds: number;
@@ -428,34 +432,28 @@ export function checkMemoryLockCharacterization(input: {
     else if (status !== 200 && status !== 400)
       violations.push(`PRODUCT BUG: completion status ${status}`);
   }
-  // Ghost order (F-M2/F-M5): a DB order no checkout returned. Not a lock failure.
-  if (input.orderCount > input.uniqueOrderIds) {
-    suspected.push(
-      `SUSPECTED PRODUCT BUG: ${input.orderCount - input.uniqueOrderIds} order(s) in the database that no checkout returned (F-M5)`,
+  // Ghost order: a DB order no checkout returned, in either direction. Hard in this check.
+  if (input.orderCount !== input.uniqueOrderIds) {
+    violations.push(
+      `PRODUCT BUG: ghost order(s): database ${input.orderCount} != returned unique ${input.uniqueOrderIds}`,
     );
+  }
+  if (input.uniqueOrderIds > input.n) {
+    violations.push(`PRODUCT BUG: ${input.uniqueOrderIds} orders exceed N = ${input.n}`);
   }
   if (input.uniqueOrderIds !== input.httpWinnerCount) {
     violations.push(
       `PRODUCT BUG: HTTP winners ${input.httpWinnerCount} share order ids (unique ${input.uniqueOrderIds})`,
     );
   }
-  if (input.uniqueOrderIds > input.instances * input.s) {
-    violations.push(
-      `PRODUCT BUG: ${input.uniqueOrderIds} orders exceed instances x S = ${input.instances * input.s}`,
-    );
-  }
-  // Per backend: request i went to backend i % instances (run-case.ts statusCountsPerInstance). Each backend admits at most S
-  // itself, so a backend with more 200s than S names the backend whose own lock let them through (SUSPECTED, RACE-003 trials 39, 45).
+  // Per backend (characterization): request i went to backend i % instances (run-case.ts statusCountsPerInstance).
   const admitted = Array.from({ length: input.instances }, () => 0);
   input.statuses.forEach((status, i) => {
     if (status === 200) admitted[i % input.instances]! += 1;
   });
-  admitted.forEach((count, instance) => {
-    if (count > input.s)
-      violations.push(
-        `PRODUCT BUG (SUSPECTED): instance ${instance} admitted ${count} orders for S=${input.s}`,
-      );
-  });
+  findings.push(
+    `CHARACTERIZATION: per backend admitted [${admitted.join(", ")}], most ${Math.max(...admitted)} for S=${input.s}`,
+  );
   // Reservation rows follow the orders a checkout returned (probe §3.5: 6 rows for 6 returned orders).
   if (input.reservationQty !== input.uniqueOrderIds) {
     violations.push(

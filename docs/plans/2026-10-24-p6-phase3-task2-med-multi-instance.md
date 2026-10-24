@@ -29,6 +29,11 @@ D14, "Rules that hold for every task". Input report:
   over-allocated: with S=3 and N=15 carts completed alternately on two backends, orders ≤ S in every trial.
 - **`-003`.** The same topology with a per-process lock is **not** safe. The result (an oversell, expected) is recorded and
   asserted, so the repo documents why a shared lock is required. It is a characterization, not a product bug.
+  **Erratum (2026-10-24, decided after runs 40119155757 and 40120499660).** No bound of `instances × S` is asserted: one backend
+  admitted 4 for S=3 in 7 trials of run 40119155757 (which passed), and run 40120499660 had 7 orders in total. With a per-process
+  lock and a shared database, the only bound is N. The hard invariants are: no ghost orders, `orderCount = uniqueOrderIds =
+httpWinnerCount = reservationQty`, and orders ≤ N, plus all trials valid. The oversell distribution (orders per trial, the most any
+  one backend admitted) is the characterization finding.
 - **Finance and healthcare.** Two payment-service replicas must not both debit the last unit of a balance, and two clinic
   nodes must not both book the last slot. A guard that only works inside one process is not a guard once the service scales
   out. `-003` shows the failure on purpose so `-002` is a meaningful pass.
@@ -157,8 +162,9 @@ Per trial, every HTTP response was 200 `type=order` or 400 `type=not_allowed` (n
 What it decides:
 
 - `-002` is a real check: 0 of 24 oversold with the shared lock.
-- `-003` oversells in 26 of 30 trials (86.7 %, Wilson 95 % interval 70.3 % to 94.7 %). Each backend admits at most S itself
-  (3 and 3), so the bound is `instances × S = 6`; max seen 6.
+- `-003` oversells in 26 of 30 trials (86.7 %, Wilson 95 % interval 70.3 % to 94.7 %). Each backend was expected to admit at most S
+  itself, so a bound of `instances × S = 6` was proposed; max seen 6. **Superseded by the erratum in §2:** RACE-003 runs 40119155757
+  (one backend admitted 4 in 7 trials, passed) and 40120499660 (7 orders, trial 45) show the bound is not a guarantee.
 - In `memory` mode `reservation_item` rows (6) exceed `inventory_level.reserved_quantity` (3): the lost update also hits the
   counter. The existing `checkOversellInvariants` would report that as `reserved !== reservationQty`. `-003` needs its own
   characterization invariants (§6.4); it cannot reuse the strict function.
@@ -413,8 +419,9 @@ export function classifyTwoInstanceLoser(
 }
 
 /**
- * -003. Findings are the characterization; violations are what must still hold with a per-process lock.
- * `instances * S` is the bound: each backend admits at most S itself (probe §3.5: 3 + 3 = 6).
+ * -003. Findings are the characterization (oversell per trial, the most any one backend admitted); violations are the hard
+ * invariants that must still hold with a per-process lock: no ghost orders, the four counts equal, orders <= N, all trials valid.
+ * No instances x S bound is asserted (see the erratum in §2 and the RACE-003 evidence).
  */
 export function checkMemoryLockCharacterization(input: {
   s: number;
@@ -437,22 +444,22 @@ export function checkMemoryLockCharacterization(input: {
     else if (status !== 200 && status !== 400)
       violations.push(`PRODUCT BUG: completion status ${status}`);
   }
-  // Ghost order (F-M2/F-M5): a DB order no checkout returned. Not a lock failure.
-  if (input.orderCount > input.uniqueOrderIds) {
-    suspected.push(
-      `SUSPECTED PRODUCT BUG: ${input.orderCount - input.uniqueOrderIds} order(s) in the database that no checkout returned (F-M5)`,
+  // Ghost order: a DB order no checkout returned, in either direction. Hard (erratum §2).
+  if (input.orderCount !== input.uniqueOrderIds) {
+    violations.push(
+      `PRODUCT BUG: ghost order(s): database ${input.orderCount} != returned unique ${input.uniqueOrderIds}`,
     );
+  }
+  if (input.uniqueOrderIds > input.n) {
+    violations.push(`PRODUCT BUG: ${input.uniqueOrderIds} orders exceed N = ${input.n}`);
   }
   if (input.uniqueOrderIds !== input.httpWinnerCount) {
     violations.push(
       `PRODUCT BUG: HTTP winners ${input.httpWinnerCount} share order ids (unique ${input.uniqueOrderIds})`,
     );
   }
-  if (input.uniqueOrderIds > input.instances * input.s) {
-    violations.push(
-      `PRODUCT BUG: ${input.uniqueOrderIds} orders exceed instances x S = ${input.instances * input.s}`,
-    );
-  }
+  // No instances x S bound (erratum §2). Per backend: findings only.
+  findings.push(`CHARACTERIZATION: per backend admitted [...], most ... for S=${input.s}`);
   // Reservation rows follow the orders a checkout returned (probe §3.5: 6 rows for 6 returned orders).
   if (input.reservationQty !== input.uniqueOrderIds) {
     violations.push(
@@ -667,9 +674,10 @@ annotation `"P6-MED-RACE-002: …"`, then `test.fail()`, then the strict asserti
 
 ### 7.3 `-003`: characterization, with its own invariants
 
-Hard (must hold every trial): `checkMemoryLockCharacterization.violations` empty: no 5xx, only 200/400, clean losers,
-`uniqueOrderIds ≤ instances × S` (6), reservation rows = returned orders. Recorded (not failures): `findings` (oversold,
-`reserved` ≠ reservation rows) as the `characterization` annotation. Asserted: `oversold ≥ 1` over the valid trials.
+Hard (must hold every trial): `checkMemoryLockCharacterization.violations` empty: no 5xx, only 200/400, clean losers, no ghost
+orders (`orderCount = uniqueOrderIds = httpWinnerCount = reservationQty`), `uniqueOrderIds ≤ N`, all trials valid. Recorded (not
+failures): `findings` (oversold per trial, most admitted by one backend, `reserved` ≠ reservation rows) as the `characterization`
+annotation. No `instances × S` bound (erratum §2). Asserted: `oversold ≥ 1` over the valid trials.
 
 Miss probability (a false red on a correct run), from the probe rate: 26 of 30, Wilson 95 % lower end `p = 0.703`.
 `P(no oversell in k trials) = (1 − p)^k = 0.297^k`: k = 3 → **2.6 %** (too high for a PR), k = 8 → **6.1e-5**, k = 50 → 1e-26.
