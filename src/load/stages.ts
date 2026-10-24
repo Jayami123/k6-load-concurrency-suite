@@ -14,8 +14,9 @@ const ok: Stage = async () => ({ ok: true, reasons: [] });
 export const runAllK6: Stage = async (ctx: LoadContext) => {
   const specs = ctx.caseDef.runs(ctx);
   for (const spec of specs) {
-    const telemetry = ctx.caseDef.telemetry
-      ? await startRunTelemetry(ctx, spec, ctx.caseDef.telemetry.product)
+    const withTelemetry = spec.telemetry ?? Boolean(ctx.caseDef.telemetry);
+    const telemetry = withTelemetry
+      ? await startRunTelemetry(ctx, spec, ctx.caseDef.telemetry?.product ?? "stub")
       : undefined;
     const runSpec = telemetry
       ? { ...spec, env: { ...spec.env, MARKER_URL: telemetry.marker.url } }

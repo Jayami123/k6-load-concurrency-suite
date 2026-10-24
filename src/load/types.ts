@@ -18,6 +18,8 @@ export interface K6RunSpec {
   expectExit?: number; // default 0 (99 = thresholds crossed)
   /** The maxVUs the scenario was built with, read by the validity judge (Task 4). */
   maxVUs?: number;
+  /** Self-test only (Task 5): run with the sampler (true) or without it (false). Default: the case's telemetry setting. */
+  telemetry?: boolean;
   /** Self-test only (Task 5): the sampler stalls once for this long after three samples. */
   injectGapMs?: number;
   /** Self-test only (Task 5): the marker server reports a clock this far ahead of the runner. */
