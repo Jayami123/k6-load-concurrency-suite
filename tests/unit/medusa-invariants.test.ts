@@ -14,6 +14,9 @@ import {
   checkRefundCap,
   checkSummaryRefund,
   checkSuccessCount,
+  checkMemoryLockCharacterization,
+  checkTwoInstanceTraffic,
+  classifyTwoInstanceLoser,
 } from "../../src/medusa/invariants.ts";
 
 function base(overrides: Partial<Parameters<typeof checkOversellInvariants>[0]>) {
@@ -475,5 +478,94 @@ describe("checkOrphanOrders (F-M5)", () => {
     });
     assert.equal(line!.startsWith("PRODUCT BUG") || line!.startsWith("TEST BUG"), false);
     assert.equal(line!.startsWith("SUSPECTED"), true);
+  });
+});
+
+describe("two-instance invariants", () => {
+  const memoryInput = (
+    overrides: Partial<Parameters<typeof checkMemoryLockCharacterization>[0]>,
+  ) => ({
+    s: 3,
+    instances: 2,
+    orderCount: 3,
+    uniqueOrderIds: 3,
+    httpWinnerCount: 3,
+    reservationQty: 3,
+    reserved: 3,
+    statuses: [200, 200, 200],
+    loserTypes: [] as string[],
+    loserMessages: [] as string[],
+    ...overrides,
+  });
+
+  it("checkTwoInstanceTraffic accepts equal counts", () => {
+    assert.deepEqual(checkTwoInstanceTraffic({ clientCounts: [8, 7], serverCounts: [8, 7] }), []);
+  });
+
+  it("checkTwoInstanceTraffic flags a count mismatch", () => {
+    const out = checkTwoInstanceTraffic({ clientCounts: [8, 7], serverCounts: [8, 6] });
+    assert.equal(out.length, 1);
+    assert.match(out[0]!, /TEST BUG: instance 1 logged 6 cart completions, the client sent 7/);
+  });
+
+  it("checkTwoInstanceTraffic flags an instance with zero requests", () => {
+    const out = checkTwoInstanceTraffic({ clientCounts: [8, 0], serverCounts: [8, 0] });
+    assert.ok(out.some((line) => /instance 1 was sent no request/.test(line)));
+  });
+
+  it("classifyTwoInstanceLoser returns clean for a stock refusal", () => {
+    assert.equal(
+      classifyTwoInstanceLoser("Not enough stock available for variant", "not_allowed"),
+      "clean",
+    );
+  });
+
+  it("classifyTwoInstanceLoser returns f-m2-signature for the temp_failure message", () => {
+    assert.equal(
+      classifyTwoInstanceLoser('{"type":"temp_failure","message":"retry"}', "unexpected_state"),
+      "f-m2-signature",
+    );
+  });
+
+  it("classifyTwoInstanceLoser returns other for anything else", () => {
+    assert.equal(classifyTwoInstanceLoser("boom", null), "other");
+  });
+
+  it("checkMemoryLockCharacterization reports an oversold clean trial as findings only", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        orderCount: 4,
+        uniqueOrderIds: 4,
+        httpWinnerCount: 4,
+        reservationQty: 4,
+        reserved: 4,
+        statuses: [200, 200, 200, 200],
+        loserTypes: ["not_allowed"],
+        loserMessages: ["Not enough stock available"],
+      }),
+    );
+    assert.deepEqual(out.violations, []);
+    assert.ok(
+      out.findings.some((line) => /CHARACTERIZATION: oversold, 4 orders for S=3/.test(line)),
+    );
+  });
+
+  it("checkMemoryLockCharacterization flags a 5xx", () => {
+    const out = checkMemoryLockCharacterization(memoryInput({ statuses: [200, 500, 200] }));
+    assert.ok(out.violations.some((line) => line === "PRODUCT BUG: HTTP 500"));
+  });
+
+  it("checkMemoryLockCharacterization flags orders above instances x S", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        orderCount: 7,
+        uniqueOrderIds: 7,
+        httpWinnerCount: 7,
+        reservationQty: 7,
+        reserved: 7,
+        statuses: [200, 200, 200, 200, 200, 200, 200],
+      }),
+    );
+    assert.ok(out.violations.some((line) => /7 orders exceed instances x S = 6/.test(line)));
   });
 });
