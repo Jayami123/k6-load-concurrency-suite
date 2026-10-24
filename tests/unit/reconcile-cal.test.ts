@@ -56,3 +56,34 @@ describe("cal reconciliation", () => {
     );
   });
 });
+
+describe("cal audit reader", () => {
+  it("counts live rows, non-accepted rows and overlap pairs from the database", async () => {
+    const { readCalSnapshot } = await import("../../src/load/reconcile/cal.ts");
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("OVERLAP") || sql.includes('a."startTime" < b."endTime"'))
+          return { rows: [{ aId: 1 }] };
+        return {
+          rows: [
+            { id: 1, uid: "u1", status: "accepted", start: "x", end: "y" },
+            { id: 2, uid: "u2", status: "pending", start: "x", end: "y" },
+          ],
+        };
+      },
+    } as unknown as import("pg").Pool;
+    const s = await readCalSnapshot(
+      pool,
+      { product: "cal", userId: 5, eventTypeId: 7, prefixLike: "p%" },
+      2,
+    );
+    assert.deepEqual(s, { liveBookings: 2, nonAccepted: 1, overlapPairs: 1, clientAccepted: 2 });
+  });
+
+  it("the cal audit SQL passes assertSelectOnly", async () => {
+    const { assertSelectOnly } = await import("../../src/oracles/pg.ts");
+    const { CASE_LIVE_BOOKINGS_SQL, OVERLAP_PAIRS_SQL } = await import("../../src/cal/oracle.ts");
+    assert.doesNotThrow(() => assertSelectOnly(CASE_LIVE_BOOKINGS_SQL));
+    assert.doesNotThrow(() => assertSelectOnly(OVERLAP_PAIRS_SQL));
+  });
+});

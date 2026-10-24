@@ -1,4 +1,7 @@
-import type { AuditResult } from "./types.ts";
+import type pg from "pg";
+import { DOCUMENT_COMPLETED_AUDIT_SQL, SEAL_JOBS_SQL } from "../../documenso/oracle.ts";
+import { selectRows } from "../../oracles/pg.ts";
+import type { AuditResult, AuditStageConfig } from "./types.ts";
 import { addFinding } from "./types.ts";
 
 export interface DocumensoEnvelopeRow {
@@ -99,4 +102,68 @@ export function evaluateDocumensoAudit(
       );
   }
   return result;
+}
+
+/** The run's envelopes by title prefix (live, not soft-deleted). */
+export const ENVELOPES_BY_TITLE_SQL = `SELECT id, "secondaryId", status::text AS status FROM "Envelope" WHERE title LIKE $1 AND "deletedAt" IS NULL`;
+
+/** Stuck seal and webhook jobs of the run: pending or processing, whose documentId is one of the run's documents. */
+export const STUCK_JOBS_FOR_RUN_SQL = `SELECT COUNT(*)::int AS n FROM "BackgroundJob" WHERE status::text IN ('PENDING', 'PROCESSING') AND "jobId" IN ('internal.seal-document', 'internal.execute-webhook') AND payload->>'documentId' IN (SELECT substring("secondaryId" FROM 'document_([0-9]+)') FROM "Envelope" WHERE title LIKE $1)`;
+
+/** Stuck seal and webhook jobs of one document. */
+export const STUCK_JOBS_FOR_DOCUMENT_SQL = `SELECT COUNT(*)::int AS n FROM "BackgroundJob" WHERE status::text IN ('PENDING', 'PROCESSING') AND "jobId" IN ('internal.seal-document', 'internal.execute-webhook') AND payload->>'documentId' = $1`;
+
+/** Reads the run's envelopes, with their seal jobs, stuck jobs and DOCUMENT_COMPLETED audit rows. */
+export async function readDocumensoSnapshot(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "documenso" }>,
+  clientCompleted?: number,
+): Promise<DocumensoSnapshot> {
+  const envelopes = await selectRows<{ id: string; secondaryId: string; status: string }>(
+    pool,
+    ENVELOPES_BY_TITLE_SQL,
+    [cfg.prefixLike],
+  );
+  const rows: DocumensoEnvelopeRow[] = [];
+  for (const env of envelopes) {
+    const documentId = /^document_(\d+)$/.exec(env.secondaryId)?.[1] ?? "";
+    const seals = documentId ? await selectRows(pool, SEAL_JOBS_SQL, [documentId]) : [];
+    const stuck = documentId
+      ? await selectRows<{ n: number }>(pool, STUCK_JOBS_FOR_DOCUMENT_SQL, [documentId])
+      : [];
+    const audit = await selectRows<{ n: number }>(pool, DOCUMENT_COMPLETED_AUDIT_SQL, [env.id]);
+    rows.push({
+      status: env.status,
+      sealJobs: seals.length,
+      stuckJobs: Number(stuck[0]?.n ?? 0),
+      completedAudit: Number(audit[0]?.n ?? 0),
+    });
+  }
+  return { envelopes: rows, clientCompleted, sequentialCompletions: cfg.sequentialCompletions };
+}
+
+/** The drain of the run's stuck jobs, polled from the database (plan §6.5). */
+export async function waitForDrainPool(
+  pool: pg.Pool,
+  prefixLike: string,
+  timeoutMs?: number,
+): Promise<{ drained: boolean; drainMs: number }> {
+  return waitForDrain(
+    async () =>
+      Number(
+        (await selectRows<{ n: number }>(pool, STUCK_JOBS_FOR_RUN_SQL, [prefixLike]))[0]?.n ?? 0,
+      ),
+    { timeoutMs },
+  );
+}
+
+/** Reads, then evaluates, including the drain. */
+export async function reconcileDocumenso(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "documenso" }>,
+  clientCompleted?: number,
+): Promise<AuditResult> {
+  const drain = await waitForDrainPool(pool, cfg.prefixLike, cfg.drainTimeoutMs);
+  const snapshot = await readDocumensoSnapshot(pool, cfg, clientCompleted);
+  return evaluateDocumensoAudit(snapshot, cfg.prefixLike, drain);
 }

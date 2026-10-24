@@ -1,5 +1,14 @@
+import type pg from "pg";
+import { parseWholeAmount } from "../../medusa/money.ts";
+import {
+  LEAK_LIVE_ORDER_IDS_SQL,
+  MONEY_PAYMENT_FOR_ORDER_SQL,
+  readMoneySnapshot,
+  readOversellSnapshot,
+} from "../../medusa/oracle.ts";
+import { selectRows } from "../../oracles/pg.ts";
 import { checkCaptureCap, checkRefundCap } from "../../medusa/invariants.ts";
-import type { AuditResult } from "./types.ts";
+import type { AuditResult, AuditStageConfig } from "./types.ts";
 import { addFinding } from "./types.ts";
 
 export interface MedusaVariantCounts {
@@ -112,4 +121,58 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
     }
   }
   return result;
+}
+
+/** Every order of the case prefix, whatever its status (the payment check looks at all of them). */
+export const ORDERS_BY_EMAIL_SQL = `SELECT id FROM "order" WHERE email LIKE $1 AND deleted_at IS NULL`;
+
+/** Reads the variant counts, the live orders, and each order's payments and their captures and refunds. */
+export async function readMedusaSnapshot(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "medusa" }>,
+  clientOrders?: number,
+): Promise<MedusaSnapshot> {
+  const variant = await readOversellSnapshot(
+    pool,
+    cfg.variantId,
+    cfg.inventoryItemId,
+    cfg.locationId,
+  );
+  const live = await selectRows<{ id: string }>(pool, LEAK_LIVE_ORDER_IDS_SQL, [cfg.prefixLike]);
+  const orders = await selectRows<{ id: string }>(pool, ORDERS_BY_EMAIL_SQL, [cfg.prefixLike]);
+  const payments: MedusaPayment[] = [];
+  let ordersWithoutPayment = 0;
+  for (const order of orders) {
+    const rows = await selectRows<{ payment_id: string; amount: string }>(
+      pool,
+      MONEY_PAYMENT_FOR_ORDER_SQL,
+      [order.id],
+    );
+    if (rows.length === 0) ordersWithoutPayment += 1;
+    for (const row of rows) {
+      const money = await readMoneySnapshot(pool, row.payment_id, order.id);
+      payments.push({
+        amount: parseWholeAmount(row.amount, "payment amount"),
+        captured: money.capturedSum,
+        refunded: money.refundedSum,
+      });
+    }
+  }
+  return {
+    variant,
+    liveOrdersByEmail: live.length,
+    payments,
+    ordersWithoutPayment,
+    stock: cfg.stock,
+    clientOrders,
+  };
+}
+
+/** Reads, then evaluates. */
+export async function reconcileMedusa(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "medusa" }>,
+  clientOrders?: number,
+): Promise<AuditResult> {
+  return evaluateMedusaAudit(await readMedusaSnapshot(pool, cfg, clientOrders), cfg.prefixLike);
 }
