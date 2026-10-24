@@ -43,11 +43,11 @@ audit, +3 cal private links) = 809. Merging `main` brings 2 more (811).
 | P6-DOC-LOAD-007                       | FAIL, PRODUCT BUG (SUSPECTED) | two runs with the same result (see below)                                                                                                                                    |
 | P6-DOC-LOAD-002 (control, no retries) | PASS                          | one seal per envelope                                                                                                                                                        |
 
-**P6-DOC-LOAD-007: PRODUCT BUG (SUSPECTED).** Every document of both runs has two seal jobs about 0.3 s apart, two
-`DOCUMENT_COMPLETED` audit rows and two completion-email jobs; every recipient signed before the first seal. The same stack with
-no retries (`P6-DOC-LOAD-002`) gives one seal per envelope, so the duplicate comes with the retried, concurrent completion of the
-same recipient (the 25 ms first attempt, then three identical requests). The probe (plan §3.4) saw one seal. This is not labelled
-PRODUCT BUG until the CI repeats of rule 13. The assertion stays as it is: no `test.fail()`, nothing weakened.
+**P6-DOC-LOAD-007: PRODUCT BUG P6-OBS-DOC-005 (confirmed: 3 CI runs and 2 local runs).** Every envelope gets two seal jobs
+about 0.3 s apart, two `DOCUMENT_COMPLETED` rows and two completion-email jobs per recipient. The no-retry control
+`P6-DOC-LOAD-002` gives one seal per envelope in the same runs. It is a known bug: the case is marked with `test.fail()` in
+`tests/documenso/load/doc-load-007-known-bug.spec.ts` (strict: it turns red when the product seals once), the hard storm checks are
+separate tests, and the README has the entry with the evidence, the suspected area and the removal condition.
 
 ## Deviations from the plan (each one is in the commits)
 
@@ -67,34 +67,27 @@ PRODUCT BUG until the CI repeats of rule 13. The assertion stays as it is: no `t
 
 ## CI
 
-Run `40134262533` (perf.yml, `workflow_dispatch` on the code tip `6a76e3b`, profile `full`): **failure**. 13 of 14 jobs succeeded.
-The only failed step is `LOAD journey P6-DOC-LOAD-007` in `documenso-smoke`, the PRODUCT BUG (SUSPECTED) below.
+Final head `fca02b2`, run [40139142246](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40139142246) (full profile):
+**success**, 14 of 14 jobs green. `documenso-smoke` passes with `P6-DOC-LOAD-007` as the expected failure (known-bug step: storm
+test passed, duplicate-seal test ✘ as expected). Job durations: medusa-smoke 21 min 39 s, medusa-order-races 15 min 50 s, cal-state-races
+7 min 31 s, medusa-multi-instance (redis) 10 min 33 s, medusa-multi-instance (memory) 9 min 50 s, cal-smoke 5 min 41 s,
+documenso-smoke 7 min 10 s, twenty-races 6 min 03 s, twenty-obs 4 min 12 s, medusa-cancel-extras 3 min 56 s, load-overhead 4 min 37 s,
+twenty-smoke 3 min 42 s, medusa-load 3 min 12 s, load-selftest 2 min 57 s.
 
-| Job                            | Conclusion                           | Duration    |
-| ------------------------------ | ------------------------------------ | ----------- |
-| cal-smoke                      | success                              | 6 min 09 s  |
-| medusa-smoke                   | success                              | 12 min 05 s |
-| documenso-smoke                | **failure** (step `P6-DOC-LOAD-007`) | 7 min 58 s  |
-| twenty-obs                     | success                              | 4 min 28 s  |
-| medusa-multi-instance (memory) | success                              | 10 min 14 s |
-| medusa-cancel-extras           | success                              | 4 min 48 s  |
-| cal-state-races                | success                              | 9 min 41 s  |
-| medusa-load                    | success                              | 3 min 20 s  |
-| twenty-smoke                   | success                              | 2 min 52 s  |
-| medusa-order-races             | success                              | 12 min 34 s |
-| medusa-multi-instance (redis)  | success                              | 8 min 12 s  |
-| twenty-races                   | success                              | 5 min 02 s  |
-| load-selftest                  | success                              | 2 min 50 s  |
-| load-overhead                  | success                              | 4 min 37 s  |
+Earlier runs (same retry-storm code; the only later change is the known-bug marker):
 
-New LOAD steps (all PASS and VALID, no INVALID annotation): `P6-CAL-LOAD-007` (33 s), `P6-CAL-LOAD-009` (33 s), `P6-MED-LOAD-006` (41 s).
-`P6-DOC-LOAD-007` (full profile, 31 intents): FAIL. In the `load-documenso` artifact, all 31 documents have two seal jobs, two
-`DOCUMENT_COMPLETED` rows and two completion emails per recipient (62 recipients). The storm held: 62 of 31 first requests timed out,
-217 retries. No 5xx. The Task 6 audit reports the same "unexpected double seal with sequential completions". The local reproduction
-matched this in two earlier runs, and the no-retry control `P6-DOC-LOAD-002` passed in CI with one seal per envelope.
+- `40134262533` (6a76e3b, full): failure in `documenso-smoke` only (P6-DOC-LOAD-007 duplicate seal). Other jobs green.
+- `40135722015` (67406f9, full, repeat 1): failure in `documenso-smoke` (duplicate seal, 31 of 31) and in `cal-smoke`
+  (P6-CAL-LOAD-009: PRODUCT BUG (SUSPECTED) on `link-usage`, 31 accepted bookings but 30 link uses; storm held; 27 × 409 and 4 ×
+  redacted 400). **Open:** this Cal result is not reproduced by the runs after it (`40137277800` and the final run both pass
+  `cal-smoke`), and its cause is not known. The artifact does not hold the database rows of the link table, so the cause is
+  not established. It is not labelled and not marked.
+- `40137277800` (67406f9, full, repeat 2): failure in `documenso-smoke` only (duplicate seal, 31 of 31), control `P6-DOC-LOAD-002`
+  one seal per envelope with 62 of 62 emails matched.
 
-Label: **PRODUCT BUG (SUSPECTED)**. It is reproduced at full count in CI and locally, but the rule-13 label needs repeated full-count
-CI runs, so the owner decides on the label and on the handling of the red `documenso-smoke` job. The assertion is unchanged.
+Documenso per run (full profile, 31 envelopes, 62 recipients): first requests timed out 62, retries 217 (per run), 5xx 0; seal
+jobs per envelope 2; `DOCUMENT_COMPLETED` rows 2 per envelope; completion emails 2 per recipient (the audit records "more than one";
+the exact count of 2 comes from the database in the first run and from the final run's per-envelope audit).
 
 ## Not in this PR
 
