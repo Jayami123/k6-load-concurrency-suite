@@ -14,6 +14,9 @@ fi
 # P6 Documenso: the webhook host must resolve to the local receiver (plan 13.3).
 grep -qE '^127\.0\.0\.1[[:space:]]+p6-webhook\.test$' /etc/hosts || echo '127.0.0.1 p6-webhook.test' | sudo tee -a /etc/hosts >/dev/null
 
+# P6 k6: the pinned version (.k6-version), checksum-verified; a no-op when it is already installed.
+bash "$(dirname "$0")/../../scripts/install-k6.sh" || echo "P6: k6 install failed; run bash scripts/install-k6.sh" >&2
+
 if [ ! -x /opt/node24/bin/node ]; then
   echo "P6: Node 24 missing at /opt/node24; add the Node 24 snippet to the environment's setup script (docs/plans/2026-10-20-p6-phase1-task6-documenso-stack.md §13.5)" >&2
 fi

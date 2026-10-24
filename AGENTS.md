@@ -12,6 +12,8 @@ Read [`docs/agent-rules.md`](docs/agent-rules.md) before any task.
   numbers; those come only from GitHub Actions runs (median of at least 3).
 - Run `npm run check` before pushing.
 - Documenso needs Node 24; `npm run up:documenso` and `bootstrap.sh documenso` pick `/opt/node24` themselves. Keep `/usr/local/bin` first.
+- k6 is pinned in `.k6-version` and installed by `bash scripts/install-k6.sh` (CI, the session hook and the Cursor install step use it).
+- k6 is pinned in `.k6-version` and installed by `bash scripts/install-k6.sh` (CI, this install step and the Claude Code hook use it).
 - Cursor puts its own Node 22.14 first on PATH. Before any harness command, run
   `export PATH="/usr/local/bin:$PATH"` so Node 22.23 (needed by Medusa) is used.
 

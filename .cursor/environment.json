@@ -2,6 +2,6 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "install": "npm ci && bash scripts/bootstrap.sh medusa",
+  "install": "npm ci && bash scripts/install-k6.sh && bash scripts/bootstrap.sh medusa",
   "start": "sudo service docker start && (grep -qE '^127\\.0\\.0\\.1[[:space:]]+p6-webhook\\.test$' /etc/hosts || echo '127.0.0.1 p6-webhook.test' | sudo tee -a /etc/hosts >/dev/null)"
 }
