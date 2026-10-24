@@ -126,7 +126,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.14
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
 
       - name: Generate the CI admin password
         run: |
@@ -229,7 +229,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.14
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
 
   medusa-order-races:
     name: medusa-order-races
@@ -322,7 +322,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.14
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
 
       - name: Generate the CI admin password
         run: |
@@ -497,7 +497,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.14
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
 
       - name: Generate the CI admin password
         run: |
@@ -910,7 +910,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.14
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
 
       - name: Pull Cal images (3 tries, 15 s then 30 s)
         id: cal_pull
@@ -925,11 +925,10 @@ jobs:
       - name: Start Cal (harness up)
         id: cal_up
         if: ${{ steps.cal_pull.outcome == 'success' }}
+        # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
+        # Below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
+        timeout-minutes: 30
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        env:
-          # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
-          # Below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
-          HARNESS_UP_TIMEOUT_MS: "1800000"
         run: |
           set -euo pipefail
           SECONDS=0
@@ -1004,14 +1003,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
-        with:
-          name: cal-harness-log
-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
-          if-no-files-found: warn
-          retention-days: 14
-
       # Cal's web server log (the harness writes it under its package dir): it holds the Prisma code
       # behind every redacted 400, found by the traceId in the response body.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1059,7 +1050,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.14
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
 
   cal-state-races:
     name: cal-state-races
@@ -1173,7 +1164,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.14
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
       - name: Map the webhook host
         run: |
           set -euo pipefail
@@ -1193,10 +1184,9 @@ jobs:
       - name: Start Cal (harness up)
         id: cal_up
         if: ${{ steps.cal_pull.outcome == 'success' }}
+        # 30 min: the harness up returns once Cal is healthy (the cold start is about 3 min); the cap is below the job timeout.
+        timeout-minutes: 30
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        env:
-          # 40 min here (plan O10 caps cal-smoke only). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
-          HARNESS_UP_TIMEOUT_MS: "2400000"
         run: |
           set -euo pipefail
           npm run up:cal
@@ -1258,14 +1248,6 @@ jobs:
         with:
           name: race-histograms-cal-state
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/races/
-          if-no-files-found: warn
-          retention-days: 14
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
-        with:
-          name: cal-state-harness-log
-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -1369,7 +1351,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
-          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.14
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
 
       - name: Pull Documenso images (3 tries, 15 s then 30 s)
         id: documenso_pull
@@ -1501,7 +1483,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
-          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.14
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
 
   twenty-smoke:
     name: twenty-smoke
