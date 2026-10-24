@@ -110,13 +110,7 @@ export function buildRunMeta(input: BuildRunMetaInput): RunMeta {
       node: osInfo.node,
       products,
     },
-    limits: {
-      ...VALIDITY_LIMITS,
-      maxVUs:
-        planned > 0
-          ? Math.ceil(input.profile.rate * (input.profile.maxLatencyMs / 1000) * 1.25 * 1.5)
-          : 0,
-    },
+    limits: { ...VALIDITY_LIMITS },
   };
 }
 
