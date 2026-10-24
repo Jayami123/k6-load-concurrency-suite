@@ -113,3 +113,37 @@ describe("telemetry sampler", () => {
     assert.ok(file.samples.length >= 3 && file.samples[2]?.proc !== undefined);
   });
 });
+
+describe("telemetry sampler sources", () => {
+  it("a source that is not configured is absent with a reason", async () => {
+    const { startSampler } = await import("../../src/load/telemetry/sampler.ts");
+    const sampler = startSampler({ product: "cal", sleep: () => new Promise((r) => setImmediate(r)) });
+    const file = await sampler.stop();
+    assert.equal(file.sources.db?.present, false);
+    assert.equal(file.sources.db?.reason, "no database pool");
+    assert.equal(file.sources.log?.reason, "no log file");
+    assert.equal(file.sources.probe?.reason, "no probe url");
+  });
+
+  it("a failing database read is counted and leaves that source absent for the sample", async () => {
+    const { startSampler } = await import("../../src/load/telemetry/sampler.ts");
+    let t = 0;
+    const pool = {
+      connect: async () => {
+        throw new Error("connection refused");
+      },
+    } as unknown as import("pg").Pool;
+    const sampler = startSampler({
+      product: "cal",
+      pool,
+      now: () => (t += 10),
+      sleep: () => new Promise((r) => setImmediate(r)),
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    const file = await sampler.stop();
+    assert.equal(file.sources.db?.present, true);
+    assert.ok((file.sources.db?.errors ?? 0) > 0);
+    assert.ok(file.samples.length > 0);
+    assert.ok(file.samples.every((s) => s.db === undefined));
+  });
+});
