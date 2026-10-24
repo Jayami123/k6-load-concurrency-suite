@@ -20,13 +20,16 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3, 4, 5, 6 merged.
 - **Harness pin assumed.** `v0.2.12` today; Task 1 may bump it (the Cal bridge stays until Task 1 part B).
 - **Environment change.** None beyond Task 3's k6 pin (§11).
-- **Unit tests.** Baseline = the count Tasks 3 to 6 leave (471 + 51 + 43 + 56 + 33 = **654** on today's base). This plan adds **+16** (§12); expected **670**.
-- **Stop for owner review.** Yes (rule 10): `perf.yml` changes (smokes retired, LOAD steps and a job added), `AGENTS.md` and README change, and Q1 asks to amend D5 for Medusa.
+- **Unit tests.** B = count on main when the build starts (today's chain: 686 after Tasks 1 to 6). This plan adds **+16** (§12); expected B + 16 (**702** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** **D5 amended: the Medusa LOAD steps run in a new job `medusa-load` (`timeout-minutes: 45`), because `medusa-smoke` has no room.** Q2 accept the rates, pending three dispatch runs on the runner. Q3 priority P1. Q4 accept `LoadContext.secrets`. All closed in §13.
+- **Stop for owner review.** Yes (rule 10): `perf.yml` changes (smokes retired, LOAD steps and a job added), `AGENTS.md` and README change; the D5 amendment for Medusa is an owner decision already taken (above).
 
 ## 2. What it proves
 
 - **A real business journey completes correctly under a small fixed load, and the books agree afterwards.** Cal: look up the schedule, book a free slot, the booking is ACCEPTED in the database. Medusa: browse, build a cart, check out, one order per iteration, stock down by one per order. Documenso: create a document, distribute it, both recipients sign, the envelope is COMPLETED and sealed once.
 - **Finance and healthcare.** The smoke a payments team or a patient-scheduling team runs before any capacity test: the happy path works at a trickle, with the audit of Task 6 and the validity verdict of Task 4 attached. It replaces the health smokes, which proved only that a route answers.
+
+- **What the retired health smokes covered, and why no coverage is lost.** `medusa-order-races` and `medusa-cancel-extras` get **no** readiness preflight and no LOAD step: their race specs already fail on product errors (a 5xx or an unreachable store is a TEST BUG/ENV stop before the first trial), `up:medusa` waits for readiness before the race step starts, and the only extra thing the health smoke proved there, that k6 can reach the product from the runner, survives in `medusa-load` (its preflight and LOAD step use k6 against the same stack). Cal and Documenso get the preflight inside their LOAD steps (Task 4 `READINESS`).
 
 ## 3. Live probe evidence
 
@@ -140,7 +143,7 @@ The interface list at the top of this file, plus from `main` (grepped): `src/cal
 | #   | Check                          | Command                                                                                                                                                    | Expected                                                                                |
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | 1   | Base                           | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                              | descendant of `5acd2a0`                                                                 |
-| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests 654` (or the count Tasks 3 to 6 left)                                  |
+| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests` = B (686 once Tasks 1 to 6 are merged)                                |
 | 3   | Earlier tasks merged, names ok | `grep -n "export async function runLoad\|export const READINESS\|export const reconcileStage\|export function startSampler" src/load/*.ts src/load/*/*.ts` | all four found; if a signature differs, stop and report                                 |
 | 4   | k6 pin                         | `k6 version; cat .k6-version`                                                                                                                              | `k6 v2.3.0`, `2.3.0`                                                                    |
 | 5   | Smoke steps to retire          | `grep -n "npm run smoke:" .github/workflows/perf.yml`                                                                                                      | medusa ×3, cal ×1, documenso ×1, twenty ×1 (lines may have moved)                       |
@@ -170,7 +173,7 @@ src/load/cases.ts                      CHANGED + the three cases
 src/load/types.ts                      CHANGED + LoadContext.secrets
 src/load/k6-process.ts                 CHANGED forwards secretEnv from { ...env, ...secrets }
 package.json                           CHANGED smoke:medusa|cal|documenso removed; load:cal, load:medusa, load:documenso added
-.github/workflows/perf.yml             CHANGED five smoke steps and their uploads removed; LOAD steps; new job medusa-load (Q1)
+.github/workflows/perf.yml             CHANGED five smoke steps and their uploads removed; LOAD steps; new job medusa-load (D5 amended)
 AGENTS.md, README.md                   CHANGED (D10)
 tests/unit/load-products-*.test.ts, load-journey-cases.test.ts     NEW
 ```
@@ -698,7 +701,7 @@ Standalone (D6), Medusa: with a stack up and a stocked variant, `P6_LOAD_CONFIG=
     exit "$status"
 ```
 
-plus, before the upload steps of that job, a token scan of `results/load` (`node scripts/evidence-token-scan.mjs results/load`, `timeout-minutes: 2`) and `upload-artifact` `load-cal` with path `results/load/` (the existing "Job summary" step already reads it, Task 4). 3. **`documenso-smoke`**: the same step for `P6-DOC-LOAD-001` after the races and the Documenso API step, before "Check Documenso artefacts for tokens" (which keeps its own greps; the new `results/load` scan is added next to it); `timeout-minutes` 4 on PRs and 6 otherwise; artefact `load-documenso`. 4. **Medusa (Q1, proposed): a new job `medusa-load`** instead of a step in `medusa-smoke`: same checkout, pins, caches (restore only), pull, harness up as `medusa-order-races`; then the LOAD steps of Tasks 7, 8 and 10 (this plan adds only `P6-MED-LOAD-001`):
+plus, before the upload steps of that job, a token scan of `results/load` (`node scripts/evidence-token-scan.mjs results/load`, `timeout-minutes: 2`) and `upload-artifact` `load-cal` with path `results/load/` (the existing "Job summary" step already reads it, Task 4). 3. **`documenso-smoke`**: the same step for `P6-DOC-LOAD-001` after the races and the Documenso API step, before "Check Documenso artefacts for tokens" (which keeps its own greps; the new `results/load` scan is added next to it); `timeout-minutes` 3 on PRs and 4 otherwise (estimate 1.5, 80 % stop rule 3.2; one Documenso rule for all four Documenso LOAD steps of Tasks 7, 9 and 10); artefact `load-documenso`. 4. **Medusa (D5 amended, owner decision): a new job `medusa-load`** instead of a step in `medusa-smoke`: same checkout, pins, caches (restore only), pull, harness up as `medusa-order-races`; then the LOAD steps of Tasks 7, 8 and 10 (this plan adds only `P6-MED-LOAD-001`):
 
 ```yaml
 medusa-load:
@@ -721,14 +724,14 @@ medusa-load:
       admin password,
       pull,
       Start Medusa,
-      LOAD P6-MED-LOAD-001 (timeout-minutes: PR 4 / 6),
+      LOAD P6-MED-LOAD-001 (timeout-minutes: PR 4 / main 6),
       token scan,
       upload load-medusa,
       Stop Medusa (always),
     ]
 ```
 
-Every new step gets `timeout-minutes` (checkout 2, fork checkout 6, install k6 3, npm ci 5, deps 8, pull 6, start 10, scan 2, upload 3, stop 3). The alternative (D5 as written): the same LOAD step inside `medusa-smoke` after the race step; §10 gives both budgets. 5. Trial counts: not applicable (no races). PR profile 10 s, full profile 30 s, as in §3.4. The LOAD step runs on every event.
+Every new step gets `timeout-minutes` (checkout 2, fork checkout 6, install k6 2, npm ci 5, deps 8, pull 6, start 10, scan 2, upload 3, stop 3). D5 as written (the same LOAD step inside `medusa-smoke`) was rejected by the owner: its budget is shown in §10 for the record. 5. Trial counts: not applicable (no races). PR profile 10 s, full profile 30 s, as in §3.4. The LOAD step runs on every event.
 
 ## 7. Oracles and assertions
 
@@ -757,17 +760,42 @@ The runner's `tokenScan` stage and the job's `node scripts/evidence-token-scan.m
 
 ## 10. CI budget
 
-Convention: worst case = slowest measured job (Phase 2 closeout §2.7) + additions; at least 10 minutes under the job timeout; no timeout raised. LOAD step estimate = VM full-profile step time of §3.4 doubled for runner speed (an estimate until the first CI run), and the step is capped by its own `timeout-minutes` (6, PR 4).
+Convention (one for every Phase 3 plan, Task 3 §9): worst case = Phase 2 closeout §2.7 worst case (slowest green `main` job + rerun allowance; runs 39927945708 `medusa-smoke` 26.2, 39923528658 `medusa-order-races` 21.3, 40037355173 `medusa-cancel-extras` 7.7, 39741411392 `cal-smoke` 9.7, 39821517901 `documenso-smoke` 6.9) + the cold start after the Task 1 suffix bump (Medusa +1.1, Cal +3.0, Documenso +2.0 estimate) + the image pull at its 6-minute cap minus the measured 0.3 (+5.7) + each new step, "estimates" at its measured/estimated duration and "at caps" at its `timeout-minutes`. LOAD step estimate = VM full-profile step time of §3.4 doubled for runner speed (an estimate until the first CI run). At least 10 minutes under the job timeout; no timeout raised.
 
-| Job                               | Slowest green (min) | Task 3 install (cap) | Retired smoke (min) | This plan's LOAD step (estimate, ×2)                                                                                      | Worst (min)                                                          | Timeout | Margin          |
-| --------------------------------- | ------------------- | -------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | --------------- |
-| `cal-smoke`                       | 9.7                 | +3.0                 | −0.02               | 41 s × 2 = 1.4                                                                                                            | 14.1                                                                 | 60      | 45.9            |
-| `documenso-smoke`                 | 6.9                 | +3.0                 | −0.02               | 45 s × 2 = 1.5                                                                                                            | 11.4                                                                 | 45      | 33.6            |
-| `medusa-smoke` (D5 as written)    | 26.2                | +3.0                 | −0.02               | 56 s × 2 = 1.9 (Task 7); Tasks 8 and 10 add about 2.4 and 2.4                                                             | 36.0 with all three                                                  | 45      | **9.0**         |
-| **`medusa-load` (new, proposed)** | n/a                 | install 3.0 (cap)    | n/a                 | pull cap 6.0 + start 1.0 (measured worst 0.9) + job overhead 2.0 + three LOAD steps 1.9 + 2.4 + 2.4 + scan and upload 1.0 | 16.7 (estimates); **31.0** with three LOAD steps at their 6 min caps | **45**  | **14.0** (caps) |
+Per-job bases (§2.7 + cold + pull): `cal-smoke` 9.7 + 3.0 + 5.7 = **18.4**; `documenso-smoke` 6.9 + 2.0 + 5.7 = **14.6**; `medusa-smoke` 26.2 + 1.1 + 5.7 = **33.0**; `medusa-order-races` 28.1; `medusa-cancel-extras` 14.5.
 
-With D5 as written, `medusa-smoke` reaches 36.0 minutes once Tasks 7, 8 and 10 are all in (margin 9.0, under the 10-minute rule) and its race step already sits at 24.1 minutes against a 24.0 stop rule (Phase 2 Q7, F12), so nothing is squeezed into it: **Q1 proposes the separate job** `medusa-load` (fresh stack, timeout 45, 14.0 minutes of margin even with Tasks 7, 8 and 10 at their step caps: 3.0 + 6.0 + 1.0 + 2.0 + 18 + 1.0 = 31.0). With only this task built, `medusa-smoke` would be 26.2 + 3.0 + 1.9 = 31.1 (margin 13.9) and would fit; the job is proposed now so Tasks 8 and 10 do not need a second CI restructuring.
-`medusa-order-races` (21.3) and `medusa-cancel-extras` (7.7) lose their k6 install (−0.02 each). Per-step caps: LOAD steps `timeout-minutes` 4 (PR) / 6.
+| Job                                            | Base (min) | Task 3 install (estimate / cap)     | Retired smoke (min) | This plan's LOAD step (estimate / cap)                      | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin (caps) |
+| ---------------------------------------------- | ---------- | ----------------------------------- | ------------------- | ----------------------------------------------------------- | ---------------------- | -------------------- | ------- | ------------- |
+| `cal-smoke`                                    | 18.4       | 0.04 / 2.0                          | −0.02               | 41 s × 2 = 1.4 / 6 main, 4 PR                               | 19.8                   | 26.4                 | 60      | 33.6          |
+| `documenso-smoke`                              | 14.6       | 0.04 / 2.0                          | −0.02               | 45 s × 2 = 1.5 / **4 main, 3 PR**                           | 16.1                   | 20.6                 | 45      | 24.4          |
+| `medusa-smoke` (unchanged by this task)        | 33.0       | 0.04 / 2.0                          | −0.02               | none (the job keeps k6 for `k6 inspect` in `npm run check`) | 33.0                   | 35.0                 | 45      | 10.0          |
+| `medusa-order-races`                           | 28.1       | install removed again (no consumer) | −0.02               | none                                                        | 28.1                   | 28.1                 | 45      | 16.9          |
+| `medusa-cancel-extras`                         | 14.5       | install removed again               | −0.02               | none                                                        | 14.5                   | 14.5                 | 30      | 15.5          |
+| **`medusa-load` (new; this task's step only)** | n/a        | install 0.04 / 2.0                  | n/a                 | 56 s × 2 = 1.9 / 6 main, 4 PR                               | 7.2                    | 19.1                 | **45**  | 25.9          |
+
+`medusa-load` rows, in minutes. Estimates: install 0.04 + pull 0.3 + Start Medusa 0.9 + job overhead 2.0 + LOAD step 1.9 + scan and upload 1.0 + cold start 1.1 = 7.2. At caps: install 2.0 + pull cap 6.0 + start 1.0 + overhead 2.0 + LOAD step 6.0 + scan and upload 1.0 + cold 1.1 = 19.1. **With all three Medusa LOAD steps (Tasks 7, 8, 10) the job reaches 10.4 (estimates: Task 8 adds 1.7, Task 10 adds 1.5) and 31.1 at caps (three steps × 6.0; 32.1 if the install step kept its old 3-minute cap) against 45, margin 13.9.**
+
+**D5 as written (rejected, kept for the record).** Putting the Medusa LOAD steps in `medusa-smoke`: this task alone gives 34.9 (estimates) and 41.0 (at caps: 33.0 + 2.0 − 0.02 + 6.0), margin 4.0; with Tasks 7, 8 and 10 it reaches 38.1 (estimates) and 53.0 (at caps), over the timeout. Its race step also sits at 24.1 minutes against a 24.0 stop rule (Phase 2 Q7, F12). Hence the owner's amendment: a new job `medusa-load`.
+
+**Phase 2 follow-ups that stack on the existing Medusa jobs (listed so the budget is read together; this task adds nothing to these jobs).**
+
+- `medusa-cancel-extras`, PR only: the `test.fail()` annotation for F-M4 in `P6-MED-RACE-014` with 5 PR trials (about 5 × 1.80 s = 9 s, under 0.2 min).
+- `medusa-smoke` race step, PR only: `P6-MED-RACE-009` PR trials 13 → 20 (about 7 × 1.12 s = 8 s, 0.13 min), inside the PR step cap of 10 min.
+- `medusa-smoke` race step 24.1 vs the 24.0 stop rule stays a BACKLOG item; Phase 3 adds nothing to it.
+
+Every new step, with its estimate and its 80 % stop rule (80 % of `timeout-minutes`):
+
+| Step                                   | `timeout-minutes`                                       | Estimate (min) | 80 % stop rule (min) |
+| -------------------------------------- | ------------------------------------------------------- | -------------- | -------------------- |
+| LOAD `P6-CAL-LOAD-001`                 | 6 main, 4 PR                                            | 1.4            | 4.8 main, 3.2 PR     |
+| LOAD `P6-DOC-LOAD-001`                 | 4 main, 3 PR                                            | 1.5            | 3.2 main, 2.4 PR     |
+| LOAD `P6-MED-LOAD-001` (`medusa-load`) | 6 main, 4 PR                                            | 1.9            | 4.8 main, 3.2 PR     |
+| Install k6 (every job)                 | 2                                                       | 0.04           | 1.6                  |
+| Token scan (three jobs)                | 2                                                       | 0.1            | 1.6                  |
+| Uploads (three jobs)                   | 3                                                       | 0.2            | 2.4                  |
+| `medusa-load` set-up steps             | as `medusa-order-races` (the measured 2.0 min overhead) | 2.0 in total   | n/a                  |
+
+`medusa-order-races` (21.3) and `medusa-cancel-extras` (7.7) lose their k6 install (Task 3 added it, this task removes it again) and their smoke step (−0.02 each).
 
 ## 11. Environment changes
 
@@ -775,7 +803,7 @@ None beyond the k6 pin of Task 3. `/opt/node24` is needed for Documenso as today
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (654 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (B = count on main when the build starts; 686 today after Tasks 1 to 6).
 
 | Step | Commit subject                                                           | `git add` paths                                                                                                                 | `npm run check` expected                       |
 | ---- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -812,39 +840,39 @@ After step 11: `git push -u origin feat/<build date>-p6-journey-smokes`, `gh pr 
 
 **Contradictions with the roadmap.**
 
-| #   | Roadmap says                                                        | Probe shows                                                                 | Effect                                                         |
-| --- | ------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| C1  | "the three CI k6 smoke steps" (D10)                                 | five steps (Medusa in three jobs, Cal, Documenso) and five artefact uploads | all five are retired (§3.5); Twenty's stays                    |
-| C2  | "the slots route is unverified"                                     | `getSchedule` is used by `src/cal/api.ts` since Phase 1 and works from k6   | settled (§3.1)                                                 |
-| C3  | "Task 7 depends on 4, 5, 6" and the runner skeleton comes in Task 4 | the runner core is Task 3's; Task 4 adds validity                           | no effect on this plan                                         |
-| C4  | D5: LOAD steps inside the product jobs after the races              | `medusa-smoke` would reach 36.0 min with Tasks 7, 8, 10                     | Q1 proposes a separate Medusa job; Cal and Documenso follow D5 |
+| #   | Roadmap says                                                        | Probe shows                                                                                | Effect                                                                                                                                |
+| --- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | "the three CI k6 smoke steps" (D10)                                 | five steps (Medusa in three jobs, Cal, Documenso) and five artefact uploads                | all five are retired (§3.5); Twenty's stays                                                                                           |
+| C2  | "the slots route is unverified"                                     | `getSchedule` is used by `src/cal/api.ts` since Phase 1 and works from k6                  | settled (§3.1)                                                                                                                        |
+| C3  | "Task 7 depends on 4, 5, 6" and the runner skeleton comes in Task 4 | the runner core is Task 3's; Task 4 adds validity                                          | no effect on this plan                                                                                                                |
+| C4  | D5: LOAD steps inside the product jobs after the races              | `medusa-smoke` would reach 41.0 min at caps with Task 7 alone and 53.0 with Tasks 7, 8, 10 | **D5 amended (owner decision taken): Medusa LOAD steps run in `medusa-load`, a new job with timeout 45**; Cal and Documenso follow D5 |
 
 **Proposed extras (out of scope until accepted; new IDs).**
 
 - `P6-CAL-LOAD-011`: the Cal journey with a second event type (60 minutes) interleaved, to exercise host-level exclusivity under load without an overlap (the Phase 1 overlap race at a trickle).
 - `P6-X-LOAD-017`: a `workflow_dispatch` input `load_profile` (`pr` or `full`) so a maintainer can run the full profile on a branch without merging.
 
-**Open questions for the owner.**
+**Owner decisions (all four questions closed 2026-10-24).**
 
-- **Q1.** Medusa LOAD steps in a new job `medusa-load` (proposed; §10 numbers) or inside `medusa-smoke` per D5 (36.0 min worst case with Tasks 7, 8, 10, margin 9.0)?
-- **Q2.** Fixed rates: Cal 2 per second, Medusa 1 per second, Documenso 1 per second, 10 s on PRs and 30 s on `main`: accept? (§3.2 to §3.4)
-- **Q3.** Priority P1 for the three journey cases (the roadmap gives none)?
-- **Q4.** `LoadContext.secrets` (additive change to Task 3's contract): accept, or pass secrets through a root-only temp file instead?
+- **Q1 (closed: new job `medusa-load`; D5 amended and recorded as an owner decision taken, in §1, §10 and C4).** Medusa LOAD steps in a new job `medusa-load` or inside `medusa-smoke` per D5.
+- **Q2 (closed: accept the rates, pending three dispatch runs on the runner).** Fixed rates: Cal 2 per second, Medusa 1 per second, Documenso 1 per second, 10 s on PRs and 30 s on `main`: accept? (§3.2 to §3.4)
+- **Q3 (closed: P1).** Priority P1 for the three journey cases (the roadmap gives none)?
+- **Q4 (closed: accept).** `LoadContext.secrets` (additive change to Task 3's contract): accept, or pass secrets through a root-only temp file instead?
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] All three journeys VALID and green with their audits in CI on the PR and once on `main` (jobs `cal-smoke`, `documenso-smoke`, `medusa-load` or `medusa-smoke` per Q1); each `verdict.json` outcome `PASS`, `audit.json` present.
+- [ ] All three journeys VALID and green with their audits in CI on the PR and once on `main` (jobs `cal-smoke`, `documenso-smoke`, `medusa-load`); each `verdict.json` outcome `PASS`, `audit.json` present.
 - [ ] Every run ships summary, telemetry, chart, `run-meta.json` and audit (artefacts `load-cal`, `load-documenso`, `load-medusa`) after a clean token scan.
 - [ ] `k6/smoke/medusa-health.js`, `cal-health.js`, `documenso-health.js`, the three `smoke:*` scripts and the five CI smoke steps with their uploads are gone; the readiness preflight runs instead (visible in each `verdict.json` stage list).
-- [ ] `AGENTS.md` and README updated (no remaining `smoke:medusa|cal|documenso`: `grep -rn "smoke:medusa\|smoke:cal\|smoke:documenso" . --include=*.md --include=*.json --include=*.yml` finds nothing).
+- [ ] `AGENTS.md` and README updated (no remaining `smoke:medusa|cal|documenso`: `grep -rn "smoke:medusa\|smoke:cal\|smoke:documenso" README.md AGENTS.md package.json .github` finds nothing; `docs/plans` is excluded because the plans quote the old names).
 - [ ] Each journey runs standalone with plain `k6 run` (commands in README; the example JSON files).
-- [ ] `npm run check` exit 0 with **B + 16** (670 on today's base); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 16** (702 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
 - (a) Done-when in §14; gaps: the three rates on the runner (§3.6 item 1), settled by three dispatch runs before merge.
 - (b) Existing names grepped at `5acd2a0`: `src/cal/{api,oracle,payloads,session}.ts`, `src/medusa/{admin,store,oracle,payloads}.ts`, `src/documenso/{account,api,env,inbucket,run-case}.ts`, `src/receivers/webhook-receiver.ts`, `src/races/prefix.ts`, `perf.yml` smoke steps (lines 156, 352, 528, 722, 1175), `README.md` lines 12, 130, 208, `AGENTS.md` line 9, `package.json` `smoke:*`.
   NEW: everything under `k6/journeys`, `k6/cases`, `src/load/products`, and the Task 3 to 6 names listed at the top (checked at build time, §5 check 3).
-- (c) CI time: §10; the proposed layout keeps every job at least 13 minutes under its timeout; the D5-as-written layout is shown with its 9.0-minute margin.
+- (c) CI time: §10; at caps every job is at least 10.0 minutes under its timeout (`medusa-smoke` 10.0, `medusa-load` 13.9 with all three Medusa LOAD steps); the rejected D5-as-written layout is shown for the record.
 - (d) Skeletons: §6. Steps with `git add` paths, subjects and expected output: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q4 are recorded in §1 and §13.
