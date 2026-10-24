@@ -7,6 +7,8 @@ import {
   medusaAdminPasswordFromEnv,
   medusaBaseUrlFromEnv,
   medusaDatabaseUrlFromEnv,
+  medusaLockModeFromEnv,
+  medusaSecondBaseUrlFromEnv,
   raceMaxInvalidSharePctFromEnv,
   raceMaxSpreadMsFromEnv,
   raceMaxSpreadRerunsFromEnv,
@@ -187,6 +189,44 @@ describe("env", () => {
       "http://127.0.0.1:3000",
     );
     assert.equal(calBaseUrlFromEnv({ CAL_BASE_URL: "   " }), "http://127.0.0.1:3000");
+  });
+
+  it("medusaSecondBaseUrlFromEnv returns undefined when unset or blank", () => {
+    assert.equal(medusaSecondBaseUrlFromEnv({}), undefined);
+    assert.equal(medusaSecondBaseUrlFromEnv({ MEDUSA_SECOND_BASE_URL: "   " }), undefined);
+  });
+
+  it("medusaSecondBaseUrlFromEnv strips a trailing slash and returns the URL", () => {
+    assert.equal(
+      medusaSecondBaseUrlFromEnv({ MEDUSA_SECOND_BASE_URL: "http://127.0.0.1:9001/" }),
+      "http://127.0.0.1:9001",
+    );
+  });
+
+  it("medusaSecondBaseUrlFromEnv rejects localhost, https, a non-URL and the primary URL (TEST BUG)", () => {
+    for (const raw of ["http://localhost:9001", "https://127.0.0.1:9001", "not a url"]) {
+      assert.throws(() => medusaSecondBaseUrlFromEnv({ MEDUSA_SECOND_BASE_URL: raw }), /TEST BUG/);
+    }
+    assert.throws(
+      () => medusaSecondBaseUrlFromEnv({ MEDUSA_SECOND_BASE_URL: "http://127.0.0.1:9000" }),
+      /TEST BUG/,
+    );
+  });
+
+  it("medusaLockModeFromEnv defaults to memory", () => {
+    assert.equal(medusaLockModeFromEnv({}), "memory");
+    assert.equal(medusaLockModeFromEnv({ MEDUSA_LOCK: "" }), "memory");
+  });
+
+  it("medusaLockModeFromEnv accepts redis and memory", () => {
+    assert.equal(medusaLockModeFromEnv({ MEDUSA_LOCK: "redis" }), "redis");
+    assert.equal(medusaLockModeFromEnv({ MEDUSA_LOCK: "memory" }), "memory");
+  });
+
+  it("medusaLockModeFromEnv rejects other values", () => {
+    for (const raw of ["Redis", "on", "1"]) {
+      assert.throws(() => medusaLockModeFromEnv({ MEDUSA_LOCK: raw }), /TEST BUG/);
+    }
   });
 
   it("cal database URL fallback order", () => {

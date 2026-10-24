@@ -67,6 +67,38 @@ export function medusaBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): stri
   return (raw && raw.length > 0 ? raw : "http://127.0.0.1:9000").replace(/\/$/, "");
 }
 
+/** Second Medusa backend, or undefined when the harness runs only one. 127.0.0.1 only, http, a different port. */
+export function medusaSecondBaseUrlFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const raw = env.MEDUSA_SECOND_BASE_URL?.trim();
+  if (!raw) return undefined;
+  const url = raw.replace(/\/$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`TEST BUG: MEDUSA_SECOND_BASE_URL is not a URL: ${raw}`);
+  }
+  if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1") {
+    throw new Error(`TEST BUG: MEDUSA_SECOND_BASE_URL must be http://127.0.0.1:<port>, got ${raw}`);
+  }
+  if (url === medusaBaseUrlFromEnv(env)) {
+    throw new Error("TEST BUG: MEDUSA_SECOND_BASE_URL equals MEDUSA_BASE_URL");
+  }
+  return url;
+}
+
+export type MedusaLockMode = "memory" | "redis";
+
+/** Same default and spelling as the harness (medusa-env.ts parseMedusaHarnessSwitches): unset or blank is "memory". */
+export function medusaLockModeFromEnv(env: NodeJS.ProcessEnv = process.env): MedusaLockMode {
+  const raw = env.MEDUSA_LOCK?.trim();
+  if (!raw) return "memory";
+  if (raw === "memory" || raw === "redis") return raw;
+  throw new Error(`TEST BUG: MEDUSA_LOCK must be "memory" or "redis", got ${raw}`);
+}
+
 export function medusaAdminEmailFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   return requiredEnv(env, "MEDUSA_ADMIN_EMAIL");
 }
