@@ -686,6 +686,13 @@ node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
 
+**How the Documenso pipeline check matches emails (P6-DOC-LOAD-002).** Each completed document must produce one completion email per
+recipient. The signing request carries the header `X-Documenso-Envelope-Id`, but the completion email has no envelope header. Its link
+is `/sign/<token>/complete`, and the token is the recipient's own (`Recipient.token`). The stage reads each recipient mailbox in
+Inbucket, takes the token from the completion link, and joins it through `Recipient.token` to the envelope. Only messages whose token
+belongs to a run recipient count. A missing or duplicated completion email is a PRODUCT BUG. The evidence of the join is in
+`docs/handoff/2026-10-24-documenso-email-fields.md`. Tokens are used in memory only and never written.
+
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).
 
