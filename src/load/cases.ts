@@ -6,6 +6,9 @@ import { evaluateOverhead, type OverheadRun } from "./overhead.ts";
 import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
+import { calCleanup, calSetup } from "./products/cal.ts";
+import { documensoCleanup, documensoSetup } from "./products/documenso.ts";
+import { medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import type { LoadCase, Stage } from "./types.ts";
 
 const SERVICE_MS = 25;
@@ -279,9 +282,61 @@ export const OVERHEAD_LOAD_006: LoadCase = {
   },
 };
 
+/** P6-CAL-LOAD-001: one booking per iteration, the slot index from the global iteration counter (plan §6.3). */
+export const CAL_LOAD_001: LoadCase = {
+  id: "P6-CAL-LOAD-001",
+  title: "Cal journey smoke: getSchedule, book",
+  product: "cal",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 2, durationSec: 10, maxLatencyMs: 1000 },
+    full: { rate: 2, durationSec: 30, maxLatencyMs: 1000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-001.js", env: {} }],
+  stages: { setup: calSetup, cleanup: calCleanup },
+};
+
+/** P6-MED-LOAD-001: one checkout per iteration against a stocked variant (plan §6.2). */
+export const MED_LOAD_001: LoadCase = {
+  id: "P6-MED-LOAD-001",
+  title: "Medusa journey smoke: browse, cart, checkout",
+  product: "medusa",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 4000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/med-load-001.js", env: {} }],
+  stages: { setup: medusaSetup, cleanup: medusaCleanup },
+};
+
+/** P6-DOC-LOAD-001: create, distribute, both recipients sign, the envelope completes once (plan §6.4). */
+export const DOC_LOAD_001: LoadCase = {
+  id: "P6-DOC-LOAD-001",
+  title: "Documenso journey smoke: create, distribute, sign",
+  product: "documenso",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 3000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 3000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-001.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: { setup: documensoSetup, cleanup: documensoCleanup },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
   [TELEMETRY_LOAD_002.id]: TELEMETRY_LOAD_002,
   [OVERHEAD_LOAD_006.id]: OVERHEAD_LOAD_006,
+  [CAL_LOAD_001.id]: CAL_LOAD_001,
+  [MED_LOAD_001.id]: MED_LOAD_001,
+  [DOC_LOAD_001.id]: DOC_LOAD_001,
 };
