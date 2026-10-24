@@ -9,14 +9,15 @@ plan changes the P6 repo. Companion plan (P6 side):
 
 ## 1. Header
 
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 two releases (H3 ships now as harness `v0.2.13`; this fix is its own later release). Q2 accept the duplicated pid module (a shared module is a later follow-up). Q3 yes, `down` throwing on a foreign listener is handled by the separate X7 PR in P6 after this harness release. All three questions are closed in §10.
 - **Task.** Phase 3 Task 1, harness PR 2 of 2. Cases: none (infrastructure).
 - **Priority.** Not a case; it unblocks deleting the P6 "TEMPORARY BRIDGE" and gives Phase 3 Task 5 a real Cal process record.
 - **Harness branch (pattern).** `fix/<build date>-harness-cal-up-down`; own PR; Conventional Commits; merge commit, no squash
   (harness `CONTRIBUTING.md`).
 - **Base.** Harness `main` = `51b7d1eb04c3dcacf007e8e020750a7837420974` (merge of PR #23, "second Medusa instance"; it also
   contains PR #24, the zod 4 upgrade). Re-check on the build day (§5).
-- **Version.** Goes into the next release after the one that carries H3 (see the companion plan §3.1): bump `version` in
-  `package.json`, dated `CHANGELOG.md` section, the maintainer tags `vX.Y.Z` on `main`. Not decided here.
+- **Version.** Its own release after `v0.2.13` (which carries H3 only; D4 amended by the owner, companion plan §1): bump `version` in
+  `package.json`, dated `CHANGELOG.md` section, the maintainer tags `vX.Y.Z` on `main`.
 - **Harness tests.** Baseline **207** (`npm run check` at `51b7d1e`: `# tests 207`, `# fail 0`). This plan adds **+13**: expected **220**.
 - **Stop for owner review.** Yes (rule 10): it changes a harness behaviour that every consumer (P1, P2, P5, P6) runs.
 
@@ -126,12 +127,15 @@ Nothing from P6. Inside the harness: `spawnLogged`, `isPidRunning`, `HARNESS_ROO
 
 ## 5. Build-time recheck
 
-| #   | Check                       | Command                                                                                          | Expected                                                                 |
-| --- | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| 1   | Base and baseline           | `git fetch origin main && git log -1 --format=%h origin/main && npm ci && npm run check`         | `51b7d1e` or a descendant; `# tests 207` (or the new base count), exit 0 |
-| 2   | Still unfixed               | `grep -n 'FROM "User"' src/adapters/cal.adapter.ts; grep -n "unref" src/adapters/cal.adapter.ts` | one hit for the first, no hit for the second                             |
-| 3   | The fork still maps `users` | `grep -n '@@map(name: "users")' $PRODUCTS_ROOT/cal/packages/prisma/schema.prisma`                | one hit                                                                  |
-| 4   | Documenso model unchanged   | `grep -n "unref\|writeDocumensoWebPid" src/adapters/documenso.adapter.ts`                        | both found                                                               |
+| #   | Check                                   | Command                                                                                                                                        | Expected                                                                                                                                              |
+| --- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Base and baseline                       | `git fetch origin main && git log -1 --format=%h origin/main && npm ci && npm run check`                                                       | `51b7d1e` or a descendant; `# tests 207` (or the new base count), exit 0                                                                              |
+| 2   | Still unfixed                           | `grep -n 'FROM "User"' src/adapters/cal.adapter.ts; grep -n "unref" src/adapters/cal.adapter.ts`                                               | one hit for the first, no hit for the second                                                                                                          |
+| 3   | The fork still maps `users`             | `grep -n '@@map(name: "users")' $PRODUCTS_ROOT/cal/packages/prisma/schema.prisma`                                                              | one hit                                                                                                                                               |
+| 4   | Documenso model unchanged               | `grep -n "unref\|writeDocumensoWebPid" src/adapters/documenso.adapter.ts`                                                                      | both found                                                                                                                                            |
+| 5   | P6 consumers of `up:cal` and `down:cal` | in the P6 repo: `grep -n "up:cal\|down:cal\|TEMPORARY BRIDGE\|cal.pgid" package.json scripts/harness.mjs .github/workflows/perf.yml README.md` | the bridge, the `down:cal \|\| true` steps and the `Start Cal (harness up)` steps are the only callers; any new caller is added to the acceptance run |
+| 6   | P1 consumer                             | in the P1 repo (read only): `grep -rn "up cal\|up:cal\|down:cal" package.json scripts .github`                                                 | callers listed in the PR; each still works when `up` returns (none relied on a never-returning `up`)                                                  |
+| 7   | Acceptance on the P6 copy               | the six checks of §7 against a throwaway P6 copy using `node scripts/up.mjs cal` and `down.mjs cal`                                            | all pass; output pasted in the PR                                                                                                                     |
 
 ## 6. Design (harness repo)
 
@@ -262,7 +266,7 @@ Nothing is killed that the harness did not record (same rule as Documenso: "does
 - `cal-seed.test.ts` (+4): `CAL_SEED_USER_SQL selects from users and not from "User"`; `redactSeedOutput hides the key value and keeps the line`;
   `redactSeedOutput leaves other lines untouched`; `redactSeedOutput catches a key split across two chunks` (first chunk ends
   in `Created seeded API Key: cal_01`, second starts `23456...\n`; the printed text never contains the digits).
-- Not unit-testable (needs Cal): `up` returns, `down` frees the port. They are the acceptance script in §8.
+- Not unit-testable (needs Cal): `up` returns, `down` frees the port. They are the acceptance script in §7 and §9.
 
 ## 7. Oracles and assertions (what "fixed" means)
 
@@ -275,15 +279,46 @@ Nothing is killed that the harness did not record (same rule as Documenso: "does
 | No key in the log                 | `grep -c "cal_[A-Za-z0-9]\{10,\}" <up log>` is 0; the line `Created seeded API Key: ***` is present                       | live                   |
 | `down` refuses a foreign listener | start any process on :3000 without the harness, `down`: error `Cal web still listening ... not killed`; the process lives | live                   |
 
-## 8. Isolation, token scan, CI, environment
+## 8. Data isolation, cleanup, leak check
 
 - **Isolation.** Harness only; no P6 data. The acceptance script uses a throwaway copy of P6 or the harness's own
-  `node scripts/up.mjs cal` / `down.mjs cal`; Postgres volume kept as today.
-- **Token scan.** The only new artefact is the redacted up log. Check with `grep -c "cal_[A-Za-z0-9]\{10,\}"` (expected 0).
-  P6 side (companion plan): its scanner gets no change here.
-- **CI.** The harness PR runs its own workflows (workflow lint, `npm ci`, typecheck, build, package contents, audit, PR title,
-  CodeQL); no new job. `npm run check` before every push. P6's CI proves the fix only after the P6 bump (companion plan, Part B).
-- **Environment.** None for Cursor Cloud or Claude Code cloud.
+  `node scripts/up.mjs cal` / `down.mjs cal`; the Postgres volume is kept as today. The pid record lives in `.harness/cal-web.pid`
+  (one file, one process group).
+- **Cleanup.** `down` stops the recorded web process group (not only the leader pid), waits for :3000 to close, removes the pid file,
+  then removes the database container. **Dead leader, live children:** when the recorded leader is gone but the group still has
+  members (the case P6's bridge handles today, §3.5 (e)), `down` signals the whole group (`kill(-pgid)`; SIGTERM, then SIGKILL after
+  the same grace period as Documenso), so no `next-server` child survives. A missing, empty or corrupt pid file is not an error.
+  A recycled pid is refused by the start-mark check (R3). `down` never kills a listener it did not start (§7, last row).
+- **Leak check.** After `down`: `lsof -nP -iTCP:3000 -sTCP:LISTEN` is empty, `.harness/cal-web.pid` is gone, `pgrep -f next-server`
+  shows no Cal process, and the database container is removed. The group signal (`kill(-pgid)`) is asserted by the existing `running pid killed and file removed` test (injected `deps` record the signalled target); the dead-leader case itself is part of the acceptance run (§7, six checks plus a leader killed with `kill -9` before `down`). No test is added: the count stays 207 -> 220.
+
+## 8a. Token scan
+
+- The only new artefact is the redacted `up` log. Check with `grep -c "cal_[A-Za-z0-9]\{10,\}" <up log>` (expected 0; the line
+  `Created seeded API Key: ***` is present).
+- The `cal_` pattern `/\bcal_[A-Za-z0-9]{10,}/` is added to P6's `scripts/evidence-token-scan.mjs` as extra E1 (P6 repo, its own PR,
+  after the harness release); until then the `grep` above is the check. P6's `cal-up.log` upload stops carrying the key once the
+  P6 bump pins this release (Part B of the companion plan).
+
+## 8b. CI and budget
+
+The harness PR runs its own workflows (workflow lint, `npm ci`, typecheck, build, package contents, audit, PR title, CodeQL); no new
+job and no new step. `npm run check` before every push. P6's CI proves the fix only after the P6 bump (companion plan, Part B), which
+changes the cache suffix again (cold start) and sets `timeout-minutes: 30` on the `Start Cal (harness up)` steps (a new cap on an
+existing step; no job timeout changes). Convention: Phase 2 closeout §2.7 worst case (`cal-smoke` 9.7 = 9.2 min, run 39741411392, + 0.5;
+`cal-state-races` 11.4 = 10.1, run 40039351021, + 1.3) + cold start Cal +3.0 + pull at its cap minus measured +5.7 + new steps (none):
+
+| Job               | §2.7 worst (min) | + cold start | + pull to cap | New steps | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin |
+| ----------------- | ---------------- | ------------ | ------------- | --------- | ---------------------- | -------------------- | ------- | ------ |
+| `cal-smoke`       | 9.7              | +3.0         | +5.7          | none      | 18.4                   | 18.4                 | 60      | 41.6   |
+| `cal-state-races` | 11.4             | +3.0         | +5.7          | none      | 20.1                   | 20.1                 | 85      | 64.9   |
+
+No timeout is raised; the bridge deletion removes the process-group wait from the Cal jobs, so the estimate is an upper bound.
+
+## 8c. Environment changes
+
+None for Cursor Cloud and none for Claude Code cloud: no tool, host, setting or setup-script change; the harness is fetched by
+`npm ci` from its tag as today, and both clouds run the same `up:cal` / `down:cal` scripts.
 
 ## 9. Build order (harness repo; one commit per step; `npm run check` after each)
 
@@ -324,15 +359,23 @@ section, tag `vX.Y.Z` on `main`. Then the P6 bump with the bridge deletion (comp
 - **E1.** P6 scanner pattern `/\bcal_[A-Za-z0-9]{10,}/` in `scripts/evidence-token-scan.mjs` (P6 repo, its own PR).
 - **E2.** One shared `pid-record.ts` for Medusa, Documenso and Cal (see §6.1).
 
-**Open questions for the owner.**
+**Owner decisions (all three questions closed 2026-10-24).**
 
-- **Q1.** Is one release carrying both H3 and this fix still wanted (D4), or should H3 be released first (companion plan Q2)?
-- **Q2.** Accept the duplicated `cal-web-pid.ts` now (matches the two existing modules) and the shared module as a follow-up?
-- **Q3.** Should `down` throwing on a foreign listener also apply to the P6 `|| true` steps (X7 stays a separate item)?
+- **Q1 (closed: two releases).** H3 is released now as `v0.2.13`; this fix is its own later release (D4 amended).
+- **Q2 (closed: accept).** The duplicated `cal-web-pid.ts` stays (matches the two existing modules); a shared module is a later follow-up (E2).
+- **Q3 (closed: yes, as the separate X7 PR).** `down` throwing on a foreign listener is handled in P6 by the separate X7 PR after the harness release.
 
 ## 11. Done when (roadmap, made measurable)
 
-- [ ] This PR is merged with a CHANGELOG entry, and both harness PRs (H3 and this one) are in one tag (or the owner accepted two).
+- [ ] This PR is merged with a CHANGELOG entry, and H3 is released as `v0.2.13` and this fix as its own later release (owner decision).
 - [ ] The six checks of §7 pass on Linux, output pasted in the PR.
 - [ ] Harness `npm run check` exit 0 with 220 tests (207 + 13), `npm audit --audit-level=high` clean.
 - [ ] The P6 bridge deletion bump (companion plan, Part B) can start: `up:cal` and `down:cal` work through the harness alone.
+
+## 12. Rule 20 self-check
+
+- (a) Done-when items of the roadmap are in §11; gap: the two releases are the maintainer's actions in the harness repo.
+- (b) Existing names grepped at `51b7d1e`: `src/adapters/cal.adapter.ts` (`FROM "User"`, `spawnLogged`, `webListen`, `isWebPortOpen`, `createPgClient`, `captureApiKeyFromSeedOutput`), `src/adapters/documenso-web-pid.ts` and `documenso.adapter.ts` (`unref`, `writeDocumensoWebPid`), `src/internal/run.ts` (`RunCaptureOptions`, `redact`). NEW: `cal-web-pid.ts`, `cal-seed.ts` (`CAL_SEED_USER_SQL`, `redactSeedOutput`), `redactLine`.
+- (c) CI time: §8b (no new step; P6 jobs keep at least 41 minutes of margin).
+- (d) Skeletons: §6; steps with paths, subjects and expected counts: §9 (207 -> 220).
+- (e) The owner's answers to Q1 to Q3 are recorded in §1 and §10.
