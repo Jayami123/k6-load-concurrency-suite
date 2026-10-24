@@ -44,13 +44,17 @@ const message = (err: unknown): string =>
  * Admin login, catalog, and one stocked variant with S = planned + 20. The admin token goes to ctx.secrets only; the
  * ids of what was created go to ctx.config as soon as they exist, so cleanup finds them after a partial failure.
  */
-export async function medusaSetupWith(ctx: LoadContext, deps: MedusaDeps): Promise<StageResult> {
+export async function medusaSetupWith(
+  ctx: LoadContext,
+  deps: MedusaDeps,
+  stockFor: (planned: number) => number = (planned) => planned + 20,
+): Promise<StageResult> {
   loadRepoEnv();
   try {
     const dataPrefix = caseDataPrefix(ctx.runPrefix, ctx.caseDef.id);
     const { rate, durationSec, maxLatencyMs } = ctx.profile;
     const planned = Math.round(rate * durationSec);
-    const s = planned + 20;
+    const s = stockFor(planned);
     const token = await deps.seed();
     ctx.secrets.MEDUSA_ADMIN_TOKEN = token;
     const catalog = await deps.catalog(token);
@@ -77,6 +81,7 @@ export async function medusaSetupWith(ctx: LoadContext, deps: MedusaDeps): Promi
       maxLatencyMs,
       productId: stocked.productId,
       inventoryItemId: stocked.inventoryItemId,
+      stock: s,
     };
     ctx.config.audit = {
       product: "medusa",
@@ -137,7 +142,12 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
   return reasons.length === 0 ? { ok: true, reasons: [] } : { ok: false, kind: "TEST BUG", reasons };
 }
 
-export const medusaSetup = (ctx: LoadContext): Promise<StageResult> =>
-  medusaSetupWith(ctx, defaultDeps);
+/** The stock rule is the case's: P6-MED-LOAD-001 keeps planned + 20 (Task 7); P6-MED-LOAD-002 sells out (Task 8). */
+export const makeMedusaSetup =
+  (opts: { stockFor: (planned: number) => number }) =>
+  (ctx: LoadContext): Promise<StageResult> =>
+    medusaSetupWith(ctx, defaultDeps, opts.stockFor);
+
+export const medusaSetup = makeMedusaSetup({ stockFor: (planned) => planned + 20 });
 export const medusaCleanup = (ctx: LoadContext): Promise<StageResult> =>
   medusaCleanupWith(ctx, defaultDeps);
