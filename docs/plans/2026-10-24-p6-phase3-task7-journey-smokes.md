@@ -20,7 +20,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3, 4, 5, 6 merged.
 - **Harness pin assumed.** `v0.2.12` today; Task 1 may bump it (the Cal bridge stays until Task 1 part B).
 - **Environment change.** None beyond Task 3's k6 pin (§11).
-- **Unit tests.** B = count on main when the build starts (today's chain: 686 after Tasks 1 to 6). This plan adds **+16** (§12); expected B + 16 (**702** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 688 after Tasks 1 to 6). This plan adds **+18** (§12); expected B + 18 (**706** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** **D5 amended: the Medusa LOAD steps run in a new job `medusa-load` (`timeout-minutes: 45`), because `medusa-smoke` has no room.** Q2 accept the rates, pending three dispatch runs on the runner. Q3 priority P1. Q4 accept `LoadContext.secrets`. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): `perf.yml` changes (smokes retired, LOAD steps and a job added), `AGENTS.md` and README change; the D5 amendment for Medusa is an owner decision already taken (above).
 
@@ -143,7 +143,7 @@ The interface list at the top of this file, plus from `main` (grepped): `src/cal
 | #   | Check                          | Command                                                                                                                                                    | Expected                                                                                |
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | 1   | Base                           | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                              | descendant of `5acd2a0`                                                                 |
-| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests` = B (686 once Tasks 1 to 6 are merged)                                |
+| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests` = B (688 once Tasks 1 to 6 are merged)                                |
 | 3   | Earlier tasks merged, names ok | `grep -n "export async function runLoad\|export const READINESS\|export const reconcileStage\|export function startSampler" src/load/*.ts src/load/*/*.ts` | all four found; if a signature differs, stop and report                                 |
 | 4   | k6 pin                         | `k6 version; cat .k6-version`                                                                                                                              | `k6 v2.3.0`, `2.3.0`                                                                    |
 | 5   | Smoke steps to retire          | `grep -n "npm run smoke:" .github/workflows/perf.yml`                                                                                                      | medusa ×3, cal ×1, documenso ×1, twenty ×1 (lines may have moved)                       |
@@ -565,10 +565,15 @@ export function runDocSign(cfg, pdf) {
           "POST envelope/distribute",
         );
         const tokens = {};
-        if (r.status === 200)
-          for (const rc of r.json("recipients"))
-            tokens[rc.id] = /\/sign\/([A-Za-z0-9_-]+)$/.exec(rc.signingUrl)[1];
-        return { ok: r.status === 200, data: { tokens } };
+        if (r.status !== 200) return { ok: false, data: { tokens } };
+        const recipients = r.json("recipients");
+        if (!Array.isArray(recipients)) return { ok: false, data: { tokens } }; // malformed 200: a failed step, not a TypeError
+        for (const rc of recipients) {
+          const m = /\/sign\/([A-Za-z0-9_-]+)$/.exec(rc?.signingUrl ?? "");
+          if (!m) return { ok: false, data: { tokens } };
+          tokens[rc.id] = m[1];
+        }
+        return { ok: true, data: { tokens } };
       },
     },
     {
@@ -803,7 +808,7 @@ None beyond the k6 pin of Task 3. `/opt/node24` is needed for Documenso as today
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (B = count on main when the build starts; 686 today after Tasks 1 to 6).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (B = count on main when the build starts; 688 today after Tasks 1 to 6).
 
 | Step | Commit subject                                                           | `git add` paths                                                                                                                 | `npm run check` expected                       |
 | ---- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -811,18 +816,18 @@ Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git s
 | 1    | `feat(k6): let a journey step end the journey cleanly`                   | `k6/lib/pure/journey.js tests/unit/k6-lib-journey.test.ts`                                                                      | exit 0, **B + 1**                              |
 | 2    | `feat(k6): add the cal booking journey and case`                         | `k6/journeys/cal-book.js k6/cases/cal-load-001.js k6/cases/cal-load-001.example.json`                                           | exit 0 (`k6 inspect` ok), B + 1                |
 | 3    | `feat(k6): add the medusa checkout journey and case`                     | `k6/journeys/med-checkout.js k6/cases/med-load-001.js k6/cases/med-load-001.example.json tests/unit/load-journey-cases.test.ts` | exit 0, **B + 4**                              |
-| 4    | `feat(k6): add the documenso signing journey and case`                   | `k6/journeys/doc-sign.js k6/cases/doc-load-001.js k6/cases/doc-load-001.example.json`                                           | exit 0, B + 4                                  |
-| 5    | `feat(load): add cal setup and cleanup that sweep by prefix`             | `src/load/products/cal.ts tests/unit/load-products-cal.test.ts src/load/types.ts src/load/k6-process.ts`                        | exit 0, **B + 8**                              |
-| 6    | `feat(load): add medusa setup and cleanup, including the customer sweep` | `src/load/products/medusa.ts tests/unit/load-products-medusa.test.ts`                                                           | exit 0, **B + 13**                             |
-| 7    | `feat(load): add documenso setup and cleanup`                            | `src/load/products/documenso.ts tests/unit/load-products-documenso.test.ts`                                                     | exit 0, **B + 16**                             |
-| 8    | `feat(load): register the three journey smokes`                          | `src/load/cases.ts package.json`                                                                                                | exit 0, B + 16                                 |
-| 9    | `ci(perf): replace the health smokes by the journey smokes`              | `.github/workflows/perf.yml`                                                                                                    | exit 0 (actionlint silent), B + 16             |
-| 10   | `chore(k6): remove the retired health smokes`                            | `k6/smoke/medusa-health.js k6/smoke/cal-health.js k6/smoke/documenso-health.js` (deleted)                                       | exit 0 (`k6 inspect` count drops by 3), B + 16 |
-| 11   | `docs: point the readme and agents notes at the journey smokes`          | `README.md AGENTS.md`                                                                                                           | exit 0, B + 16                                 |
+| 4    | `feat(k6): add the documenso signing journey and case`                   | `k6/journeys/doc-sign.js k6/cases/doc-load-001.js k6/cases/doc-load-001.example.json tests/unit/load-journey-cases.test.ts`     | exit 0, B + 6                                  |
+| 5    | `feat(load): add cal setup and cleanup that sweep by prefix`             | `src/load/products/cal.ts tests/unit/load-products-cal.test.ts src/load/types.ts src/load/k6-process.ts`                        | exit 0, **B + 10**                             |
+| 6    | `feat(load): add medusa setup and cleanup, including the customer sweep` | `src/load/products/medusa.ts tests/unit/load-products-medusa.test.ts`                                                           | exit 0, **B + 15**                             |
+| 7    | `feat(load): add documenso setup and cleanup`                            | `src/load/products/documenso.ts tests/unit/load-products-documenso.test.ts`                                                     | exit 0, **B + 18**                             |
+| 8    | `feat(load): register the three journey smokes`                          | `src/load/cases.ts package.json`                                                                                                | exit 0, B + 18                                 |
+| 9    | `ci(perf): replace the health smokes by the journey smokes`              | `.github/workflows/perf.yml`                                                                                                    | exit 0 (actionlint silent), B + 18             |
+| 10   | `chore(k6): remove the retired health smokes`                            | `k6/smoke/medusa-health.js k6/smoke/cal-health.js k6/smoke/documenso-health.js` (deleted)                                       | exit 0 (`k6 inspect` count drops by 3), B + 18 |
+| 11   | `docs: point the readme and agents notes at the journey smokes`          | `README.md AGENTS.md`                                                                                                           | exit 0, B + 18                                 |
 
-New unit tests, by name (the 16): `k6-lib-journey` (+1: a `stop: true` step ends the journey as completed and skips the rest); `load-journey-cases` (3: the Medusa journey's request bodies equal `cartCreateBody`, `lineItemBody`, `paymentSessionBody` and `STORE_ADDRESS` of `src/medusa/payloads.ts`; the Cal booking body equals `bookingBody(...)`; the Documenso recipient, field and sign bodies equal `recipientBodies`, `signatureFieldBodies`, `signFieldBody`, `completeBody` — comparing the k6 source text by extracting the literals is fragile, so the test evaluates the journey modules in Node with a fake `k6/http` through a loader stub and diffs the captured requests);
+New unit tests, by name (the 18): `k6-lib-journey` (+1: a `stop: true` step ends the journey as completed and skips the rest); `load-journey-cases` (5: a 200 distribute reply without a `recipients` array gives a failed step result and no throw; a 200 reply whose `signingUrl` does not match `/sign/<token>` gives a failed step result and no throw; the Medusa journey's request bodies equal `cartCreateBody`, `lineItemBody`, `paymentSessionBody` and `STORE_ADDRESS` of `src/medusa/payloads.ts`; the Cal booking body equals `bookingBody(...)`; the Documenso recipient, field and sign bodies equal `recipientBodies`, `signatureFieldBodies`, `signFieldBody`, `completeBody` — comparing the k6 source text by extracting the literals is fragile, so the test evaluates the journey modules in Node with a fake `k6/http` through a loader stub and diffs the captured requests);
 `load-products-cal` (4: window length `ceil(planned/11.4)+3`; config has no secret; the cleanup sweeps uids read from the database (fake pool and fake `cancelBooking`); a failed cancel becomes a `TEST BUG` line and the sweep continues); `load-products-medusa` (5: stock is `planned + 20`; the customer sweep pages and deletes only emails starting with the prefix; orders swept by email prefix; the admin token goes to `ctx.secrets` and not to `ctx.config`; a failed delete becomes a `TEST BUG` line);
-`load-products-documenso` (3: the API token goes to `ctx.secrets` only; `secretEnv` names it; cleanup collects the live envelope ids by title prefix before `endRun`). Sum: 1 + 3 + 4 + 5 + 3 = **16**. Cumulative: step 1 +1 → B+1; step 3 +3 → B+4; step 5 +4 → B+8; step 6 +5 → B+13; step 7 +3 → B+16.
+`load-products-documenso` (3: the API token goes to `ctx.secrets` only; `secretEnv` names it; cleanup collects the live envelope ids by title prefix before `endRun`). Sum: 1 + 5 + 4 + 5 + 3 = **18**. Cumulative: step 1 +1 → B+1; step 3 +3 → B+4; step 4 +2 (the two distribute tests, with the Documenso journey) → B+6; step 5 +4 → B+10; step 6 +5 → B+15; step 7 +3 → B+18.
 
 After step 11: `git push -u origin feat/<build date>-p6-journey-smokes`, `gh pr create` (rule A3), read CI once (rule 15): the three LOAD steps VALID and green with their audits; the five smoke steps gone. Then one `workflow_dispatch` on `main` after merge. Merge only when the owner says "merge".
 
@@ -866,7 +871,7 @@ After step 11: `git push -u origin feat/<build date>-p6-journey-smokes`, `gh pr 
 - [ ] `k6/smoke/medusa-health.js`, `cal-health.js`, `documenso-health.js`, the three `smoke:*` scripts and the five CI smoke steps with their uploads are gone; the readiness preflight runs instead (visible in each `verdict.json` stage list).
 - [ ] `AGENTS.md` and README updated (no remaining `smoke:medusa|cal|documenso`: `grep -rn "smoke:medusa\|smoke:cal\|smoke:documenso" README.md AGENTS.md package.json .github` finds nothing; `docs/plans` is excluded because the plans quote the old names).
 - [ ] Each journey runs standalone with plain `k6 run` (commands in README; the example JSON files).
-- [ ] `npm run check` exit 0 with **B + 16** (702 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 18** (706 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
