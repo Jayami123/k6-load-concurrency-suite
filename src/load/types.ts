@@ -91,6 +91,8 @@ export interface LoadContext {
   env: NodeJS.ProcessEnv; // the runner's environment (read-only)
   /** Free-form values set by setup and read by later stages (ids, base URLs). Never secrets. */
   config: Record<string, unknown>;
+  /** Non-serialisable objects shared by stages (Task 5: the telemetry handle). Never written to a file. */
+  handles: Record<string, unknown>;
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
   results: Partial<Record<StageName, StageResult>>;

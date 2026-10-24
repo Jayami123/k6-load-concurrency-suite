@@ -2103,7 +2103,7 @@ jobs:
   load-overhead:
     name: load-overhead
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 2
@@ -2125,7 +2125,7 @@ jobs:
         run: bash scripts/install-k6.sh
 
       - name: Telemetry self-test (P6-X-LOAD-002)
-        timeout-minutes: 4
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           status=0
@@ -2137,7 +2137,7 @@ jobs:
           exit "$status"
 
       - name: Sampler overhead self-test (P6-X-LOAD-006)
-        timeout-minutes: 6
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           status=0
@@ -2147,6 +2147,12 @@ jobs:
             status=0
           fi
           exit "$status"
+
+      - name: Print cgroup kind and runner identity (one-time probe)
+        timeout-minutes: 1
+        run: |
+          stat -fc 'cgroup fs: %T' /sys/fs/cgroup
+          env | grep -E '^(ImageOS|ImageVersion)=' || true
 
       - name: Job summary (LOAD table)
         if: ${{ !cancelled() }}

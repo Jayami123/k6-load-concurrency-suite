@@ -3,24 +3,22 @@ import os from "node:os";
 import { scanTree } from "../../scripts/evidence-token-scan.mjs";
 import { runK6 } from "./k6-process.ts";
 import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
-import { finishRunTelemetry, startRunTelemetry } from "./telemetry/run.ts";
+import { samplerStart, samplerStop, type TelemetryHandle } from "./telemetry/stages.ts";
 import { parseK6Summary } from "./summary.ts";
 import { judgeValidity } from "./validity.ts";
 import type { LoadContext, Stage, StageSet } from "./types.ts";
 
 const ok: Stage = async () => ({ ok: true, reasons: [] });
 
-/** Runs every K6RunSpec of the case, one k6 at a time (no two generators on a shared runner). Expected exit codes are judged in the verdict. */
+/**
+ * Runs every K6RunSpec of the case, one k6 at a time (no two generators on a shared runner). Expected exit codes are judged in the verdict.
+ * When samplerStart stored a telemetry handle, each run gets its own sampler and marker around its k6 process (Task 5).
+ */
 export const runAllK6: Stage = async (ctx: LoadContext) => {
   const specs = ctx.caseDef.runs(ctx);
+  const telemetry = ctx.handles.telemetry as TelemetryHandle | undefined;
   for (const spec of specs) {
-    const withTelemetry = spec.telemetry ?? Boolean(ctx.caseDef.telemetry);
-    const telemetry = withTelemetry
-      ? await startRunTelemetry(ctx, spec, ctx.caseDef.telemetry?.product ?? "stub")
-      : undefined;
-    const runSpec = telemetry
-      ? { ...spec, env: { ...spec.env, MARKER_URL: telemetry.marker.url } }
-      : spec;
+    const runSpec = (await telemetry?.beforeRun(spec)) ?? spec;
     let sampler: ResourceSampler | undefined;
     const result = await runK6({
       spec: runSpec,
@@ -32,7 +30,7 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
       },
     });
     result.resources = sampler?.stop();
-    if (telemetry) result.telemetry = await finishRunTelemetry(ctx, telemetry, result);
+    await telemetry?.afterRun(spec, result);
     ctx.k6.push(result);
   }
   return { ok: true, reasons: [], data: { runs: specs.length } };
@@ -53,9 +51,9 @@ export const scanOutDir: Stage = async (ctx: LoadContext) => {
 export const defaultStages: StageSet = {
   setup: ok,
   preflight: ok,
-  samplerStart: ok,
+  samplerStart,
   k6: runAllK6,
-  samplerStop: ok,
+  samplerStop,
   drain: ok,
   reconcile: ok,
   cleanup: ok,
