@@ -74,6 +74,24 @@ describe("medusa product setup and cleanup", () => {
     assert.equal(ctx.config.variantId, "var_1");
   });
 
+  it("stockFor decides the variant\'s stock and ctx.config.stock", async () => {
+    const seen: number[] = [];
+    const ctx = fakeCtx();
+    const out = await medusaSetupWith(
+      ctx,
+      deps({
+        stock: async (input) => {
+          seen.push(input.s);
+          return { productId: "prod_1", variantId: "var_1", inventoryItemId: "ii_1", title: "t" };
+        },
+      }),
+      (planned) => Math.ceil(planned / 2),
+    );
+    assert.equal(out.ok, true);
+    assert.deepEqual(seen, [30]);
+    assert.equal(ctx.config.stock, 30);
+  });
+
   it("the customer sweep pages and deletes only emails that start with the prefix", async () => {
     const prefix = "p6-qa-x-";
     // 5 emails contain the prefix but do not start with it (kept); 110 start with it (deleted); 10 are unrelated (never listed).

@@ -35,6 +35,7 @@
     "load:cal": "node scripts/load/run-load.ts --case P6-CAL-LOAD-001",
     "load:medusa": "node scripts/load/run-load.ts --case P6-MED-LOAD-001",
     "load:documenso": "node scripts/load/run-load.ts --case P6-DOC-LOAD-001",
+    "load:medusa-conservation": "node scripts/load/run-load.ts --case P6-MED-LOAD-002",
     "load:validity-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-004",
     "load:telemetry-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-002",
     "load:overhead-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-006",

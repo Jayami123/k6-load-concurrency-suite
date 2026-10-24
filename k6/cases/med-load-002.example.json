@@ -1,0 +1,12 @@
+{
+  "rate": 1,
+  "durationSec": 10,
+  "maxLatencyMs": 4000,
+  "baseUrl": "http://127.0.0.1:9000",
+  "publishableKey": "pk_placeholder",
+  "regionId": "reg_placeholder",
+  "salesChannelId": "sc_placeholder",
+  "variantId": "variant_placeholder",
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-med-load-002",
+  "stock": 5
+}

@@ -22,3 +22,16 @@ export function request(method, url, name, body, params = {}) {
 export function expectStatuses(...extra) {
   http.setResponseCallback(http.expectedStatuses({ min: 200, max: 299 }, ...extra));
 }
+
+/**
+ * A field of a JSON reply, or undefined when the body is not JSON (a 500 page, a proxy error). Never throws.
+ * @param {{ json: (path?: string) => unknown }} r
+ * @param {string} path
+ */
+export function safeJson(r, path) {
+  try {
+    return r.json(path);
+  } catch {
+    return undefined;
+  }
+}
