@@ -24,6 +24,29 @@ describe("documenso reconciliation", () => {
     assert.deepEqual(r.knownBugs, {});
   });
 
+  it("a completed envelope with exactly one completion audit row passes sealed-once", () => {
+    const r = evaluateDocumensoAudit(clean(), SCOPE, DRAINED);
+    assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, true);
+    assert.deepEqual(r.violations, []);
+  });
+
+  for (const completedAudit of [0, 2]) {
+    it(`a completed envelope with ${completedAudit} completion audit row(s) is a PRODUCT BUG`, () => {
+      const s = clean();
+      s.envelopes[0] = { ...s.envelopes[0]!, completedAudit };
+      const r = evaluateDocumensoAudit(s, SCOPE, DRAINED);
+      assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, false);
+      assert.ok(
+        r.violations.some(
+          (v) =>
+            v.kind === "PRODUCT BUG" &&
+            v.text ===
+              `completed envelope with ${completedAudit} completion audit row(s), expected 1`,
+        ),
+      );
+    });
+  }
+
   it("a stuck job after the drain is a PRODUCT BUG", () => {
     const s = clean();
     s.envelopes[0] = { ...s.envelopes[0]!, stuckJobs: 1 };

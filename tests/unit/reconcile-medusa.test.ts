@@ -62,6 +62,29 @@ describe("medusa reconciliation", () => {
     assert.equal(r.violations.filter((v) => v.knownBugId).length, 0);
   });
 
+  it("a client holding more orders than the database is a PRODUCT BUG (lost orders), not F-M2", () => {
+    const s = clean();
+    s.clientOrders = 4;
+    const r = evaluateMedusaAudit(s, SCOPE);
+    assert.ok(
+      r.violations.some(
+        (v) => v.kind === "PRODUCT BUG" && /client got 4 orders, database has 3/.test(v.text),
+      ),
+    );
+    assert.equal(r.knownBugs["F-M2"], undefined);
+  });
+
+  it("live orders by email that differ from the database count are a PRODUCT BUG, even when the client matches", () => {
+    const s = clean();
+    s.liveOrdersByEmail = 2;
+    const r = evaluateMedusaAudit(s, SCOPE);
+    assert.ok(
+      r.violations.some(
+        (v) => v.kind === "PRODUCT BUG" && /live orders by email 2 differ/.test(v.text),
+      ),
+    );
+  });
+
   it("a captured amount above the authorized amount is a PRODUCT BUG (capture cap)", () => {
     const s = clean();
     s.payments[0] = { amount: 10, captured: 11, refunded: 0 };
