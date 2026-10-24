@@ -14,8 +14,9 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 to 7 merged (Task 8 is independent).
 - **Harness pin.** Unchanged.
 - **Environment change.** None.
-- **Unit tests.** Baseline = the count after Task 8 (471 + 51 + 43 + 56 + 33 = 654 after Tasks 3 to 6, + 16 for Task 7, + 17 for Task 8 = **687** on today's base). This plan adds **+24** (§12); expected **711**. If Task 8 is not merged first the baseline is 670 and the result 694: deltas are what counts.
-- **Stop for owner review.** Yes (rule 10): `perf.yml` steps added; Q1 asks about the contract numbers; the no-backoff observation (§3.6) may need an owner label.
+- **Unit tests.** B = count on main when the build starts (today's chain: 719 after Tasks 1 to 8). This plan adds **+24** (§12); expected B + 24 (**743** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777. If Task 8 is not merged first the deltas still hold.
+- **Owner decisions taken (2026-10-24, recorded, not open).** D5 amended (Medusa only, Task 7). Q1 accept the 30 s drain and per-stage contracts. Q2 **no label yet** for the no-backoff webhook retry; if it is labelled later the id is `P6-OBS-DOC-004` (`-003` is taken), and only after `P6-DOC-LOAD-010` repeats three times (rule 13). Q3 yes, `-008` runs on PRs too, with the Documenso LOAD step caps of §10. All closed in §13.
+- **Stop for owner review.** Yes (rule 10): `perf.yml` steps added.
 
 ## 2. What it proves
 
@@ -70,8 +71,8 @@ The gate (Documenso retries a failed delivery at `DOCUMENSO_REF`) **passes**: up
 
 ### 3.6 Facts that change the roadmap text
 
-- The roadmap says the receiver is "after Phase 2 Task 4"; the current `src/receivers/webhook-receiver.ts` always answers 200 (line 74), so `-008` needs a **responder option** (`respond?: (delivery, index) => number`) in `startWebhookReceiver`. One additive parameter; the default behaviour does not change.
-- `P6-OBS-DOC-002` (double seal) is a parallel-completion bug; the journeys complete sequentially, so a double seal in these runs is new evidence and Task 6 flags it as `unexpected` (§7).
+- The roadmap says the receiver is "after Phase 2 Task 4"; the current `src/receivers/webhook-receiver.ts` always answers 200 (line 79), so `-008` needs a **responder option** (`respond?: (delivery, index) => number`) in `startWebhookReceiver`. One additive parameter; the default behaviour does not change.
+- `P6-OBS-DOC-002` (double seal) is a parallel-completion bug; the journeys complete sequentially, so a double seal in these runs is new evidence: Task 6 reports it under `knownBugs` and `unexpected`, and (owner decision, Task 6 Q1) an `unexpected` entry fails the run as `PRODUCT BUG (SUSPECTED)` (§7).
 
 ### 3.7 What the probe could not confirm ("build-time probe must confirm")
 
@@ -88,7 +89,7 @@ The interface list above, plus from `main`: `src/documenso/oracle.ts` (`SEAL_JOB
 | #   | Check                      | Command                                                                                                                                                | Expected                                                                                                    |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | 1   | Base                       | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                          | descendant of `5acd2a0`                                                                                     |
-| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                    | exit 0, `# tests 687` (or what Tasks 7/8 left)                                                              |
+| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                    | exit 0, `# tests` = B (719 once Tasks 1 to 8 are merged)                                                    |
 | 3   | Task 7 names               | `grep -n "export function runDocSign\|export async function documensoSetup\|p6_docs_completed" k6/journeys/doc-sign.js src/load/products/documenso.ts` | found; otherwise stop and report                                                                            |
 | 4   | Receiver default           | `grep -n "writeHead(200" src/receivers/webhook-receiver.ts`                                                                                            | one hit, status 200 constant (the responder option replaces it)                                             |
 | 5   | Retry behaviour at the ref | the §3.5 fail-first probe on the VM, 5 documents                                                                                                       | per event: FAILED then SUCCESS, `retried=1`; if not, `-008` moves to "Later" with the evidence              |
@@ -116,7 +117,7 @@ tests/unit/webhook-receiver-respond.test.ts, pipeline-lag.test.ts, pipeline-tabl
 ### 6.2 The receiver responder (`src/receivers/webhook-receiver.ts`)
 
 ```ts
-export type Responder = (delivery: WebhookDelivery, index: number) => number; // returns the HTTP status to answer
+export type Responder = (delivery: WebhookDelivery, index: number) => number; // returns the HTTP status to answer; optional
 export async function startWebhookReceiver(opts: {
   publicHost: string;
   check: SecretCheck;
@@ -130,7 +131,7 @@ export async function startWebhookReceiver(opts: {
 export function failFirstPerEvent(keyOf: (d: WebhookDelivery) => string): Responder;
 ```
 
-`WebhookDelivery` gains `status: number` (default 200). The event key is `event + ":" + payload document id`, taken from the parsed body.
+`WebhookDelivery` gains an **optional** `status?: number` (the status answered; 200 when no responder is given). The `respond` option is optional with default 200, so every existing caller and `tests/unit/receivers-webhook-receiver.test.ts` stay unchanged and green (that file is not edited; the new tests live in `tests/unit/webhook-receiver-respond.test.ts`, which covers the default answer and a non-200 answer). The event key is `event + ":" + payload document id`, taken from the parsed body.
 
 ### 6.3 `joinStages` and `summariseLag` (`src/load/pipeline-lag.ts`, pure)
 
@@ -222,14 +223,14 @@ export const DOC_LOAD_008: LoadCase = { ...same shape, id: "P6-DOC-LOAD-008", ti
 
 ## 7. Oracles and assertions
 
-| Case   | Assertion (post-load, plus the journey's k6 checks `== 1`)                                                              | Kind if it fails                                                                                                |
-| ------ | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `-002` | every completed document reaches seal, webhook job, webhook call, receiver and email, **exactly once** (`counts` are 1) | PRODUCT BUG (missing or duplicated stage, with document count and stage name)                                   |
-| `-002` | every stage is reached within 30 s of the last signature; backlog drains within 30 s of the last request                | PRODUCT BUG (with the pending job ids as evidence)                                                              |
-| `-002` | envelopes `COMPLETED` equal `p6_docs_completed`; no job stuck after drain (Task 6 audit)                                | PRODUCT BUG                                                                                                     |
-| `-002` | a double seal with sequential completions                                                                               | not a violation: `knownBugs["P6-OBS-DOC-002"]` and `unexpected` (new evidence, Task 6 wording); the Task 6 rule |
-| `-008` | per event: 500 then 200 at the receiver; `WebhookCall` FAILED then SUCCESS; job `retried == 1`; document `COMPLETED`    | PRODUCT BUG                                                                                                     |
-| both   | `dropped_iterations == 0`, VUs below the cap, runner not saturated                                                      | INVALID (Task 4), never hides a correctness failure                                                             |
+| Case   | Assertion (post-load, plus the journey's k6 checks `== 1`)                                                              | Kind if it fails                                                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-002` | every completed document reaches seal, webhook job, webhook call, receiver and email, **exactly once** (`counts` are 1) | PRODUCT BUG (missing or duplicated stage, with document count and stage name)                                                                                                                                                       |
+| `-002` | every stage is reached within 30 s of the last signature; backlog drains within 30 s of the last request                | PRODUCT BUG (with the pending job ids as evidence)                                                                                                                                                                                  |
+| `-002` | envelopes `COMPLETED` equal `p6_docs_completed`; no job stuck after drain (Task 6 audit)                                | PRODUCT BUG                                                                                                                                                                                                                         |
+| `-002` | a double seal with sequential completions                                                                               | counted under `knownBugs["P6-OBS-DOC-002"]` **and** `unexpected`; an `unexpected` entry fails the run as `PRODUCT BUG (SUSPECTED)` (Task 6 owner decision): new evidence, repeated three times (rule 13) before the owner labels it |
+| `-008` | per event: 500 then 200 at the receiver; `WebhookCall` FAILED then SUCCESS; job `retried == 1`; document `COMPLETED`    | PRODUCT BUG                                                                                                                                                                                                                         |
+| both   | `dropped_iterations == 0`, VUs below the cap, runner not saturated                                                      | INVALID (Task 4), never hides a correctness failure                                                                                                                                                                                 |
 
 Recorded, not asserted: p50/p95/max of each stage lag, `drainMs`. **PRODUCT BUG vs TEST BUG.** Setup errors (no token, receiver not reachable from the container, join key missing from a body) are TEST BUG; a missing stage, a duplicate or a retry that does not happen is PRODUCT BUG with the counts as evidence. No `test.fail()`: no new bug was proven; if the build run shows a missing stage or a double seal, repeat three times (rule 13) and report it SUSPECTED.
 
@@ -243,19 +244,22 @@ New artefact: `pipeline-lag.json` (counts and milliseconds only). Delivery bodie
 
 ## 10. CI budget
 
-Convention: worst case = slowest measured job + additions; at least 10 minutes under the timeout; no timeout raised. VM step time per case (full profile): setup 1 + k6 30 + drain 3 + joins 1 + cleanup of 30 documents 5 + scan 5 ≈ 45 s, doubled for the runner = **1.5 min**; `-008` the same plus about 1 s.
+Convention (one for every Phase 3 plan, Task 3 §9): worst case = Phase 2 closeout §2.7 worst case (`documenso-smoke` 6.1 min, run 39821517901, + 0.8 allowance = 6.9) + the Task 1 cold start (Documenso +2.0, estimate) + the image pull at its 6-minute cap minus the measured 0.3 (+5.7) + each new step, "estimates" at its measured/estimated duration and "at caps" at its `timeout-minutes`; at least 10 minutes under the job timeout; no timeout raised. Base 6.9 + 2.0 + 5.7 = **14.6**. VM step time per case (full profile): setup 1 + k6 30 + drain 3 + joins 1 + cleanup of 30 documents 5 + scan 5 ≈ 45 s, doubled for the runner = **1.5 min**; `-008` the same plus about 1 s.
 
-| Job               | Slowest green (min) | Task 3 install (cap) | Retired smoke (Task 7) | Task 7 LOAD (est.) | `-002` (est.) | `-008` (est.) | Worst, estimates (min) | Worst, every new step at its cap 6 min (min) | Timeout | Margin (caps) |
-| ----------------- | ------------------- | -------------------- | ---------------------- | ------------------ | ------------- | ------------- | ---------------------- | -------------------------------------------- | ------- | ------------- |
-| `documenso-smoke` | 6.9                 | +3.0                 | −0.02                  | +1.5               | +1.5          | +1.5          | 14.4                   | 6.9 + 3.0 − 0.02 + 6 + 6 + 6 = 27.9          | 45      | **17.1**      |
+**One cap rule for all four Documenso LOAD steps (Tasks 7, 9 and 10): `timeout-minutes` 4 on `main`/dispatch, 3 on pull requests.** Estimate 1.5 min, 80 % stop rule 3.2 min (main) and 2.4 min (PR): the estimate sits under both.
 
-Both bounds keep at least 10 minutes of margin. Steps (after the Task 7 LOAD step, before "Check Documenso artefacts for tokens"):
+| Job                                                                          | Base (min) | Task 3 install (estimate / cap) | Retired smoke | Steps (estimates / caps) | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin (caps) |
+| ---------------------------------------------------------------------------- | ---------- | ------------------------------- | ------------- | ------------------------ | ---------------------- | -------------------- | ------- | ------------- |
+| `documenso-smoke` through this task (Task 7 step, `-002`, `-008`)            | 14.6       | 0.04 / 2.0                      | −0.02         | 3 × 1.5 / 3 × 4.0        | 19.1                   | 28.6                 | 45      | 16.4          |
+| `documenso-smoke` with Task 10's `P6-DOC-LOAD-007` as well (the fourth step) | 14.6       | 0.04 / 2.0                      | −0.02         | 4 × 1.5 / 4 × 4.0        | 20.6                   | **32.6**             | 45      | **12.4**      |
+
+Every margin is at least 10 minutes at caps; no timeout is raised. Each new step and its 80 % stop rule: `P6-DOC-LOAD-002` and `-008` caps 4 main / 3 PR (estimate 1.5, stop 3.2 / 2.4); token scan cap 2 (estimate 0.1, stop 1.6); `load-documenso` upload cap 3 (estimate 0.2, stop 2.4). Steps (after the Task 7 LOAD step, before "Check Documenso artefacts for tokens"):
 
 ```yaml
 - name: LOAD P6-DOC-LOAD-002 pipeline lag (functional load, not capacity)
   if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
   working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-  timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+  timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
   run: |
     set -euo pipefail
     status=0
@@ -264,7 +268,7 @@ Both bounds keep at least 10 minutes of margin. Steps (after the Task 7 LOAD ste
     exit "$status"
 ```
 
-and the same for `P6-DOC-LOAD-008` (`npm run load:documenso-webhook-retry`). Stage times and the drain time appear in the job summary through `formatPipelineRows` (Task 4's summary step reads `pipeline-lag.json`); the existing `results/load` token scan and `load-documenso` upload cover the new artefacts. Trials: none (not a race).
+and the same for `P6-DOC-LOAD-008` (`npm run load:documenso-webhook-retry`, same caps). Stage times and the drain time appear in the job summary through `formatPipelineRows` (Task 4's summary step reads `pipeline-lag.json`); the existing `results/load` token scan and `load-documenso` upload cover the new artefacts. Trials: none (not a race).
 
 ## 11. Environment changes
 
@@ -272,7 +276,7 @@ None. Documenso still needs Node 24 (`scripts/harness.mjs` picks `/opt/node24`);
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-doc-load-pipeline-lag origin/main` (after Task 7 is merged). Counts relative to B (687 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-doc-load-pipeline-lag origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 719 today).
 
 | Step | Commit subject                                                                   | `git add` paths                                                                                                                                                                         | `npm run check` expected           |
 | ---- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -285,7 +289,7 @@ Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git s
 | 6    | `ci(perf): run the pipeline lag and webhook retry loads in documenso-smoke`      | `.github/workflows/perf.yml`                                                                                                                                                            | exit 0 (actionlint silent), B + 24 |
 | 7    | `docs: document the pipeline lag and webhook retry load cases`                   | `README.md`                                                                                                                                                                             | exit 0, B + 24                     |
 
-New unit tests, by name (24): `webhook-receiver-respond` (3: default answers 200; the responder's status is sent and recorded; `failFirstPerEvent` answers 500 then 200 per event key); `pipeline-lag` (12: all stages reached once; lag computed from the last signature; a missing seal; a missing receiver delivery; a duplicated email job; a delivery that answered 500 is not counted as `receiverOk`; email matched by envelope; a document without `completedAt`; `summariseLag` percentiles on a fixed list; `overContract` counts a stage over 30 s; `missing` and `duplicated` counts; empty input is a TEST BUG signal); `pipeline-lag-stage` (2: `drained: false` becomes a PRODUCT BUG with the pending ids; `pipeline-lag.json` passes `findHits`); `pipeline-table` (1: rows show p50/p95/max per stage and the drain time); `webhook-retry` (6: clean fail-first passes; no retry at all; a second 500; a duplicate 200; the job not retried once; an envelope not `COMPLETED`). Sum 3 + 12 + 2 + 1 + 6 = **24**. Cumulative: step 1 +3; step 2 +12 → B+15; step 3 +3 → B+18; step 4 +6 → B+24.
+New unit tests, by name (24): `webhook-receiver-respond` (3: with no responder the answer stays 200 with body `{"ok":true}` and the delivery records `status` 200; the responder's status is sent and recorded; `failFirstPerEvent` answers 500 then 200 per event key); `pipeline-lag` (12: all stages reached once; lag computed from the last signature; a missing seal; a missing receiver delivery; a duplicated email job; a delivery that answered 500 is not counted as `receiverOk`; email matched by envelope; a document without `completedAt`; `summariseLag` percentiles on a fixed list; `overContract` counts a stage over 30 s; `missing` and `duplicated` counts; empty input is a TEST BUG signal); `pipeline-lag-stage` (2: `drained: false` becomes a PRODUCT BUG with the pending ids; `pipeline-lag.json` passes `findHits`); `pipeline-table` (1: rows show p50/p95/max per stage and the drain time); `webhook-retry` (6: clean fail-first passes; no retry at all; a second 500; a duplicate 200; the job not retried once; an envelope not `COMPLETED`). Sum 3 + 12 + 2 + 1 + 6 = **24**. Cumulative: step 1 +3; step 2 +12 → B+15; step 3 +3 → B+18; step 4 +6 → B+24.
 Before step 6 run each case once on the VM (`npm run up:documenso`; `npm run load:documenso-pipeline -- --profile pr`; `npm run load:documenso-webhook-retry -- --profile pr`; `npm run down:documenso`): both PASS. After step 7: `git push -u origin feat/<build date>-p6-doc-load-pipeline-lag`, `gh pr create` (rule A3), read CI once (rule 15), one `workflow_dispatch` on `main` after merge. Merge only when the owner says "merge".
 
 ## 13. Risks, proposed extras, open questions
@@ -296,34 +300,34 @@ Before step 6 run each case once on the VM (`npm run up:documenso`; `npm run loa
 | R2  | Inbucket timestamps or message matching are unreliable     | email is also seen through the `send.document.completed.emails` job; the Inbucket check is an additional stage and its absence is reported with counts |
 | R3  | Drain longer than the step timeout                         | contract 30 s against a measured 3 s; the step cap is 6 minutes                                                                                        |
 | R4  | The receiver unreachable from the container on a runner    | `startRun` already solves the host name; the preflight stage fails as ENV, not as a product bug                                                        |
-| R5  | A double seal appears with sequential completions          | Task 6 reports it as `unexpected`; repeat three times and report SUSPECTED, owner labels                                                               |
+| R5  | A double seal appears with sequential completions          | Task 6 reports it as `unexpected`, which fails the run as `PRODUCT BUG (SUSPECTED)`; repeat three times (rule 13) and report; the owner labels         |
 
 **Contradictions with the roadmap.** (1) The receiver "after Phase 2 Task 4" cannot choose its answer; §6.2 adds the option. (2) None else; the gate for `-008` passes, so it stays in scope rather than "Later".
 
-**Observation for the owner (no label assumed).** Documenso's local jobs provider retries a failed webhook three times with **no backoff** (11 to 16 ms between attempts), so a subscriber that is down for even a second loses the event permanently. Proposed label if the owner wants one: `P6-OBS-DOC-003` (suspected design weakness; evidence: `WebhookCall` rows and job `retried=3` in the fail-always probe, §3.5). The cloud and CI runs use the local provider; a production deployment with another provider may differ.
+**Observation for the owner (no label yet; owner decision Q2).** Documenso's local jobs provider retries a failed webhook three times with **no backoff** (11 to 16 ms between attempts), so a subscriber that is down for even a second loses the event permanently. Recommendation, adopted by the owner: **no label until `P6-DOC-LOAD-010` repeats three times (rule 13)**, scoped to the local jobs provider only (the CI and cloud runs use it; another provider may differ), **no `test.fail()`, no public issue**. If it is labelled later the id is `P6-OBS-DOC-004` (`P6-OBS-DOC-003` is taken). Evidence so far: `WebhookCall` rows and job `retried=3` in the fail-always probe (§3.5).
 
 **Proposed extras (out of scope until accepted; new IDs).**
 
 - `P6-DOC-LOAD-010`: fail-always receiver at the fixed rate, recording attempts, spacing and the final job state (`FAILED`, `retried=3`) as a characterisation of the retry budget, with the document asserted unaffected.
 - `P6-X-LOAD-019`: add a `--drain-contract-seconds` option to `run-load.ts` for local probes only (not used in CI).
 
-**Open questions for the owner.**
+**Owner decisions (all three questions closed 2026-10-24).**
 
-- **Q1.** Contract numbers: 30 s drain and 30 s per-stage bound (10× the measured 3 s). Accept, or a tighter/looser value?
-- **Q2.** Label `P6-OBS-DOC-003` for the no-backoff webhook retries: yes, no, or only after the extra `-010` run?
-- **Q3.** Run `-008` on PRs as well as on `main` (proposed: yes, 10 s profile, 1.5 min on the runner)?
+- **Q1 (closed: accept).** Contract numbers: 30 s drain and 30 s per-stage bound (10× the measured 3 s). Accept, or a tighter/looser value?
+- **Q2 (closed: no label yet; `P6-OBS-DOC-004` only after `-010` repeats three times; no `test.fail()`, no public issue).** Label for the no-backoff webhook retries.
+- **Q3 (closed: yes, with the caps of §10).** Run `-008` on PRs as well as on `main` (proposed: yes, 10 s profile, 1.5 min on the runner)?
 
 ## 14. Done when (roadmap, made measurable)
 
 - [ ] `P6-DOC-LOAD-002` VALID and green on the PR and once on `main`: every document reaches every stage exactly once, backlog drains within 30 s, `verdict.json` outcome `PASS`, `pipeline-lag.json` shipped.
 - [ ] `P6-DOC-LOAD-008` VALID and green the same way: one accepted delivery per event, `WebhookCall` FAILED then SUCCESS.
 - [ ] Stage p50/p95/max and the drain time are in the job summary and in the artefacts after a clean token scan; none of them is published as a performance number.
-- [ ] `npm run check` exit 0 with **B + 24** (711 on today's base); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 24** (743 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
 - (a) Done-when in §14; gaps: the join keys (§5 check 6), the rate and contracts on the runner (§3.7), settled at build time and by three dispatch runs.
-- (b) Existing names grepped at `5acd2a0`: `src/documenso/oracle.ts` SQL names and readers (§4), `src/receivers/webhook-receiver.ts` (`writeHead(200` line 74), `startRun`/`endRun`. NEW: `joinStages`, `summariseLag`, `pipelineStage`, `judgeWebhookRetry`, `failFirstPerEvent`, `formatPipelineRows`, the two cases and scripts. Names from Tasks 3 to 7 are checked at build time (§5 check 3).
-- (c) CI time: §10, both bounds.
+- (b) Existing names grepped at `5acd2a0`: `src/documenso/oracle.ts` SQL names and readers (§4), `src/receivers/webhook-receiver.ts` (`writeHead(200` line 79), `startRun`/`endRun`. NEW: `joinStages`, `summariseLag`, `pipelineStage`, `judgeWebhookRetry`, `failFirstPerEvent`, `formatPipelineRows`, the two cases and scripts. Names from Tasks 3 to 7 are checked at build time (§5 check 3).
+- (c) CI time: §10, estimates and at caps (32.6 of 45 with all four Documenso LOAD steps, margin 12.4).
 - (d) Skeletons: §6. Steps with `git add` paths and expected counts: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q3 are recorded in §1 and §13.
