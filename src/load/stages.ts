@@ -27,6 +27,7 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
       outDir: ctx.outDir,
       config: ctx.config,
       env: ctx.env,
+      secrets: ctx.secrets,
       onStart: (pid) => {
         sampler = startResourceSampler(pid);
       },
