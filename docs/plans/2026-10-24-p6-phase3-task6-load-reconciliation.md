@@ -14,7 +14,8 @@ Task 4 plan ([task4](2026-10-24-p6-phase3-task4-load-validity.md) §6.7: the `re
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 and 4 merged (Task 5 is independent).
 - **Harness pin assumed.** Any. No product is started by the build; the unit tests use fixtures.
 - **Environment change.** None (§11).
-- **Unit tests.** Baseline = Task 4's result (471 + 51 + 43 = **565** on today's base; Task 5 may also have merged: the deltas are relative). This plan adds **+33** (§12); expected **598** on today's base.
+- **Unit tests.** B = count on main when the build starts (today's chain: 653 after Tasks 1 to 5; Task 5 is independent, so the deltas are what counts). This plan adds **+33** (§12); expected B + 33 (**686** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 known bugs are counted, not failed, **but an `unexpected` entry fails the run** (a known bug seen where it should not occur is new evidence). Q2 (and Task 8 Q2) `F-M2` ghost orders are counted until fixed upstream, then the flag flips to fail (the flip is a recorded follow-up, §13). Q3 accept the 30 s drain contract. Q4 accept. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a shared runner changes, and the owner labels product bugs.
 
 ## 2. What it proves
@@ -316,14 +317,19 @@ export const reconcileStage: Stage = async (ctx) => {
         reasons: ["audit.json matched a token pattern; not kept"],
       };
     const bad = result.violations;
+    const surprises = result.unexpected; // owner decision Q1: a known bug where it should not occur fails the run
     return {
-      ok: bad.length === 0,
-      kind: bad.some((v) => v.kind === "PRODUCT BUG")
-        ? "PRODUCT BUG"
-        : bad.length
-          ? "TEST BUG"
-          : undefined,
-      reasons: bad.map((v) => `${v.kind}: ${v.text}`),
+      ok: bad.length === 0 && surprises.length === 0,
+      kind:
+        bad.some((v) => v.kind === "PRODUCT BUG") || surprises.length
+          ? "PRODUCT BUG"
+          : bad.length
+            ? "TEST BUG"
+            : undefined,
+      reasons: [
+        ...bad.map((v) => `${v.kind}: ${v.text}`),
+        ...surprises.map((s) => `PRODUCT BUG (SUSPECTED, unexpected known bug): ${s}`),
+      ],
       data: {
         audit: "audit.json",
         rowsSeen: result.rowsSeen,
@@ -365,7 +371,7 @@ export function composeStages(...stages: Stage[]): Stage {
 ```
 
 - `urlFor`: `medusaDatabaseUrlFromEnv()`, `calDatabaseUrlFromEnv()`, `documensoDatabaseUrlFromEnv()` (all on `main`).
-- A violation of kind `PRODUCT BUG` makes the run `FAIL` through `evaluateVerdict` (Task 3: a stage result of kind `PRODUCT BUG`), with the audit lines as `reasons`. `knownBugs`, `unexpected` and `pending` are copied into `verdict.json` under `audit` and shown in the job summary table (a "known bugs" column), so a known bug is always visible.
+- A violation of kind `PRODUCT BUG` makes the run `FAIL` through `evaluateVerdict` (Task 3: a stage result of kind `PRODUCT BUG`), with the audit lines as `reasons`. An `unexpected` entry (a known bug seen where it should not occur, e.g. a Documenso double seal with sequential completions) also makes the run `FAIL`, as `PRODUCT BUG (SUSPECTED)`: the owner labels it after rule 13 repeats. Plain `knownBugs` counts never fail the run. `knownBugs`, `unexpected` and `pending` are copied into `verdict.json` under `audit` and shown in the job summary table (a "known bugs" column), so a known bug is always visible.
 - Task 4's validity runs before this stage and never reads its output; INVALID cannot hide a violation, and a violation cannot be turned into INVALID (Task 3 precedence).
 - The k6 summary's custom counter names are fixed here for Tasks 7 to 10: Cal `p6_bookings_accepted`, Medusa `p6_orders`, Documenso `p6_docs_completed` (each a k6 `Counter`).
 
@@ -403,8 +409,8 @@ No email, attendee address, document title, URL or uid is copied into the audit 
 
 ## 10. CI
 
-None on its own, as the roadmap says: the unit tests run inside `npm run check`; no `perf.yml` change, no job added, no timeout touched. The first product run, and with it the first live `audit.json`, is Task 7's CI.
-Budget: none changes (unit tests add about 1.5 s to `npm run check`, measured 3.6 s for 471 tests).
+None on its own, as the roadmap says: the unit tests run inside `npm run check`; no `perf.yml` change, no job added, no new step (so no step cap or stop rule), no timeout touched. The first product run, and with it the first live `audit.json`, is Task 7's CI.
+Budget (one convention for every Phase 3 plan, Task 3 §9): no job changes, so the estimates and the at-caps columns equal the Task 1 to 5 figures; the unit tests add about 1.5 s to `npm run check` (measured 3.6 s for 471 tests). Nothing to add to the worst-case tables.
 
 ## 11. Environment changes
 
@@ -428,7 +434,7 @@ New unit tests, by name (the 33):
 - `reconcile-cal` (7): clean snapshot passes; an overlap pair goes to `knownBugs["P6-OBS-CAL-002"]` and is not a violation; client says 5 accepted, database holds 4 (PRODUCT BUG); database holds more than the client was told (PRODUCT BUG); a pending booking (PRODUCT BUG); zero rows (TEST BUG); both SQL strings pass `assertSelectOnly` and take the prefix as a parameter.
 - `reconcile-medusa` (11): clean passes; oversold (orders above stock); reservation rows differ from orders; `inventory_level.reserved` differs from reservation rows; available negative; ghost order goes to `knownBugs["F-M2"]`; captured above authorised; refunded above captured; payments not one per order; zero rows (TEST BUG); the payment SQL passes `assertSelectOnly`.
 - `reconcile-documenso` (8): clean passes; a stuck job after drain; a double seal goes to `knownBugs["P6-OBS-DOC-002"]` and, with sequential completions, to `unexpected`; a completed envelope with no seal (PRODUCT BUG); client completed count differs; zero rows (TEST BUG); `waitForDrain` returns as soon as the count is 0 (fake pool); `waitForDrain` times out and reports `drained: false`.
-- `reconcile-index` (6): `composeStages` runs stages in order and merges their `data`; `composeStages` keeps going after a not-ok stage but reports the first failure kind; violations map to `kind: "PRODUCT BUG"` and `ok: false`; known bugs only keeps `ok: true` and copies them into `data`; `audit.json` with a token-shaped detail is refused; a case without `ctx.config.audit` is skipped. `load-table` (+1): the known-bugs column shows ids and counts.
+- `reconcile-index` (6): `composeStages` runs stages in order and merges their `data`; `composeStages` keeps going after a not-ok stage but reports the first failure kind; violations map to `kind: "PRODUCT BUG"` and `ok: false`; known bugs only keeps `ok: true` and copies them into `data`, while an `unexpected` entry gives `ok: false` with kind `PRODUCT BUG` (the same test, asserting both outcomes; the count is unchanged); `audit.json` with a token-shaped detail is refused; a case without `ctx.config.audit` is skipped. `load-table` (+1): the known-bugs column shows ids and counts.
   Sum: 7 + 11 + 8 + 6 + 1 = **33**. Cumulative: step 1 +7 → B+7; step 2 +11 → B+18; step 3 +8 → B+26; step 4 +7 → B+33.
 
 After step 5: `git push -u origin feat/<build date>-p6-load-reconciliation`, `gh pr create` (rule A3), read CI once (rule 15). Merge only when the owner says "merge".
@@ -456,16 +462,18 @@ After step 5: `git push -u origin feat/<build date>-p6-load-reconciliation`, `gh
 - `P6-X-LOAD-015`: an audit of the audit: after a LOAD run, delete one run-created row from a throwaway copy of the snapshot and prove the audit fails (mutation test of the evaluators against real DB rows, not only fixtures).
 - `P6-X-LOAD-016`: reconcile the Medusa cart table (`completed_at` set but no order) as a second ghost-order signal.
 
-**Open questions for the owner.**
+**Recorded follow-up (no new ID, a BACKLOG item).** When `F-M2` is fixed upstream, flip the `evaluateMedusaAudit` flag so ghost orders fail the run, and update the two unit tests that assert the count-only behaviour.
 
-- **Q1.** Known-bug counts (`P6-OBS-CAL-002`, `P6-OBS-DOC-002`, `F-M2`) are reported but do not fail a LOAD run (proposed). Alternative: fail the run when a known bug appears at a rate above a recorded baseline. Which?
-- **Q2.** `F-M2` ghost orders under load: count only (proposed) or fail?
-- **Q3.** Drain contract 30 s for the audit (Task 9 sets its own lag contract): accept?
-- **Q4.** Accept that `P6-X-LOAD-005` is unit-evidenced until Task 7 produces the first live `audit.json`?
+**Owner decisions (all four questions closed 2026-10-24).**
+
+- **Q1 (closed: count only, but fail on `unexpected`).** Known-bug counts (`P6-OBS-CAL-002`, `P6-OBS-DOC-002`, `F-M2`) are reported but do not fail a LOAD run (proposed). Alternative: fail the run when a known bug appears at a rate above a recorded baseline. Which?
+- **Q2 (closed: count `F-M2` until fixed upstream, then flip to fail).** `F-M2` ghost orders under load: count only (proposed) or fail?
+- **Q3 (closed: accept 30 s).** Drain contract 30 s for the audit (Task 9 sets its own lag contract): accept?
+- **Q4 (closed: accept).** Accept that `P6-X-LOAD-005` is unit-evidenced until Task 7 produces the first live `audit.json`?
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green with a clean and a violating snapshot per product: `npm run check` exit 0 with **B + 33** (598 on today's base).
+- [ ] Unit tests green with a clean and a violating snapshot per product: `npm run check` exit 0 with **B + 33** (686 on today's chain).
 - [ ] The runner calls the audit in the `reconcile` slot and maps a `PRODUCT BUG` violation to a `FAIL` outcome with the evidence lines (`reconcile-index` tests).
 - [ ] Known bugs are counted under their ids (`P6-OBS-CAL-002`, `P6-OBS-DOC-002`, `F-M2`) in `audit.json`, `verdict.json` and the job summary column.
 - [ ] Each audit asserts at least one run-created row; scope is the run prefix only.
@@ -479,4 +487,4 @@ After step 5: `git push -u origin feat/<build date>-p6-load-reconciliation`, `gh
   NEW: everything under `src/load/reconcile/` and the four test files.
 - (c) CI time: no CI change (§10).
 - (d) Skeletons: §6. Steps with `git add` paths, subjects and expected output: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q4 are recorded in §1 and §13.
