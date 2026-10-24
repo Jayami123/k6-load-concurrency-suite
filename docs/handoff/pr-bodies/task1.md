@@ -42,8 +42,8 @@ The lock resolves `qa-portfolio-harness` to `43dc0da7874a50d709b328bfb492e1e091a
 
 v0.2.15 run: 40096190170 (perf.yml workflow_dispatch on 52b8b9c, the head before this docs commit): **all nine jobs success**.
 The two cal jobs passed `Start Cal (harness up)`: `cal-smoke` in 4 min 35 s and `cal-state-races` in 3 min 04 s, where v0.2.14 failed
-the same step after 5 min. Jobs: twenty-smoke 3 min 41 s, twenty-races 6 min 37 s (job timings from the run), medusa-smoke, medusa-order-races,
-medusa-cancel-extras, documenso-smoke, twenty-obs and cal-state-races, all success.
+the same step after 5 min. The other seven jobs (twenty-smoke, twenty-races, twenty-obs, medusa-smoke, medusa-order-races, medusa-cancel-extras,
+documenso-smoke) also succeeded.
 Earlier v0.2.14 run: 40077117412 (below).
 
 ## Budget
