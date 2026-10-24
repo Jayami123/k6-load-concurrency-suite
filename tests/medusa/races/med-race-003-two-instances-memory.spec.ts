@@ -72,7 +72,9 @@ test.describe("P6-MED-RACE-003 two Medusa backends, in-memory lock (characteriza
       type: "characterization",
       description: `P6-MED-RACE-003: in-memory lock across two instances oversold in ${oversold} of ${valid.length} trials (expected; shows why a shared lock is required)`,
     });
-    // Hard invariants of checkMemoryLockCharacterization held in every trial (the verdict above).
+    // Hard invariants of checkMemoryLockCharacterization held in every trial (the verdict above): no ghost orders, orderCount =
+    // uniqueOrderIds = httpWinnerCount = reservationQty, and orders <= N. No instances x S bound is asserted: run 40119155757 has
+    // one backend admitting 4 for S=3 in 7 trials, and it passed. Per-backend and per-trial oversell counts are the findings above.
     // The documented behaviour: at least one oversell in the trials (see §7.3 of the plan for the miss probability).
     expect(oversold).toBeGreaterThanOrEqual(1);
   });
