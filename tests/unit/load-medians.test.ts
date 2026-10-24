@@ -82,6 +82,14 @@ describe("load medians", () => {
     assert.equal(s.n, 2);
   });
 
+  it("summarizeMedian is insufficient when fewer than three runs carry the metric", () => {
+    const s = summarizeMedian([run("a", 1), run("b", 2), run("c", 3)], (r) =>
+      r.verdict.runId === "c" ? undefined : 1,
+    );
+    assert.equal(s.n, 2);
+    assert.equal(s.insufficient, true);
+  });
+
   it("excluded runs list their reasons", () => {
     const s = summarizeMedian([run("bad", 1, { outcome: "FAIL" })], () => 1);
     assert.equal(s.excludedCount, 1);

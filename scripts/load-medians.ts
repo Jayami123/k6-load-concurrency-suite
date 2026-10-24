@@ -9,7 +9,8 @@ import { validateRunMeta } from "../src/load/run-meta.ts";
 const args = process.argv.slice(2);
 const metricIndex = args.indexOf("--metric");
 const metric = metricIndex === -1 ? "requests" : args[metricIndex + 1];
-const folders = args.filter((a, i) => a !== "--metric" && i !== metricIndex + 1);
+const folders =
+  metricIndex === -1 ? args : args.filter((a, i) => a !== "--metric" && i !== metricIndex + 1);
 if (folders.length === 0 || !["requests", "dropped", "iterations"].includes(metric ?? "")) {
   console.error("usage: load-medians.ts <folder>... --metric requests|dropped|iterations");
   process.exit(2);
@@ -21,7 +22,7 @@ const runs: LoadRunRecord[] = folders.map((folder) => ({
 }));
 const pick = (r: LoadRunRecord) => {
   const k6 = (r.verdict as { k6?: Array<Record<string, number>> }).k6?.[0];
-  return k6?.[metric === "iterations" ? "requests" : (metric ?? "requests")];
+  return k6?.[metric ?? "requests"];
 };
 const s = summarizeMedian(runs, pick);
 console.log(

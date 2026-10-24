@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { evaluateVerdict, runLoad, summaryFor } from "../../src/load/runner.ts";
+import { evaluateVerdict, invalidReasons, runLoad, summaryFor } from "../../src/load/runner.ts";
 import { validityStage } from "../../src/load/stages.ts";
 import type {
   K6RunResult,
@@ -154,6 +154,15 @@ describe("load runner", () => {
       pid: 0,
     };
     assert.deepEqual(summaryFor(k), { label: "main", exitCode: 137, summary: "unreadable" });
+  });
+
+  it("invalidReasons turns validityStage strings into { code, detail } objects", () => {
+    assert.deepEqual(invalidReasons(["main: CPU_SATURATED: cores 3.9 of 4: over the limit"]), [
+      { label: "main", code: "CPU_SATURATED", detail: "cores 3.9 of 4: over the limit" },
+    ]);
+    assert.deepEqual(invalidReasons(["no separators"]), [
+      { code: "UNPARSED", detail: "no separators" },
+    ]);
   });
 });
 

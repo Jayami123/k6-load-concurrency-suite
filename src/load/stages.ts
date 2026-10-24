@@ -5,7 +5,7 @@ import { runK6 } from "./k6-process.ts";
 import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
 import { parseK6Summary } from "./summary.ts";
 import { judgeValidity } from "./validity.ts";
-import type { LoadContext, Stage, StageSet } from "./types.ts";
+import type { K6RunResult, LoadContext, Stage, StageSet } from "./types.ts";
 
 const ok: Stage = async () => ({ ok: true, reasons: [] });
 
@@ -14,15 +14,21 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
   const specs = ctx.caseDef.runs(ctx);
   for (const spec of specs) {
     let sampler: ResourceSampler | undefined;
-    const result = await runK6({
-      spec,
-      outDir: ctx.outDir,
-      config: ctx.config,
-      env: ctx.env,
-      onStart: (pid) => {
-        sampler = startResourceSampler(pid);
-      },
-    });
+    let result: K6RunResult;
+    try {
+      result = await runK6({
+        spec,
+        outDir: ctx.outDir,
+        config: ctx.config,
+        env: ctx.env,
+        onStart: (pid) => {
+          sampler = startResourceSampler(pid);
+        },
+      });
+    } catch (err) {
+      sampler?.stop();
+      throw err;
+    }
     result.resources = sampler?.stop();
     ctx.k6.push(result);
   }
