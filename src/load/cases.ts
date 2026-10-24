@@ -110,17 +110,70 @@ export const COOP_LOAD_001: LoadCase = {
         label: "open",
         script: SELFTEST,
         env: { ...base, MODEL: "open", PRE: String(sized), MAXVUS: String(Math.ceil(sized * 1.5)) },
+        maxVUs: Math.ceil(sized * 1.5),
+        expectValidity: "VALID",
       },
       // 4 VUs with a 75 ms think time and a 25 ms stub: about 40 iterations/s, the probe rate (closed 1008 vs open 1201).
       { label: "closed", script: SELFTEST, env: { ...base, MODEL: "closed", PRE: "4" } },
       {
+        // Under-sized on purpose: the dropped iterations make this run INVALID, which is the relation R6 needs (plan §6.5).
         label: "undersized",
         script: SELFTEST,
         env: { ...base, MODEL: "open", PRE: "5", MAXVUS: "5" },
+        maxVUs: 5,
+        expectValidity: "INVALID",
+        expectCodes: ["dropped_iterations"],
       },
     ];
   },
   stages: { setup, reconcile, cleanup },
 };
 
-export const CASES: Record<string, LoadCase> = { [COOP_LOAD_001.id]: COOP_LOAD_001 };
+/** Validity self-test (Task 4, plan §6.8): one normal run must be VALID; one saturated run must be INVALID with the expected codes. */
+export const VALIDITY_LOAD_004: LoadCase = {
+  id: "P6-X-LOAD-004",
+  title:
+    "Validity self-test: a normal run is VALID, a saturated run is INVALID with the expected codes",
+  product: "stub",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 40, durationSec: 30, maxLatencyMs: 1600 },
+    full: { rate: 40, durationSec: 60, maxLatencyMs: 1600 },
+  },
+  runs: (ctx) => {
+    const base = {
+      RATE: String(ctx.profile.rate),
+      DURATION_SEC: String(ctx.profile.durationSec),
+      MAX_LATENCY_MS: String(ctx.profile.maxLatencyMs),
+      PORT: String(ctx.config.port),
+      MODEL: "open",
+    };
+    const sized = preAllocatedVUs({
+      rate: ctx.profile.rate,
+      maxLatencyMs: ctx.profile.maxLatencyMs,
+    });
+    return [
+      {
+        label: "normal",
+        script: SELFTEST,
+        env: { ...base, PRE: String(sized), MAXVUS: String(Math.ceil(sized * 1.5)) },
+        maxVUs: Math.ceil(sized * 1.5),
+        expectValidity: "VALID",
+      },
+      {
+        label: "saturated",
+        script: SELFTEST,
+        env: { ...base, PRE: "5", MAXVUS: "5" },
+        maxVUs: 5,
+        expectValidity: "INVALID",
+        expectCodes: ["dropped_iterations", "vu_exhausted"],
+      },
+    ];
+  },
+  stages: { setup, cleanup },
+};
+
+export const CASES: Record<string, LoadCase> = {
+  [COOP_LOAD_001.id]: COOP_LOAD_001,
+  [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
+};

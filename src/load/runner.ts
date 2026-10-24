@@ -2,7 +2,9 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import path from "node:path";
 import { p6RunPrefix } from "../races/prefix.ts";
 import { LOAD_ROOT, newRunId } from "./paths.ts";
-import { defaultStages } from "./stages.ts";
+import { execFileSync } from "node:child_process";
+import { buildRunMeta } from "./run-meta.ts";
+import { defaultStages, seqStages, validityStage } from "./stages.ts";
 import { parseK6Summary } from "./summary.ts";
 import type {
   K6RunResult,
@@ -89,10 +91,21 @@ export function summaryFor(k: K6RunResult): Record<string, unknown> {
     label: k.label,
     exitCode: k.exitCode,
     requests: s.requests,
+    iterations: s.iterations,
     dropped: s.dropped,
     vusMax: s.vusMax,
     p95Ms: s.p95Ms,
   };
+}
+
+/** Splits "<label>: <code>: <detail>" (validityStage) into the { code, detail } objects the verdict readers expect. */
+export function invalidReasons(
+  invalid: string[],
+): Array<{ label?: string; code: string; detail: string }> {
+  return invalid.map((s) => {
+    const m = /^([^:]+): ([^:]+): ([\s\S]*)$/.exec(s);
+    return m ? { label: m[1], code: m[2]!, detail: m[3]! } : { code: "UNPARSED", detail: s };
+  });
 }
 
 function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
@@ -114,13 +127,37 @@ function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
     outcome,
     reasons,
     invalid: ctx.invalid,
-    k6: ctx.k6.map(summaryFor),
+    validity: {
+      verdict: ctx.invalid.length === 0 ? "VALID" : "INVALID",
+      reasons: invalidReasons(ctx.invalid),
+    },
+    k6: ctx.k6.map((k) => ({ ...summaryFor(k), validity: k.validity, resources: k.resources })),
+    runMeta: "run-meta.json",
     stages,
   };
   writeFileSync(path.join(ctx.outDir, "verdict.json"), `${JSON.stringify(doc, null, 2)}\n`);
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+function k6VersionOf(): string {
+  try {
+    const out = execFileSync("k6", ["version"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return /^k6 v([\d.]+)/.exec(out.trim())?.[1] ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** run-meta.json is written at the start and rewritten at the end with finishedAt. */
+function writeRunMeta(outDir: string, ctx: LoadContext): void {
+  if (!ctx.meta) return;
+  const doc = { ...ctx.meta, finishedAt: new Date().toISOString() };
+  writeFileSync(path.join(outDir, "run-meta.json"), `${JSON.stringify(doc, null, 2)}\n`);
+}
 
 export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<LoadResult> {
   const env = opts.env ?? process.env;
@@ -152,6 +189,18 @@ export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<Load
     ...caseDef.stages,
     ...opts.stages,
   };
+  // The validity judge runs first in the reconcile slot; the case's own reconcile (relations, audits) runs after it.
+  stages.reconcile = seqStages(validityStage, stages.reconcile);
+  ctx.meta = buildRunMeta({
+    caseDef,
+    profileName: opts.profile,
+    profile,
+    runId,
+    startedAt: new Date(startedAt),
+    env,
+    k6Version: k6VersionOf(),
+  });
+  writeRunMeta(outDir, ctx);
 
   let abort = false;
   for (const name of ORDER) {
@@ -168,6 +217,7 @@ export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<Load
     if (!result.ok && (name === "setup" || name === "preflight")) abort = true;
   }
 
+  writeRunMeta(outDir, ctx);
   const { outcome } = evaluateVerdict(ctx);
   const exitCode = EXIT_CODES[outcome];
   if (env.GITHUB_STEP_SUMMARY) {

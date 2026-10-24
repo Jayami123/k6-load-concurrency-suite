@@ -2060,6 +2060,31 @@ jobs:
         timeout-minutes: 3
         run: npm run load:selftest
 
+      # Exit 3 is INVALID: the run is shown in the job summary and excluded from medians (P6-RULE-005), so the job stays green (Q1).
+      - name: Validity self-test (P6-X-LOAD-004)
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:validity-selftest || status=$?
+          if [ "$status" -eq 3 ]; then
+            echo "::warning::LOAD run INVALID (see the job summary); it is excluded from medians (P6-RULE-005)"
+            status=0
+          fi
+          exit "$status"
+
+      - name: Job summary (LOAD table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: node scripts/write-ci-job-summary.ts
+
+      - name: Print runner identity (one-time probe)
+        timeout-minutes: 1
+        run: |
+          env | grep -E '^(ImageOS|ImageVersion|RUNNER_OS|RUNNER_ARCH)=' || true
+          nproc
+          free -m | sed -n 2p
+
       - name: Check artefacts for tokens
         id: token_scan
         if: ${{ !cancelled() }}

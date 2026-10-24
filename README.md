@@ -647,7 +647,7 @@ product bugs".
 A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<label>-summary.json`, one `k6-<label>.json.gz`
 (points) and `k6-<label>.log` per k6 process, the `k6-config.json` the run used (no secrets), and `verdict.json` (schema 1).
 Every LOAD run is labelled **functional load, not capacity** (D1): the rate is small, fixed and chosen by its probe; no latency
-number from it is a capacity figure.
+number from it is a published result; the label above applies.
 
 The outcome is one of four words: `PASS`, `FAIL` (a product or test bug, or a k6 exit code that differs from the expected one),
 `INVALID` (the run is not a measurement; a reason is listed) or `ENV` (setup failed before any load). Exit codes are 0, 1, 2 and 3
@@ -657,12 +657,20 @@ The self-test `P6-X-LOAD-001` runs three k6 processes against one stub: an open 
 under-sized open model. Six relations (R1 to R6) must hold; they show the coordinated omission the open model avoids. Its margins
 are in `src/load/co-relations.ts`.
 
+A run is **VALID** or **INVALID** before any pass or fail is read. It is INVALID when the measuring tool or the runner was the bottleneck:
+iterations were dropped, the VUs were exhausted, k6 used more than half the cores, the runner was over 85 % busy or memory fell
+under 10 %, the telemetry had a gap, or the clocks drifted (the reason codes are listed in `verdict.json`). INVALID is not a pass and
+not a fail, and it never hides a correctness failure. Each run also writes `run-meta.json` (where and with what it ran); only a
+GitHub Actions run on `main` with a known image may be published, and INVALID runs are excluded from medians (P6-RULE-005).
+The self-test `P6-X-LOAD-004` checks both sides: a normal run must be VALID and a saturated run must be INVALID with the expected codes.
+
 Standalone commands (not in CI):
 
 ```bash
 export PATH="/usr/local/bin:$PATH"
 bash scripts/install-k6.sh                  # the pinned k6 (.k6-version), checksum-verified
 npm run load:selftest                       # P6-X-LOAD-001, PR profile, about 1.5 min
+npm run load:validity-selftest              # P6-X-LOAD-004, about 1 min
 node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/load
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
