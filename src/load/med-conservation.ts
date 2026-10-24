@@ -100,6 +100,20 @@ export function judgeConservation(i: ConservationInput): {
   return { findings, knownBugs };
 }
 
+/**
+ * The findings the stage classifies. A dropped iteration makes the run INVALID (Task 4), so it is not a finding, and exhaustion
+ * cannot be judged once iterations were dropped. Every other failed check stays active.
+ */
+export function failedFindings(
+  findings: ReturnType<typeof judgeConservation>["findings"],
+  counters: ConservationCounters,
+): ReturnType<typeof judgeConservation>["findings"] {
+  const dropped = counters.dropped > 0;
+  return findings.filter(
+    (f) => !f.ok && f.check !== "no-drops" && !(dropped && f.check === "stock-exhausted"),
+  );
+}
+
 /** Reads the custom counters of the main run from its k6 summary export. A missing counter is 0. */
 export function conservationCounters(summary: unknown): ConservationCounters {
   const metrics =
@@ -144,7 +158,7 @@ export const conservationStage = async (ctx: LoadContext): Promise<StageResult> 
     );
     const stock = Number(audit.stock);
     const { findings, knownBugs } = judgeConservation({ counters, snapshot, stock });
-    const failed = findings.filter((f) => !f.ok);
+    const failed = failedFindings(findings, counters);
     const kind = failed.some((f) => f.kind === "PRODUCT BUG")
       ? "PRODUCT BUG"
       : failed.length > 0

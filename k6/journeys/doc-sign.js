@@ -54,10 +54,12 @@ export function runDocSign(cfg, pdf) {
           },
           "POST recipient/create-many",
         );
+        const created = r.status === 200 ? r.json("data") : null;
+        if (!Array.isArray(created)) return { ok: false };
         return {
-          ok: r.status === 200,
+          ok: true,
           data: {
-            recipientIds: /** @type {Array<{ id: number }>} */ (r.json("data")).map((x) => x.id),
+            recipientIds: /** @type {Array<{ id: number }>} */ (created).map((x) => x.id),
           },
         };
       },

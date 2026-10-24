@@ -906,7 +906,7 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
-          mkdir -p results/evidence
+          mkdir -p results/evidence results/races
           cp -r results/races results/evidence/races
           cp node_modules/qa-portfolio-harness/.harness/medusa-backend.log node_modules/qa-portfolio-harness/.harness/medusa-backend-2.log results/evidence/
           node scripts/evidence-token-scan.mjs results/evidence
@@ -1556,35 +1556,6 @@ jobs:
           set -euo pipefail
           npm run test:documenso-api
 
-      # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
-      - name: Check Documenso artefacts for tokens
-        id: web_log_check
-        if: ${{ always() }}
-        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        run: |
-          set -euo pipefail
-          pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
-          log=node_modules/qa-portfolio-harness/.harness/documenso-web.log
-          if [ -f "$log" ] && grep -qE "$pattern" "$log"; then
-            echo "::error::documenso-web.log contains a token pattern; not uploading"
-            exit 1
-          fi
-          if [ -d results/races ] && grep -rqE "$pattern" results/races; then
-            echo "::error::race histograms contain a token pattern; not uploading"
-            exit 1
-          fi
-          # Playwright's JSON config.metadata holds the repo's git diff (source text, including these scan patterns), so
-          # the scan reads only the test results: suites and errors (titles, assertion labels, codeframes).
-          json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
-          for f in results/playwright/*.json; do
-            [ -f "$f" ] || continue
-            results_json=$(jq -c '{suites, errors}' "$f")
-            if grep -qE "$json_pattern" <<<"$results_json"; then
-              echo "::error::$f: test results contain a token pattern; not uploading"
-              exit 1
-            fi
-          done
-
       - name: LOAD journey P6-DOC-LOAD-001 (functional load, not capacity)
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
@@ -1625,6 +1596,35 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/evidence-token-scan.mjs results/load
+
+      # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
+      - name: Check Documenso artefacts for tokens
+        id: web_log_check
+        if: ${{ always() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
+          log=node_modules/qa-portfolio-harness/.harness/documenso-web.log
+          if [ -f "$log" ] && grep -qE "$pattern" "$log"; then
+            echo "::error::documenso-web.log contains a token pattern; not uploading"
+            exit 1
+          fi
+          if [ -d results/races ] && grep -rqE "$pattern" results/races; then
+            echo "::error::race histograms contain a token pattern; not uploading"
+            exit 1
+          fi
+          # Playwright's JSON config.metadata holds the repo's git diff (source text, including these scan patterns), so
+          # the scan reads only the test results: suites and errors (titles, assertion labels, codeframes).
+          json_pattern='api_[A-Za-z0-9]{8,}|Bearer |sessionId=[^;[:space:]"]{8,}|/verify-email/[A-Za-z0-9_-]+|/sign/[A-Za-z0-9_-]{10,}'
+          for f in results/playwright/*.json; do
+            [ -f "$f" ] || continue
+            results_json=$(jq -c '{suites, errors}' "$f")
+            if grep -qE "$json_pattern" <<<"$results_json"; then
+              echo "::error::$f: test results contain a token pattern; not uploading"
+              exit 1
+            fi
+          done
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
@@ -2268,12 +2268,13 @@ jobs:
           free -m | sed -n 2p
 
       - name: Check artefacts for tokens
+        id: token_scan
         if: ${{ !cancelled() }}
         timeout-minutes: 1
         run: node scripts/evidence-token-scan.mjs results/load
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 3
         with:
           name: load-selftest
@@ -2342,12 +2343,13 @@ jobs:
         run: node scripts/write-ci-job-summary.ts
 
       - name: Check artefacts for tokens
+        id: token_scan
         if: ${{ !cancelled() }}
         timeout-minutes: 1
         run: node scripts/evidence-token-scan.mjs results/load
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 3
         with:
           name: load-overhead

@@ -91,4 +91,28 @@ describe("documenso product setup and cleanup", () => {
     const envelopeQuery = calls.find((c) => c.sql.includes('FROM "Envelope" WHERE title'));
     assert.deepEqual(envelopeQuery?.params, ["p6-qa-20261024t010203z-3fa9c0d1-p6-doc-load-001%"]);
   });
+
+  it("a failed discovery still ends the run with no mailboxes, and records a TEST BUG", async () => {
+    const failing = {
+      query: async () => {
+        throw new Error("db down");
+      },
+      end: async () => {},
+    } as unknown as Parameters<typeof fakeRun>[0];
+    const ctx = fakeCtx();
+    ctx.handles.documensoRun = fakeRun(failing, "dtok");
+    let mailboxesAtEnd: string[] | undefined;
+    const out = await documensoCleanupWith(
+      ctx,
+      deps({
+        end: async (_run, mailboxes) => {
+          mailboxesAtEnd = mailboxes;
+          return [];
+        },
+      }),
+    );
+    assert.deepEqual(mailboxesAtEnd, []);
+    assert.equal(out.ok, false);
+    assert.match(out.reasons.join(" "), /TEST BUG: cleanup documenso discovery failed: db down/);
+  });
 });

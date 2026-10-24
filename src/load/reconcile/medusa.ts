@@ -35,7 +35,11 @@ export interface MedusaSnapshot {
   clientOrders?: number;
 }
 
-/** Pure. Checks in order: rows, orders-le-stock, reservations, available, one-payment-per-order, balances, no-ghost-orders (F-M2, counted). */
+/**
+ * Pure. Checks in order: rows, orders-le-stock, reservations, available, one-payment-per-order, balances, then the client comparison.
+ * The database holding more orders than the client got back is F-M2 (counted, not a failure). The client holding more than the
+ * database is a PRODUCT BUG (lost orders), and so is a live-order count that differs from the database.
+ */
 export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): AuditResult {
   const v = s.variant;
   const result: AuditResult = {
@@ -108,7 +112,7 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
       s.liveOrdersByEmail === v.orderCount && difference === 0,
       `database ${v.orderCount}, client ${s.clientOrders}`,
     );
-    if (difference !== 0) {
+    if (difference > 0) {
       addFinding(
         result,
         {
@@ -116,10 +120,20 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
           text: "orders in the database that the client did not get back",
           knownBugId: "F-M2",
         },
-        Math.abs(difference),
+        difference,
       );
     }
+    if (s.clientOrders > v.orderCount)
+      addFinding(result, {
+        kind: "PRODUCT BUG",
+        text: `client got ${s.clientOrders} orders, database has ${v.orderCount} (lost orders)`,
+      });
   }
+  if (s.liveOrdersByEmail !== v.orderCount)
+    addFinding(result, {
+      kind: "PRODUCT BUG",
+      text: `live orders by email ${s.liveOrdersByEmail} differ from database orders ${v.orderCount}`,
+    });
   return result;
 }
 
