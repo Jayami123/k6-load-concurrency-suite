@@ -350,3 +350,37 @@ export async function deleteReservation(token: string, id: string): Promise<numb
   const res = await adminJson(`/reservations/${id}`, token, { method: "DELETE" });
   return res.status;
 }
+
+/**
+ * Deletes every customer whose email starts with the prefix. The search (`q`) matches more than the prefix, so the email
+ * test is the filter. Pages of 100; the offset advances only past the customers kept, because a delete shifts the page.
+ * Returns the number deleted.
+ */
+export async function deleteCustomersByPrefix(token: string, prefix: string): Promise<number> {
+  const wanted = prefix.toLowerCase();
+  let deleted = 0;
+  let offset = 0;
+  for (let page = 0; page < 20; page += 1) {
+    const list = await adminJson(
+      `/customers?q=${encodeURIComponent(prefix)}&limit=100&offset=${offset}`,
+      token,
+    );
+    if (list.status !== 200) throw new Error(`TEST BUG: list customers HTTP ${list.status}`);
+    const customers =
+      (list.json as { customers?: Array<{ id?: string; email?: string }> }).customers ?? [];
+    if (customers.length === 0) break;
+    let kept = 0;
+    for (const customer of customers) {
+      if (customer.id && customer.email?.toLowerCase().startsWith(wanted)) {
+        const del = await adminJson(`/customers/${customer.id}`, token, { method: "DELETE" });
+        if (del.status !== 200) throw new Error(`TEST BUG: DELETE customer HTTP ${del.status}`);
+        deleted += 1;
+      } else {
+        kept += 1;
+      }
+    }
+    if (customers.length < 100) break;
+    offset += kept;
+  }
+  return deleted;
+}

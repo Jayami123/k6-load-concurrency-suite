@@ -1,12 +1,13 @@
 // Composable journey steps. All k6 calls are injected through deps, so Node tests can drive the journey.
 
 /**
- * @typedef {{ name: string, run: (state: Record<string, unknown>) => { ok: boolean, data?: Record<string, unknown> }, thinkSec?: number }} JourneyStep
+ * @typedef {{ name: string, run: (state: Record<string, unknown>) => { ok: boolean, data?: Record<string, unknown>, stop?: boolean }, thinkSec?: number }} JourneyStep
  * @typedef {{ check: (name: string, ok: boolean) => void, sleep: (sec: number) => void, now: () => number }} JourneyDeps
  */
 
 /**
- * A failed step ends the journey (later steps need its output). Returns the per-step record the audit joins on.
+ * A failed step ends the journey (later steps need its output). A step with `stop: true` ends it as completed (the rest are skipped).
+ * Returns the per-step record the audit joins on.
  * @param {{ steps: JourneyStep[], state?: Record<string, unknown>, deps: JourneyDeps }} o
  */
 export function runJourney({ steps, state = {}, deps }) {
@@ -19,6 +20,7 @@ export function runJourney({ steps, state = {}, deps }) {
     record.push({ name: step.name, ok: result.ok, ms: deps.now() - t0 });
     if (!result.ok) return { completed: false, failedStep: step.name, steps: record, state };
     if (result.data) Object.assign(state, result.data);
+    if (result.stop) return { completed: true, failedStep: null, steps: record, state };
     if (step.thinkSec) deps.sleep(step.thinkSec);
   }
   return { completed: true, failedStep: null, steps: record, state };

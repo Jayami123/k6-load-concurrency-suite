@@ -36,6 +36,7 @@ function ctxFor(outDir: string, spec: K6RunSpec): LoadContext {
     outDir,
     env: {},
     config: {},
+    secrets: {},
     handles: {},
     k6: [],
     invalid: [],

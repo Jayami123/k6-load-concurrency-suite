@@ -183,6 +183,7 @@ export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<Load
     handles: {},
     k6: [],
     invalid: [],
+    secrets: {},
     results: {},
   };
   const verdictStage: Stage = async (c) => {

@@ -17,7 +17,7 @@ Needs Node 22.22+, Docker, pnpm 10.11.1 and k6.
 npm ci
 bash scripts/bootstrap.sh medusa   # clones the Medusa fork into ../products if it is missing
 npm run up:medusa
-npm run smoke:medusa
+npm run load:medusa -- --profile pr   # the Medusa journey smoke (P6-MED-LOAD-001)
 npm run down:medusa
 ```
 
@@ -127,7 +127,7 @@ fork pins from `repo.yarnpkg.com`, so that host must be reachable.
 export PATH="/usr/local/bin:$PATH"
 bash scripts/bootstrap.sh cal   # clones the pinned fork, yarn install, writes the Cal product .env
 npm run up:cal                  # returns once Cal answers; the first run builds Next.js and is slow
-npm run smoke:cal
+npm run load:cal -- --profile pr     # the Cal journey smoke (P6-CAL-LOAD-001)
 RACE_TRIALS=3 npm run race:cal
 npm run down:cal                # always; it also stops the Cal web process
 ```
@@ -204,7 +204,7 @@ first, so Medusa and Cal keep Node 22.23) and the hosts entry `127.0.0.1 p6-webh
 export PATH="/usr/local/bin:$PATH"
 bash scripts/bootstrap.sh documenso    # clones the pinned fork and runs npm ci under Node 24 (once)
 npm run up:documenso                   # the first run builds the web app; later runs reuse the build
-npm run smoke:documenso
+npm run load:documenso -- --profile pr   # the Documenso journey smoke (P6-DOC-LOAD-001)
 RACE_TRIALS=3 npm run race:documenso
 npm run down:documenso                 # always; it also stops the Documenso web process
 ```

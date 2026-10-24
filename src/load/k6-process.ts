@@ -9,6 +9,8 @@ export interface RunK6Input {
   outDir: string;
   config: Record<string, unknown>;
   env: NodeJS.ProcessEnv;
+  /** Values from setup. Forwarded to the child only when a spec names them in secretEnv. */
+  secrets?: Record<string, string>;
   /** Called with the pid right after the spawn (the resource sampler starts here). */
   onStart?: (pid: number) => void;
 }
@@ -35,8 +37,9 @@ export async function runK6(input: RunK6Input): Promise<K6RunResult> {
     ...spec.env,
     P6_LOAD_CONFIG: path.resolve(configPath),
   };
+  const source = { ...input.env, ...input.secrets };
   for (const name of spec.secretEnv ?? []) {
-    const value = input.env[name];
+    const value = source[name];
     if (value !== undefined) childEnv[name] = value;
   }
 
