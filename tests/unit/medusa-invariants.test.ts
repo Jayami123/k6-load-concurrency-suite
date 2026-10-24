@@ -568,4 +568,54 @@ describe("two-instance invariants", () => {
     );
     assert.ok(out.violations.some((line) => /7 orders exceed instances x S = 6/.test(line)));
   });
+
+  // The RACE-003 trial 45 pattern of run 40120499660: instance 0 admitted 3, instance 1 admitted 4, S = 3.
+  it("checkMemoryLockCharacterization names the backend that admitted more than S", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        orderCount: 7,
+        uniqueOrderIds: 7,
+        httpWinnerCount: 7,
+        reservationQty: 7,
+        reserved: 3,
+        statuses: [200, 400, 400, 200, 400, 200, 400, 200, 400, 200, 200, 400, 200, 400, 400],
+      }),
+    );
+    assert.ok(
+      out.violations.includes("PRODUCT BUG (SUSPECTED): instance 1 admitted 4 orders for S=3"),
+    );
+    assert.ok(!out.violations.some((line) => /instance 0 admitted/.test(line)));
+  });
+
+  // The RACE-003 trial 39 pattern: instance 1 admitted 4 while the total (5) is within instances x S = 6.
+  it("checkMemoryLockCharacterization flags a per-backend excess even when the total is within the bound", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        orderCount: 5,
+        uniqueOrderIds: 5,
+        httpWinnerCount: 5,
+        reservationQty: 5,
+        reserved: 3,
+        statuses: [400, 200, 200, 400, 400, 400, 400, 200, 400, 200, 400, 200, 400, 400, 400],
+      }),
+    );
+    assert.ok(
+      out.violations.includes("PRODUCT BUG (SUSPECTED): instance 1 admitted 4 orders for S=3"),
+    );
+    assert.ok(!out.violations.some((line) => /exceed instances x S/.test(line)));
+  });
+
+  it("checkMemoryLockCharacterization passes when every backend admits at most S", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        orderCount: 5,
+        uniqueOrderIds: 5,
+        httpWinnerCount: 5,
+        reservationQty: 5,
+        reserved: 3,
+        statuses: [200, 200, 200, 200, 200, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400],
+      }),
+    );
+    assert.ok(!out.violations.some((line) => /admitted/.test(line)));
+  });
 });
