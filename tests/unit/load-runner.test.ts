@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
+import { evaluateVerdict, runLoad, summaryFor } from "../../src/load/runner.ts";
 import type {
   K6RunResult,
   K6RunSpec,
@@ -110,7 +110,13 @@ describe("load runner", () => {
       tokenScan: rec("tokenScan"),
     };
     const outRoot = mkdtempSync(path.join(tmpdir(), "p6-load-runner-"));
-    const result = await runLoad(caseDef(), { profile: "pr", outRoot, runId: "run-a", stages });
+    const result = await runLoad(caseDef(), {
+      profile: "pr",
+      outRoot,
+      runId: "run-a",
+      stages,
+      env: {},
+    });
     assert.deepEqual(order, [
       "setup",
       "preflight",
@@ -130,5 +136,22 @@ describe("load runner", () => {
     };
     assert.equal(verdict.schema, 1);
     assert.equal(verdict.outcome, "FAIL");
+  });
+
+  it("summaryFor marks a truncated k6 summary as unreadable instead of throwing", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "p6-load-summary-"));
+    const summaryPath = path.join(dir, "k6-main-summary.json");
+    writeFileSync(summaryPath, '{"metrics": {"http_req_dur');
+    const k: K6RunResult = {
+      label: "main",
+      exitCode: 137,
+      summaryPath,
+      pointsPath: path.join(dir, "k6-main.json.gz"),
+      stdoutPath: path.join(dir, "k6-main.log"),
+      startedAtMs: 0,
+      endedAtMs: 0,
+      pid: 0,
+    };
+    assert.deepEqual(summaryFor(k), { label: "main", exitCode: 137, summary: "unreadable" });
   });
 });

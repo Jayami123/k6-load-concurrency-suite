@@ -2061,12 +2061,13 @@ jobs:
         run: npm run load:selftest
 
       - name: Check artefacts for tokens
+        id: token_scan
         if: ${{ !cancelled() }}
         timeout-minutes: 1
         run: node scripts/evidence-token-scan.mjs results/load
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 3
         with:
           name: load-selftest
