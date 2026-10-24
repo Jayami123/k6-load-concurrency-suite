@@ -1,0 +1,9 @@
+{
+  "model": "open",
+  "rate": 40,
+  "durationSec": 30,
+  "maxLatencyMs": 1600,
+  "pre": 80,
+  "maxVUs": 120,
+  "port": 18080
+}
