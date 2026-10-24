@@ -44,11 +44,10 @@ function fakeCtx(): LoadContext {
 }
 
 describe("cal product setup and cleanup", () => {
-  it("window length is ceil(planned / 11.4) + 3", () => {
-    assert.equal(calWindowDays(0), 3);
-    assert.equal(calWindowDays(20), 5);
-    assert.equal(calWindowDays(60), 9);
-    assert.equal(calWindowDays(114), 13);
+  it("window length is at least 28 days, and grows past that with the planned count", () => {
+    assert.equal(calWindowDays(0), 28);
+    assert.equal(calWindowDays(60), 28);
+    assert.equal(calWindowDays(400), 39);
   });
 
   it("the config holds no secret and the secrets map stays empty", async () => {
