@@ -648,7 +648,7 @@ product bugs".
 A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<label>-summary.json`, one `k6-<label>.json.gz`
 (points) and `k6-<label>.log` per k6 process, the `k6-config.json` the run used (no secrets), and `verdict.json` (schema 1).
 Every LOAD run is labelled **functional load, not capacity** (D1): the rate is small, fixed and chosen by its probe; no latency
-number from it is a capacity figure.
+number from it is a published result; the label above applies.
 
 The outcome is one of four words: `PASS`, `FAIL` (a product or test bug, or a k6 exit code that differs from the expected one),
 `INVALID` (the run is not a measurement; a reason is listed) or `ENV` (setup failed before any load). Exit codes are 0, 1, 2 and 3
