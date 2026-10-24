@@ -690,7 +690,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.14
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
 
       - name: Generate the CI admin password
         timeout-minutes: 1
