@@ -665,6 +665,12 @@ not a fail, and it never hides a correctness failure. Each run also writes `run-
 GitHub Actions run on `main` with a known image may be published, and INVALID runs are excluded from medians (P6-RULE-005).
 The self-test `P6-X-LOAD-004` checks both sides: a normal run must be VALID and a saturated run must be INVALID with the expected codes.
 
+Each k6 run also has a sampler outside the generator (one row per second: the application process group's CPU, RSS and fds, and
+the sampler's own cost) and a clock marker. `chart-<label>.html` is one self-contained page per run: requests per second, p95 (info
+only, not a result; no latency gate in Phase 3), the generator and app-group CPU, memory, fds, the sampler cost and the gaps. A gap
+longer than two intervals or a clock skew beyond 100 ms makes the run INVALID (`telemetry_gap`, `clock_skew`). Database, container
+and log sources are not part of this build: the stub has none, and they are added with the product cases.
+
 Standalone commands (not in CI):
 
 ```bash
@@ -672,6 +678,8 @@ export PATH="/usr/local/bin:$PATH"
 bash scripts/install-k6.sh                  # the pinned k6 (.k6-version), checksum-verified
 npm run load:selftest                       # P6-X-LOAD-001, PR profile, about 1.5 min
 npm run load:validity-selftest              # P6-X-LOAD-004, about 1 min
+npm run load:telemetry-selftest             # P6-X-LOAD-002, about 1.5 min
+npm run load:overhead-selftest              # P6-X-LOAD-006, about 3 min
 node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/load
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
