@@ -6,6 +6,7 @@ import {
   parsePlaywrightJsonReport,
   requireTests,
 } from "../src/ci/playwright-json-summary.ts";
+import { formatLoadTable } from "../src/ci/load-table.ts";
 import { formatRaceTable, raceSummaryRow } from "../src/ci/race-table.ts";
 
 function jsonFiles(dir: string): string[] {
@@ -14,6 +15,16 @@ function jsonFiles(dir: string): string[] {
     .filter((f) => f.endsWith(".json"))
     .sort()
     .map((f) => join(dir, f));
+}
+
+/** verdict.json files under results/load/<case>/<run>/ (LOAD runs, Task 3 onward). */
+function verdictFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return verdictFiles(full);
+    return entry.name === "verdict.json" ? [full] : [];
+  });
 }
 
 function readJson(path: string): unknown {
@@ -48,7 +59,12 @@ function buildSummary(root: string, env: NodeJS.ProcessEnv): string {
 
   const raceFiles = jsonFiles(join(root, "results", "races"));
   const races = formatRaceTable(raceFiles.map((path) => raceSummaryRow(path, readJson(path))));
-  return [harnessLine, "", playwright, races].join("\n");
+  const loadFiles = verdictFiles(join(root, "results", "load")).sort();
+  const load =
+    loadFiles.length === 0
+      ? ""
+      : formatLoadTable(loadFiles.map((path) => ({ path, verdict: readJson(path) })));
+  return [harnessLine, "", playwright, races, load].join("\n");
 }
 
 try {
