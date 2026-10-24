@@ -79,4 +79,4 @@ NODE_OPTIONS=--use-openssl-ca, which makes the harness drop its 8192 MB heap for
 - Environment change: none.
 - Unexplained red CI: the cal jobs are red from the inherited Task 1 pin (explained, see Task 1's body).
 - Timeout raised, test merged or split, or assertion weakened: no.
-- Secret printed, "Jayami" or footer line added, git add -A, or force-push: no.
+- Secret printed, the owner name or footer line added, git add -A, or force-push: no.

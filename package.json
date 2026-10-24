@@ -40,7 +40,7 @@
     "check": "npm run format:check && npm run lint:actions && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },
   "dependencies": {
-    "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.14"
+    "qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.15"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
