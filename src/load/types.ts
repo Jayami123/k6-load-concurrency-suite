@@ -18,6 +18,12 @@ export interface K6RunSpec {
   expectExit?: number; // default 0 (99 = thresholds crossed)
   /** The maxVUs the scenario was built with, read by the validity judge (Task 4). */
   maxVUs?: number;
+  /** Self-test only (Task 5): run with the sampler (true) or without it (false). Default: the case's telemetry setting. */
+  telemetry?: boolean;
+  /** Self-test only (Task 5): the sampler stalls once for this long after three samples. */
+  injectGapMs?: number;
+  /** Self-test only (Task 5): the marker server reports a clock this far ahead of the runner. */
+  markerSkewMs?: number;
   /** Expected validity of this run (Task 4): a run that is meant to be saturated expects INVALID. */
   expectValidity?: "VALID" | "INVALID";
   /** Invalid codes the expected INVALID run must show (Task 4). */
@@ -31,6 +37,8 @@ export interface LoadCase {
   label: "functional load, not capacity"; // D1, P6-RULE-003: printed in verdict.json and the job summary
   profiles: Record<LoadProfileName, LoadProfile>;
   runs: (ctx: LoadContext) => K6RunSpec[]; // evaluated after setup, so ids made in setup can go into env
+  /** Telemetry for this case (Task 5): one sampler and one marker per k6 run, one chart per run. */
+  telemetry?: { product: LoadProduct };
   /** Per-case overrides of the default stages (setup, reconcile, ...). Tasks 7 to 10 use this. */
   stages?: Partial<StageSet>;
 }
@@ -70,6 +78,7 @@ export interface K6RunResult {
   pid: number; // for the sampler (Task 5) and the CPU guard (Task 4)
   resources?: ResourceSummary;
   validity?: ValidityVerdict;
+  telemetry?: TelemetrySummary;
 }
 
 export interface LoadContext {
@@ -82,6 +91,8 @@ export interface LoadContext {
   env: NodeJS.ProcessEnv; // the runner's environment (read-only)
   /** Free-form values set by setup and read by later stages (ids, base URLs). Never secrets. */
   config: Record<string, unknown>;
+  /** Non-serialisable objects shared by stages (Task 5: the telemetry handle). Never written to a file. */
+  handles: Record<string, unknown>;
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
   results: Partial<Record<StageName, StageResult>>;
@@ -158,4 +169,13 @@ export interface RunMeta {
     products: Partial<Record<"medusa" | "cal" | "documenso" | "twenty", string>>;
   };
   limits: Record<string, number>;
+}
+
+/** Per-run telemetry summary (Task 5): what the validity judge reads, plus the files written. */
+export interface TelemetrySummary {
+  gaps: string[];
+  skewMs?: number;
+  skewLimitMs: number;
+  files: string[];
+  sources: Record<string, boolean>;
 }

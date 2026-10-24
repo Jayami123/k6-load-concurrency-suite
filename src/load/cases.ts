@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { preAllocatedVUs } from "../../k6/lib/pure/sizing.js";
 import { evaluateCoordinatedOmission } from "./co-relations.ts";
+import { evaluateOverhead, type OverheadRun } from "./overhead.ts";
 import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
@@ -11,6 +12,8 @@ const SERVICE_MS = 25;
 const STALL_MS = 1500;
 const PERIOD_MS = 10000;
 const SELFTEST = "k6/selftest/coordinated-omission.js";
+const TELEMETRY = "k6/selftest/telemetry.js";
+const OVERHEAD = "k6/selftest/sampler-overhead.js";
 
 let stub: { port: number; close(): Promise<void> } | undefined;
 
@@ -173,7 +176,113 @@ export const VALIDITY_LOAD_004: LoadCase = {
   stages: { setup, cleanup },
 };
 
+/** Telemetry self-test (Task 5, plan §6.6): a normal run is VALID; a forced stall is a telemetry gap; a skewed marker is clock_skew. */
+export const TELEMETRY_LOAD_002: LoadCase = {
+  id: "P6-X-LOAD-002",
+  title: "Telemetry self-test: outside-only sampler, clock markers, a forced gap and a forced skew",
+  product: "stub",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 40, durationSec: 30, maxLatencyMs: 1600 },
+    full: { rate: 40, durationSec: 60, maxLatencyMs: 1600 },
+  },
+  telemetry: { product: "stub" },
+  runs: (ctx) => {
+    const base = {
+      RATE: String(ctx.profile.rate),
+      DURATION_SEC: String(ctx.profile.durationSec),
+      MAX_LATENCY_MS: String(ctx.profile.maxLatencyMs),
+      PORT: String(ctx.config.port),
+      PRE: "80",
+      MAXVUS: "120",
+    };
+    return [
+      { label: "normal", script: TELEMETRY, env: base, maxVUs: 120, expectValidity: "VALID" },
+      {
+        label: "forcedGap",
+        script: TELEMETRY,
+        env: base,
+        maxVUs: 120,
+        injectGapMs: 3500,
+        expectValidity: "INVALID",
+        expectCodes: ["telemetry_gap"],
+      },
+      {
+        label: "forcedSkew",
+        script: TELEMETRY,
+        env: base,
+        maxVUs: 120,
+        markerSkewMs: 2500,
+        expectValidity: "INVALID",
+        expectCodes: ["clock_skew"],
+      },
+    ];
+  },
+  stages: { setup, cleanup },
+};
+
+/** Sampler overhead (Task 5, plan §6.7): four runs without the sampler and four with it; the medians must stay within the margins. */
+export const OVERHEAD_LOAD_006: LoadCase = {
+  id: "P6-X-LOAD-006",
+  title:
+    "Sampler overhead: the runs with the sampler stay within the margins of the runs without it",
+  product: "stub",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 40, durationSec: 20, maxLatencyMs: 1600 },
+    full: { rate: 40, durationSec: 30, maxLatencyMs: 1600 },
+  },
+  runs: (ctx) => {
+    const base = {
+      RATE: String(ctx.profile.rate),
+      DURATION_SEC: String(ctx.profile.durationSec),
+      MAX_LATENCY_MS: String(ctx.profile.maxLatencyMs),
+      PORT: String(ctx.config.port),
+      MODEL: "open",
+      PRE: "80",
+      MAXVUS: "120",
+    };
+    return [1, 2, 3, 4].flatMap((i) => [
+      {
+        label: `without-${i}`,
+        script: OVERHEAD,
+        env: base,
+        maxVUs: 120,
+        telemetry: false,
+        expectValidity: "VALID" as const,
+      },
+      {
+        label: `with-${i}`,
+        script: OVERHEAD,
+        env: base,
+        maxVUs: 120,
+        telemetry: true,
+        expectValidity: "VALID" as const,
+      },
+    ]);
+  },
+  stages: {
+    setup,
+    cleanup,
+    reconcile: async (ctx) => {
+      const read = (label: string): OverheadRun => {
+        const run = ctx.k6.find((k) => k.label === label);
+        if (!run || !existsSync(run.summaryPath)) throw new Error(`no k6 summary for run ${label}`);
+        const s = parseK6Summary(JSON.parse(readFileSync(run.summaryPath, "utf8")));
+        return { requests: s.requests, p95Ms: s.p95Ms, dropped: s.dropped };
+      };
+      const without = [1, 2, 3, 4].map((i) => read(`without-${i}`));
+      const withRuns = [1, 2, 3, 4].map((i) => read(`with-${i}`));
+      const violations = evaluateOverhead(without, withRuns);
+      if (violations.length > 0) return { ok: false, kind: "TEST BUG", reasons: violations };
+      return { ok: true, reasons: [], data: { relations: "overhead within margins" } };
+    },
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
+  [TELEMETRY_LOAD_002.id]: TELEMETRY_LOAD_002,
+  [OVERHEAD_LOAD_006.id]: OVERHEAD_LOAD_006,
 };

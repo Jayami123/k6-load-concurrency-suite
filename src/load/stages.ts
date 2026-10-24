@@ -3,21 +3,27 @@ import os from "node:os";
 import { scanTree } from "../../scripts/evidence-token-scan.mjs";
 import { runK6 } from "./k6-process.ts";
 import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
+import { samplerStart, samplerStop, type TelemetryHandle } from "./telemetry/stages.ts";
 import { parseK6Summary } from "./summary.ts";
 import { judgeValidity } from "./validity.ts";
 import type { K6RunResult, LoadContext, Stage, StageSet } from "./types.ts";
 
 const ok: Stage = async () => ({ ok: true, reasons: [] });
 
-/** Runs every K6RunSpec of the case, one k6 at a time (no two generators on a shared runner). Expected exit codes are judged in the verdict. */
+/**
+ * Runs every K6RunSpec of the case, one k6 at a time (no two generators on a shared runner). Expected exit codes are judged in the verdict.
+ * When samplerStart stored a telemetry handle, each run gets its own sampler and marker around its k6 process (Task 5).
+ */
 export const runAllK6: Stage = async (ctx: LoadContext) => {
   const specs = ctx.caseDef.runs(ctx);
+  const telemetry = ctx.handles.telemetry as TelemetryHandle | undefined;
   for (const spec of specs) {
+    const runSpec = (await telemetry?.beforeRun(spec)) ?? spec;
     let sampler: ResourceSampler | undefined;
     let result: K6RunResult;
     try {
       result = await runK6({
-        spec,
+        spec: runSpec,
         outDir: ctx.outDir,
         config: ctx.config,
         env: ctx.env,
@@ -30,6 +36,7 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
       throw err;
     }
     result.resources = sampler?.stop();
+    await telemetry?.afterRun(spec, result);
     ctx.k6.push(result);
   }
   return { ok: true, reasons: [], data: { runs: specs.length } };
@@ -50,9 +57,9 @@ export const scanOutDir: Stage = async (ctx: LoadContext) => {
 export const defaultStages: StageSet = {
   setup: ok,
   preflight: ok,
-  samplerStart: ok,
+  samplerStart,
   k6: runAllK6,
-  samplerStop: ok,
+  samplerStop,
   drain: ok,
   reconcile: ok,
   cleanup: ok,
@@ -85,6 +92,13 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
       maxVUs: spec?.maxVUs ?? Number.POSITIVE_INFINITY,
       nproc,
       resources: k.resources,
+      telemetry: k.telemetry
+        ? {
+            gaps: k.telemetry.gaps,
+            skewMs: k.telemetry.skewMs,
+            skewLimitMs: k.telemetry.skewLimitMs,
+          }
+        : undefined,
     });
     k.validity = verdict;
     judged.push(k.label);

@@ -39,6 +39,24 @@ describe("createReadOnlyPool", () => {
       (pg as { Pool: typeof pg.Pool }).Pool = Original;
     }
   });
+
+  it("takes a pool size, and keeps 5 when none is given", () => {
+    const Original = pg.Pool;
+    const sizes: Array<number | undefined> = [];
+    (pg as { Pool: typeof pg.Pool }).Pool = function FakePool(
+      config?: ConstructorParameters<typeof pg.Pool>[0],
+    ) {
+      sizes.push(config?.max);
+      return {} as pg.Pool;
+    } as unknown as typeof pg.Pool;
+    try {
+      createReadOnlyPool("postgres://example", { max: 1 });
+      createReadOnlyPool("postgres://example");
+      assert.deepEqual(sizes, [1, 5]);
+    } finally {
+      (pg as { Pool: typeof pg.Pool }).Pool = Original;
+    }
+  });
 });
 
 describe("closePool", () => {
@@ -118,5 +136,18 @@ describe("waitForStable", () => {
         }),
       /TEST BUG: waitForStable timed out/,
     );
+  });
+});
+
+describe("selectRowsOn", () => {
+  it("runs a select on one client and refuses a write before it reaches the client", async () => {
+    const { selectRowsOn } = await import("../../src/oracles/pg.ts");
+    const seen: string[] = [];
+    const client = {
+      query: async (sql: string) => (seen.push(sql), { rows: [{ n: 1 }] }),
+    } as never;
+    assert.deepEqual(await selectRowsOn(client, "SELECT 1 AS n"), [{ n: 1 }]);
+    await assert.rejects(selectRowsOn(client, "DELETE FROM x"), /not SELECT-only/);
+    assert.deepEqual(seen, ["SELECT 1 AS n"]);
   });
 });

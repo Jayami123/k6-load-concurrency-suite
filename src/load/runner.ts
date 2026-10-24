@@ -131,7 +131,12 @@ function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
       verdict: ctx.invalid.length === 0 ? "VALID" : "INVALID",
       reasons: invalidReasons(ctx.invalid),
     },
-    k6: ctx.k6.map((k) => ({ ...summaryFor(k), validity: k.validity, resources: k.resources })),
+    k6: ctx.k6.map((k) => ({
+      ...summaryFor(k),
+      validity: k.validity,
+      resources: k.resources,
+      telemetry: k.telemetry,
+    })),
     runMeta: "run-meta.json",
     stages,
   };
@@ -175,6 +180,7 @@ export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<Load
     outDir,
     env,
     config: {},
+    handles: {},
     k6: [],
     invalid: [],
     results: {},

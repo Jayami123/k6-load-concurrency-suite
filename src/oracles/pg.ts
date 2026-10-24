@@ -40,10 +40,15 @@ export function assertSelectOnly(sql: string): void {
   }
 }
 
-export function createReadOnlyPool(connectionString = medusaDatabaseUrlFromEnv()): pg.Pool {
+export function createReadOnlyPool(
+  connectionString = medusaDatabaseUrlFromEnv(),
+  opts: { max?: number; connectionTimeoutMs?: number; queryTimeoutMs?: number } = {},
+): pg.Pool {
   return new pg.Pool({
     connectionString,
-    max: 5,
+    max: opts.max ?? 5,
+    connectionTimeoutMillis: opts.connectionTimeoutMs,
+    query_timeout: opts.queryTimeoutMs,
     allowExitOnIdle: true,
     options: "-c default_transaction_read_only=on",
   });
@@ -121,4 +126,15 @@ export async function closePool(pool: pg.Pool | undefined): Promise<void> {
   }
   closedPools.add(pool);
   await pool.end();
+}
+
+/** Select-only rows on one checked-out client (the telemetry sampler runs its queries on a single connection). */
+export async function selectRowsOn<T extends pg.QueryResultRow>(
+  client: { query: pg.Pool["query"] },
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  assertSelectOnly(sql);
+  const result = await client.query<T>(sql, params);
+  return result.rows as T[];
 }
