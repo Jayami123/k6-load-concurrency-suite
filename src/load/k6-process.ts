@@ -9,6 +9,8 @@ export interface RunK6Input {
   outDir: string;
   config: Record<string, unknown>;
   env: NodeJS.ProcessEnv;
+  /** Called with the pid right after the spawn (the resource sampler starts here). */
+  onStart?: (pid: number) => void;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function runK6(input: RunK6Input): Promise<K6RunResult> {
     ["run", "--summary-export", summaryPath, "--out", `json=${pointsPath}`, spec.script],
     { env: childEnv, stdio: ["ignore", out, out] },
   );
+  input.onStart?.(child.pid ?? 0);
   try {
     const exitCode = await new Promise<number>((resolve, reject) => {
       child.once("error", reject);

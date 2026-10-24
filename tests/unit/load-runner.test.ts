@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
+import { validityStage } from "../../src/load/stages.ts";
 import type {
   K6RunResult,
   K6RunSpec,
@@ -130,5 +131,64 @@ describe("load runner", () => {
     };
     assert.equal(verdict.schema, 1);
     assert.equal(verdict.outcome, "FAIL");
+  });
+});
+
+describe("load validity wiring", () => {
+  const saturatedSummary = {
+    metrics: {
+      http_reqs: { count: 1032 },
+      dropped_iterations: { count: 168 },
+      vus: { min: 1, max: 5 },
+      vus_max: { value: 5 },
+      http_req_duration: { "p(95)": 27, med: 20, max: 60 },
+    },
+  };
+  const writeSummary = (): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), "p6-validity-"));
+    const file = path.join(dir, "k6-saturated-summary.json");
+    writeFileSync(file, JSON.stringify(saturatedSummary));
+    return file;
+  };
+  const k6 = (label: string, summaryPath: string, exitCode = 0): K6RunResult => ({
+    label,
+    exitCode,
+    summaryPath,
+    pointsPath: "",
+    stdoutPath: "",
+    startedAtMs: 0,
+    endedAtMs: 0,
+    pid: 1,
+  });
+  const saturatedRun: K6RunSpec = {
+    label: "saturated",
+    script: "s.js",
+    env: {},
+    maxVUs: 5,
+    expectValidity: "INVALID",
+    expectCodes: ["dropped_iterations", "vu_exhausted"],
+  };
+
+  it("an expected INVALID run that shows its codes gives PASS, and a run without a summary is skipped", async () => {
+    const ctx = ctxWith(
+      { k6: [k6("saturated", writeSummary()), k6("ghost", "/nonexistent/summary.json")] },
+      [saturatedRun],
+    );
+    const r = await validityStage(ctx);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.data?.judged, ["saturated"]);
+    assert.equal(ctx.invalid.length, 0);
+    assert.equal(evaluateVerdict(ctx).outcome, "PASS");
+  });
+
+  it("an expected INVALID run that does not show a code is a TEST BUG and gives FAIL", async () => {
+    const ctx = ctxWith({ k6: [k6("saturated", writeSummary())] }, [
+      { ...saturatedRun, expectCodes: ["runner_cpu"] },
+    ]);
+    const r = await validityStage(ctx);
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons.join(" "), /did not show runner_cpu/);
+    assert.equal(evaluateVerdict({ ...ctx, results: { reconcile: r } }).outcome, "FAIL");
   });
 });

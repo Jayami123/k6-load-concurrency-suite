@@ -69,6 +69,7 @@ export interface K6RunResult {
   endedAtMs: number;
   pid: number; // for the sampler (Task 5) and the CPU guard (Task 4)
   resources?: ResourceSummary;
+  validity?: ValidityVerdict;
 }
 
 export interface LoadContext {
