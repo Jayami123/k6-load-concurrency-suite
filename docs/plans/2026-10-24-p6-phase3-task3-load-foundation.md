@@ -15,7 +15,7 @@ D6, D9, D11, "Rules that hold for every task". **Tasks 4 to 10 build on the inte
 - **Harness pin assumed.** Any: this task starts no product. (`v0.2.12` today; Task 1 may bump it first.)
 - **Environment change: yes** (one pinned k6 in CI and both clouds, §11). Stop for owner review: yes (rule 10: CI workflow, k6 pin).
 - **Pinned k6.** `2.3.0` (§3.2), in a new `.k6-version` file.
-- **Unit tests.** B = count on main when the build starts (today's chain: 503 after Tasks 1 and 2). This plan adds **+51** (§12). Expected after the build: B + 51 (**554** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 503 after Tasks 1 and 2). This plan adds **+53** (§12). Expected after the build: B + 53 (**556** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 pin k6 2.3.0. Q2 `k6/lib` stays JavaScript for now. Q3 the hook downloads k6 automatically and warns on failure. Q4 accept (INVALID handling is then set by Task 4 Q1: a warning with a green job). Q5 accept. `twenty-smoke` keeps its existing `grafana/setup-k6-action` step, pinned to `.k6-version` (§6.8). `load-selftest` keeps its 20-minute timeout for the whole phase; Task 5's two self-tests run in `load-overhead`. All questions are closed in §13.
 - **Priority.** P0 (roadmap).
 
@@ -527,15 +527,33 @@ export function runJourney({ steps, state = {}, deps }) {
 
 ```js
 // config.js (pure part)  input = JSON text of P6_LOAD_CONFIG (or "") + env
-/** Config the runner wrote (k6-config.json) merged over defaults from the environment. Throws on a missing required key. */
-export function parseLoadConfig(text, env, required = []) {
-  const fromFile = text ? JSON.parse(text) : {};
-  const cfg = { ...fromFile };
+/** Config the runner wrote (k6-config.json) with environment values (via envMap) taking precedence. Throws on a missing required key or a non-numeric number. */
+export function parseLoadConfig(text, env, required = [], envMap = {}) {
+  const cfg = text ? JSON.parse(text) : {};
+  // envMap: { configKey: "ENV_NAME" }. An environment value, when set and non-empty, wins over the file value;
+  // it is parsed to a number when the file value or the key is numeric (rate, durationSec, ...), else kept as text.
+  for (const [key, name] of Object.entries(envMap)) {
+    const raw = env[name];
+    if (raw === undefined || raw === "") continue;
+    if (typeof cfg[key] === "number" || NUMERIC_KEYS.has(key)) {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) throw new Error(`load config ${name} is not a number`);
+      cfg[key] = n;
+    } else cfg[key] = raw;
+  }
   for (const key of required)
-    if (cfg[key] === undefined && env[key] === undefined)
-      throw new Error(`missing load config key ${key}`);
+    if (cfg[key] === undefined) throw new Error(`missing load config key ${key}`);
   return cfg;
 }
+const NUMERIC_KEYS = new Set([
+  "rate",
+  "durationSec",
+  "maxLatencyMs",
+  "pre",
+  "maxVUs",
+  "port",
+  "stock",
+]);
 ```
 
 k6-importing modules (`k6/lib/*.js`, covered by `k6 inspect`, `tsc` checkJs and the self-test, not by unit tests):
@@ -544,9 +562,9 @@ k6-importing modules (`k6/lib/*.js`, covered by `k6 inspect`, `tsc` checkJs and 
 // config.js (k6 glue)
 import { parseLoadConfig } from "./pure/config.js";
 /** Reads P6_LOAD_CONFIG (a JSON file path, written by the runner or by hand for a standalone run). Must be called in the init context. */
-export function loadLoadConfig(required = []) {
+export function loadLoadConfig(required = [], envMap = {}) {
   const path = __ENV.P6_LOAD_CONFIG;
-  return parseLoadConfig(path ? open(path) : "", __ENV, required);
+  return parseLoadConfig(path ? open(path) : "", __ENV, required, envMap);
 }
 ```
 
@@ -569,7 +587,7 @@ export const checks = check;
 ```
 
 The self-test script (`k6/selftest/coordinated-omission.js`): reads `P6_LOAD_CONFIG` (JSON) with `MODEL` (`open` or `closed`), `RATE`, `DURATION_SEC`,
-`MAX_LATENCY_MS`, `PRE`, `MAXVUS`, `PORT` (env wins over the file when both are set), builds the scenario with `openModelScenario` /
+`MAX_LATENCY_MS`, `PRE`, `MAXVUS`, `PORT` (env wins over the file when both are set: the script passes `envMap = { model: "MODEL", rate: "RATE", durationSec: "DURATION_SEC", maxLatencyMs: "MAX_LATENCY_MS", pre: "PRE", maxVUs: "MAXVUS", port: "PORT" }` to `loadLoadConfig`), builds the scenario with `openModelScenario` /
 `closedModelScenario` and `standardOptions({ thresholds: { checks: ["rate==1"] } })`, and its default function does one `request("GET", .../work, "GET /work")`
 plus `check(200)`; closed model adds `sleep(0.075)`. Its header comment holds the standalone commands (§6.9).
 
@@ -973,26 +991,26 @@ Counts are relative to the baseline B of §5 check 4 (B = count on main when the
 | 1    | `chore(k6): pin k6 2.3.0 with a checksum-verified installer`                 | `.k6-version scripts/install-k6.sh scripts/k6-sha256.txt scripts/lib/k6-pin.mjs tests/unit/k6-pin.test.ts`                                                                                                                                                            | run `bash scripts/install-k6.sh` → `k6 v2.3.0`; exit 0, **B + 3**                                                              |
 | 2    | `chore(k6): fail the check when the installed k6 is not the pin`             | `scripts/k6-inspect.mjs`                                                                                                                                                                                                                                              | exit 0 with k6 2.3.0; with another k6 first on `PATH` the check exits 1 and prints the install command; B + 3                  |
 | 3    | `feat(k6): add the sizing and option helpers of the workload library`        | `k6/lib/pure/sizing.js k6/lib/pure/options.js tests/unit/k6-lib-sizing.test.ts tests/unit/k6-lib-options.test.ts tsconfig.races.json`                                                                                                                                 | exit 0, **B + 14**                                                                                                             |
-| 4    | `feat(k6): add the prefix, journey and config helpers`                       | `k6/lib/pure/prefix.js k6/lib/pure/journey.js k6/lib/pure/config.js tests/unit/k6-lib-prefix.test.ts tests/unit/k6-lib-journey.test.ts tests/unit/k6-lib-config.test.ts`                                                                                              | exit 0, **B + 26**                                                                                                             |
-| 5    | `feat(k6): add the k6-facing library modules and the self-test script`       | `k6/lib/config.js k6/lib/http.js k6/selftest/coordinated-omission.js k6/selftest/config.example.json`                                                                                                                                                                 | exit 0, B + 26; `k6 inspect` lists every file under `k6/` as ok (the count is recorded in the PR; module files pass, see note) |
-| 6    | `feat(load): add the stub server`                                            | `src/load/stub-server.ts tests/unit/stub-server.test.ts`                                                                                                                                                                                                              | exit 0, **B + 31**                                                                                                             |
-| 7    | `feat(load): add the runner core, summary parser and verdict`                | `src/load/types.ts src/load/paths.ts src/load/env.ts src/load/summary.ts src/load/k6-process.ts src/load/stages.ts src/load/runner.ts src/load/co-relations.ts src/load/cases.ts scripts/load/run-load.ts tests/unit/load-*.test.ts package.json tsconfig.races.json` | exit 0, **B + 51**                                                                                                             |
-| 8    | `ci(perf): install the pinned k6 and run the coordinated-omission self-test` | `.github/workflows/perf.yml`                                                                                                                                                                                                                                          | exit 0 (actionlint silent), B + 51                                                                                             |
-| 9    | `chore(env): install the pinned k6 in the cursor and claude cloud setups`    | `.cursor/Dockerfile .cursor/environment.json .claude/hooks/session-start.sh AGENTS.md`                                                                                                                                                                                | exit 0, B + 51; `shellcheck .claude/hooks/session-start.sh` clean                                                              |
-| 10   | `docs: explain how to read a load run`                                       | `README.md`                                                                                                                                                                                                                                                           | exit 0, B + 51                                                                                                                 |
+| 4    | `feat(k6): add the prefix, journey and config helpers`                       | `k6/lib/pure/prefix.js k6/lib/pure/journey.js k6/lib/pure/config.js tests/unit/k6-lib-prefix.test.ts tests/unit/k6-lib-journey.test.ts tests/unit/k6-lib-config.test.ts`                                                                                              | exit 0, **B + 28**                                                                                                             |
+| 5    | `feat(k6): add the k6-facing library modules and the self-test script`       | `k6/lib/config.js k6/lib/http.js k6/selftest/coordinated-omission.js k6/selftest/config.example.json`                                                                                                                                                                 | exit 0, B + 28; `k6 inspect` lists every file under `k6/` as ok (the count is recorded in the PR; module files pass, see note) |
+| 6    | `feat(load): add the stub server`                                            | `src/load/stub-server.ts tests/unit/stub-server.test.ts`                                                                                                                                                                                                              | exit 0, **B + 33**                                                                                                             |
+| 7    | `feat(load): add the runner core, summary parser and verdict`                | `src/load/types.ts src/load/paths.ts src/load/env.ts src/load/summary.ts src/load/k6-process.ts src/load/stages.ts src/load/runner.ts src/load/co-relations.ts src/load/cases.ts scripts/load/run-load.ts tests/unit/load-*.test.ts package.json tsconfig.races.json` | exit 0, **B + 53**                                                                                                             |
+| 8    | `ci(perf): install the pinned k6 and run the coordinated-omission self-test` | `.github/workflows/perf.yml`                                                                                                                                                                                                                                          | exit 0 (actionlint silent), B + 53                                                                                             |
+| 9    | `chore(env): install the pinned k6 in the cursor and claude cloud setups`    | `.cursor/Dockerfile .cursor/environment.json .claude/hooks/session-start.sh AGENTS.md`                                                                                                                                                                                | exit 0, B + 53; `shellcheck .claude/hooks/session-start.sh` clean                                                              |
+| 10   | `docs: explain how to read a load run`                                       | `README.md`                                                                                                                                                                                                                                                           | exit 0, B + 53                                                                                                                 |
 
 Note on step 5: `scripts/k6-inspect.mjs` runs `k6 inspect` on every `k6/**/*.js`, including the library modules. Probe: a module without `export default` and without
 `options` passes `k6 inspect` (exit 0, both a pure module and one that imports `k6/http`), so nothing is excluded. The PR records the final
 `k6 inspect: N script(s) ok.` line.
 
-New unit tests, by name (the 51): `k6-pin` (3: matching version, mismatch, unparsable output); `k6-lib-sizing` (5: Little's law example 40 × 1.6 → 80; minimum 1; maxVUs headroom;
+New unit tests, by name (the 53): `k6-pin` (3: matching version, mismatch, unparsable output); `k6-lib-sizing` (5: Little's law example 40 × 1.6 → 80; minimum 1; maxVUs headroom;
 plannedIterations; non-positive rate throws); `k6-lib-options` (6: open scenario shape; ramping shape peak sizing; closed shape; standardOptions has no `url` system tag and the fixed trend stats; threshold guard
 accepts `checks` and `http_req_failed{...}`; guard rejects `http_req_duration`); `k6-lib-prefix` (4: accepts a real prefix; rejects others; caseDataPrefix is `[a-z0-9-]`; iterationId and attendeeEmail);
-`k6-lib-journey` (5: all steps ok; stops at the first failure; think time only between ok steps; check called per step; state merged from step data); `k6-lib-config` (3: file wins over absent env; missing required key throws; empty text gives `{}`);
+`k6-lib-journey` (5: all steps ok; stops at the first failure; think time only between ok steps; check called per step; state merged from step data); `k6-lib-config` (5: file wins over absent env; missing required key throws; empty text gives `{}`; an env value wins over the file value and a numeric one is parsed to a number; a non-numeric value for a numeric key throws);
 `stub-server` (5: delay inside and outside the stall window, exactly at the boundary; `startStub` answers 200 JSON; `close` frees the port; rejects non-127.0.0.1); `load-summary` (4: normal;
 missing dropped is 0; `vus_max` both shapes; crossed thresholds list); `load-co-relations` (8: all pass on the probe numbers; each of R1 to R6 fails alone when its input is
 broken (6); margins are exposed as constants); `load-runner` (6: evaluateVerdict PASS, FAIL on exit mismatch, FAIL on PRODUCT BUG even when invalid, INVALID, ENV on setup failure; stage order + cleanup after a throw
-using fake stages); `load-paths` (2: run id format; runDir). Count: 3+5+6+4+5+3+5+4+8+6+2 = **51**. Per-step cumulative counts: step 1 +3 → B+3; step 3 +11 (sizing 5, options 6) → B+14; step 4 +12 (prefix 4, journey 5, config 3) → B+26; step 6 +5 → B+31; step 7 +20 (summary 4, co-relations 8, runner 6, paths 2) → B+51.
+using fake stages); `load-paths` (2: run id format; runDir). Count: 3+5+6+4+5+5+5+4+8+6+2 = **53**. Per-step cumulative counts: step 1 +3 → B+3; step 3 +11 (sizing 5, options 6) → B+14; step 4 +14 (prefix 4, journey 5, config 5) → B+28; step 6 +5 → B+33; step 7 +20 (summary 4, co-relations 8, runner 6, paths 2) → B+53.
 
 After step 10: `git push -u origin feat/<build date>-p6-load-foundation`, `gh pr create` (rule A3), read CI once (rule 15): `load-selftest` green; then
 three `workflow_dispatch` runs of the branch to confirm the margins of §7 on the runner before merging (§3.6 item 2). Merge only when the owner says "merge".
@@ -1034,7 +1052,7 @@ three `workflow_dispatch` runs of the branch to confirm the margins of §7 on th
 
 - [ ] One k6 version: `.k6-version` = 2.3.0; `perf.yml` has no top-level `K6_VERSION` definition, and only `twenty-smoke` uses `setup-k6-action` (its version is read from `.k6-version`); the Cursor install step and the Claude hook call `scripts/install-k6.sh`; `grep -rn "1.8.2" .github scripts .cursor .claude` finds nothing about k6.
 - [ ] `npm run check` fails when the installed k6 differs from the pin (demonstrated once with another version on `PATH`, output pasted in the PR) and still skips when k6 is absent.
-- [ ] Library unit tests green; `npm run check` exit 0 with **B + 51** unit tests (554 on today's chain).
+- [ ] Library unit tests green; `npm run check` exit 0 with **B + 53** unit tests (556 on today's chain).
 - [ ] The self-test shows R1 to R6 in CI on the PR and once on `main` (job `load-selftest`, `verdict.json` outcome `PASS`, artefact `load-selftest` uploaded after a clean token scan).
 - [ ] All existing smokes green on 2.3.0 in CI (the six jobs of §9).
 - [ ] Every new k6 script (`k6/selftest/coordinated-omission.js`) also runs standalone with `k6 run`; the exact commands are in the script header and README (§6.9).
