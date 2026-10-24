@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
+import path from "node:path";
+import { findHits } from "../../scripts/evidence-token-scan.mjs";
 import { preAllocatedVUs } from "../../k6/lib/pure/sizing.js";
 import { evaluateCoordinatedOmission } from "./co-relations.ts";
 import { evaluateOverhead, type OverheadRun } from "./overhead.ts";
@@ -11,8 +13,16 @@ import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { conservationStage } from "./med-conservation.ts";
-import { composeStages, reconcileStage } from "./reconcile/index.ts";
-import type { LoadCase, Stage } from "./types.ts";
+import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
+import { judgeCalRetries, readCalRetryAudit } from "./retry-audit/cal.ts";
+import { judgeDocumensoRetries, readDocumensoRetryRows } from "./retry-audit/documenso.ts";
+import { judgeMedusaRetries, readMedusaRetryAudit } from "./retry-audit/medusa.ts";
+import type { RetryCounters, RetryJudgement } from "./retry-validity.ts";
+import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../races/env.ts";
+import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
+import type { RunContext } from "../documenso/run-case.ts";
+import { closePool, createReadOnlyPool } from "../oracles/pg.ts";
+import type { LoadCase, LoadContext, Stage, StageResult } from "./types.ts";
 
 const SERVICE_MS = 25;
 const STALL_MS = 1500;
@@ -404,6 +414,196 @@ export const DOC_LOAD_008: LoadCase = {
   },
 };
 
+/** The journey counters of the main run (plan task 10 §6.2), read from its summary export. A counter the run never bumped is 0. */
+export function retryCountersOf(ctx: LoadContext): RetryCounters {
+  const run = ctx.k6.find((k) => k.label === "main");
+  if (!run || !existsSync(run.summaryPath)) throw new Error("no k6 summary for run main");
+  const summary: unknown = JSON.parse(readFileSync(run.summaryPath, "utf8"));
+  const c = (name: string) => summaryCounter(summary, name) ?? 0;
+  return {
+    intents: c("p6_intents"),
+    intentsOk: c("p6_intents_ok"),
+    attempts: c("p6_attempts"),
+    firstTimeouts: c("p6_first_timeouts"),
+    retryOk: c("p6_retry_ok"),
+    retryConflict: c("p6_retry_conflict"),
+    retryRedacted400: c("p6_retry_redacted400"),
+    retryRefused: c("p6_retry_refused"),
+    retry5xx: c("p6_retry_5xx"),
+    orderMismatch: c("p6_retry_order_mismatch"),
+  };
+}
+
+/**
+ * Turns a judgement into a stage result and writes audit.json (counts, ids and check names only) after a token scan.
+ * A failing finding fails the stage with its own kind; a counted known bug is a reason, never a failure.
+ */
+function retryStageResult(ctx: LoadContext, j: RetryJudgement): StageResult {
+  const text = JSON.stringify({ schema: 1, caseId: ctx.caseDef.id, ...j }, null, 2);
+  const file = path.join(ctx.outDir, "audit.json");
+  if (findHits(text).length > 0) {
+    rmSync(file, { force: true });
+    return {
+      ok: false,
+      kind: "TEST BUG",
+      reasons: ["audit.json matched a token pattern; not kept"],
+    };
+  }
+  writeFileSync(file, `${text}\n`);
+  const failing = j.findings.filter((f) => !f.ok);
+  const reasons = [
+    ...failing.map((f) => `${f.kind ?? "TEST BUG"}: ${f.check}: ${f.detail}`),
+    ...Object.entries(j.knownBugs).map(
+      ([id, n]) => `known bug ${id}: ${n} (counted, not a failure)`,
+    ),
+  ];
+  const kind = failing.some((f) => f.kind === "PRODUCT BUG")
+    ? "PRODUCT BUG"
+    : failing.length > 0
+      ? "TEST BUG"
+      : undefined;
+  return {
+    ok: failing.length === 0,
+    kind,
+    reasons,
+    data: { audit: "audit.json", checks: j.findings.length, failing: failing.length },
+  };
+}
+
+/** The retry audit of the Cal cases (-007 and -009: the link audit runs only when the audit config names a link prefix). */
+const calRetryStage: Stage = async (ctx) => {
+  const audit = ctx.config.audit as { prefixLike: string; eventTypeId: number; linkLike?: string };
+  const counters = retryCountersOf(ctx);
+  const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
+  try {
+    const input = await readCalRetryAudit(pool, audit);
+    return retryStageResult(
+      ctx,
+      judgeCalRetries({ intents: counters.intents, ...input, counters }),
+    );
+  } finally {
+    await closePool(pool);
+  }
+};
+
+/** The retry audit of the Medusa case: one order and one payment per intent, stock once per order. */
+const medusaRetryStage: Stage = async (ctx) => {
+  const audit = ctx.config.audit as {
+    prefixLike: string;
+    variantId: string;
+    inventoryItemId: string;
+    locationId: string;
+  };
+  const counters = retryCountersOf(ctx);
+  const pool = createReadOnlyPool(medusaDatabaseUrlFromEnv());
+  try {
+    const input = await readMedusaRetryAudit(pool, audit);
+    return retryStageResult(
+      ctx,
+      judgeMedusaRetries({ intents: counters.intents, ...input, counters }),
+    );
+  } finally {
+    await closePool(pool);
+  }
+};
+
+/** The retry audit of the Documenso case; the completion emails are read from the run's Inbucket client. */
+const documensoRetryStage: Stage = async (ctx) => {
+  const run = ctx.handles.documensoRun as RunContext | undefined;
+  if (!run) return { ok: false, kind: "TEST BUG", reasons: ["documenso run handle is missing"] };
+  const audit = ctx.config.audit as { prefixLike: string };
+  const counters = retryCountersOf(ctx);
+  const pool = createReadOnlyPool(documensoDatabaseUrlFromEnv());
+  try {
+    const rows = await readDocumensoRetryRows(pool, audit, run.inbucket);
+    return retryStageResult(
+      ctx,
+      judgeDocumensoRetries({ intents: counters.intents, rows, counters }),
+    );
+  } finally {
+    await closePool(pool);
+  }
+};
+
+/** P6-CAL-LOAD-007: a booking retried after a short client timeout; one accepted booking per intent (plan task 10 §6.6). */
+export const CAL_LOAD_007: LoadCase = {
+  id: "P6-CAL-LOAD-007",
+  title: "Cal booking retried after a short client timeout",
+  product: "cal",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 2000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-007.js", env: {} }],
+  stages: {
+    setup: calSetup({}),
+    reconcile: composeStages([reconcileStage, calRetryStage]),
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-CAL-LOAD-009: the same retries with one cap-1 private link per intent (plan task 10 §6.5, §6.6). */
+export const CAL_LOAD_009: LoadCase = {
+  id: "P6-CAL-LOAD-009",
+  title: "Cal private link retried after a short client timeout",
+  product: "cal",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 2000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-009.js", env: {}, secretEnv: [] }],
+  stages: {
+    setup: calSetup({ privateLinks: true }),
+    reconcile: composeStages([reconcileStage, calRetryStage]),
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-MED-LOAD-006: the complete request retried after a 100 ms timeout; one order, one payment, stock once (plan task 10 §6.6). */
+export const MED_LOAD_006: LoadCase = {
+  id: "P6-MED-LOAD-006",
+  title: "Medusa complete retried after a short client timeout",
+  product: "medusa",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 4000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/med-load-006.js", env: {} }],
+  stages: {
+    setup: makeMedusaSetup({ stockFor: (planned) => planned + 20 }),
+    reconcile: composeStages([reconcileStage, medusaRetryStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/** P6-DOC-LOAD-007: completeDocumentWithToken retried in parallel after a short timeout; one seal, one email set (plan task 10 §6.6). */
+export const DOC_LOAD_007: LoadCase = {
+  id: "P6-DOC-LOAD-007",
+  title: "Documenso completion retried in parallel after a short client timeout",
+  product: "documenso",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 3000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 3000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-007.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    reconcile: composeStages([reconcileStage, documensoRetryStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -415,4 +615,8 @@ export const CASES: Record<string, LoadCase> = {
   [MED_LOAD_002.id]: MED_LOAD_002,
   [DOC_LOAD_002.id]: DOC_LOAD_002,
   [DOC_LOAD_008.id]: DOC_LOAD_008,
+  [CAL_LOAD_007.id]: CAL_LOAD_007,
+  [CAL_LOAD_009.id]: CAL_LOAD_009,
+  [MED_LOAD_006.id]: MED_LOAD_006,
+  [DOC_LOAD_007.id]: DOC_LOAD_007,
 };
