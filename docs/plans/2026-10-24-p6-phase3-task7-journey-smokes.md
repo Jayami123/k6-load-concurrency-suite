@@ -20,7 +20,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3, 4, 5, 6 merged.
 - **Harness pin assumed.** `v0.2.12` today; Task 1 may bump it (the Cal bridge stays until Task 1 part B).
 - **Environment change.** None beyond Task 3's k6 pin (§11).
-- **Unit tests.** B = count on main when the build starts (today's chain: 688 after Tasks 1 to 6). This plan adds **+18** (§12); expected B + 18 (**706** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
+- **Unit tests.** B = count on main when the build starts (today's chain: 689 after Tasks 1 to 6). This plan adds **+18** (§12); expected B + 18 (**707** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784.
 - **Owner decisions taken (2026-10-24, recorded, not open).** **D5 amended: the Medusa LOAD steps run in a new job `medusa-load` (`timeout-minutes: 45`), because `medusa-smoke` has no room.** Q2 accept the rates, pending three dispatch runs on the runner. Q3 priority P1. Q4 accept `LoadContext.secrets`. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): `perf.yml` changes (smokes retired, LOAD steps and a job added), `AGENTS.md` and README change; the D5 amendment for Medusa is an owner decision already taken (above).
 
@@ -143,7 +143,7 @@ The interface list at the top of this file, plus from `main` (grepped): `src/cal
 | #   | Check                          | Command                                                                                                                                                    | Expected                                                                                |
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | 1   | Base                           | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                              | descendant of `5acd2a0`                                                                 |
-| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests` = B (688 once Tasks 1 to 6 are merged)                                |
+| 2   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                        | exit 0, `# tests` = B (689 once Tasks 1 to 6 are merged)                                |
 | 3   | Earlier tasks merged, names ok | `grep -n "export async function runLoad\|export const READINESS\|export const reconcileStage\|export function startSampler" src/load/*.ts src/load/*/*.ts` | all four found; if a signature differs, stop and report                                 |
 | 4   | k6 pin                         | `k6 version; cat .k6-version`                                                                                                                              | `k6 v2.3.0`, `2.3.0`                                                                    |
 | 5   | Smoke steps to retire          | `grep -n "npm run smoke:" .github/workflows/perf.yml`                                                                                                      | medusa ×3, cal ×1, documenso ×1, twenty ×1 (lines may have moved)                       |
@@ -570,9 +570,14 @@ export function runDocSign(cfg, pdf) {
         if (!Array.isArray(recipients)) return { ok: false, data: { tokens } }; // malformed 200: a failed step, not a TypeError
         for (const rc of recipients) {
           const m = /\/sign\/([A-Za-z0-9_-]+)$/.exec(rc?.signingUrl ?? "");
-          if (!m) return { ok: false, data: { tokens } };
+          if (!m || tokens[rc.id] !== undefined) return { ok: false, data: { tokens } }; // unmatched URL or duplicate id
           tokens[rc.id] = m[1];
         }
+        // exactly the recipients created in the earlier step: no empty, partial, unrelated or extra entry
+        const got = Object.keys(tokens).map(Number).sort();
+        const want = [...s.recipientIds].sort();
+        if (got.length !== want.length || got.some((id, i) => id !== want[i]))
+          return { ok: false, data: { tokens } };
         return { ok: true, data: { tokens } };
       },
     },
@@ -808,7 +813,7 @@ None beyond the k6 pin of Task 3. `/opt/node24` is needed for Documenso as today
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (B = count on main when the build starts; 688 today after Tasks 1 to 6).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-journey-smokes origin/main` (after Tasks 3 to 6 are merged). Counts relative to B (B = count on main when the build starts; 689 today after Tasks 1 to 6).
 
 | Step | Commit subject                                                           | `git add` paths                                                                                                                 | `npm run check` expected                       |
 | ---- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -825,7 +830,7 @@ Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git s
 | 10   | `chore(k6): remove the retired health smokes`                            | `k6/smoke/medusa-health.js k6/smoke/cal-health.js k6/smoke/documenso-health.js` (deleted)                                       | exit 0 (`k6 inspect` count drops by 3), B + 18 |
 | 11   | `docs: point the readme and agents notes at the journey smokes`          | `README.md AGENTS.md`                                                                                                           | exit 0, B + 18                                 |
 
-New unit tests, by name (the 18): `k6-lib-journey` (+1: a `stop: true` step ends the journey as completed and skips the rest); `load-journey-cases` (5: a 200 distribute reply without a `recipients` array gives a failed step result and no throw; a 200 reply whose `signingUrl` does not match `/sign/<token>` gives a failed step result and no throw; the Medusa journey's request bodies equal `cartCreateBody`, `lineItemBody`, `paymentSessionBody` and `STORE_ADDRESS` of `src/medusa/payloads.ts`; the Cal booking body equals `bookingBody(...)`; the Documenso recipient, field and sign bodies equal `recipientBodies`, `signatureFieldBodies`, `signFieldBody`, `completeBody` — comparing the k6 source text by extracting the literals is fragile, so the test evaluates the journey modules in Node with a fake `k6/http` through a loader stub and diffs the captured requests);
+New unit tests, by name (the 18): `k6-lib-journey` (+1: a `stop: true` step ends the journey as completed and skips the rest); `load-journey-cases` (5: a 200 distribute reply with a malformed recipients list (missing, not an array, empty, partial, unrelated or duplicate ids) gives a failed step result and no throw (one table-driven test over those replies); a 200 reply whose `signingUrl` does not match `/sign/<token>` gives a failed step result and no throw; the Medusa journey's request bodies equal `cartCreateBody`, `lineItemBody`, `paymentSessionBody` and `STORE_ADDRESS` of `src/medusa/payloads.ts`; the Cal booking body equals `bookingBody(...)`; the Documenso recipient, field and sign bodies equal `recipientBodies`, `signatureFieldBodies`, `signFieldBody`, `completeBody` — comparing the k6 source text by extracting the literals is fragile, so the test evaluates the journey modules in Node with a fake `k6/http` through a loader stub and diffs the captured requests);
 `load-products-cal` (4: window length `ceil(planned/11.4)+3`; config has no secret; the cleanup sweeps uids read from the database (fake pool and fake `cancelBooking`); a failed cancel becomes a `TEST BUG` line and the sweep continues); `load-products-medusa` (5: stock is `planned + 20`; the customer sweep pages and deletes only emails starting with the prefix; orders swept by email prefix; the admin token goes to `ctx.secrets` and not to `ctx.config`; a failed delete becomes a `TEST BUG` line);
 `load-products-documenso` (3: the API token goes to `ctx.secrets` only; `secretEnv` names it; cleanup collects the live envelope ids by title prefix before `endRun`). Sum: 1 + 5 + 4 + 5 + 3 = **18**. Cumulative: step 1 +1 → B+1; step 3 +3 → B+4; step 4 +2 (the two distribute tests, with the Documenso journey) → B+6; step 5 +4 → B+10; step 6 +5 → B+15; step 7 +3 → B+18.
 
@@ -871,7 +876,7 @@ After step 11: `git push -u origin feat/<build date>-p6-journey-smokes`, `gh pr 
 - [ ] `k6/smoke/medusa-health.js`, `cal-health.js`, `documenso-health.js`, the three `smoke:*` scripts and the five CI smoke steps with their uploads are gone; the readiness preflight runs instead (visible in each `verdict.json` stage list).
 - [ ] `AGENTS.md` and README updated (no remaining `smoke:medusa|cal|documenso`: `grep -rn "smoke:medusa\|smoke:cal\|smoke:documenso" README.md AGENTS.md package.json .github` finds nothing; `docs/plans` is excluded because the plans quote the old names).
 - [ ] Each journey runs standalone with plain `k6 run` (commands in README; the example JSON files).
-- [ ] `npm run check` exit 0 with **B + 18** (706 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 18** (707 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
