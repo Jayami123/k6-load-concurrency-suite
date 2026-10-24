@@ -16,7 +16,7 @@ defined there; if the merged code differs, the build stops at §5 check 3.
 - **Harness pin assumed.** Any. Process records read: `.harness/medusa-backend.pid` (+ `medusa-backend-2.pid`), `.harness/documenso-web.pid`, and for Cal
   `results/harness/cal.pgid` (the P6 bridge) **until Task 1 part B**, then `.harness/cal-web.pid` (Task 1 plans). No harness telemetry (D2).
 - **Environment change.** None (§11).
-- **Unit tests.** B = count on main when the build starts (today's chain: 597 after Tasks 1 to 4). This plan adds **+56** (§12); expected B + 56 (**653** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 599 after Tasks 1 to 4). This plan adds **+56** (§12); expected B + 56 (**655** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 split into a new job `load-overhead`, move **both** Task 5 self-tests there, and keep `load-selftest` at 20 minutes (no raise). Q2 accept the cgroup reads. Q3 one chart per run. Q4 yes, the p95 panel is labelled "info, not a result". All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a CI workflow change and a shared runner change.
 
@@ -162,7 +162,7 @@ From Task 3: `LoadCase`, `LoadContext`, `Stage`, `StageResult`, `K6RunResult.pid
 | #   | Check                      | Command                                                                                                                                                                                                                    | Expected                                                                             |
 | --- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | 1   | Base, Tasks 3 and 4 merged | `git log -1 --format=%h origin/main; git log --oneline origin/main \| grep -i "validity\|runner core"`                                                                                                                     | descendant of `5acd2a0`; both tasks' commits present                                 |
-| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                        | exit 0, `# tests` = B (597 once Tasks 1 to 4 are merged)                             |
+| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                        | exit 0, `# tests` = B (599 once Tasks 1 to 4 are merged)                             |
 | 3   | Task 3 and 4 interfaces    | `grep -n "samplerStart\|samplerStop" src/load/stages.ts; grep -n "telemetry_gap\|clock_skew" src/load/types.ts; grep -n "export function startResourceSampler" src/load/proc-stats.ts`                                     | hits in all three                                                                    |
 | 4   | Process records exist      | with a stack up: `ls node_modules/qa-portfolio-harness/.harness/*.pid results/harness/*.pgid 2>/dev/null`                                                                                                                  | the record of the running product; Cal: `cal-web.pid` (after Task 1 B) or `cal.pgid` |
 | 5   | cgroup kind                | `stat -fc %T /sys/fs/cgroup`                                                                                                                                                                                               | `cgroup2fs` on the runner, `tmpfs` (v1) on this VM; both handled                     |
@@ -533,7 +533,7 @@ None for Cursor Cloud or Claude Code cloud: the sampler needs only `/proc`, `/sy
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-telemetry origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 597 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-telemetry origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 599 today).
 
 | Step | Commit subject                                                              | `git add` paths                                                                                                                                                                  | `npm run check` expected           |
 | ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -598,7 +598,7 @@ After step 10: `git push -u origin feat/<build date>-p6-load-telemetry`, `gh pr 
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green: `npm run check` exit 0 with **B + 56** (653 on today's chain).
+- [ ] Unit tests green: `npm run check` exit 0 with **B + 56** (655 on today's chain).
 - [ ] CI on the PR and once on `main`: `P6-X-LOAD-002` `normal` has no gap longer than 2 intervals and `chart-normal.html` exists; `forcedGap` is INVALID with `telemetry_gap`; `forcedSkew` is INVALID with `clock_skew`; the case outcome is `PASS`.
 - [ ] `P6-X-LOAD-006`: medians with and without the sampler within ±2 % requests, ±10 % p95, equal drops (job `load-overhead`).
 - [ ] Telemetry, chart and `run-meta.json` uploaded after a clean token scan; the chart opens offline (no external reference, tested).
