@@ -40,10 +40,19 @@ Other indices are 400 `not_allowed` (stock). All 15 requests started within 0.6 
 - **Stock:** `stocked` 3 and `reserved` 3 in both trials, so the `inventory_level` counter lost updates while 7 (or 5) reservation
   rows exist. That is the characterization finding already recorded.
 
-## Verdict
+## Verdict (superseded)
 
-The counts are real: the database holds the same orders the HTTP responses returned. This is **PRODUCT BUG (SUSPECTED)**: instance 1
-returned 4 successful completes for S = 3 in trials 39 and 45.
+The counts are real: the database holds the same orders the HTTP responses returned. The first reading was PRODUCT BUG (SUSPECTED).
+That reading is withdrawn: see the decision below.
+
+## Decision: TEST BUG in the bound
+
+The passing run 40119155757 (`race-histograms-medusa-multi-instance-memory`, id 12570730242, verdict `pass`, no invariant violations)
+has one backend with 4 successful completes for S = 3 in trials 8, 16, 18, 24, 41, 43 and 49 (for example trial 8: instance 0 = 2,
+instance 1 = 4, 6 orders; trial 18: instance 0 = 4, instance 1 = 1, 5 orders). So one backend admitting 4 is not a rare failure, and
+the bound `instances × S = 6` is not a guarantee. The bound was removed from the hard invariants; the per-backend and per-trial
+oversell counts are recorded as the characterization finding. Hard invariants: no ghost orders, `orderCount = uniqueOrderIds =
+httpWinnerCount = reservationQty`, orders ≤ N, all trials valid.
 
 ## Limits
 
@@ -56,6 +65,8 @@ returned 4 successful completes for S = 3 in trials 39 and 45.
 
 ## Change
 
-`checkMemoryLockCharacterization` (`src/medusa/invariants.ts`) now adds `PRODUCT BUG (SUSPECTED): instance k admitted n orders for S=…`
-for each backend with more than S successful completes. The bound `instances × S` stays as a hard invariant. Regression tests:
-`tests/unit/medusa-invariants.test.ts` (trial 45 and trial 39 status patterns from the artifact, plus a passing case).
+`checkMemoryLockCharacterization` (`src/medusa/invariants.ts`): the `instances × S` violation is removed; the per-backend admission
+counts and the most any one backend admitted are findings (`CHARACTERIZATION: per backend admitted [3, 4], most 4 for S=3`). Ghost
+orders in either direction and `orders > N` are hard violations. Regression tests in `tests/unit/medusa-invariants.test.ts`: the trial 45
+shape (3 + 4 = 7) and the trial 39 shape pass the hard invariants; a ghost order and an N violation fail. Plan text updated (erratum in
+§2 of the Task 2 plan); spec line 75 comment updated; spec line 66 unchanged.
