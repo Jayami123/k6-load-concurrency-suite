@@ -272,6 +272,7 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           if (lock === "memory") {
             const check = checkMemoryLockCharacterization({
               s: input.s,
+              n: input.n,
               instances: instances.length,
               orderCount: snapshot.orderCount,
               uniqueOrderIds: orderIdSet.size,
