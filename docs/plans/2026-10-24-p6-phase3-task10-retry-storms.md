@@ -14,7 +14,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 to 9 merged (Medusa part needs Task 8; the roadmap says 7 and 8).
 - **Harness pin.** Unchanged.
 - **Environment change.** None.
-- **Unit tests.** B = count on main when the build starts (today's chain: 747 after Tasks 1 to 9). This plan adds **+34** (§12); expected B + 34 (**781** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781. Deltas are what counts if the tasks merge in another order.
+- **Unit tests.** B = count on main when the build starts (today's chain: 750 after Tasks 1 to 9). This plan adds **+34** (§12); expected B + 34 (**784** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784. Deltas are what counts if the tasks merge in another order.
 - **Owner decisions taken (2026-10-24, recorded, not open).** D5 amended (Medusa LOAD steps in `medusa-load`, timeout 45, Task 7). Q1 a `-009` surplus fails the run, labelled `PRODUCT BUG (SUSPECTED; related to F-C1, different mechanism)`; the owner labels it after rule 13. Q2 accept 45 for the new job (not a raise). Q3 accept the final 30 s attempt. Q4 accept 1 intent per second, pending runner confirmation. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): `perf.yml` steps added in three jobs.
 
@@ -89,7 +89,7 @@ The interface list above, plus from `main`: `src/cal/{api,payloads,oracle,sessio
 | #   | Check                       | Command                                                                                                                                                                                                                       | Expected                                                                                                  |
 | --- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | 1   | Base                        | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                                                                                 | descendant of `5acd2a0`                                                                                   |
-| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                           | exit 0, `# tests` = B (747 once Tasks 1 to 9 are merged)                                                  |
+| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                           | exit 0, `# tests` = B (750 once Tasks 1 to 9 are merged)                                                  |
 | 3   | Earlier tasks merged        | `grep -n "export function runMedCheckout\|export function runCalBook\|export function runDocSign\|export function makeMedusaSetup\|export function classifyRefusal" k6/journeys/*.js src/load/products/*.ts k6/lib/pure/*.js` | all found; otherwise stop and report                                                                      |
 | 4   | Link helpers still on main  | `grep -n "export" src/cal/private-link.ts src/cal/state-oracle.ts`                                                                                                                                                            | `setPrivateLinks`, `readLinkState`, `readEventLinks`; if gone, `-009` moves to "Later" with that evidence |
 | 5   | Retry status                | with Cal up, one overlapping and one sequential retry (timeout 30 ms, then 300 ms)                                                                                                                                            | overlapping 400 redacted, sequential 409, one accepted booking                                            |
@@ -274,7 +274,7 @@ None. The Cal host password comes from the seed output the job already produces;
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-retry-storms origin/main` (after Tasks 7, 8, 9 are merged). Counts relative to B (B = count on main when the build starts; 747 today after Tasks 1 to 9).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-retry-storms origin/main` (after Tasks 7, 8, 9 are merged). Counts relative to B (B = count on main when the build starts; 750 today after Tasks 1 to 9).
 
 | Step | Commit subject                                                      | `git add` paths                                                                                                                                                                                                                                                                                                               | `npm run check` expected           |
 | ---- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -333,7 +333,7 @@ Before step 9 run each case once on the VM (`npm run up:<product>`; `npm run loa
 - [ ] `P6-CAL-LOAD-009` lands the same way (gate passed, §3.5); if the helpers are gone at build time it is listed under "Later" with the evidence.
 - [ ] Per intent exactly one booking / one order with one payment and stock −1 / one signature, one seal and one email set / one booking per link; or a proven product bug is recorded with repeated evidence (rule 13).
 - [ ] Artefacts shipped (summary, telemetry, chart, `run-meta.json`, `audit.json`) after a clean token scan; the prior Cal links are restored.
-- [ ] `npm run check` exit 0 with **B + 34** (781 on today's chain); no existing job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 34** (784 on today's chain); no existing job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
