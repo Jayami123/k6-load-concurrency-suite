@@ -106,7 +106,7 @@ Task 7 (journeys) puts the run prefix into the data and fills `ctx.config.audit`
 | #   | Check                       | Command                                                                                                                                        | Expected                                                                                 |
 | --- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | 1   | Base, Tasks 3 and 4 merged  | `git log -1 --format=%h origin/main; git log --oneline origin/main \| grep -i "validity\|runner core"`                                         | descendant of `5acd2a0`; both tasks present                                              |
-| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                            | exit 0, `# tests 565` (or the count Tasks 3 to 5 left)                                   |
+| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                            | exit 0, `# tests` = B (653 once Tasks 1 to 5 are merged)                                 |
 | 3   | Task 3 and 4 interfaces     | `grep -n "reconcile" src/load/stages.ts; grep -n "export function judgeValidity" src/load/validity.ts`                                         | `reconcile` slot present; Task 4's validity wiring present (`composeStages` is new here) |
 | 4   | Money oracles still on main | `grep -n "export function checkRefundCap\|export function checkCaptureCap\|export async function readMoneySnapshot" src/medusa/*.ts`           | three hits (otherwise: the Medusa money clause becomes `pending`, §6.5)                  |
 | 5   | Known-bug ids still current | `grep -n "P6-OBS-CAL-002\|P6-OBS-DOC-002\|F-M2" README.md docs/BACKLOG.md \| head`                                                             | all three present; if a bug is fixed upstream, drop its `knownBugs` entry                |
@@ -418,7 +418,7 @@ None (Cursor Cloud and Claude Code cloud): no tool, host or setting.
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-reconciliation origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (565 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-reconciliation origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 653 today after Tasks 1 to 5).
 
 | Step | Commit subject                                                              | `git add` paths                                                                                                                                          | `npm run check` expected |
 | ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
