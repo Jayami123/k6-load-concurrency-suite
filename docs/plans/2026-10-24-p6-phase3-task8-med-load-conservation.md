@@ -14,7 +14,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 to 7 merged.
 - **Harness pin.** Unchanged (single Medusa instance).
 - **Environment change.** None.
-- **Unit tests.** B = count on main when the build starts (today's chain: 702 after Tasks 1 to 7). This plan adds **+17** (§12); expected B + 17 (**719** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 706 after Tasks 1 to 7). This plan adds **+17** (§12); expected B + 17 (**723** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** D5 amended: the Medusa LOAD steps run in `medusa-load` (new job, timeout 45; recorded in the Task 7 plan). Q1 accept `S = ceil(planned / 2)`. Q2 count `F-M2` ghost orders until fixed upstream, then flip to fail (Task 6 Q2; the flip is a recorded follow-up there). Q3 the 10 s PR profile with `S = 5` is enough. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): `perf.yml` step added.
 
@@ -80,7 +80,7 @@ The interface list above, plus from `main`: `src/medusa/oracle.ts` (`readOversel
 | #   | Check                    | Command                                                                                                                                                        | Expected                                                 |
 | --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | 1   | Base                     | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                  | descendant of `5acd2a0`                                  |
-| 2   | Baseline                 | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                            | exit 0, `# tests` = B (702 once Tasks 1 to 7 are merged) |
+| 2   | Baseline                 | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                            | exit 0, `# tests` = B (706 once Tasks 1 to 7 are merged) |
 | 3   | Task 7 names             | `grep -n "export function runMedCheckout\|export async function medusaSetup\|p6_refused_at_line_item" k6/journeys/med-checkout.js src/load/products/medusa.ts` | all found; otherwise stop and report                     |
 | 4   | Known bugs still current | `grep -n "F-M2\|F-M5" README.md docs/BACKLOG.md \| head`                                                                                                       | present; if fixed upstream, drop the classifier branch   |
 | 5   | Loser bodies             | `npm run up:medusa`; run the case once on the VM (`npm run load:medusa-conservation -- --profile pr`)                                                          | refusals are `400 not_allowed`; 5 orders; 0 other        |
@@ -119,7 +119,7 @@ export function classifyRefusal(status, type, message) {
 }
 ```
 
-In `med-checkout.js` the `line item` and `complete` steps call `classifyRefusal(r.status, r.json("type"), r.json("message"))` and add one of three new counters: `p6_refused_clean`, `p6_refused_ghost`, `p6_refused_other` (the Task 7 counters `p6_refused_at_line_item` and `p6_refused_at_complete` stay for the stage split). A `clean` refusal ends the iteration as ok; `ghost` and `other` fail the check (so `checks == 1` is red on a ghost or unknown 4xx/5xx). Case script:
+In `med-checkout.js` the `line item` and `complete` steps call `classifyRefusal(r.status, r.json("type"), r.json("message"))` and add one of three new counters: `p6_refused_clean`, `p6_refused_ghost`, `p6_refused_other`; **every response with status 500 or above, at any step, also adds one to a fourth counter `p6_status_5xx`** (a transport failure or timeout has status 0 and is not counted, unlike `http_req_failed`), and that counter is the producer of `status5xx` below (the Task 7 counters `p6_refused_at_line_item` and `p6_refused_at_complete` stay for the stage split). A `clean` refusal ends the iteration as ok; `ghost` and `other` fail the check (so `checks == 1` is red on a ghost or unknown 4xx/5xx). Case script:
 
 ```js
 import { loadLoadConfig } from "../lib/config.js";
@@ -154,6 +154,8 @@ export default function () {
 ```
 
 ### 6.3 The conservation judge (`src/load/med-conservation.ts`)
+
+The counters are read from `k6-main-summary.json` through `parseK6Summary`: `iterations`, `p6_orders` (Task 6), `p6_refused_clean`, `p6_refused_ghost`, `p6_refused_other`, `p6_status_5xx` (this task's journey change, §6.2) and `dropped_iterations` (absent means 0).
 
 ```ts
 export interface ConservationCounters {
@@ -212,7 +214,7 @@ export const MED_LOAD_002: LoadCase = {
   runs: () => [{ label: "main", script: "k6/cases/med-load-002.js", env: {} }],
   stages: {
     setup: makeMedusaSetup({ stockFor: (planned) => Math.ceil(planned / 2) }),
-    reconcile: composeStages([medusaAuditStage, conservationStage]),
+    reconcile: composeStages(medusaAuditStage, conservationStage),
     cleanup: medusaCleanup,
   },
 };
@@ -259,7 +261,7 @@ None. Cursor Cloud and Claude Code cloud already have k6 (Task 3), Docker and No
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-load-conservation origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 702 today after Tasks 1 to 7).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-load-conservation origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 706 today after Tasks 1 to 7).
 
 | Step | Commit subject                                                            | `git add` paths                                                                           | `npm run check` expected           |
 | ---- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -304,7 +306,7 @@ After step 7: `git push -u origin feat/<build date>-p6-med-load-conservation`, `
 - [ ] `P6-MED-LOAD-002` VALID and green on the PR and once on `main`: `verdict.json` outcome `PASS`, orders equal `S`, all refusals clean, no 5xx, `dropped_iterations` 0.
 - [ ] `audit.json` and the conservation findings are in the artefact `load-medusa` after a clean token scan; the job summary shows orders, refusals and `knownBugs`.
 - [ ] A proven product bug, if the run finds one, is recorded with repeated evidence (rule 13) and reported, not hidden.
-- [ ] `npm run check` exit 0 with **B + 17** (719 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 17** (723 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
