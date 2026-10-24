@@ -76,14 +76,9 @@ export function renderChartHtml(input: ChartInput): string {
       end,
       "Shown for context only; no latency gate in Phase 3 (D9).",
     ),
+    panel("Generator (k6) CPU, cores", [], base, end, "No k6 CPU series is sampled yet."),
     panel(
-      "Generator (k6) CPU, cores",
-      samples.map((s) => ({ t: s.t, v: s.cpuCores })),
-      base,
-      end,
-    ),
-    panel(
-      "App process group CPU, ticks",
+      "App process group CPU, cores",
       samples.map((s) => ({ t: s.t, v: s.cpuCores })),
       base,
       end,

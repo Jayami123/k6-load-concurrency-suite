@@ -91,6 +91,7 @@ export async function documensoCleanupWith(ctx: LoadContext, deps: DocumensoDeps
   const run = ctx.handles.documensoRun as RunContext | undefined;
   if (!run) return { ok: true, reasons: [] }; // setup never created a run: nothing to sweep
   const reasons: string[] = [];
+  let mailboxes: string[] = [];
   try {
     const titleLike = likeLiteralPrefix(run.runPrefix);
     const envelopes = await selectRows<{ id: string | number }>(
@@ -104,7 +105,12 @@ export async function documensoCleanupWith(ctx: LoadContext, deps: DocumensoDeps
       `SELECT DISTINCT r.email FROM "Recipient" r JOIN "Envelope" e ON e.id = r."envelopeId" WHERE e.title LIKE $1`,
       [titleLike],
     );
-    const mailboxes = recipients.map((row) => row.email.split("@")[0] ?? "");
+    mailboxes = recipients.map((row) => row.email.split("@")[0] ?? "");
+  } catch (err) {
+    // The run still ends: an empty mailbox list lets endRun purge the account, and the failure stays a TEST BUG.
+    reasons.push(`TEST BUG: cleanup documenso discovery failed: ${message(err)}`);
+  }
+  try {
     reasons.push(...(await deps.end(run, mailboxes)));
     reasons.push(...(await deps.leak(run, mailboxes)).violations);
   } catch (err) {

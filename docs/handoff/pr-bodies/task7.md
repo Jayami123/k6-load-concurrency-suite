@@ -62,10 +62,9 @@ The new step budgets from §10 (the plan's numbers): cal LOAD 1.4 min estimate (
 
 - **The unit-test base is 666, not the plan's 690.** Tasks 5 and 6 are partial in this stack (Task 5 has 634 tests against the plan's
   657, Task 6 has 666 against 690), so every count here is the plan's count minus that gap: 667 at step 1, 684 at the end.
-- **`reconcileStage` (Task 6) is not built.** The plan's pre-check of the four names (§5 check 3) fails on that one name. The cases do
-  not use it: each case's stages are `setup` and `cleanup` only, as in the plan's §6.5 snippet. The product audits that the plan
-  attaches through `ctx.config.audit` are written by setup, but nothing reads them yet, so the "books agree afterwards" check is
-  **not** run in this PR. Task 6's live readers are the missing piece.
+- **`reconcileStage` (Task 6) is registered in the three cases.** `CAL_LOAD_001`, `MED_LOAD_001` and `DOC_LOAD_001` run it after the
+  validity judge. It reads each case's audit configuration from setup, runs the product-specific database audit, and writes
+  `audit.json`. The "books agree afterwards" check runs in this PR; its outcome is judged in CI, not locally.
 - **`.gitignore`:** `products/` matched `src/load/products/`. Anchored to `/products/` (the checkout directory at the repo root).
 - **`src/load/products/medusa.ts`** keeps its `deleteCustomersByPrefix` in `src/medusa/admin.ts` next to `deleteCustomersByEmail`
   (the admin helper is private there). The plan names it in the products module.
@@ -80,8 +79,6 @@ The new step budgets from §10 (the plan's numbers): cal LOAD 1.4 min estimate (
 
 ## Not built / open
 
-- The audit stage of the three cases (needs Task 6's `reconcileStage` and live readers). Until then the LOAD steps prove the journeys and
-  the validity judge, not the books.
 - Live steps of plan §5 (the Cal slot count probe, the rate probes on the runner) are covered by the CI runs, not by local runs.
 
 ## Environment changes

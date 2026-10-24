@@ -27,6 +27,8 @@ fails the run, owner Q1). Plan: docs/plans/2026-10-24-p6-phase3-task6-load-recon
 
 ## Verification
 
+Archived snapshot as of fd9c789 (2026-10-24). The counts and the live-audit status below are as of that commit, not the current head.
+
 - `npm run check`: # tests 666 / # pass 666 / # fail 0 (Task 5 baseline 634; +32 new tests, see Not built).
 - Every evaluator is pure and tested on fixtures: clean snapshots pass; each named violation and each known bug is asserted.
 - No product is started by this branch. No live audit has run yet: `P6-X-LOAD-005` is unit-evidenced until Task 7 (plan Q4).
@@ -80,10 +82,8 @@ Artifact `race-histograms-medusa-multi-instance-memory` (id 12555533333) of run 
   `PRODUCT BUG: 7 orders exceed instances x S = 6` (`uniqueOrderIds > instances * s`, with s = 3, instances = 2).
   Evidence: trial 17 `statusCounts {200: 7, 400: 8}`, `i0_200 = 4`, `i1_200 = 3`; trial 20 `i0_200 = 3`, `i1_200 = 4`.
   In both, `reserved = 3` and `available = 0` on the stock row, yet 7 orders were accepted with 7 reservation rows.
-- Label: **PRODUCT BUG (SUSPECTED)**. The bound `instances x S` assumes each instance admits at most S orders, which a
-  per-process memory lock does not guarantee: both instances can read the stock before either reserves. Seven accepted orders
-  against three units is a real oversell beyond the expected characterization. Whether the bound itself is too tight is an
-  open question for the owner; no assertion was changed.
+- Label withdrawn. The `instances x S` bound was a test bug, removed in 64fc6db (memory-lock hard invariants). No such bound is
+  asserted now. Runs 40081928914 and 40096192555 are historical failures, kept here for the record.
 - The top-level `expect(histogram.verdict).toBe("pass")` stays and stays red for this run. Not weakened.
 
 ## CI run 40096192555 (workflow_dispatch, head 3237fe9)

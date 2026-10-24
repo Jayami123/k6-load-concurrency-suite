@@ -56,6 +56,6 @@ export function summarizeMedian(
     n: values.length,
     excludedCount: excluded.length,
     excluded,
-    insufficient: used.length < minRuns,
+    insufficient: values.length < minRuns,
   };
 }
