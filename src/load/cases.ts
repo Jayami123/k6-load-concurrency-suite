@@ -11,6 +11,7 @@ const SERVICE_MS = 25;
 const STALL_MS = 1500;
 const PERIOD_MS = 10000;
 const SELFTEST = "k6/selftest/coordinated-omission.js";
+const TELEMETRY = "k6/selftest/telemetry.js";
 
 let stub: { port: number; close(): Promise<void> } | undefined;
 
@@ -173,7 +174,53 @@ export const VALIDITY_LOAD_004: LoadCase = {
   stages: { setup, cleanup },
 };
 
+/** Telemetry self-test (Task 5, plan §6.6): a normal run is VALID; a forced stall is a telemetry gap; a skewed marker is clock_skew. */
+export const TELEMETRY_LOAD_002: LoadCase = {
+  id: "P6-X-LOAD-002",
+  title: "Telemetry self-test: outside-only sampler, clock markers, a forced gap and a forced skew",
+  product: "stub",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 40, durationSec: 30, maxLatencyMs: 1600 },
+    full: { rate: 40, durationSec: 60, maxLatencyMs: 1600 },
+  },
+  telemetry: { product: "stub" },
+  runs: (ctx) => {
+    const base = {
+      RATE: String(ctx.profile.rate),
+      DURATION_SEC: String(ctx.profile.durationSec),
+      MAX_LATENCY_MS: String(ctx.profile.maxLatencyMs),
+      PORT: String(ctx.config.port),
+      PRE: "80",
+      MAXVUS: "120",
+    };
+    return [
+      { label: "normal", script: TELEMETRY, env: base, maxVUs: 120, expectValidity: "VALID" },
+      {
+        label: "forcedGap",
+        script: TELEMETRY,
+        env: base,
+        maxVUs: 120,
+        injectGapMs: 3500,
+        expectValidity: "INVALID",
+        expectCodes: ["telemetry_gap"],
+      },
+      {
+        label: "forcedSkew",
+        script: TELEMETRY,
+        env: base,
+        maxVUs: 120,
+        markerSkewMs: 2500,
+        expectValidity: "INVALID",
+        expectCodes: ["clock_skew"],
+      },
+    ];
+  },
+  stages: { setup, cleanup },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
+  [TELEMETRY_LOAD_002.id]: TELEMETRY_LOAD_002,
 };

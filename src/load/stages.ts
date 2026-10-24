@@ -3,6 +3,7 @@ import os from "node:os";
 import { scanTree } from "../../scripts/evidence-token-scan.mjs";
 import { runK6 } from "./k6-process.ts";
 import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
+import { finishRunTelemetry, startRunTelemetry } from "./telemetry/run.ts";
 import { parseK6Summary } from "./summary.ts";
 import { judgeValidity } from "./validity.ts";
 import type { LoadContext, Stage, StageSet } from "./types.ts";
@@ -13,9 +14,15 @@ const ok: Stage = async () => ({ ok: true, reasons: [] });
 export const runAllK6: Stage = async (ctx: LoadContext) => {
   const specs = ctx.caseDef.runs(ctx);
   for (const spec of specs) {
+    const telemetry = ctx.caseDef.telemetry
+      ? await startRunTelemetry(ctx, spec, ctx.caseDef.telemetry.product)
+      : undefined;
+    const runSpec = telemetry
+      ? { ...spec, env: { ...spec.env, MARKER_URL: telemetry.marker.url } }
+      : spec;
     let sampler: ResourceSampler | undefined;
     const result = await runK6({
-      spec,
+      spec: runSpec,
       outDir: ctx.outDir,
       config: ctx.config,
       env: ctx.env,
@@ -24,6 +31,7 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
       },
     });
     result.resources = sampler?.stop();
+    if (telemetry) result.telemetry = await finishRunTelemetry(ctx, telemetry, result);
     ctx.k6.push(result);
   }
   return { ok: true, reasons: [], data: { runs: specs.length } };
@@ -76,6 +84,13 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
       maxVUs: spec?.maxVUs ?? Number.POSITIVE_INFINITY,
       nproc,
       resources: k.resources,
+      telemetry: k.telemetry
+        ? {
+            gaps: k.telemetry.gaps,
+            skewMs: k.telemetry.skewMs,
+            skewLimitMs: k.telemetry.skewLimitMs,
+          }
+        : undefined,
     });
     k.validity = verdict;
     judged.push(k.label);
