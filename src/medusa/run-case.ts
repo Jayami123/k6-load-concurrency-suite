@@ -3,7 +3,7 @@ import { runTrials } from "../races/run-trials.ts";
 import { createHistogram, writeHistogram } from "../races/histogram.ts";
 import { attemptTag, createRerunRunner, spreadPolicyFromEnv } from "../races/rerun-on-spread.ts";
 import { recordTrial } from "../races/trial-record.ts";
-import { medusaBaseUrlFromEnv } from "../races/env.ts";
+import { medusaBaseUrlFromEnv, type MedusaLockMode } from "../races/env.ts";
 import type { RaceHistogram, RaceAttemptResult } from "../races/types.ts";
 import type pg from "pg";
 import {
@@ -13,7 +13,14 @@ import {
   deleteProduct,
   type MedusaCatalog,
 } from "./admin.ts";
-import { checkOrphanOrders, checkOversellInvariants, type OversellMode } from "./invariants.ts";
+import {
+  checkMemoryLockCharacterization,
+  checkOrphanOrders,
+  checkOversellInvariants,
+  checkTwoInstanceTraffic,
+  type OversellMode,
+} from "./invariants.ts";
+import { countCompleteRequests, readBackendLog } from "./harness-log.ts";
 import { selectRows } from "../oracles/pg.ts";
 import { LEAK_LIVE_ORDER_IDS_SQL, leakCheck, waitForOversellStable } from "./oracle.ts";
 import {
@@ -23,7 +30,7 @@ import {
   cleanupFailure,
   prefixedEmail,
 } from "./payloads.ts";
-import { completeCart, prepareReadyCarts } from "./store.ts";
+import { completeCart, pickInstance, prepareReadyCarts } from "./store.ts";
 
 function parseCompleteBody(body: string): {
   type: string | null;
@@ -46,6 +53,26 @@ function parseCompleteBody(body: string): {
   }
 }
 
+/** Status counts per backend for one attempt: request i went to backend i % instances. Keys i0_* and i1_* always exist. */
+function statusCountsPerInstance(
+  statuses: Array<number | null>,
+  instances: number,
+): Record<string, number> {
+  const out: Record<string, number> = {
+    i0_200: 0,
+    i0_400: 0,
+    i0_other: 0,
+    i1_200: 0,
+    i1_400: 0,
+    i1_other: 0,
+  };
+  statuses.forEach((status, i) => {
+    const kind = status === 200 ? "200" : status === 400 ? "400" : "other";
+    out[`i${i % instances}_${kind}`]! += 1;
+  });
+  return out;
+}
+
 export type RunOversellCaseInput = {
   pool: pg.Pool;
   token: string;
@@ -58,10 +85,25 @@ export type RunOversellCaseInput = {
   mode: OversellMode;
   trials: number;
   quantities?: number[];
+  /** Backends that receive the completes: request i goes to instances[i % instances.length]. Default: [medusaBaseUrlFromEnv()]. */
+  instances?: string[];
+  /** Which invariant set decides the trial. "redis" (default) = checkOversellInvariants unchanged; "memory" = checkMemoryLockCharacterization. */
+  lock?: MedusaLockMode;
 };
 
 export async function runOversellCase(input: RunOversellCaseInput): Promise<RaceHistogram> {
   const base = medusaBaseUrlFromEnv();
+  const instances = input.instances ?? [base];
+  const lock = input.lock ?? "redis";
+  if (instances.length > 2) {
+    throw new Error("TEST BUG: the harness starts at most two Medusa backends");
+  }
+  // Completes sent per backend, across warm-up and every attempt (the closure is shared by all of them).
+  const sent = instances.map(() => 0);
+  const serverCompletes = () =>
+    instances.map((_, idx) => countCompleteRequests(readBackendLog(idx === 0 ? 0 : 1)));
+  // Only the delta of the two reads is this case's traffic: the logs are per backend start, not per case.
+  const serverBefore = instances.length > 1 ? serverCompletes() : [];
   const dataPrefix = casePrefix(input.runPrefix, input.caseId);
   const histogram = createHistogram({
     caseId: input.caseId,
@@ -172,14 +214,18 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           input.n,
           async (i) => {
             const cartId = input.mode === "sameCart" ? cartIds[0]! : cartIds[i]!;
-            const result = await completeCart(input.catalog.publishableKey, cartId);
+            const target = pickInstance(instances, i);
+            sent[i % instances.length]! += 1;
+            const result = await completeCart(input.catalog.publishableKey, cartId, target);
             rawBodies[i] = result.body;
             return result;
           },
           {
             warm: async () => {
-              const res = await fetch(`${base}/health`);
-              await res.text();
+              for (const url of instances) {
+                const res = await fetch(`${url}/health`);
+                await res.text();
+              }
             },
           },
         );
@@ -221,7 +267,28 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
         );
         const available = snapshot.stocked - snapshot.reserved;
 
+        let findingCount = 0;
         const record = recordTrial(trial, fired, () => {
+          if (lock === "memory") {
+            const check = checkMemoryLockCharacterization({
+              s: input.s,
+              instances: instances.length,
+              orderCount: snapshot.orderCount,
+              uniqueOrderIds: orderIdSet.size,
+              httpWinnerCount,
+              reservationQty: snapshot.reservationQty,
+              reserved: snapshot.reserved,
+              statuses: fired.requests.map((r) => r.status),
+              loserTypes,
+              loserMessages,
+            });
+            suspected.push(...check.suspected);
+            findingCount = check.findings.length;
+            if (check.violations.length > 0) {
+              throw new Error(check.violations.join("; "));
+            }
+            return;
+          }
           const violations = checkOversellInvariants({
             mode: input.mode,
             s: input.s,
@@ -257,6 +324,13 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
           loserStatus: loserStatuses[0] ?? null,
           loserType: loserTypes[0] ?? null,
           orderQty: snapshot.orderQty,
+          ...statusCountsPerInstance(
+            fired.requests.map((r) => r.status),
+            instances.length,
+          ),
+          oversold: orderIdSet.size > input.s ? 1 : 0,
+          ghostOrders: snapshot.orderCount - orderIdSet.size,
+          findings: findingCount,
         };
         if (input.mode === "s0") {
           record.oracle.lineItemStatus = 400;
@@ -317,6 +391,13 @@ export async function runOversellCase(input: RunOversellCaseInput): Promise<Race
     );
 
     runner.applyTo(histogram);
+    if (instances.length > 1) {
+      const serverAfter = serverCompletes();
+      const serverCounts = serverAfter.map((count, idx) => count - (serverBefore[idx] ?? 0));
+      histogram.invariantViolations.push(
+        ...checkTwoInstanceTraffic({ clientCounts: sent, serverCounts }),
+      );
+    }
     histogram.invariantViolations.push(
       ...cleanupViolations,
       ...(await leakCheck(input.pool, leakPrefix, inventoryItemIds)),
