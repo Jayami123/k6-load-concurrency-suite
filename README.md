@@ -2,7 +2,7 @@
 
 P6 of the QA portfolio: load, concurrency and performance tests with [k6](https://grafana.com/docs/k6/)
 against self-hosted products started by
-[qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.14`.
+[qa-portfolio-harness](https://github.com/Jayami123/qa-portfolio-harness) `v0.2.15`.
 
 Phase 0 proved the harness and k6 smoke. Phase 1 is done: the race framework and the six race cases for Medusa, Cal and
 Documenso (see "Phase 1 results"). Phase 2 is done: concurrency races for Medusa, Cal and Twenty and two error-contract
