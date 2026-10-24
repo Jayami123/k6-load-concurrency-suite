@@ -54,3 +54,29 @@ See the handoff file.
 None for Cursor Cloud and Claude Code cloud. Observed: the Claude Code cloud session exports
 NODE_OPTIONS=--use-openssl-ca, which makes the harness drop its 8192 MB heap for next build (OOM).
 Cloud sessions that run up:cal need NODE_OPTIONS="--use-openssl-ca --max-old-space-size=8192".
+
+## CI result (run 40077117412, workflow_dispatch on chore/2026-10-24-p6-harness-bump at 43a1b62)
+
+| Job             | Conclusion  | Notes                                                                    |
+| --------------- | ----------- | ------------------------------------------------------------------------ |
+| medusa-smoke    | success     | Start Medusa 53 s; race step 15.5 min                                    |
+| documenso-smoke | success     | Start Documenso 3 min 32 s                                               |
+| cal-smoke       | **failure** | `Start Cal (harness up)` failed after 5 min 03 s; see the error below    |
+| cal-state-races | **failure** | `Start Cal (harness up)` failed after 5 min 05 s (same step, same stack) |
+
+cal-smoke, exact error lines from the GitHub runner:
+
+```text
+Error: Cal is healthy on 127.0.0.1:3000, but no listener pid could be read (recorded pid 8263, start mark 46759). Not guessing which process serves it.
+    at assertListenerIsRecorded (.../qa-portfolio-harness/dist/adapters/cal-web-pid.js:123:15)
+    at CalAdapter.verifyListenerIsRecorded (.../qa-portfolio-harness/dist/adapters/cal.adapter.js:406:9)
+    at CalAdapter.up (.../qa-portfolio-harness/dist/adapters/cal.adapter.js:400:14)
+ENV: harness up cal exited 1 before ready
+```
+
+The harness v0.2.14 `up()` finds Cal healthy, then cannot read the port-3000 listener through `lsof`
+(`listenerPids`), so it fails closed. The same error reproduces on the VM. Not worked around in P6 (owner instruction).
+Merging part A as it stands turns both Cal jobs red on `main`. Owner decision needed: keep the pin at v0.2.14 and fix
+the harness, or pin v0.2.13 (H3 only, no Cal fix) until the harness is fixed.
+
+Part B (delete the Cal bridge) is parked: its probe cannot pass while `up()` fails. The patch is kept out of this branch.
