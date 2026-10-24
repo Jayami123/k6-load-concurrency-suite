@@ -438,8 +438,12 @@ export function retryCountersOf(ctx: LoadContext): RetryCounters {
  * Turns a judgement into a stage result and writes audit.json (counts, ids and check names only) after a token scan.
  * A failing finding fails the stage with its own kind; a counted known bug is a reason, never a failure.
  */
-function retryStageResult(ctx: LoadContext, j: RetryJudgement): StageResult {
-  const text = JSON.stringify({ schema: 1, caseId: ctx.caseDef.id, ...j }, null, 2);
+function retryStageResult(
+  ctx: LoadContext,
+  j: RetryJudgement,
+  extra: Record<string, unknown> = {},
+): StageResult {
+  const text = JSON.stringify({ schema: 1, caseId: ctx.caseDef.id, ...extra, ...j }, null, 2);
   const file = path.join(ctx.outDir, "audit.json");
   if (findHits(text).length > 0) {
     rmSync(file, { force: true });
@@ -519,6 +523,26 @@ const documensoRetryStage: Stage = async (ctx) => {
     return retryStageResult(
       ctx,
       judgeDocumensoRetries({ intents: counters.intents, rows, counters }),
+      // per envelope, so the known-bug spec can read the seal count of each one (counts only, no ids)
+      {
+        envelopes: rows.map(
+          ({
+            status,
+            sealJobs,
+            completedAudit,
+            signedRecipients,
+            recipients,
+            emailsPerRecipient,
+          }) => ({
+            status,
+            sealJobs,
+            completedAudit,
+            signedRecipients,
+            recipients,
+            emailsPerRecipient,
+          }),
+        ),
+      },
     );
   } finally {
     await closePool(pool);
