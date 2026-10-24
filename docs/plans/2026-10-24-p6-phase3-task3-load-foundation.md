@@ -15,7 +15,8 @@ D6, D9, D11, "Rules that hold for every task". **Tasks 4 to 10 build on the inte
 - **Harness pin assumed.** Any: this task starts no product. (`v0.2.12` today; Task 1 may bump it first.)
 - **Environment change: yes** (one pinned k6 in CI and both clouds, §11). Stop for owner review: yes (rule 10: CI workflow, k6 pin).
 - **Pinned k6.** `2.3.0` (§3.2), in a new `.k6-version` file.
-- **Unit tests.** Baseline 471 on `main`. This plan adds **+51** (§12). Expected after the build: **522** on today's base (or the count Task 1 left, plus 51).
+- **Unit tests.** B = count on main when the build starts (today's chain: 503 after Tasks 1 and 2). This plan adds **+51** (§12). Expected after the build: B + 51 (**554** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 pin k6 2.3.0. Q2 `k6/lib` stays JavaScript for now. Q3 the hook downloads k6 automatically and warns on failure. Q4 accept (INVALID handling is then set by Task 4 Q1: a warning with a green job). Q5 accept. `twenty-smoke` keeps its existing `grafana/setup-k6-action` step, pinned to `.k6-version` (§6.8). `load-selftest` keeps its 20-minute timeout for the whole phase; Task 5's two self-tests run in `load-overhead`. All questions are closed in §13.
 - **Priority.** P0 (roadmap).
 
 ## 2. What it proves
@@ -169,7 +170,7 @@ Inputs: `JSON.parse(open(__ENV.P6_LOAD_CONFIG))` read a JSON file and `__ENV.P6_
 
 ### 3.5 What this decided
 
-- Pin **2.3.0**, installed by a checksum-verified script, hash committed (§6.1). CI replaces `grafana/setup-k6-action` in six jobs.
+- Pin **2.3.0**, installed by a checksum-verified script, hash committed (§6.1). CI replaces `grafana/setup-k6-action` in five jobs; `twenty-smoke` keeps the action, pinned to `.k6-version` through its `k6-version` input (Phase 5 owns Twenty's verification).
 - Library sizes VUs by Little's law (fact 4), reads missing `dropped_iterations` as 0 (fact 5), drops the `url` tag (JSON output).
 - Stub parameters: service 25 ms, stall 1500 ms every 10 000 ms, rate 40 per second, 30 s per run, three runs (open sized, closed,
   open under-sized). Margins in §7, each at least 3 times looser than the probe.
@@ -192,16 +193,17 @@ Nothing from Tasks 1, 2, 4 to 10. From `main`: `p6RunPrefix` and `isP6RunPrefix`
 
 ## 5. Build-time recheck
 
-| #   | Check                           | Command                                                                                                                             | Expected                                                                                       |
-| --- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 1   | Base                            | `git fetch origin main && git log -1 --format=%h origin/main`                                                                       | `5acd2a0` or a descendant containing `a82521a`                                                 |
-| 2   | Newest k6                       | the loop of §3.2 for the next versions (`2.3.1 2.4.0 2.5.0 3.0.0`)                                                                  | all `404`: the pin stays 2.3.0. A `302` means a newer release exists: re-read its notes and Q1 |
-| 3   | Pinned hashes still true        | `curl -sSL https://github.com/grafana/k6/releases/download/v2.3.0/k6-v2.3.0-checksums.txt \| grep -E "linux-(amd64\|arm64).tar.gz"` | the two lines of §3.3                                                                          |
-| 4   | Baseline                        | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                 | exit 0, `# tests 471` (or Task 1's count)                                                      |
-| 5   | setup-k6 sites and `K6_VERSION` | `grep -n "setup-k6-action\|K6_VERSION" .github/workflows/perf.yml`                                                                  | 6 `uses:` lines, 6 `k6-version:` lines, 1 definition (line numbers may have moved)             |
-| 6   | Node runs `.ts`                 | `node -e 'console.log(process.version)'`; `node scripts/write-ci-job-summary.ts` (prints the summary)                               | ≥ v22.22                                                                                       |
-| 7   | Which smokes exist              | `ls k6/smoke`                                                                                                                       | `cal-health.js documenso-health.js medusa-health.js twenty-health.js`                          |
-| 8   | Hook and Dockerfile unchanged   | `grep -n "k6" .cursor/Dockerfile .claude/hooks/session-start.sh .cursor/environment.json`                                           | Dockerfile has the apt k6 block; hook and environment.json have none                           |
+| #   | Check                           | Command                                                                                                                                             | Expected                                                                                           |
+| --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | Base                            | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                       | `5acd2a0` or a descendant containing `a82521a`                                                     |
+| 2   | Newest k6                       | the loop of §3.2 for the next versions (`2.3.1 2.4.0 2.5.0 3.0.0`)                                                                                  | all `404`: the pin stays 2.3.0. A `302` means a newer release exists: re-read its notes and Q1     |
+| 3   | Pinned hashes still true        | `curl -sSL https://github.com/grafana/k6/releases/download/v2.3.0/k6-v2.3.0-checksums.txt \| grep -E "linux-(amd64\|arm64).tar.gz"`                 | the two lines of §3.3                                                                              |
+| 4   | Baseline                        | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                 | exit 0, `# tests` = B (503 once Tasks 1 and 2 are merged)                                          |
+| 5   | setup-k6 sites and `K6_VERSION` | `grep -n "setup-k6-action\|K6_VERSION" .github/workflows/perf.yml`                                                                                  | 6 `uses:` lines, 6 `k6-version:` lines, 1 definition (line numbers may have moved)                 |
+| 5b  | The action's version input name | `git clone --depth 1 --branch v1.2.2 https://github.com/grafana/setup-k6-action /tmp/s/setup-k6 && grep -n "k6-version" /tmp/s/setup-k6/action.yml` | an input named `k6-version` (the one the six jobs use today); if renamed, use the new name in §6.8 |
+| 6   | Node runs `.ts`                 | `node -e 'console.log(process.version)'`; `node scripts/write-ci-job-summary.ts` (prints the summary)                                               | ≥ v22.22                                                                                           |
+| 7   | Which smokes exist              | `ls k6/smoke`                                                                                                                                       | `cal-health.js documenso-health.js medusa-health.js twenty-health.js`                              |
+| 8   | Hook and Dockerfile unchanged   | `grep -n "k6" .cursor/Dockerfile .claude/hooks/session-start.sh .cursor/environment.json`                                                           | Dockerfile has the apt k6 block; hook and environment.json have none                               |
 
 ## 6. Design
 
@@ -231,7 +233,7 @@ k6/selftest/config.example.json              NEW      input for the standalone c
 tests/unit/k6-lib-*.test.ts, load-*.test.ts, stub-server.test.ts, k6-pin.test.ts    NEW
 tsconfig.races.json                          CHANGED  allowJs/checkJs for k6/lib/pure, include scripts/load/*.ts
 package.json                                 CHANGED  scripts: load:selftest, k6:install
-.github/workflows/perf.yml                   CHANGED  six installs, K6_VERSION removed, new job load-selftest
+.github/workflows/perf.yml                   CHANGED  five installs by script, twenty-smoke action pinned to .k6-version, K6_VERSION definition removed, new job load-selftest
 .cursor/Dockerfile                           CHANGED  apt k6 block removed
 .cursor/environment.json                     CHANGED  install runs scripts/install-k6.sh
 .claude/hooks/session-start.sh               CHANGED  installs the pinned k6 when it differs
@@ -785,17 +787,17 @@ export function compareK6Version(versionStdout, pin) {
 Exact changes (details and budget in §9):
 
 1. Delete the top-level `K6_VERSION: "1.8.2"` (line 31).
-2. In `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`, `cal-smoke`, `documenso-smoke`, `twenty-smoke` replace the `grafana/setup-k6-action` step by
+2. In `medusa-smoke`, `medusa-order-races`, `medusa-cancel-extras`, `cal-smoke`, `documenso-smoke` replace the `grafana/setup-k6-action` step by
 
 ```yaml
 - name: Install k6 (pinned in .k6-version, checksum-verified)
-  timeout-minutes: 3
+  timeout-minutes: 2
   run: |
     set -euo pipefail
     bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
 ```
 
-(`twenty-smoke` keeps its 5-minute cap on that step: use `timeout-minutes: 5` there.) 3. New job `load-selftest`, product-free, on every event (pull request, push, schedule, dispatch):
+(Measured install: 0.04 min, so the cap is 2.) 3. `twenty-smoke` keeps its existing `grafana/setup-k6-action` step and its existing 5-minute cap, unchanged except for the version it receives: the job's existing `Install P6 dependencies` step gets one more line, `echo "K6_VERSION=$(tr -d '[:space:]' < .k6-version)" >> "$GITHUB_ENV"` (run in `p6/`), and the action keeps `k6-version: ${{ env.K6_VERSION }}`, so the version comes from `.k6-version` and cannot drift. No step is added, so `twenty-smoke` stays at 9.2 min against 20 (§9). The action does not verify a checksum (§3.2); Twenty's verification is Phase 5's. Build-time recheck 5b confirms the input name. 4. New job `load-selftest`, product-free, on every event (pull request, push, schedule, dispatch):
 
 ```yaml
 load-selftest:
@@ -811,17 +813,17 @@ load-selftest:
         node-version-file: .nvmrc
         cache: npm
     - name: Install P6 dependencies
-      timeout-minutes: 5
+      timeout-minutes: 3
       run: npm ci
     - name: Install k6 (pinned in .k6-version, checksum-verified)
-      timeout-minutes: 3
+      timeout-minutes: 2
       run: bash scripts/install-k6.sh
     - name: Coordinated-omission self-test (P6-X-LOAD-001)
-      timeout-minutes: 8
+      timeout-minutes: 3
       run: npm run load:selftest
     - name: Check artefacts for tokens
       if: ${{ !cancelled() }}
-      timeout-minutes: 2
+      timeout-minutes: 1
       run: node scripts/evidence-token-scan.mjs results/load
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: ${{ !cancelled() }}
@@ -891,21 +893,21 @@ gzip: the scanner reads text, so the runner scans the **decompressed** points fi
 plain files only. The `url` tag is not emitted (§6.3), so no URL path with an id or token is in any file. The stub produces none of the
 patterns (`Bearer `, `api_…`, `token=`): scan of the probe's `out-v230-open.json` (3.9 MB) is part of the build step 9 check.
 
-**Budget (existing convention: worst case = slowest green job + additions at their caps; at least 10 minutes under the job timeout; no timeout raised).**
+**Budget (one convention for every Phase 3 plan).** Worst case = Phase 2 closeout §2.7 worst case (slowest green `main` job + rerun allowance; runs 39927945708, 39923528658, 40037355173, 39741411392, 39821517901, 39993081595) + the cold start after the Task 1 suffix bump (Medusa +1.1, Cal +3.0, Documenso +2.0 estimate; Twenty none) + the image pull at its 6-minute cap minus the measured 0.3 (+5.7; Twenty +5.3) + each new step. "Estimates" use the step's measured or estimated duration; "at caps" uses its `timeout-minutes`. Steps that only set a job up (checkout, setup-node, `npm ci`, summary, upload) are counted at their measured durations in a new job. At least 10 minutes under the job timeout; no timeout raised.
 
-| Job                       | Slowest green (min) (source)                                                    | + install step vs the action it replaces                                                        | Worst (min) | Timeout | Margin   |
-| ------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------- | ------- | -------- |
-| `medusa-smoke`            | 26.2 (Phase 2 closeout §2.7, with reruns)                                       | +3.0 (step cap; measured 0.04)                                                                  | 29.2        | 45      | 15.8     |
-| `medusa-order-races`      | 21.3 (same)                                                                     | +3.0                                                                                            | 24.3        | 45      | 20.7     |
-| `medusa-cancel-extras`    | 7.7 (same)                                                                      | +3.0                                                                                            | 10.7        | 30      | 19.3     |
-| `cal-smoke`               | 9.7 (same)                                                                      | +3.0                                                                                            | 12.7        | 60      | 47.3     |
-| `documenso-smoke`         | 6.9 (same)                                                                      | +3.0                                                                                            | 9.9         | 45      | 35.1     |
-| `twenty-smoke`            | 3.9 (same)                                                                      | +5.0 (its step cap is 5)                                                                        | 8.9         | 20      | 11.1     |
-| **`load-selftest` (new)** | measured setup 0.3 (set-up 2 s + checkout 1 s + setup-node 3 s + npm ci ≤ 10 s) | install at cap 3.0; self-test 3 runs × (30 s + 10 s allowance) = 2.0; token scan and upload 1.0 | 6.3         | **20**  | **13.7** |
+| Job                                                     | §2.7 worst (min) | + cold start | + pull | + install step (estimate / cap) | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin (caps) |
+| ------------------------------------------------------- | ---------------- | ------------ | ------ | ------------------------------- | ---------------------- | -------------------- | ------- | ------------- |
+| `medusa-smoke`                                          | 26.2             | +1.1         | +5.7   | 0.04 / 2.0                      | 33.0                   | 35.0                 | 45      | 10.0          |
+| `medusa-order-races`                                    | 21.3             | +1.1         | +5.7   | 0.04 / 2.0                      | 28.1                   | 30.1                 | 45      | 14.9          |
+| `medusa-cancel-extras`                                  | 7.7              | +1.1         | +5.7   | 0.04 / 2.0                      | 14.5                   | 16.5                 | 30      | 13.5          |
+| `cal-smoke`                                             | 9.7              | +3.0         | +5.7   | 0.04 / 2.0                      | 18.4                   | 20.4                 | 60      | 39.6          |
+| `documenso-smoke`                                       | 6.9              | +2.0         | +5.7   | 0.04 / 2.0                      | 14.6                   | 16.6                 | 45      | 28.4          |
+| `twenty-smoke`                                          | 3.9              | none         | +5.3   | none (action kept, no new step) | 9.2                    | 9.2                  | 20      | 10.8          |
+| **`load-selftest` (new; Task 3 and Task 4 self-tests)** | n/a              | n/a          | n/a    | install 0.04 / 2.0              | 4.6                    | 9.9                  | **20**  | **10.1**      |
 
-The `medusa-smoke` race step is not changed (its 24.1-minute estimate against a 24.0 stop rule is Phase 2 Q7, F12; this plan adds nothing to it).
-`load-selftest` gets a 20-minute timeout (a new job; the 15-minute alternative leaves 8.7 minutes, under the 10-minute rule). Run count: one self-test per event, 90 s of k6.
-Trial counts: not applicable (no races).
+`load-selftest` rows, in minutes. Estimates: setup 0.3 (checkout 1 s + setup-node 3 s + `npm ci` ≤ 10 s) + install 0.04 + coordinated-omission self-test 2.0 (3 runs × (30 s + 10 s)) + Task 4 validity self-test 1.3 + Task 4 summary and runner identity 0.3 + token scan 0.1 + upload 0.3 = 4.4, rounded up to 4.6. At caps: setup 0.3 + install 2.0 + CO self-test 3.0 + validity 3.0 + summary/identity 0.3 + scan 1.0 + upload 0.3 = 9.9. Each new step and its 80 % stop rule: install cap 2 (estimate 0.04, stop 1.6); CO self-test cap 3 (estimate 2.0, stop 2.4); token scan cap 1 (estimate 0.1, stop 0.8). The cap of Task 4's validity step is set in Task 4 (cap 3, estimate 1.3, stop 2.4).
+
+**`load-selftest` is planned for the whole phase and keeps its 20-minute timeout.** Task 5's two self-tests (`P6-X-LOAD-002`, `P6-X-LOAD-006`) run in Task 5's own job `load-overhead`, not here; no existing timeout is raised (this job is new in this task). `medusa-smoke` is the only job at exactly 10.0 minutes of margin at caps (33.0 + 2.0); its race step is not changed (its 24.1-minute estimate against a 24.0 stop rule is a BACKLOG item, Phase 2 Q7/F12; this plan adds nothing to it). Run count: one self-test per event, 90 s of k6. Trial counts: not applicable (no races).
 
 ## 10. Expected output of the self-test run
 
@@ -958,12 +960,12 @@ Cost: 0.1 s when current, 2.6 s when it installs (probe). `AGENTS.md` gets one l
 
 ### GitHub Actions
 
-Automatic: the `perf.yml` edits of §6.8. No secret, no new action, no new permission. `grafana/setup-k6-action` is no longer used (no verification, §3.2).
+Automatic: the `perf.yml` edits of §6.8. No secret, no new action, no new permission. `grafana/setup-k6-action` is no longer used in five jobs (no verification, §3.2); `twenty-smoke` keeps it, pinned to `.k6-version`.
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
 Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-foundation origin/main`.
-Counts are relative to the baseline B of §5 check 4 (471 today). `k6 version` before step 1 may be 1.3.0 (this VM); after step 1 it must be 2.3.0.
+Counts are relative to the baseline B of §5 check 4 (B = count on main when the build starts; 503 today after Tasks 1 and 2). `k6 version` before step 1 may be 1.3.0 (this VM); after step 1 it must be 2.3.0.
 
 | Step | Commit subject                                                               | `git add` paths                                                                                                                                                                                                                                                       | Expected (`npm run check`)                                                                                                     |
 | ---- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -1008,31 +1010,31 @@ three `workflow_dispatch` runs of the branch to confirm the margins of §7 on th
 
 **Contradictions with the roadmap.**
 
-| #   | Roadmap says                                                          | Probe shows                                                                   | Effect                                                            |
-| --- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| C1  | Task 4 builds the LOAD runner skeleton                                | Task 3's self-test needs a runner to orchestrate three k6 runs and judge them | the runner core is built here; Task 4 adds validity and readiness |
-| C2  | CI pins 1.8.2 via the action "lines 31, 89–91, 277–279, 536–538"      | six installs, lines 91, 293, 467, 641, 1128, 1339                             | the plan uses the current lines                                   |
-| C3  | "keep `grafana/setup-k6-action` if it installs that exact version"    | the action installs 2.3.0 but never verifies it                               | replaced in all six jobs                                          |
-| C4  | Claude Code cloud: "the maintainer pastes the exact k6 install lines" | the repo hook can install it automatically; the paste becomes optional        | §11                                                               |
+| #   | Roadmap says                                                          | Probe shows                                                                   | Effect                                                                           |
+| --- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| C1  | Task 4 builds the LOAD runner skeleton                                | Task 3's self-test needs a runner to orchestrate three k6 runs and judge them | the runner core is built here; Task 4 adds validity and readiness                |
+| C2  | CI pins 1.8.2 via the action "lines 31, 89–91, 277–279, 536–538"      | six installs, lines 91, 293, 467, 641, 1128, 1339                             | the plan uses the current lines                                                  |
+| C3  | "keep `grafana/setup-k6-action` if it installs that exact version"    | the action installs 2.3.0 but never verifies it                               | replaced in five jobs; `twenty-smoke` keeps it pinned to `.k6-version` (Phase 5) |
+| C4  | Claude Code cloud: "the maintainer pastes the exact k6 install lines" | the repo hook can install it automatically; the paste becomes optional        | §11                                                                              |
 
 **Proposed extras (out of scope until the owner accepts them; new IDs).**
 
 - `P6-X-LOAD-010`: the self-test also runs a `ramping-arrival-rate` leg and checks the achieved rate against the schedule (the library ships `rampingOpenScenario`; Phase 4 needs it proven).
 - `P6-X-LOAD-011`: a weekly job that downloads the newest k6 release checksums and opens an issue when `.k6-version` is behind (no auto-bump).
 
-**Open questions for the owner.**
+**Owner decisions (all five questions closed 2026-10-24).**
 
-- **Q1.** Pin 2.3.0 (latest stable, a major jump from 1.8.2) as probed? Proposed: yes. The alternative, the last 1.x (1.8.2), keeps CI as is but leaves the cloud images' 2.3.0 and 1.3.0 to be downgraded and gets no 2.x fixes.
-- **Q2.** Keep `k6/lib` in JavaScript (roadmap D11, repo `checkJs`) or move it to TypeScript now that k6 2.3.0 runs `.ts` natively? Proposed: JS now; TypeScript is a later, mechanical change.
-- **Q3.** Allow the SessionStart hook to download k6 in Claude Code cloud sessions (automatic), or keep it warn-only and rely on the pasted setup-script line? Proposed: automatic, warn on failure.
-- **Q4.** Exit code for `INVALID` (3): should the CI step go red or stay green with the summary line? Proposed: red until Task 4 defines the rule; Task 4's plan decides with data.
-- **Q5.** Accept the contradiction C1 (runner core built in Task 3)?
+- **Q1 (closed: pin k6 2.3.0).** Pin 2.3.0 (latest stable, a major jump from 1.8.2) as probed? Proposed: yes. The alternative, the last 1.x (1.8.2), keeps CI as is but leaves the cloud images' 2.3.0 and 1.3.0 to be downgraded and gets no 2.x fixes.
+- **Q2 (closed: `k6/lib` in JavaScript for now).** Keep `k6/lib` in JavaScript (roadmap D11, repo `checkJs`) or move it to TypeScript now that k6 2.3.0 runs `.ts` natively? Proposed: JS now; TypeScript is a later, mechanical change.
+- **Q3 (closed: the hook downloads k6 automatically and warns on failure).** Allow the SessionStart hook to download k6 in Claude Code cloud sessions (automatic), or keep it warn-only and rely on the pasted setup-script line? Proposed: automatic, warn on failure.
+- **Q4 (closed: accept; Task 4 Q1 then makes INVALID a warning with a green job).** Exit code for `INVALID` (3): should the CI step go red or stay green with the summary line? Proposed: red until Task 4 defines the rule; Task 4's plan decides with data.
+- **Q5 (closed: accept).** Accept the contradiction C1 (runner core built in Task 3)?
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] One k6 version: `.k6-version` = 2.3.0; `perf.yml` has no `K6_VERSION` and no `setup-k6-action`; the Cursor install step and the Claude hook call `scripts/install-k6.sh`; `grep -rn "1.8.2" .github scripts .cursor .claude` finds nothing about k6.
+- [ ] One k6 version: `.k6-version` = 2.3.0; `perf.yml` has no top-level `K6_VERSION` definition, and only `twenty-smoke` uses `setup-k6-action` (its version is read from `.k6-version`); the Cursor install step and the Claude hook call `scripts/install-k6.sh`; `grep -rn "1.8.2" .github scripts .cursor .claude` finds nothing about k6.
 - [ ] `npm run check` fails when the installed k6 differs from the pin (demonstrated once with another version on `PATH`, output pasted in the PR) and still skips when k6 is absent.
-- [ ] Library unit tests green; `npm run check` exit 0 with **B + 51** unit tests (522 on today's base).
+- [ ] Library unit tests green; `npm run check` exit 0 with **B + 51** unit tests (554 on today's chain).
 - [ ] The self-test shows R1 to R6 in CI on the PR and once on `main` (job `load-selftest`, `verdict.json` outcome `PASS`, artefact `load-selftest` uploaded after a clean token scan).
 - [ ] All existing smokes green on 2.3.0 in CI (the six jobs of §9).
 - [ ] Every new k6 script (`k6/selftest/coordinated-omission.js`) also runs standalone with `k6 run`; the exact commands are in the script header and README (§6.9).
@@ -1043,6 +1045,6 @@ three `workflow_dispatch` runs of the branch to confirm the margins of §7 on th
 - (b) Existing names grepped at `5acd2a0`: `.github/workflows/perf.yml` (`K6_VERSION`, six `grafana/setup-k6-action` steps), `scripts/k6-inspect.mjs`, `.cursor/Dockerfile`,
   `.cursor/environment.json`, `.claude/hooks/session-start.sh`, `src/races/prefix.ts` (`p6RunPrefix`, `isP6RunPrefix`), `scripts/evidence-token-scan.mjs` (`findHits`, `scanTree`),
   `tsconfig.json`, `tsconfig.races.json`, `package.json` scripts, `k6/smoke/*`. Everything else in §6 is NEW with a skeleton.
-- (c) CI time: §9 includes the install caps, the self-test and setup; the smallest margin is 11.1 minutes (`twenty-smoke`); no timeout raised.
+- (c) CI time: §9 includes the install caps, the self-test and setup; the smallest margin at caps is 10.0 minutes (`medusa-smoke`); no timeout raised.
 - (d) Skeletons: §6. Steps with `git add` paths, subjects and expected output: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q5 are recorded in §1 and §13.
