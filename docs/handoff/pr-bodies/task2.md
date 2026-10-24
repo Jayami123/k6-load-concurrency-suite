@@ -37,8 +37,22 @@ lock: characterization, the oversell is expected). Plan: docs/plans/2026-10-24-p
 
 ## CI
 
-perf.yml workflow_dispatch on this branch: run 40078055622 (head c01e217). See the Task 2 handoff for the result.
-The `cal-smoke` and `cal-state-races` jobs inherit the Task 1 failure (harness listener-pid lookup); see Task 1's PR body.
+perf.yml workflow_dispatch on this branch: run 40078055622 (head c01e217), conclusion failure, both new legs green.
+
+| Job                                                     | Conclusion | Measured                                                                        |
+| ------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------- |
+| medusa-multi-instance (redis)                           | success    | job 8 min 33 s; start Medusa 55 s; race P6-MED-RACE-002 at 50 trials 6 min 50 s |
+| medusa-multi-instance (memory)                          | success    | job 7 min 32 s; start Medusa 50 s; race P6-MED-RACE-003 at 50 trials 5 min 56 s |
+| medusa-smoke, medusa-order-races, medusa-cancel-extras  | success    | none                                                                            |
+| documenso-smoke, twenty-smoke, twenty-races, twenty-obs | success    | none                                                                            |
+| cal-smoke, cal-state-races                              | failure    | Start Cal (harness up): the inherited listener-pid error (Task 1 PR body)       |
+
+The dispatch runs used the 50-trial count (only pull requests use 3 and 8), so the PR trial counts are not yet measured in CI.
+The memory leg's `-003` spec asserts at least one oversell and passed, which confirms the characterization in CI.
+
+Budget (plan §10, estimates against measured): the new job's race step estimate was 14.1 min (main and dispatch), measured 6.8 and
+5.9 min; the start estimate 1.0 min, measured 0.9 and 0.8 min. Job timeout 45 min: 36 min of margin at the measured job time.
+The cal jobs are red from the inherited Task 1 pin, not from this PR.
 
 ## Budget
 
