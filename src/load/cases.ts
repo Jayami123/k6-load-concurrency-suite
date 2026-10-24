@@ -509,7 +509,8 @@ const calRetryStage: Stage = async (ctx) => {
       const linkIds = (ctx.config.links as string[] | undefined) ?? [];
       const before = (ctx.handles.calLinkUsageBefore as Record<string, number> | undefined) ?? {};
       const prefix = String(ctx.config.prefix);
-      const intents = linkIds.map((link, n) => ({
+      // setup makes planned + 2 links; only the intents that ran (p6_intents) have a booking to join, the rest are unused by design
+      const intents = linkIds.slice(0, counters.intents).map((link, n) => ({
         n,
         email: attendeeEmail(prefix, `i${n}`),
         link,
