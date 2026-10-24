@@ -530,6 +530,17 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
+      - name: LOAD journey P6-MED-LOAD-006 (complete retry storm, functional load, not capacity)
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
@@ -1127,6 +1138,29 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
+      - name: LOAD journey P6-CAL-LOAD-007 (retry storm, functional load, not capacity)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:cal-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
+      # Last Cal step of the job: it restores the event type's prior private links (plan task 10 §6.5), and the other Cal steps use the event type.
+      - name: LOAD journey P6-CAL-LOAD-009 (private link retry storm, functional load, not capacity)
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:cal-link-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
@@ -1615,6 +1649,17 @@ jobs:
           set -euo pipefail
           status=0
           npm run load:documenso-webhook-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
+      - name: LOAD journey P6-DOC-LOAD-007 (completion retry storm, functional load, not capacity)
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:documenso-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
