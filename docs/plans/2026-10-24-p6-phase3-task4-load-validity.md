@@ -16,7 +16,7 @@ If the merged Task 3 differs, the build stops at §5 check 3 and reports the dif
 - **Base.** `origin/main` = `5acd2a0`, plus Task 3 merged (this task cannot start before it).
 - **Harness pin assumed.** Any (`v0.2.12` today; Task 1 may bump it). k6 `2.3.0` (Task 3).
 - **Environment change.** None (§11).
-- **Unit tests.** B = count on main when the build starts (today's chain: 554 after Tasks 1 to 3). This plan adds **+43** (§12); expected after the build B + 43 (**597** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 556 after Tasks 1 to 3). This plan adds **+43** (§12); expected after the build B + 43 (**599** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 INVALID is a warning with a green job. Q2 accept the `unknown` fallback. Q3 strict `dropped_iterations > 0`. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a CI workflow change and a shared runner change.
 
@@ -145,7 +145,7 @@ the telemetry and reconciliation inputs of the validity step are optional fields
 | #   | Check                  | Command                                                                                                                                                                         | Expected                                                                        |
 | --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | 1   | Base and Task 3 merged | `git log -1 --format=%h origin/main; git log --oneline origin/main \| grep -i "load foundation\|runner core"`                                                                   | a descendant of `5acd2a0`; the Task 3 commits are there                         |
-| 2   | Baseline               | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                             | exit 0, `# tests` = B (554 once Tasks 1 to 3 are merged)                        |
+| 2   | Baseline               | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                             | exit 0, `# tests` = B (556 once Tasks 1 to 3 are merged)                        |
 | 3   | Task 3 interfaces      | `grep -n "export async function runLoad\|export function evaluateVerdict\|export const EXIT_CODES\|export interface K6RunResult\|export function parseK6Summary" src/load/*.ts` | five hits; `grep -n "pid:" src/load/types.ts` one hit                           |
 | 4   | k6 pin                 | `k6 version; cat .k6-version`                                                                                                                                                   | `k6 v2.3.0` and `2.3.0`                                                         |
 | 5   | Thresholds still true  | rerun `node /tmp/…/cpu.mjs`-style sample (build step 1 reproduces §3.1 with the new sampler on the stub)                                                                        | normal run 0 dropped; the under-sized stub run drops ≥ 5 % of planned           |
@@ -157,7 +157,7 @@ the telemetry and reconciliation inputs of the validity step are optional fields
 ### 6.1 File tree
 
 ```text
-src/load/types.ts                  CHANGED  + RunMeta, ValidityVerdict, InvalidReason, K6RunSpec.expectValidity, LoadContext.meta, K6RunResult.validity
+src/load/types.ts                  CHANGED  + RunMeta, ValidityVerdict, InvalidReason, K6RunSpec.expectValidity and K6RunSpec.maxVUs, LoadContext.meta, K6RunResult.validity
 src/load/validity.ts               NEW      judgeValidity(), VALIDITY_LIMITS, InvalidReason codes
 src/load/proc-stats.ts             NEW      parseProcStat(), parseCpuLine(), startResourceSampler()
 src/load/run-meta.ts               NEW      buildRunMeta(), isPublishable(), validateRunMeta()
@@ -245,7 +245,7 @@ export interface RunMeta {
 }
 ```
 
-and, on existing types: `K6RunSpec.expectValidity?: "VALID" | "INVALID"` (default `"VALID"`), `K6RunResult.validity?: ValidityVerdict`, `K6RunResult.resources?: ResourceSummary`,
+and, on existing types: `K6RunSpec.maxVUs?: number` (the `maxVUs` the run's scenario was built with; set by the case from `preAllocatedVUs`/the profile sizing, or `5` for the saturated self-test; absent for a closed-model run, in which case the `vu_exhausted` rule is skipped), `K6RunSpec.expectValidity?: "VALID" | "INVALID"` (default `"VALID"`), `K6RunResult.validity?: ValidityVerdict`, `K6RunResult.resources?: ResourceSummary`,
 `LoadContext.meta: RunMeta`. `StageResult` and `Stage` are unchanged.
 
 ### 6.3 `src/load/validity.ts` (NEW)
@@ -416,7 +416,7 @@ Any failure returns `{ ok: false, kind: "ENV", reasons: [...] }`, which stops th
 1. `runLoad` builds `ctx.meta = buildRunMeta(...)` before `setup`, writes `<outDir>/run-meta.json`, and rewrites it at the end with `finishedAt`.
 2. The `k6` stage: for each run, after `runK6` returns the `pid`, `startResourceSampler(pid)` is started before the process is awaited and stopped after;
    `K6RunResult.resources` holds the summary. (`runK6` is changed to take an `onStart(pid)` callback so the sampler starts in the first 100 ms; the callback is the only change to Task 3's `runK6`.)
-3. The `reconcile` slot (Task 6 fills the product audit later) first runs the validity step: for every `K6RunResult`, `judgeValidity({ summary: parseK6Summary(read(summaryPath)), maxVUs: spec.maxVUs, nproc, resources, telemetry: ctx.results.samplerStop?.data })`,
+3. The `reconcile` slot (Task 6 fills the product audit later) first runs the validity step: for every `K6RunResult`, `judgeValidity({ summary: parseK6Summary(read(summaryPath)), maxVUs: spec.maxVUs /* typed field, never read back from env */, nproc, resources, telemetry: ctx.results.samplerStop?.data })`,
    stores `validity` on the result and pushes its reasons (as `code: detail` lines) into `ctx.invalid` **only for runs whose `expectValidity` is not `"INVALID"`**. Task 6's reconciliation runs after it in the same slot and does not touch validity.
 4. `evaluateVerdict` (Task 3) is extended, not replaced: for a run with `expectValidity: "INVALID"` the verdict requires `validity.verdict === "INVALID"` **and** every expected code present (`expectCodes`), else `TEST BUG` ("the deliberately saturated run was not saturated"); for a run with `expectValidity` absent or `"VALID"` it requires `VALID`, else the case outcome is `INVALID` (not FAIL) unless a correctness finding exists, in which case `FAIL` wins (Task 3 precedence unchanged).
 5. `verdict.json` gains `validity` (the case-level `{verdict, reasons[]}` over the non-expected runs), `k6[].validity`, `k6[].resources`, and `runMeta: "run-meta.json"`.
@@ -428,7 +428,7 @@ Product `stub`. Two runs on one stub (service 25 ms, stall 1500 ms every 10 s), 
 | Label       | `env`                                                                                          | `expectValidity` | `expectCodes`                        |
 | ----------- | ---------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------ |
 | `normal`    | `MODEL=open` (pre-allocated from `preAllocatedVUs({rate:40,maxLatencyMs:1600})` = 80, max 120) | `VALID`          | —                                    |
-| `saturated` | `MODEL=open PRE=5 MAXVUS=5`                                                                    | `INVALID`        | `dropped_iterations`, `vu_exhausted` |
+| `saturated` | `MODEL=open PRE=5 MAXVUS=5` (and `spec.maxVUs = 5`, the typed value the judge reads)           | `INVALID`        | `dropped_iterations`, `vu_exhausted` |
 
 Probe values: `normal` 0 dropped, `vus.max` below 80; `saturated` 170 dropped, `vus.max` 5 of 5 (§3.2). `package.json`: `"load:validity-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-004"`. The case outcome is `PASS` when both expectations hold.
 
@@ -553,7 +553,7 @@ None for Cursor Cloud or Claude Code cloud (no tool, host or setting). `/proc` a
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-validity origin/main` (after Task 3 is merged). Counts relative to B (B = count on main when the build starts; 554 today after Tasks 1 to 3).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-validity origin/main` (after Task 3 is merged). Counts relative to B (B = count on main when the build starts; 556 today after Tasks 1 to 3).
 
 | Step | Commit subject                                                               | `git add` paths                                                                                                                                                                                                 | `npm run check` expected           |
 | ---- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -611,7 +611,7 @@ After step 8: `git push -u origin feat/<build date>-p6-load-validity`, `gh pr cr
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green: `npm run check` exit 0 with **B + 43** (597 on today's chain).
+- [ ] Unit tests green: `npm run check` exit 0 with **B + 43** (599 on today's chain).
 - [ ] CI on the PR and once on `main`: `P6-X-LOAD-004` `saturated` is INVALID with `dropped_iterations` and `vu_exhausted`; `normal` is VALID; the case outcome is `PASS` (job `load-selftest`).
 - [ ] `run-meta.json` uploaded with every run (artefact `load-selftest`) and passes the token scan (`node scripts/evidence-token-scan.mjs results/load` exit 0).
 - [ ] The LOAD runner orchestrates k6 (setup, preflight, k6, reconcile slot with validity, cleanup, token scan, verdict) and `k6/selftest/coordinated-omission.js` still runs standalone with plain `k6 run` (Task 3 commands unchanged).
