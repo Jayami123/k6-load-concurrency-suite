@@ -1,4 +1,6 @@
-import type { AuditResult } from "./types.ts";
+import type pg from "pg";
+import { caseLiveBookings, readOverlapPairs } from "../../cal/oracle.ts";
+import type { AuditResult, AuditStageConfig } from "./types.ts";
 import { addFinding } from "./types.ts";
 
 /** Counts from the database after the run, scoped to the run's prefix. Pure input; the reads are added with the Cal product case (Task 7). */
@@ -71,4 +73,29 @@ export function evaluateCalAudit(s: CalSnapshot, prefixLike: string): AuditResul
     );
   }
   return result;
+}
+
+/** Reads the run's bookings and overlap pairs from the database (scope: the case prefix; the user is the case host). */
+export async function readCalSnapshot(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "cal" }>,
+  clientAccepted?: number,
+): Promise<CalSnapshot> {
+  const live = await caseLiveBookings(pool, cfg.prefixLike);
+  const pairs = await readOverlapPairs(pool, cfg.userId, cfg.prefixLike);
+  return {
+    liveBookings: live.length,
+    nonAccepted: live.filter((r) => r.status !== "accepted").length,
+    overlapPairs: pairs.length,
+    clientAccepted,
+  };
+}
+
+/** Reads, then evaluates. */
+export async function reconcileCal(
+  pool: pg.Pool,
+  cfg: Extract<AuditStageConfig, { product: "cal" }>,
+  clientAccepted?: number,
+): Promise<AuditResult> {
+  return evaluateCalAudit(await readCalSnapshot(pool, cfg, clientAccepted), cfg.prefixLike);
 }
