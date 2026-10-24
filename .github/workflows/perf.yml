@@ -515,7 +515,7 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          npm run load:med -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          npm run load:medusa -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
@@ -530,7 +530,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
         with:
-          name: load-med
+          name: load-medusa
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
           if-no-files-found: warn
           retention-days: 14

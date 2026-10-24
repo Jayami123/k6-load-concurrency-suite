@@ -22,9 +22,12 @@ const defaultDeps: CalDeps = {
 const message = (err: unknown): string =>
   (err instanceof Error ? err.message : String(err)).slice(0, 200);
 
-/** 11.4 slots per day at pro/30min (plan §3.1); three spare days cover the start offset. */
+/**
+ * At least 28 days. The plan's probe (§3.1) counted 320 slots in a 28-day window at pro/30min; a shorter window can hold
+ * fewer slots than iterations (the first CI run had 54 slots in 9 days and 7 iterations without a slot).
+ */
 export function calWindowDays(planned: number): number {
-  return Math.ceil(planned / 11.4) + 3;
+  return Math.max(28, Math.ceil(planned / 11.4) + 3);
 }
 
 /** Resolves the host and event type from the database and writes the case config. Never writes a secret. */
