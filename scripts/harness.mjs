@@ -46,8 +46,9 @@ if (!existsSync(script)) {
   process.exit(1);
 }
 
-// TEMPORARY BRIDGE: remove with the next qa-portfolio-harness release (up returns once Cal is
-// healthy, down stops the web server). Probe 2026-10-20: Cal's up.mjs never returns and its down()
+// TEMPORARY BRIDGE: harness v0.2.14 contains the Cal up/down fix. Remove this bridge only after the
+// Task 1 part B probe passes on the pinned tag (docs/plans/2026-10-24-p6-phase3-task1-harness-bump.md
+// §6.8). Probe 2026-10-20: Cal's up.mjs never returns and its down()
 // leaves `next start` on :3000. P6 runs it in its own process group, waits for the ready line, and
 // stops the group on down.
 /** @type {Record<string, LongRunning>} */
