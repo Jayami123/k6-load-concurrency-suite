@@ -126,3 +126,120 @@ export async function readCalRetryAudit(
   const linkRows = await selectRows<LinkRow>(pool, CAL_LINKS_SQL, [cfg.eventTypeId, cfg.linkLike]);
   return { acceptedPerIntent, linkRows };
 }
+
+/** Every booking of one intent's attendee email, whatever its status (cancelled and rejected rows are evidence too). Read-only. */
+export const CAL_BOOKINGS_BY_EMAIL_SQL = `SELECT a.email AS email, b.id::int AS id, b.uid AS uid, b.status::text AS status
+FROM "Booking" b JOIN "Attendee" a ON a."bookingId" = b.id WHERE a.email LIKE $1 ORDER BY b.id`;
+
+/** The usage count of every link of the case now (read after the run). Read-only. */
+export const CAL_LINK_USAGE_SQL = `SELECT link, "usageCount"::int AS "usageCount" FROM "HashedLink" WHERE "eventTypeId" = $1 AND link LIKE $2`;
+
+export interface JoinBooking {
+  id: number;
+  uid: string;
+  status: string;
+  email: string;
+}
+
+/** One intent: attendee e-mail `i<n>`, the link booked with (`links[n]`), and the link's usage before and after the run. */
+export interface JoinIntent {
+  n: number;
+  email: string;
+  link: string;
+  usageBefore: number;
+  usageAfter: number;
+  bookings: JoinBooking[];
+}
+
+export interface JoinRow {
+  n: number;
+  link: string;
+  usageBefore: number;
+  usageAfter: number;
+  usedBy: number; // usage delta: link uses this run
+  bookings: Array<{ id: number; uid: string; status: string }>;
+  flag: "ok" | "no-link-use" | "link-used-twice" | "no-booking";
+}
+
+export interface CalLinkJoin {
+  rows: JoinRow[];
+  findings: RetryFinding[];
+}
+
+/**
+ * Pure. Joins each intent's bookings to its link's usage. An accepted booking whose link shows no use is a booking accepted
+ * without a link (PRODUCT BUG, SUSPECTED); a link with two uses in one run is a link used twice (F-C1 surface, SUSPECTED).
+ * The rows hold ids, uids, statuses and counts only.
+ */
+export function judgeCalLinkJoin(intents: JoinIntent[]): CalLinkJoin {
+  const rows: JoinRow[] = intents.map((it) => {
+    const usedBy = it.usageAfter - it.usageBefore;
+    const accepted = it.bookings.filter((b) => b.status === "accepted").length;
+    let flag: JoinRow["flag"] = "ok";
+    if (it.bookings.length === 0) flag = "no-booking";
+    else if (usedBy > 1) flag = "link-used-twice";
+    else if (accepted > 0 && usedBy === 0) flag = "no-link-use";
+    return {
+      n: it.n,
+      link: it.link,
+      usageBefore: it.usageBefore,
+      usageAfter: it.usageAfter,
+      usedBy,
+      bookings: it.bookings.map((b) => ({ id: b.id, uid: b.uid, status: b.status })),
+      flag,
+    };
+  });
+  const count = (f: JoinRow["flag"]) => rows.filter((r) => r.flag === f).length;
+  const noUse = count("no-link-use");
+  const twice = count("link-used-twice");
+  const none = count("no-booking");
+  const findings: RetryFinding[] = [
+    {
+      check: "link-join-no-link-use",
+      ok: noUse === 0,
+      kind: noUse > 0 ? "PRODUCT BUG" : undefined,
+      detail: `SUSPECTED: ${noUse} accepted booking(s) whose link shows no use (rows: ${
+        rows
+          .filter((r) => r.flag === "no-link-use")
+          .map((r) => r.n)
+          .join(", ") || "none"
+      })`,
+    },
+    {
+      check: "link-join-used-twice",
+      ok: twice === 0,
+      kind: twice > 0 ? "PRODUCT BUG" : undefined,
+      detail: `SUSPECTED; related to F-C1: ${twice} link(s) used twice in one run`,
+    },
+    {
+      check: "link-join-no-booking",
+      ok: none === 0,
+      kind: none > 0 ? "TEST BUG" : undefined,
+      detail: `${none} intent(s) with no booking row`,
+    },
+  ];
+  return { rows, findings };
+}
+
+/** Reads the bookings and the usage after the run for the intents of a case. Read-only. */
+export async function readCalLinkJoin(
+  pool: pg.Pool,
+  cfg: { prefixLike: string; eventTypeId: number; linkLike: string },
+  intents: Array<{ n: number; email: string; link: string; usageBefore: number }>,
+): Promise<JoinIntent[]> {
+  const bookings = await selectRows<{ email: string; id: number; uid: string; status: string }>(
+    pool,
+    CAL_BOOKINGS_BY_EMAIL_SQL,
+    [cfg.prefixLike],
+  );
+  const usage = await selectRows<{ link: string; usageCount: number }>(pool, CAL_LINK_USAGE_SQL, [
+    cfg.eventTypeId,
+    cfg.linkLike,
+  ]);
+  const usageOf = new Map(usage.map((u) => [u.link, u.usageCount]));
+  return intents.map((it) => ({
+    ...it,
+    usageAfter: usageOf.get(it.link) ?? 0,
+    bookings: bookings.filter((b) => b.email === it.email),
+  }));
+}

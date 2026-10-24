@@ -90,6 +90,11 @@ async function setupPrivateLinks(
     base.eventTypeId,
     ids.map((link) => ({ link, maxUsageCount: 1 })),
   );
+  // Usage of this case's links before the run: the audit's join reads the usage after it (src/load/retry-audit/cal.ts).
+  const before = await links.readLinks(pool, base.eventTypeId);
+  ctx.handles.calLinkUsageBefore = Object.fromEntries(
+    before.filter((l) => ids.includes(l.link)).map((l) => [l.link, l.usageCount]),
+  );
   ctx.config.links = ids;
   (ctx.config.audit as Record<string, unknown>).linkLike = likeLiteralPrefix(
     base.dataPrefix.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
