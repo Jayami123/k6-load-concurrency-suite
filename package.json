@@ -34,6 +34,8 @@
     "race:medusa": "playwright test --project=medusa-race",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.races.json",
     "k6:inspect": "node scripts/k6-inspect.mjs",
+    "load:selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-001",
+    "k6:install": "bash scripts/install-k6.sh",
     "check": "npm run format:check && npm run lint:actions && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },
   "dependencies": {

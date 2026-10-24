@@ -22,6 +22,7 @@
     "playwright.config.ts",
     "scripts/write-ci-job-summary.ts",
     "scripts/actionlint.mts",
-    "k6/lib/pure/**/*.js"
+    "k6/lib/pure/**/*.js",
+    "scripts/load/**/*.ts"
   ]
 }
