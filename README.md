@@ -682,6 +682,10 @@ npm run load:overhead-selftest              # P6-X-LOAD-006, about 3 min
 npm run load:medusa-conservation -- --profile pr   # P6-MED-LOAD-002, inventory conservation (stock runs out), about 1.5 min, needs the Medusa stack up
 npm run load:documenso-pipeline -- --profile pr   # P6-DOC-LOAD-002, pipeline lag: every stage once, within 30 s, needs the Documenso stack up
 npm run load:documenso-webhook-retry -- --profile pr   # P6-DOC-LOAD-008, the receiver answers 500 once per event; Documenso must retry
+npm run load:cal-retry -- --profile pr   # P6-CAL-LOAD-007, a booking retried after a 35 ms client timeout, needs the Cal stack up
+npm run load:cal-link-retry -- --profile pr   # P6-CAL-LOAD-009, the same retries with one cap-1 private link per intent (the prior links are restored)
+npm run load:medusa-retry -- --profile pr   # P6-MED-LOAD-006, the complete request retried after a 100 ms timeout, needs the Medusa stack up
+npm run load:documenso-retry -- --profile pr   # P6-DOC-LOAD-007, the completion retried in parallel after a 25 ms timeout, needs the Documenso stack up
 node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/load
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
@@ -692,6 +696,13 @@ is `/sign/<token>/complete`, and the token is the recipient's own (`Recipient.to
 Inbucket, takes the token from the completion link, and joins it through `Recipient.token` to the envelope. Only messages whose token
 belongs to a run recipient count. A missing or duplicated completion email is a PRODUCT BUG. The evidence of the join is in
 `docs/handoff/2026-10-24-documenso-email-fields.md`. Tokens are used in memory only and never written.
+
+**Retry storms (P6-CAL-LOAD-007, P6-CAL-LOAD-009, P6-MED-LOAD-006, P6-DOC-LOAD-007).** One intent is one logical request. The client
+gives up after a short timeout (`k6/lib/retry.js`), so the server finishes a request the client never sees, and the same body is sent
+again. Each case then checks that the storm happened (at least half of the first attempts timed out, `src/load/retry-validity.ts`) and
+that the side effects happened once per intent: one accepted Cal booking (one cap-1 link per booking in `-009`), one Medusa order with
+one payment and stock taken once, one Documenso seal, one `DOCUMENT_COMPLETED` row and one completion email per recipient. A Cal
+redacted 400 (`P6-OBS-CAL-001`) and a 409 are counted, not failures. The audit is written to `audit.json` of each run.
 
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).
