@@ -40,10 +40,13 @@ export function assertSelectOnly(sql: string): void {
   }
 }
 
-export function createReadOnlyPool(connectionString = medusaDatabaseUrlFromEnv()): pg.Pool {
+export function createReadOnlyPool(
+  connectionString = medusaDatabaseUrlFromEnv(),
+  opts: { max?: number } = {},
+): pg.Pool {
   return new pg.Pool({
     connectionString,
-    max: 5,
+    max: opts.max ?? 5,
     allowExitOnIdle: true,
     options: "-c default_transaction_read_only=on",
   });

@@ -9,6 +9,9 @@ export interface AppProcess {
   label: string;
 }
 
+/** The harness state directory (records of the product processes, logs), relative to the repo root. */
+export const HARNESS_DIR = path.join("node_modules", "qa-portfolio-harness", ".harness");
+
 export interface GroupStats {
   cpuTicks: number;
   rssMb: number;
@@ -38,7 +41,7 @@ export function resolveAppProcess(
   product: LoadProduct,
   opts: { harnessDir?: string; resultsDir?: string; readFile?: (p: string) => string } = {},
 ): AppProcess[] | undefined {
-  const harness = opts.harnessDir ?? path.join("node_modules", "qa-portfolio-harness", ".harness");
+  const harness = opts.harnessDir ?? HARNESS_DIR;
   const results = opts.resultsDir ?? path.join("results", "harness");
   const readFile = opts.readFile ?? ((p: string) => readFileSync(p, "utf8"));
   const candidates: Array<{ file: string; label: string }> = (() => {

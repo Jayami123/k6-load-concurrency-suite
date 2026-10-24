@@ -39,6 +39,24 @@ describe("createReadOnlyPool", () => {
       (pg as { Pool: typeof pg.Pool }).Pool = Original;
     }
   });
+
+  it("takes a pool size, and keeps 5 when none is given", () => {
+    const Original = pg.Pool;
+    const sizes: Array<number | undefined> = [];
+    (pg as { Pool: typeof pg.Pool }).Pool = function FakePool(
+      config?: ConstructorParameters<typeof pg.Pool>[0],
+    ) {
+      sizes.push(config?.max);
+      return {} as pg.Pool;
+    } as unknown as typeof pg.Pool;
+    try {
+      createReadOnlyPool("postgres://example", { max: 1 });
+      createReadOnlyPool("postgres://example");
+      assert.deepEqual(sizes, [1, 5]);
+    } finally {
+      (pg as { Pool: typeof pg.Pool }).Pool = Original;
+    }
+  });
 });
 
 describe("closePool", () => {
