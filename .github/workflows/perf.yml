@@ -770,7 +770,7 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
-          mkdir -p results/evidence
+          mkdir -p results/evidence results/races
           cp -r results/races results/evidence/races
           cp node_modules/qa-portfolio-harness/.harness/medusa-backend.log node_modules/qa-portfolio-harness/.harness/medusa-backend-2.log results/evidence/
           node scripts/evidence-token-scan.mjs results/evidence
