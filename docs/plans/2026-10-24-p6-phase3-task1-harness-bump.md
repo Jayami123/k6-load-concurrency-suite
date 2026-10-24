@@ -23,7 +23,7 @@ Companion plan (the harness-side Cal fix, copied into the harness repo by its bu
   1. **H3 (second Medusa instance + lock switch): merged on harness `main`, not released.** Evidence §3.1.
   2. **Cal `up`/`down` fix (D4): not merged, not started.** Evidence §3.3. **Therefore the P6 bump keeps the Cal bridge in
      `scripts/harness.mjs`.** Bridge deletion moves to the bump that pins the version carrying the Cal fix (part B).
-- **Unit tests.** B = count on main when the build starts (today's chain: 471). Part A adds **+10** (6 env readers, 4 pin-drift): expected B + 10 (**481** today). Part B adds 0. Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784.
+- **Unit tests.** B = count on main when the build starts (today's chain: 471). Part A adds **+10** (6 env readers, 4 pin-drift): expected B + 10 (**481** today). Part B adds 0. Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 601 -> T5 657 -> T6 690 -> T7 708 -> T8 728 -> T9 752 -> T10 786.
 - **Stop for owner review.** Yes (rule 10): a harness pin changes, `perf.yml` changes, and the order of the two harness releases was decided by the owner (D4 amendment, Q2).
 
 ## 2. What it proves
