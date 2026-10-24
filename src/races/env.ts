@@ -83,7 +83,8 @@ export function medusaSecondBaseUrlFromEnv(
   if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1") {
     throw new Error(`TEST BUG: MEDUSA_SECOND_BASE_URL must be http://127.0.0.1:<port>, got ${raw}`);
   }
-  if (url === medusaBaseUrlFromEnv(env)) {
+  const primary = new URL(medusaBaseUrlFromEnv(env));
+  if (parsed.origin === primary.origin) {
     throw new Error("TEST BUG: MEDUSA_SECOND_BASE_URL equals MEDUSA_BASE_URL");
   }
   return url;

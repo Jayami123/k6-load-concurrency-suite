@@ -6,7 +6,7 @@ import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
 import { samplerStart, samplerStop, type TelemetryHandle } from "./telemetry/stages.ts";
 import { parseK6Summary } from "./summary.ts";
 import { judgeValidity } from "./validity.ts";
-import type { LoadContext, Stage, StageSet } from "./types.ts";
+import type { K6RunResult, LoadContext, Stage, StageSet } from "./types.ts";
 
 const ok: Stage = async () => ({ ok: true, reasons: [] });
 
@@ -20,15 +20,21 @@ export const runAllK6: Stage = async (ctx: LoadContext) => {
   for (const spec of specs) {
     const runSpec = (await telemetry?.beforeRun(spec)) ?? spec;
     let sampler: ResourceSampler | undefined;
-    const result = await runK6({
-      spec: runSpec,
-      outDir: ctx.outDir,
-      config: ctx.config,
-      env: ctx.env,
-      onStart: (pid) => {
-        sampler = startResourceSampler(pid);
-      },
-    });
+    let result: K6RunResult;
+    try {
+      result = await runK6({
+        spec: runSpec,
+        outDir: ctx.outDir,
+        config: ctx.config,
+        env: ctx.env,
+        onStart: (pid) => {
+          sampler = startResourceSampler(pid);
+        },
+      });
+    } catch (err) {
+      sampler?.stop();
+      throw err;
+    }
     result.resources = sampler?.stop();
     await telemetry?.afterRun(spec, result);
     ctx.k6.push(result);
@@ -76,6 +82,9 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
     try {
       summary = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
     } catch {
+      // A run that expects INVALID must show its evidence, so a missing or unreadable summary is a mismatch, not a skip.
+      if ((spec?.expectValidity ?? "VALID") === "INVALID")
+        mismatch.push(`${k.label} summary missing or unreadable, expected INVALID`);
       continue;
     }
     const verdict = judgeValidity({
