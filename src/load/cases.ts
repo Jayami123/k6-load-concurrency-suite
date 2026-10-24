@@ -14,9 +14,16 @@ import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { conservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
-import { judgeCalRetries, readCalRetryAudit } from "./retry-audit/cal.ts";
+import {
+  judgeCalLinkJoin,
+  judgeCalRetries,
+  readCalLinkJoin,
+  readCalRetryAudit,
+} from "./retry-audit/cal.ts";
+import { attendeeEmail } from "../../k6/lib/pure/prefix.js";
 import { judgeDocumensoRetries, readDocumensoRetryRows } from "./retry-audit/documenso.ts";
 import { judgeMedusaRetries, readMedusaRetryAudit } from "./retry-audit/medusa.ts";
+import { judgeKnownBugGate } from "./known-bug-gate.ts";
 import type { RetryCounters, RetryJudgement } from "./retry-validity.ts";
 import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../races/env.ts";
 import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
@@ -435,14 +442,14 @@ export function retryCountersOf(ctx: LoadContext): RetryCounters {
 }
 
 /**
- * Turns a judgement into a stage result and writes audit.json (counts, ids and check names only) after a token scan.
- * A failing finding fails the stage with its own kind; a counted known bug is a reason, never a failure.
+ * Writes audit.json (counts, ids and check names only) after a token scan. Returns a failing result when the scan matched, so the
+ * caller returns it; undefined when the file was written.
  */
-function retryStageResult(
+function writeRetryAudit(
   ctx: LoadContext,
   j: RetryJudgement,
   extra: Record<string, unknown> = {},
-): StageResult {
+): StageResult | undefined {
   const text = JSON.stringify({ schema: 1, caseId: ctx.caseDef.id, ...extra, ...j }, null, 2);
   const file = path.join(ctx.outDir, "audit.json");
   if (findHits(text).length > 0) {
@@ -454,6 +461,20 @@ function retryStageResult(
     };
   }
   writeFileSync(file, `${text}\n`);
+  return undefined;
+}
+
+/**
+ * Turns a judgement into a stage result: a failing finding fails the stage with its own kind; a counted known bug is a reason,
+ * never a failure. Used by the Cal stage.
+ */
+function retryStageResult(
+  ctx: LoadContext,
+  j: RetryJudgement,
+  extra: Record<string, unknown> = {},
+): StageResult {
+  const written = writeRetryAudit(ctx, j, extra);
+  if (written !== undefined) return written;
   const failing = j.findings.filter((f) => !f.ok);
   const reasons = [
     ...failing.map((f) => `${f.kind ?? "TEST BUG"}: ${f.check}: ${f.detail}`),
@@ -481,10 +502,25 @@ const calRetryStage: Stage = async (ctx) => {
   const pool = createReadOnlyPool(calDatabaseUrlFromEnv());
   try {
     const input = await readCalRetryAudit(pool, audit);
-    return retryStageResult(
-      ctx,
-      judgeCalRetries({ intents: counters.intents, ...input, counters }),
-    );
+    const j = judgeCalRetries({ intents: counters.intents, ...input, counters });
+    let extra: Record<string, unknown> = {};
+    if (audit.linkLike !== undefined) {
+      // Intent n is attendee i<n>, booked with links[n]: join each intent's bookings to its link's usage, before and after.
+      const linkIds = (ctx.config.links as string[] | undefined) ?? [];
+      const before = (ctx.handles.calLinkUsageBefore as Record<string, number> | undefined) ?? {};
+      const prefix = String(ctx.config.prefix);
+      const intents = linkIds.map((link, n) => ({
+        n,
+        email: attendeeEmail(prefix, `i${n}`),
+        link,
+        usageBefore: before[link] ?? 0,
+      }));
+      const joined = await readCalLinkJoin(pool, { ...audit, linkLike: audit.linkLike }, intents);
+      const join = judgeCalLinkJoin(joined);
+      j.findings.push(...join.findings);
+      extra = { linkJoin: join.rows };
+    }
+    return retryStageResult(ctx, j, extra);
   } finally {
     await closePool(pool);
   }
@@ -511,7 +547,11 @@ const medusaRetryStage: Stage = async (ctx) => {
   }
 };
 
-/** The retry audit of the Documenso case; the completion emails are read from the run's Inbucket client. */
+/**
+ * The retry audit of the Documenso case. Its verdict is the known-bug gate (src/load/known-bug-gate.ts): the declared bug
+ * P6-OBS-DOC-005 is KNOWN BUG when observed; a missing observation, any other violation, a missing storm check or a missing
+ * audit fails. The completion emails are read from the run's Inbucket client.
+ */
 const documensoRetryStage: Stage = async (ctx) => {
   const run = ctx.handles.documensoRun as RunContext | undefined;
   if (!run) return { ok: false, kind: "TEST BUG", reasons: ["documenso run handle is missing"] };
@@ -520,30 +560,39 @@ const documensoRetryStage: Stage = async (ctx) => {
   const pool = createReadOnlyPool(documensoDatabaseUrlFromEnv());
   try {
     const rows = await readDocumensoRetryRows(pool, audit, run.inbucket);
-    return retryStageResult(
-      ctx,
-      judgeDocumensoRetries({ intents: counters.intents, rows, counters }),
-      // per envelope, so the known-bug spec can read the seal count of each one (counts only, no ids)
-      {
-        envelopes: rows.map(
-          ({
-            status,
-            sealJobs,
-            completedAudit,
-            signedRecipients,
-            recipients,
-            emailsPerRecipient,
-          }) => ({
-            status,
-            sealJobs,
-            completedAudit,
-            signedRecipients,
-            recipients,
-            emailsPerRecipient,
-          }),
-        ),
-      },
-    );
+    const j = judgeDocumensoRetries({ intents: counters.intents, rows, counters });
+    const written = writeRetryAudit(ctx, j, {
+      // per envelope, counts only (no ids)
+      envelopes: rows.map(
+        ({
+          status,
+          sealJobs,
+          completedAudit,
+          signedRecipients,
+          recipients,
+          emailsPerRecipient,
+        }) => ({
+          status,
+          sealJobs,
+          completedAudit,
+          signedRecipients,
+          recipients,
+          emailsPerRecipient,
+        }),
+      ),
+    });
+    if (written !== undefined) return written;
+    const gate = judgeKnownBugGate({
+      declared: ctx.caseDef.knownBugs ?? [],
+      checks: j.findings.map((f) => ({ name: f.check, ok: f.ok, kind: f.kind, detail: f.detail })),
+      hasAudit: true,
+    });
+    return {
+      ok: gate.ok,
+      kind: gate.kind,
+      reasons: gate.reasons,
+      data: { audit: "audit.json", observed: gate.observed },
+    };
   } finally {
     await closePool(pool);
   }
@@ -614,6 +663,7 @@ export const DOC_LOAD_007: LoadCase = {
     pr: { rate: 1, durationSec: 10, maxLatencyMs: 3000 },
     full: { rate: 1, durationSec: 30, maxLatencyMs: 3000 },
   },
+  knownBugs: ["P6-OBS-DOC-005"],
   runs: () => [
     {
       label: "main",

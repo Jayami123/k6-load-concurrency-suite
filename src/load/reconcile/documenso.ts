@@ -44,6 +44,7 @@ export function evaluateDocumensoAudit(
   s: DocumensoSnapshot,
   prefixLike: string,
   drain: { drained: boolean; drainMs: number },
+  declaredBugs: string[] = [],
 ): AuditResult {
   const result: AuditResult = {
     schema: 1,
@@ -81,12 +82,14 @@ export function evaluateDocumensoAudit(
   for (const e of completed) {
     if (e.sealJobs === 0) bug("completed envelope never sealed");
     if (e.sealJobs > 1) {
+      // A case that declares P6-OBS-DOC-005 (the retry storm) counts its duplicate seal under that ID, not as unexpected.
+      const declared = declaredBugs.includes("P6-OBS-DOC-005");
       addFinding(result, {
         kind: "PRODUCT BUG",
         text: "double seal",
-        knownBugId: "P6-OBS-DOC-002",
+        knownBugId: declared ? "P6-OBS-DOC-005" : "P6-OBS-DOC-002",
       });
-      if (s.sequentialCompletions)
+      if (s.sequentialCompletions && !declared)
         result.unexpected.push("double seal with sequential completions");
     }
   }
@@ -165,5 +168,5 @@ export async function reconcileDocumenso(
 ): Promise<AuditResult> {
   const drain = await waitForDrainPool(pool, cfg.prefixLike, cfg.drainTimeoutMs);
   const snapshot = await readDocumensoSnapshot(pool, cfg, clientCompleted);
-  return evaluateDocumensoAudit(snapshot, cfg.prefixLike, drain);
+  return evaluateDocumensoAudit(snapshot, cfg.prefixLike, drain, cfg.knownBugs ?? []);
 }

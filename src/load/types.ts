@@ -41,6 +41,11 @@ export interface LoadCase {
   telemetry?: { product: LoadProduct };
   /** Per-case overrides of the default stages (setup, reconcile, ...). Tasks 7 to 10 use this. */
   stages?: Partial<StageSet>;
+  /**
+   * Known product bugs this case declares (IDs from README "Known product bugs"). A violation of a declared bug is
+   * KNOWN BUG in the verdict and does not fail the run. The gate is strict: a declared bug that is not observed fails.
+   */
+  knownBugs?: string[];
 }
 
 export type StageName =
