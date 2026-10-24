@@ -88,21 +88,21 @@ Artifact `race-histograms-medusa-multi-instance-memory` (id 12555533333) of run 
 
 ## CI run 40096192555 (workflow_dispatch, head 3237fe9)
 
-| Job | Conclusion | Duration |
-| --- | --- | --- |
-| medusa-multi-instance (memory) | **failure** (RACE-003 red) | 8 min 33 s |
-| medusa-smoke | **failure** (`Check`: unit tests) | 0 min 44 s |
-| cal-state-races | success | 12 min 32 s |
-| medusa-multi-instance (redis) | success | 10 min 19 s |
-| medusa-order-races | success | 16 min 50 s |
-| documenso-smoke | success | 9 min 05 s |
-| cal-smoke | success | 7 min 40 s |
-| load-overhead | success | 4 min 36 s |
-| load-selftest | success | 2 min 53 s |
-| medusa-cancel-extras | success | 5 min 05 s |
-| twenty-smoke | success | 3 min 53 s |
-| twenty-obs | success | 4 min 25 s |
-| twenty-races | success | 5 min 23 s |
+| Job                            | Conclusion                        | Duration    |
+| ------------------------------ | --------------------------------- | ----------- |
+| medusa-multi-instance (memory) | **failure** (RACE-003 red)        | 8 min 33 s  |
+| medusa-smoke                   | **failure** (`Check`: unit tests) | 0 min 44 s  |
+| cal-state-races                | success                           | 12 min 32 s |
+| medusa-multi-instance (redis)  | success                           | 10 min 19 s |
+| medusa-order-races             | success                           | 16 min 50 s |
+| documenso-smoke                | success                           | 9 min 05 s  |
+| cal-smoke                      | success                           | 7 min 40 s  |
+| load-overhead                  | success                           | 4 min 36 s  |
+| load-selftest                  | success                           | 2 min 53 s  |
+| medusa-cancel-extras           | success                           | 5 min 05 s  |
+| twenty-smoke                   | success                           | 3 min 53 s  |
+| twenty-obs                     | success                           | 4 min 25 s  |
+| twenty-races                   | success                           | 5 min 23 s  |
 
 **RACE-003 (same finding as above, second run).** Artifact `race-histograms-medusa-multi-instance-memory` (id 12561247464),
 `races/P6-MED-RACE-003.json`, commit 3237fe9, verdict `fail`. 49 of 50 trials oversold. One trial failed the invariant
