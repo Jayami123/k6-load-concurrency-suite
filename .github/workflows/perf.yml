@@ -519,6 +519,17 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
+      - name: LOAD journey P6-MED-LOAD-002 (inventory conservation, functional load, not capacity)
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-conservation -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
