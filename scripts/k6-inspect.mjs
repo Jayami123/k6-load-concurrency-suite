@@ -1,8 +1,9 @@
 // `k6 inspect` every k6 script. Skips with a notice when k6 is not installed.
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { compareK6Version } from "./lib/k6-pin.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -12,6 +13,15 @@ if (version.error || version.status !== 0) {
   process.exit(0);
 }
 console.log(version.stdout.trim());
+// The pin is a failure, not a skip: a k6 that differs from .k6-version would make the check run another generator.
+const pin = readFileSync(path.join(repoRoot, ".k6-version"), "utf8").trim();
+const pinned = compareK6Version(version.stdout, pin);
+if (!pinned.ok) {
+  console.error(
+    `k6 v${pinned.installed ?? "?"} is installed, the repo pins v${pin}. Run: bash scripts/install-k6.sh`,
+  );
+  process.exit(1);
+}
 
 /** @param {string} dir @returns {string[]} */
 function listScripts(dir) {

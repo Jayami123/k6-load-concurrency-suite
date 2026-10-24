@@ -29,11 +29,7 @@ RUN arch="$(dpkg --print-architecture)" && \
     mkdir -p /opt/node24 && tar -xJf "$tmp/$tar" -C /opt/node24 --strip-components=1 && \
     rm -rf "$tmp" && /opt/node24/bin/node -v
 
-# k6 from the official Grafana apt repo (https://grafana.com/docs/k6/latest/set-up/install-k6/).
-RUN curl --retry 3 -fsSL https://dl.k6.io/key.gpg | gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
-    > /etc/apt/sources.list.d/k6.list && \
-    apt-get update && apt-get install -y k6 && rm -rf /var/lib/apt/lists/* && k6 version
+# k6 is not installed here: the environment install step runs scripts/install-k6.sh (the pinned, checksum-verified version).
 
 # Docker (Cursor's recommended setup for Docker inside Cloud Agents).
 RUN install -m 0755 -d /etc/apt/keyrings && \

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-// @ts-expect-error -- plain .mjs module without types
 import { chooseDocumensoNode } from "../../scripts/lib/documenso-node.mjs";
 
 describe("chooseDocumensoNode", () => {

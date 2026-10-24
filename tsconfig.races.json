@@ -12,13 +12,17 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "allowJs": true,
+    "checkJs": true
   },
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts",
     "playwright.config.ts",
     "scripts/write-ci-job-summary.ts",
-    "scripts/actionlint.mts"
+    "scripts/actionlint.mts",
+    "k6/lib/pure/**/*.js",
+    "scripts/load/**/*.ts"
   ]
 }
