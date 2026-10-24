@@ -35,7 +35,11 @@ docs/plans/2026-10-24-p6-phase3-task5-load-telemetry.md.
   INVALID with `telemetry_gap` (gap 4501 ms); forcedSkew INVALID with `clock_skew` (2500.5 ms).
 - Local `npm run load:overhead-selftest` (P6-X-LOAD-006): PASS. Without the sampler: 800 to 801 requests, p95 1014 to 1031 ms;
   with it: 803 requests, p95 1016 to 1040 ms; no drops.
-- CI: `perf.yml` workflow_dispatch on this branch, run 40081738239 (see the handoff).
+- CI: `perf.yml` workflow_dispatch on this branch, run 40081738239 (head fc1141b). At 09:30 UTC the run was still in progress.
+  Finished: `load-overhead` success (4 min), `load-selftest` success (2 min), `twenty-smoke`, `twenty-races`, `twenty-obs` and
+  `medusa-cancel-extras` success; `cal-smoke` and `cal-state-races` failed at `Start Cal (harness up)` (the inherited Task 1
+  listener-pid error). Still running at that time: `medusa-smoke`, `medusa-order-races`, `medusa-multi-instance` (both legs),
+  `documenso-smoke`. The final result is on the run page; it is not recorded here.
 
 ## Budget
 
