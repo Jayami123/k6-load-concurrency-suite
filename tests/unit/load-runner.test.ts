@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
+import { evaluateVerdict, invalidReasons, runLoad, summaryFor } from "../../src/load/runner.ts";
 import { validityStage } from "../../src/load/stages.ts";
 import type {
   K6RunResult,
@@ -113,7 +113,13 @@ describe("load runner", () => {
       tokenScan: rec("tokenScan"),
     };
     const outRoot = mkdtempSync(path.join(tmpdir(), "p6-load-runner-"));
-    const result = await runLoad(caseDef(), { profile: "pr", outRoot, runId: "run-a", stages });
+    const result = await runLoad(caseDef(), {
+      profile: "pr",
+      outRoot,
+      runId: "run-a",
+      stages,
+      env: {},
+    });
     assert.deepEqual(order, [
       "setup",
       "preflight",
@@ -133,6 +139,32 @@ describe("load runner", () => {
     };
     assert.equal(verdict.schema, 1);
     assert.equal(verdict.outcome, "FAIL");
+  });
+
+  it("summaryFor marks a truncated k6 summary as unreadable instead of throwing", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "p6-load-summary-"));
+    const summaryPath = path.join(dir, "k6-main-summary.json");
+    writeFileSync(summaryPath, '{"metrics": {"http_req_dur');
+    const k: K6RunResult = {
+      label: "main",
+      exitCode: 137,
+      summaryPath,
+      pointsPath: path.join(dir, "k6-main.json.gz"),
+      stdoutPath: path.join(dir, "k6-main.log"),
+      startedAtMs: 0,
+      endedAtMs: 0,
+      pid: 0,
+    };
+    assert.deepEqual(summaryFor(k), { label: "main", exitCode: 137, summary: "unreadable" });
+  });
+
+  it("invalidReasons turns validityStage strings into { code, detail } objects", () => {
+    assert.deepEqual(invalidReasons(["main: CPU_SATURATED: cores 3.9 of 4: over the limit"]), [
+      { label: "main", code: "CPU_SATURATED", detail: "cores 3.9 of 4: over the limit" },
+    ]);
+    assert.deepEqual(invalidReasons(["no separators"]), [
+      { code: "UNPARSED", detail: "no separators" },
+    ]);
   });
 });
 
@@ -170,6 +202,14 @@ describe("load validity wiring", () => {
     expectValidity: "INVALID",
     expectCodes: ["dropped_iterations", "vu_exhausted"],
   };
+
+  it("an expected INVALID run without a readable summary is a TEST BUG, not a skip", async () => {
+    const ctx = ctxWith({ k6: [k6("saturated", "/nonexistent/summary.json")] }, [saturatedRun]);
+    const r = await validityStage(ctx);
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons.join(" "), /saturated summary missing or unreadable, expected INVALID/);
+  });
 
   it("an expected INVALID run that shows its codes gives PASS, and a run without a summary is skipped", async () => {
     const ctx = ctxWith(

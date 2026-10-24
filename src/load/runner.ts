@@ -77,18 +77,35 @@ export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: 
   return { outcome: "PASS", reasons: [] };
 }
 
-function summaryFor(k: K6RunResult): Record<string, unknown> {
+export function summaryFor(k: K6RunResult): Record<string, unknown> {
   if (!existsSync(k.summaryPath))
     return { label: k.label, exitCode: k.exitCode, summary: "missing" };
-  const s = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
+  let s: ReturnType<typeof parseK6Summary>;
+  try {
+    s = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
+  } catch {
+    // A k6 crash can leave a truncated file. Keep verdict.json writable and say why the summary is empty.
+    return { label: k.label, exitCode: k.exitCode, summary: "unreadable" };
+  }
   return {
     label: k.label,
     exitCode: k.exitCode,
     requests: s.requests,
+    iterations: s.iterations,
     dropped: s.dropped,
     vusMax: s.vusMax,
     p95Ms: s.p95Ms,
   };
+}
+
+/** Splits "<label>: <code>: <detail>" (validityStage) into the { code, detail } objects the verdict readers expect. */
+export function invalidReasons(
+  invalid: string[],
+): Array<{ label?: string; code: string; detail: string }> {
+  return invalid.map((s) => {
+    const m = /^([^:]+): ([^:]+): ([\s\S]*)$/.exec(s);
+    return m ? { label: m[1], code: m[2]!, detail: m[3]! } : { code: "UNPARSED", detail: s };
+  });
 }
 
 function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
@@ -110,7 +127,10 @@ function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
     outcome,
     reasons,
     invalid: ctx.invalid,
-    validity: { verdict: ctx.invalid.length === 0 ? "VALID" : "INVALID", reasons: ctx.invalid },
+    validity: {
+      verdict: ctx.invalid.length === 0 ? "VALID" : "INVALID",
+      reasons: invalidReasons(ctx.invalid),
+    },
     k6: ctx.k6.map((k) => ({
       ...summaryFor(k),
       validity: k.validity,

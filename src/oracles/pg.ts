@@ -42,11 +42,13 @@ export function assertSelectOnly(sql: string): void {
 
 export function createReadOnlyPool(
   connectionString = medusaDatabaseUrlFromEnv(),
-  opts: { max?: number } = {},
+  opts: { max?: number; connectionTimeoutMs?: number; queryTimeoutMs?: number } = {},
 ): pg.Pool {
   return new pg.Pool({
     connectionString,
     max: opts.max ?? 5,
+    connectionTimeoutMillis: opts.connectionTimeoutMs,
+    query_timeout: opts.queryTimeoutMs,
     allowExitOnIdle: true,
     options: "-c default_transaction_read_only=on",
   });
