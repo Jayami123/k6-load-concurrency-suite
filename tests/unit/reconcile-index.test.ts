@@ -77,3 +77,84 @@ describe("reconcile index", () => {
     assert.equal(r.kind, "PRODUCT BUG");
   });
 });
+
+describe("audit stage", () => {
+  const ctxWith = (audit: unknown, outDir: string) =>
+    ({
+      config: audit === undefined ? {} : { audit },
+      k6: [],
+      outDir,
+    }) as unknown as LoadContext;
+
+  it("a case with no audit config is skipped", async () => {
+    const { makeReconcileStage } = await import("../../src/load/reconcile/index.ts");
+    const stage = makeReconcileStage({
+      openPool: () => ({}) as never,
+      reconcile: async () => {
+        throw new Error("no");
+      },
+    });
+    const r = await stage(ctxWith(undefined, "/tmp/none"));
+    assert.equal(r.ok, true);
+    assert.equal((r.data as { skipped?: string }).skipped, "case has no product audit (stub)");
+  });
+
+  it("a clean audit writes audit.json and passes", async () => {
+    const { makeReconcileStage } = await import("../../src/load/reconcile/index.ts");
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const dir = mkdtempSync(path.join(tmpdir(), "audit-"));
+    const clean: AuditResult = {
+      schema: 1,
+      product: "cal",
+      prefixLike: "p%",
+      rowsSeen: 2,
+      checks: [{ name: "rows", ok: true, detail: "2 live booking(s)" }],
+      violations: [],
+      knownBugs: {},
+      unexpected: [],
+      pending: [],
+      leak: [],
+    };
+    const stage = makeReconcileStage({
+      openPool: () => ({ end: async () => {} }) as never,
+      reconcile: async () => clean,
+    });
+    const ctx = ctxWith({ product: "cal", userId: 1, eventTypeId: 2, prefixLike: "p%" }, dir);
+    const r = await stage(ctx);
+    assert.equal(r.ok, true);
+    assert.equal((r.data as { audit?: string }).audit, "audit.json");
+    assert.equal(JSON.parse(readFileSync(path.join(dir, "audit.json"), "utf8")).product, "cal");
+  });
+
+  it("an audit whose detail matches a token pattern is refused and not kept", async () => {
+    const { makeReconcileStage } = await import("../../src/load/reconcile/index.ts");
+    const { mkdtempSync, existsSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const dir = mkdtempSync(path.join(tmpdir(), "audit-"));
+    const leaky: AuditResult = {
+      schema: 1,
+      product: "cal",
+      prefixLike: "p%",
+      rowsSeen: 1,
+      checks: [{ name: "rows", ok: true, detail: "ghp_" + "a".repeat(36) }],
+      violations: [],
+      knownBugs: {},
+      unexpected: [],
+      pending: [],
+      leak: [],
+    };
+    const stage = makeReconcileStage({
+      openPool: () => ({ end: async () => {} }) as never,
+      reconcile: async () => leaky,
+    });
+    const r = await stage(
+      ctxWith({ product: "cal", userId: 1, eventTypeId: 2, prefixLike: "p%" }, dir),
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.equal(existsSync(path.join(dir, "audit.json")), false);
+  });
+});

@@ -81,3 +81,45 @@ describe("documenso reconciliation", () => {
     assert.ok(out.drainMs >= 2000);
   });
 });
+
+describe("documenso audit reader", () => {
+  const fake = (routes: Array<[string, unknown[]]>) =>
+    ({
+      query: async (sql: string) => {
+        for (const [key, rows] of routes) if (sql.includes(key)) return { rows };
+        return { rows: [] as unknown[] };
+      },
+    }) as unknown as import("pg").Pool;
+
+  it("reads one row per envelope and evaluates a sealed, drained run as clean", async () => {
+    const d = await import("../../src/load/reconcile/documenso.ts");
+    const o = await import("../../src/documenso/oracle.ts");
+    const pool = fake([
+      [d.ENVELOPES_BY_TITLE_SQL, [{ id: "e1", secondaryId: "document_11", status: "COMPLETED" }]],
+      [o.SEAL_JOBS_SQL, [{ id: 1, status: "COMPLETED", retried: 0 }]],
+      [d.STUCK_JOBS_FOR_DOCUMENT_SQL, [{ n: 0 }]],
+      [o.DOCUMENT_COMPLETED_AUDIT_SQL, [{ n: 1 }]],
+      [d.STUCK_JOBS_FOR_RUN_SQL, [{ n: 0 }]],
+    ]);
+    const cfg = { product: "documenso" as const, prefixLike: "p%", sequentialCompletions: true };
+    const snap = await d.readDocumensoSnapshot(pool, cfg, 1);
+    assert.deepEqual(snap.envelopes, [
+      { status: "COMPLETED", sealJobs: 1, stuckJobs: 0, completedAudit: 1 },
+    ]);
+    const drain = await d.waitForDrainPool(pool, cfg.prefixLike, 1000);
+    assert.equal(drain.drained, true);
+    assert.deepEqual(d.evaluateDocumensoAudit(snap, cfg.prefixLike, drain).violations, []);
+  });
+
+  it("the documenso audit SQL passes assertSelectOnly", async () => {
+    const { assertSelectOnly } = await import("../../src/oracles/pg.ts");
+    const d = await import("../../src/load/reconcile/documenso.ts");
+    for (const sql of [
+      d.ENVELOPES_BY_TITLE_SQL,
+      d.STUCK_JOBS_FOR_RUN_SQL,
+      d.STUCK_JOBS_FOR_DOCUMENT_SQL,
+    ]) {
+      assert.doesNotThrow(() => assertSelectOnly(sql));
+    }
+  });
+});

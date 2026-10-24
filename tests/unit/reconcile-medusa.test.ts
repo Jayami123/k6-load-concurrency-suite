@@ -100,3 +100,84 @@ describe("medusa reconciliation", () => {
     );
   });
 });
+
+describe("medusa audit reader", () => {
+  const oracle = async () => await import("../../src/medusa/oracle.ts");
+  const fakePool = (overrides: Record<string, unknown[]> = {}) => {
+    const rows: Record<string, unknown[]> = {};
+    return {
+      query: async (sql: string) => {
+        for (const [key, value] of Object.entries(overrides))
+          if (sql.includes(key)) return { rows: value };
+        void rows;
+        return { rows: [] as unknown[] };
+      },
+    } as unknown as import("pg").Pool;
+  };
+
+  it("reads counts and payments and evaluates a clean run as clean", async () => {
+    const o = await oracle();
+    const { readMedusaSnapshot, ORDERS_BY_EMAIL_SQL } =
+      await import("../../src/load/reconcile/medusa.ts");
+    const { evaluateMedusaAudit } = await import("../../src/load/reconcile/medusa.ts");
+    const pool = fakePool({
+      [o.ORDERS_FOR_VARIANT_SQL]: [{ n: 2 }],
+      [o.ORDER_QTY_FOR_VARIANT_SQL]: [{ qty: "2" }],
+      [o.RESERVATION_QTY_SQL]: [{ qty: "2", n: 2 }],
+      [o.INVENTORY_LEVEL_SQL]: [{ stocked: "5", reserved: "2" }],
+      [o.LEAK_LIVE_ORDER_IDS_SQL]: [{ id: "o1" }, { id: "o2" }],
+      [ORDERS_BY_EMAIL_SQL]: [{ id: "o1" }, { id: "o2" }],
+      [o.MONEY_PAYMENT_FOR_ORDER_SQL]: [{ payment_id: "p1", amount: "10" }],
+      [o.MONEY_SNAPSHOT_SQL]: [
+        {
+          captured_sum: "10",
+          capture_rows: "1",
+          refunded_sum: "0",
+          refund_rows: "0",
+          pending_changes: "0",
+        },
+      ],
+    });
+    const cfg = {
+      product: "medusa" as const,
+      prefixLike: "p%",
+      variantId: "v",
+      inventoryItemId: "i",
+      locationId: "l",
+      stock: 5,
+    };
+    const s = await readMedusaSnapshot(pool, cfg, 2);
+    assert.equal(s.variant.orderCount, 2);
+    assert.equal(s.liveOrdersByEmail, 2);
+    assert.equal(s.payments.length, 2);
+    assert.equal(s.ordersWithoutPayment, 0);
+    const result = evaluateMedusaAudit(s, cfg.prefixLike);
+    assert.deepEqual(result.violations, []);
+  });
+
+  it("an order with no payment is counted, and the evaluator flags it", async () => {
+    const o = await oracle();
+    const { readMedusaSnapshot, ORDERS_BY_EMAIL_SQL, evaluateMedusaAudit } =
+      await import("../../src/load/reconcile/medusa.ts");
+    const pool = fakePool({
+      [o.ORDERS_FOR_VARIANT_SQL]: [{ n: 1 }],
+      [o.ORDER_QTY_FOR_VARIANT_SQL]: [{ qty: "1" }],
+      [o.RESERVATION_QTY_SQL]: [{ qty: "1", n: 1 }],
+      [o.INVENTORY_LEVEL_SQL]: [{ stocked: "5", reserved: "1" }],
+      [o.LEAK_LIVE_ORDER_IDS_SQL]: [{ id: "o1" }],
+      [ORDERS_BY_EMAIL_SQL]: [{ id: "o1" }],
+      [o.MONEY_PAYMENT_FOR_ORDER_SQL]: [],
+    });
+    const cfg = {
+      product: "medusa" as const,
+      prefixLike: "p%",
+      variantId: "v",
+      inventoryItemId: "i",
+      locationId: "l",
+      stock: 5,
+    };
+    const s = await readMedusaSnapshot(pool, cfg);
+    assert.equal(s.ordersWithoutPayment, 1);
+    assert.ok(evaluateMedusaAudit(s, cfg.prefixLike).violations.length > 0);
+  });
+});
