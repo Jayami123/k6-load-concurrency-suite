@@ -22,6 +22,7 @@ const MEDUSA_OVERSELL_CASES = new Set([
   "extra-s1-n2",
   "extra-same-cart",
 ]);
+const MEDUSA_TWO_INSTANCE_CASES = new Set(["P6-MED-RACE-002", "P6-MED-RACE-003"]);
 const CAL_IDENTICAL_SLOT_CASES = new Set([
   "P6-CAL-RACE-001",
   "extra-loser-contract",
@@ -137,6 +138,20 @@ function outcomeFor(caseId: string, h: ParsedRace): { keyCounts: string; outcome
   const total = h.trialsRequested ?? valid.length;
   const unit =
     h.attempts.length === valid.length ? `${total} trials` : `${h.attempts.length} attempts`;
+  if (MEDUSA_TWO_INSTANCE_CASES.has(caseId)) {
+    const oversold = trialNumbers(valid, "oversold");
+    if (!oversold) return { keyCounts: NA, outcome: NA };
+    const n = sum(oversold);
+    return {
+      keyCounts: `oversold trials ${n}; ghost orders ${sum(trialNumbers(valid, "ghostOrders") ?? [])}`,
+      outcome:
+        caseId === "P6-MED-RACE-003"
+          ? `Characterization: oversold in ${n} of ${unit} (expected with the in-memory lock)`
+          : n > 0
+            ? `Oversold in ${n} of ${unit}`
+            : `No oversell in ${unit}`,
+    };
+  }
   if (MEDUSA_OVERSELL_CASES.has(caseId)) {
     const accepted = trialNumbers(valid, "httpWinnerCount");
     const available = trialNumbers(h.attempts, "available");

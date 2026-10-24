@@ -629,6 +629,19 @@ product bugs".
    the [Task 8 probe report](docs/plans/2026-10-24-p6-phase2-task8-med-multi-instance.md) §5 (harness proposal H3). Not run
    in Phase 2.
 
+   `-003` is a **characterization**, not a product bug: the in-memory lock is expected to oversell across two backends,
+   and the case records that and asserts the hard invariants. The CI job `medusa-multi-instance` runs one leg per lock
+   (`redis` for `-002`, `memory` for `-003`).
+
+   Run two Medusa backends locally (timings on a cloud VM prove the test works; they are never published):
+
+   ```bash
+   export PATH="/usr/local/bin:$PATH"
+   MEDUSA_REDIS=1 MEDUSA_LOCK=redis MEDUSA_SECOND_BASE_URL=http://127.0.0.1:9001 npm run up:medusa
+   npm run race:medusa -- --grep "P6-MED-RACE-002"
+   npm run down:medusa   # always; switching the lock mode needs a down first
+   ```
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),

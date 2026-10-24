@@ -375,3 +375,105 @@ export function classifyFindings(
   }
   return { violations, suspected };
 }
+
+/** Client count and server log count per instance must match, and every instance must have been hit. */
+export function checkTwoInstanceTraffic(input: {
+  clientCounts: readonly number[]; // requests this case sent to instance 0, 1 (warm-up and invalid attempts included)
+  serverCounts: readonly number[]; // cart-complete lines each backend logged during the case (delta of two reads)
+}): string[] {
+  const out: string[] = [];
+  input.clientCounts.forEach((sent, i) => {
+    if (sent === 0) out.push(`TEST BUG: instance ${i} was sent no request`);
+    if (input.serverCounts[i] !== sent) {
+      out.push(
+        `TEST BUG: instance ${i} logged ${input.serverCounts[i]} cart completions, the client sent ${sent}`,
+      );
+    }
+  });
+  return out;
+}
+
+/** A loser that is not a clean stock refusal. F-M2's signature is the temp_failure message (Appendix B3 of the Phase 2 closeout). */
+export function classifyTwoInstanceLoser(
+  message: string,
+  type: string | null,
+): "clean" | "f-m2-signature" | "other" {
+  if (type === "not_allowed" && message.includes("Not enough stock available")) return "clean";
+  if (message.includes('"temp_failure"')) return "f-m2-signature";
+  return "other";
+}
+
+/**
+ * -003. Findings are the characterization; violations are what must still hold with a per-process lock.
+ * Hard invariants (violations): no ghost orders, orderCount = uniqueOrderIds = httpWinnerCount = reservationQty, and orders <= N.
+ * The oversell itself is a characterization (findings): its size per trial and the most any one backend admitted are recorded.
+ * No bound of instances x S is asserted: RACE-003 run 40119155757 has one backend admitting 4 for S=3 (trials 8, 16, 18, 24, 41,
+ * 43, 49), and run 40120499660 has 7 orders in total (trial 45). With a per-process lock and a shared database the only bound is N.
+ */
+export function checkMemoryLockCharacterization(input: {
+  s: number;
+  n: number;
+  instances: number;
+  orderCount: number;
+  uniqueOrderIds: number;
+  httpWinnerCount: number;
+  reservationQty: number;
+  reserved: number;
+  statuses: Array<number | null>;
+  loserTypes: string[];
+  loserMessages: string[];
+}): { violations: string[]; findings: string[]; suspected: string[] } {
+  const violations: string[] = [];
+  const findings: string[] = [];
+  const suspected: string[] = [];
+  for (const status of input.statuses) {
+    if (status === null || status >= 500)
+      violations.push(`PRODUCT BUG: HTTP ${status === null ? "error" : status}`);
+    else if (status !== 200 && status !== 400)
+      violations.push(`PRODUCT BUG: completion status ${status}`);
+  }
+  // Ghost order: a DB order no checkout returned, in either direction. Hard in this check.
+  if (input.orderCount !== input.uniqueOrderIds) {
+    violations.push(
+      `PRODUCT BUG: ghost order(s): database ${input.orderCount} != returned unique ${input.uniqueOrderIds}`,
+    );
+  }
+  if (input.uniqueOrderIds > input.n) {
+    violations.push(`PRODUCT BUG: ${input.uniqueOrderIds} orders exceed N = ${input.n}`);
+  }
+  if (input.uniqueOrderIds !== input.httpWinnerCount) {
+    violations.push(
+      `PRODUCT BUG: HTTP winners ${input.httpWinnerCount} share order ids (unique ${input.uniqueOrderIds})`,
+    );
+  }
+  // Per backend (characterization): request i went to backend i % instances (run-case.ts statusCountsPerInstance).
+  const admitted = Array.from({ length: input.instances }, () => 0);
+  input.statuses.forEach((status, i) => {
+    if (status === 200) admitted[i % input.instances]! += 1;
+  });
+  findings.push(
+    `CHARACTERIZATION: per backend admitted [${admitted.join(", ")}], most ${Math.max(...admitted)} for S=${input.s}`,
+  );
+  // Reservation rows follow the orders a checkout returned (probe §3.5: 6 rows for 6 returned orders).
+  if (input.reservationQty !== input.uniqueOrderIds) {
+    violations.push(
+      `PRODUCT BUG: reservation rows ${input.reservationQty} != returned orders ${input.uniqueOrderIds}`,
+    );
+  }
+  input.loserTypes.forEach((type, i) => {
+    const kind = classifyTwoInstanceLoser(input.loserMessages[i] ?? "", type);
+    if (kind === "f-m2-signature")
+      suspected.push("SUSPECTED PRODUCT BUG: loser with the temp_failure message (F-M2)");
+    if (kind === "other")
+      violations.push(
+        `PRODUCT BUG: loser type=${type ?? "missing"} message=${(input.loserMessages[i] ?? "").slice(0, 80)}`,
+      );
+  });
+  if (input.uniqueOrderIds > input.s)
+    findings.push(`CHARACTERIZATION: oversold, ${input.uniqueOrderIds} orders for S=${input.s}`);
+  if (input.reserved !== input.reservationQty)
+    findings.push(
+      `CHARACTERIZATION: inventory_level.reserved ${input.reserved} != reservation rows ${input.reservationQty}`,
+    );
+  return { violations, findings, suspected };
+}

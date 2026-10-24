@@ -10,9 +10,9 @@ import {
 async function storeRaw(
   path: string,
   publishableKey: string,
-  init?: { method?: string; body?: unknown },
+  init?: { method?: string; body?: unknown; baseUrl?: string },
 ): Promise<{ status: number; text: string }> {
-  const base = medusaBaseUrlFromEnv();
+  const base = init?.baseUrl ?? medusaBaseUrlFromEnv();
   const res = await fetch(`${base}/store${path}`, {
     method: init?.method ?? "GET",
     headers: {
@@ -152,8 +152,17 @@ export async function prepareReadyCarts(
   return Promise.all(Array.from({ length: n }, (_, i) => prepareReadyCart(makeInput(i))));
 }
 
-/** Raced call: never throws on 5xx so the histogram records the real status and body. */
-export async function completeCart(publishableKey: string, cartId: string) {
-  const res = await storeRaw(`/carts/${cartId}/complete`, publishableKey, { method: "POST" });
+/** Raced call: never throws on 5xx so the histogram records the real status and body. `baseUrl` picks the backend. */
+export async function completeCart(publishableKey: string, cartId: string, baseUrl?: string) {
+  const res = await storeRaw(`/carts/${cartId}/complete`, publishableKey, {
+    method: "POST",
+    baseUrl,
+  });
   return { status: res.status, body: res.text };
+}
+
+/** Pure. Request i goes to instances[i % instances.length]; throws TEST BUG on an empty list. */
+export function pickInstance(instances: readonly string[], i: number): string {
+  if (instances.length === 0) throw new Error("TEST BUG: no Medusa instance to send to");
+  return instances[i % instances.length]!;
 }
