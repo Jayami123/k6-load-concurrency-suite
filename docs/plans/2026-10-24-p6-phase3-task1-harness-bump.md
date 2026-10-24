@@ -9,10 +9,12 @@ Companion plan (the harness-side Cal fix, copied into the harness repo by its bu
 
 ## 1. Header
 
+- **File name.** The roadmap expects `task1-harness-h3-bump.md`; this plan is `task1-harness-bump.md` (it also covers the Cal status). Same task.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 yes, bump the cache suffixes. Q2 option 2 (D4 amended): release H3 now as harness `v0.2.13`; the Cal up/down fix ships later as its own release. Q3 the harness PR template plus a consumer checklist on the release PR. Q4 yes, the env readers move to this task. The questions are closed in §12.
 - **Task.** Phase 3 Task 1. Cases: none (infrastructure for `P6-MED-RACE-002/003`).
 - **Build branches (pattern).** P6 part A: `chore/<build date>-p6-harness-bump`. P6 part B (later, §6.8):
   `chore/<build date>-p6-harness-bump-cal`. Harness side: `fix/<build date>-harness-cal-up-down` (companion plan) and, if the
-  owner wants a release before the Cal fix, the release commit on harness `main` (§3.1, Q2).
+  maintainer releases H3 before the Cal fix (decided, §3.1, Q2).
 - **Plan branch.** `plan/2026-10-24-p6-phase3-plans` (no PR, never deleted).
 - **Base.** `origin/main` = `5acd2a0` (merge of PR #51; contains PR #50, `a82521a`).
 - **Harness pin assumed.** `<TAG>`: the newest released tag that contains harness H3 (`51b7d1e`). **It does not exist yet**
@@ -21,8 +23,8 @@ Companion plan (the harness-side Cal fix, copied into the harness repo by its bu
   1. **H3 (second Medusa instance + lock switch): merged on harness `main`, not released.** Evidence §3.1.
   2. **Cal `up`/`down` fix (D4): not merged, not started.** Evidence §3.3. **Therefore the P6 bump keeps the Cal bridge in
      `scripts/harness.mjs`.** Bridge deletion moves to the bump that pins the version carrying the Cal fix (part B).
-- **Unit tests.** Baseline 471 on `main`. Part A adds **+10** (6 env readers, 4 pin-drift): expected **481**. Part B adds 0.
-- **Stop for owner review.** Yes (rule 10): a harness pin changes, `perf.yml` changes, and the order of two harness releases is the owner's call (Q2).
+- **Unit tests.** B = count on main when the build starts (today's chain: 471). Part A adds **+10** (6 env readers, 4 pin-drift): expected B + 10 (**481** today). Part B adds 0. Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Stop for owner review.** Yes (rule 10): a harness pin changes, `perf.yml` changes, and the order of the two harness releases was decided by the owner (D4 amendment, Q2).
 
 ## 2. What it proves
 
@@ -138,8 +140,8 @@ the real ones are `h0.2.11`; see §12 "Contradictions".) README line 301 mention
 `Start Medusa (harness up)`: max 54 s (n=48, all cache hits); `Start Cal`: max 90 s; `Start Documenso`: max 59 s; `Pull ... images`: max 22 s
 (Medusa), 16 s (Cal), 26 s (Documenso). A cold Medusa start on the VM took 95 s against 25 to 31 s cached (+65 s); a cold Cal
 build took about 3 min on the VM (the `next build` after the generated tRPC types). Worst job totals in that window:
-`medusa-smoke` 1286 s (21.4 min), `cal-smoke` 330 s, `documenso-smoke` 362 s, `cal-state-races` 604 s. Every job has at least
-16 minutes of margin (Phase 2 closeout §2.7), so one cold run per job fits; CI numbers after the bump: build-time probe must confirm.
+`medusa-smoke` 1286 s (21.4 min in this window; the budget in §9 uses the closeout §2.7 slowest, 22.0 min), `cal-smoke` 330 s, `documenso-smoke` 362 s, `cal-state-races` 604 s. Every job has at least
+12 minutes of margin even with the cold start and the pull at its cap (§9), so one cold run per job fits; CI numbers after the bump: build-time probe must confirm.
 
 ### 3.8 What stays unconfirmed ("build-time probe must confirm")
 
@@ -166,7 +168,7 @@ build took about 3 min on the VM (the `next build` after the generated tRPC type
 | 3   | The tag contains H3            | `git -C <harness clone> merge-base --is-ancestor 51b7d1e <TAG> && echo yes`                                                           | `yes`                                                                                   |
 | 4   | Tag version = tag name         | `git -C <harness clone> show <TAG>:package.json \| grep '"version"'`                                                                  | the tag without the `v`                                                                 |
 | 5   | Does the tag carry the Cal fix | `git -C <harness clone> show <TAG>:CHANGELOG.md \| grep -i "cal"`                                                                     | no Cal up/down line: part A only. A line: do part A and B in one PR (§6.8 steps merged) |
-| 6   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                   | exit 0, `# tests 471`                                                                   |
+| 6   | Baseline                       | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                   | exit 0, `# tests` = B (471 today)                                                       |
 | 7   | Current suffixes               | `grep -c "h0\.2\.11" .github/workflows/perf.yml`                                                                                      | `9`                                                                                     |
 | 8   | Bridge still in place          | `grep -n "TEMPORARY BRIDGE" scripts/harness.mjs`                                                                                      | one hit                                                                                 |
 
@@ -382,22 +384,20 @@ No product assertion changes. The checks of this task are:
 
 ## 9. CI
 
-- Part A: only the nine cache-key suffixes in `perf.yml`. No job added, no timeout changed, no step added.
-- Cold-run budget (suffix change makes the first run per job a cache miss): worst case = the green worst in §3.7 + the cold-start
-  delta measured on the VM (Medusa +65 s, Cal build about 3 min) + pull at its 6-minute cap:
+- Part A: only the nine cache-key suffixes in `perf.yml`. No job added, no timeout changed, no step added (so "estimates" and "at caps" are equal: no new step).
+- **Convention for every Phase 3 plan.** Worst case = Phase 2 closeout §2.7 worst case (slowest green `main` job plus the rerun allowance) + the cold start after this task's suffix bump (Medusa +1.1, Cal +3.0, Documenso +2.0 estimate) + the image pull at its 6-minute cap minus the measured 0.3 min (**+5.7**; Twenty jobs +5.3) + each new step at its `timeout-minutes` cap ("at caps") or at its estimate ("estimates"). It must stay 10 minutes under the job timeout; no timeout is raised.
+- Sources, closeout §2.7 (runs): `medusa-smoke` 22.0 min (39927945708) + 4.2 = 26.2; `medusa-order-races` 17.9 (39923528658) + 3.3 = 21.3; `medusa-cancel-extras` 6.7 (40037355173) + 1.0 = 7.7; `cal-smoke` 9.2 (39741411392) + 0.5 = 9.7; `cal-state-races` 10.1 (40039351021) + 1.3 = 11.4; `documenso-smoke` 6.1 (39821517901) + 0.8 = 6.9.
 
-| Job                    | Slowest green (min) | + cold start (min) | + pull to cap (min) | Worst (min) | Timeout | Margin |
-| ---------------------- | ------------------- | ------------------ | ------------------- | ----------- | ------- | ------ |
-| `medusa-smoke`         | 21.4                | +1.1               | +5.7                | 28.2        | 45      | 16.8   |
-| `medusa-order-races`   | 17.9                | +1.1               | +5.7                | 24.7        | 45      | 20.3   |
-| `medusa-cancel-extras` | 6.7                 | +1.1               | +5.7                | 13.5        | 30      | 16.5   |
-| `cal-smoke`            | 5.5                 | +3.0               | +5.7                | 14.2        | 60      | 45.8   |
-| `cal-state-races`      | 10.1                | +3.0               | +5.7                | 18.8        | 85      | 66.2   |
-| `documenso-smoke`      | 6.1                 | +2.0 (estimate)    | +5.7                | 13.8        | 45      | 31.2   |
+| Job                    | §2.7 worst (min) | + cold start (min) | + pull to cap (min) | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin |
+| ---------------------- | ---------------- | ------------------ | ------------------- | ---------------------- | -------------------- | ------- | ------ |
+| `medusa-smoke`         | 26.2             | +1.1               | +5.7                | 33.0                   | 33.0                 | 45      | 12.0   |
+| `medusa-order-races`   | 21.3             | +1.1               | +5.7                | 28.1                   | 28.1                 | 45      | 16.9   |
+| `medusa-cancel-extras` | 7.7              | +1.1               | +5.7                | 14.5                   | 14.5                 | 30      | 15.5   |
+| `cal-smoke`            | 9.7              | +3.0               | +5.7                | 18.4                   | 18.4                 | 60      | 41.6   |
+| `cal-state-races`      | 11.4             | +3.0               | +5.7                | 20.1                   | 20.1                 | 85      | 64.9   |
+| `documenso-smoke`      | 6.9              | +2.0 (estimate)    | +5.7                | 14.6                   | 14.6                 | 45      | 30.4   |
 
-(Slowest greens: Phase 2 closeout §2.7 for the Medusa and Documenso jobs; `cal-smoke` 330 s and `cal-state-races` 604 s from the §3.7
-window; "+ pull to cap" is 6 min minus the 0.3 min measured. The Documenso cold delta is an estimate: build-time probe must
-confirm.) All margins are at least 10 minutes; no timeout is raised.
+(The cold-start deltas are the VM measurements of §3.7: Medusa +65 s, Cal about 3 min; the Documenso delta is an estimate: build-time probe must confirm.) Every margin is at least 10 minutes; no timeout is raised.
 
 - Part B: the `Start Cal (harness up)` steps get `timeout-minutes: 30`.
 - `actionlint` runs inside `npm run check`; silent expected.
@@ -433,8 +433,8 @@ harness repo by the maintainer; this plan builds nothing there.
 | R1  | No tag exists; the task cannot start                                              | §5 check 2 stops it; Q2 asks the owner to schedule the release                                           |
 | R2  | A harness change breaks P1/P2/P5 (they pin the same tags)                         | not P6's to test; the release note lists zod 4 and the two optional switches; Q3                         |
 | R3  | The tag's `package.json` version is not bumped, so the lock shows the old version | the drift test (second test) fails; stop and report                                                      |
-| R4  | Cold caches make the first `main` run slow                                        | §9 table, at least 16 minutes of margin everywhere                                                       |
-| R5  | `                                                                                 |                                                                                                          | true`on`down:cal` (X7) hides a crash | not changed here; separate backlog item |
+| R4  | Cold caches make the first `main` run slow                                        | §9 table, at least 12 minutes of margin everywhere                                                       |
+| R5  | `\|\| true` on `down:cal` (X7) hides a crash                                      | not changed here; separate backlog item (the X7 PR after the harness release)                            |
 | R6  | zod 4 pulled into P6's lock                                                       | P6 imports no zod; `npm run check` passes against harness main (§3.2); `npm audit` unchanged by the bump |
 
 **Contradictions with the roadmap and with the work request.**
@@ -453,20 +453,20 @@ harness repo by the maintainer; this plan builds nothing there.
   process does not return in 60 s, as the permanent regression guard for the Cal fix (after part B).
 - `P6-X-HARNESS-002`: a weekly workflow that opens an issue when harness `main` is ahead of the pinned tag by more than 14 days.
 
-**Open questions for the owner.**
+**Owner decisions (all four questions closed 2026-10-24).**
 
-- **Q1.** Bump the nine cache-key suffixes to the new tag (recommended; roadmap wording) or keep `h0.2.11` as "last build-affecting
+- **Q1 (closed: yes, bump the suffixes).** Bump the nine cache-key suffixes to the new tag (recommended; roadmap wording) or keep `h0.2.11` as "last build-affecting
   version" (precedent: the v0.2.12 bump)? Cost of bumping: one cold run per job (§9).
-- **Q2.** Release order. D4 says one tag carries H3 and the Cal fix; the Cal fix does not exist yet. Option 1: build the Cal fix now
+- **Q2 (closed: option 2, D4 amendment: H3 as `v0.2.13` now, the Cal fix at the next tag).** Release order. D4 says one tag carries H3 and the Cal fix; the Cal fix does not exist yet. Option 1: build the Cal fix now
   (companion plan), release once, one P6 bump deletes the bridge. Option 2 (faster for Task 2): release H3 as `v0.2.13` now, P6
   bumps and keeps the bridge (this plan, part A), then release the Cal fix as the next tag and delete the bridge (part B).
   Proposed: option 2, because Task 2 and the two-instance races wait on H3 only and part B is mechanical.
-- **Q3.** Who checks P1, P2 and P5 against the tag before it is cut (zod 4)? Proposed: the harness PR template lists it; P6 does not.
-- **Q4.** Accept moving the two env readers (`medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`) from Task 2 to this task? Proposed: yes (the roadmap lists them here).
+- **Q3 (closed: the harness PR template plus a consumer checklist on the release PR).** Who checks P1, P2 and P5 against the tag before it is cut (zod 4)? Proposed: the harness PR template lists it; P6 does not.
+- **Q4 (closed: yes).** Accept moving the two env readers (`medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`) from Task 2 to this task? Proposed: yes (the roadmap lists them here).
 
 ## 13. Done when (roadmap, made measurable)
 
-- [ ] Harness: H3 and the Cal fix are released (one tag, or two if Q2 option 2), each with a CHANGELOG entry (companion plan §9).
+- [ ] Harness: H3 and the Cal fix are released (two tags, per the Q2 decision), each with a CHANGELOG entry (companion plan §9).
 - [ ] Part A merged: `package.json` pins `<TAG>`; the lock shows `<TAG>` without `v` and the tag's commit; `perf.yml` has 0 `h0.2.11` and 9 new suffixes; README line 5 names `<TAG>`; the three product jobs are green on the PR and once on `main`; `npm run check` exit 0 with **481** tests.
 - [ ] Part B merged (after the Cal fix release): `scripts/harness.mjs` has no `LONG_RUNNING`, `upLongRunning`, `stopGroup` or `cal.pgid`; README no longer describes the bridge; `cal-smoke` and `cal-state-races` green with `up:cal`/`down:cal` through the harness alone (probe steps B1 to B7 pasted in the PR); `npm run check` exit 0 with 481 tests.
 
@@ -477,6 +477,6 @@ harness repo by the maintainer; this plan builds nothing there.
   `.github/workflows/perf.yml` (9 `h0.2.11` lines), `README.md` line 5, `package.json` pin, `src/races/env.ts`
   (`medusaBaseUrlFromEnv`), `.env.example`, `HARNESS_UP_TIMEOUT_MS` (perf.yml `cal-smoke`, `.env.example`). NEW: `medusaSecondBaseUrlFromEnv`,
   `medusaLockModeFromEnv`, `tests/unit/harness-pin.test.ts`.
-- (c) CI time: §9 table includes the cold start and the pull at its cap; every margin is at least 16 minutes.
+- (c) CI time: §9 table uses the §2.7 worst case, the cold start and the pull at its cap; every margin is at least 12.0 minutes.
 - (d) Skeletons: §6.4, §6.5; steps with paths, subjects and expected output: §11.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q4 are recorded in §1 and §12.
