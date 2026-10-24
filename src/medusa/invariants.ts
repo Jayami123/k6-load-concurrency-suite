@@ -444,6 +444,18 @@ export function checkMemoryLockCharacterization(input: {
       `PRODUCT BUG: ${input.uniqueOrderIds} orders exceed instances x S = ${input.instances * input.s}`,
     );
   }
+  // Per backend: request i went to backend i % instances (run-case.ts statusCountsPerInstance). Each backend admits at most S
+  // itself, so a backend with more 200s than S names the backend whose own lock let them through (SUSPECTED, RACE-003 trials 39, 45).
+  const admitted = Array.from({ length: input.instances }, () => 0);
+  input.statuses.forEach((status, i) => {
+    if (status === 200) admitted[i % input.instances]! += 1;
+  });
+  admitted.forEach((count, instance) => {
+    if (count > input.s)
+      violations.push(
+        `PRODUCT BUG (SUSPECTED): instance ${instance} admitted ${count} orders for S=${input.s}`,
+      );
+  });
   // Reservation rows follow the orders a checkout returned (probe §3.5: 6 rows for 6 returned orders).
   if (input.reservationQty !== input.uniqueOrderIds) {
     violations.push(
