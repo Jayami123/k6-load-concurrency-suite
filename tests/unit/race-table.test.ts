@@ -150,6 +150,37 @@ describe("race rows", () => {
     assert.equal(row.outcome, "Oversold in 1 of 2 trials (not a tracked bug yet)");
   });
 
+  it("Medusa two-instance: -002 with no oversell", () => {
+    const row = rowOf(
+      histogram("P6-MED-RACE-002", [
+        trial(1, { oversold: 0, ghostOrders: 0 }),
+        trial(2, { oversold: 0, ghostOrders: 0 }),
+      ]),
+    );
+    assert.equal(row.keyCounts, "oversold trials 0; ghost orders 0");
+    assert.equal(row.outcome, "No oversell in 2 trials");
+  });
+
+  it("Medusa two-instance: -003 counts oversold from oversold, not from available", () => {
+    const row = rowOf(
+      histogram("P6-MED-RACE-003", [
+        trial(1, { oversold: 1, ghostOrders: 0, available: 5 }),
+        trial(2, { oversold: 0, ghostOrders: 0, available: -2 }),
+      ]),
+    );
+    assert.equal(row.keyCounts, "oversold trials 1; ghost orders 0");
+    assert.equal(
+      row.outcome,
+      "Characterization: oversold in 1 of 2 trials (expected with the in-memory lock)",
+    );
+  });
+
+  it("Medusa two-instance: a histogram without oversold gives n/a", () => {
+    const row = rowOf(histogram("P6-MED-RACE-002", [trial(1, { available: 0 })]));
+    assert.equal(row.keyCounts, "n/a");
+    assert.equal(row.outcome, "n/a");
+  });
+
   it("Documenso double seal reproduces P6-OBS-DOC-002", () => {
     const row = rowOf(
       histogram("P6-DOC-RACE-001", twoTrials, {
