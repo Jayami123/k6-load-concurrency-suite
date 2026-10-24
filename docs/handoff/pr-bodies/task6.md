@@ -116,3 +116,17 @@ pin is v0.2.15. The same test failed locally on the same content (`expected ['0.
 This is the drift check doing its job; the key came from Task 2's new job, which was written before the pin bump. Fixed on
 Task 2 (`ci(perf): move the medusa multi-instance build key to harness v0.2.15`) and merged up. It did not change any product
 or test result. The fix landed after this run's head, so the next dispatch of this branch re-tests it.
+
+## Live audit.json (run 40119155757, head 778d50b)
+
+The plan (§12, "the first product run") asks for the live `audit.json` of a product run. The three journey cases of that run produced
+them; artifacts `load-cal`, `load-medusa` (downloaded and read on 2026-10-24).
+
+| Case | Verdict | audit.json: rows | Checks | Violations | knownBugs | Leak |
+| --- | --- | --- | --- | --- | --- | --- |
+| P6-CAL-LOAD-001 (cal) | PASS | 61 live bookings | rows, accepted-only, client-matches-db (61 = 61), no-overlap | none | none | none |
+| P6-MED-LOAD-001 (medusa) | PASS | 31 orders | orders-le-stock (31 of 50), reservations, available, one-payment-per-order, balances, no-ghost-orders (31 = 31) | none | none | none |
+| P6-MED-LOAD-002 (medusa, stock exhausted) | PASS | 15 orders | orders-le-stock (15 of 15), reservations, available 0, one-payment-per-order, balances, no-ghost-orders (15 = 15) | none | none | none |
+
+Documenso: the live `audit.json` of P6-DOC-LOAD-002 from this session's local stack (11 envelopes, sealed once, client-matches-db 11 = 11,
+drain 528 ms, no leak) is `docs/handoff/2026-10-24-documenso-email-fields.md`'s companion run and is not in CI.
