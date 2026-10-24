@@ -120,3 +120,16 @@ describe("waitForStable", () => {
     );
   });
 });
+
+describe("selectRowsOn", () => {
+  it("runs a select on one client and refuses a write before it reaches the client", async () => {
+    const { selectRowsOn } = await import("../../src/oracles/pg.ts");
+    const seen: string[] = [];
+    const client = {
+      query: async (sql: string) => (seen.push(sql), { rows: [{ n: 1 }] }),
+    } as never;
+    assert.deepEqual(await selectRowsOn(client, "SELECT 1 AS n"), [{ n: 1 }]);
+    await assert.rejects(selectRowsOn(client, "DELETE FROM x"), /not SELECT-only/);
+    assert.deepEqual(seen, ["SELECT 1 AS n"]);
+  });
+});

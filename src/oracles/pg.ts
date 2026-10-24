@@ -122,3 +122,14 @@ export async function closePool(pool: pg.Pool | undefined): Promise<void> {
   closedPools.add(pool);
   await pool.end();
 }
+
+/** Select-only rows on one checked-out client (the telemetry sampler runs its queries on a single connection). */
+export async function selectRowsOn<T extends pg.QueryResultRow>(
+  client: { query: pg.Pool["query"] },
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  assertSelectOnly(sql);
+  const result = await client.query<T>(sql, params);
+  return result.rows as T[];
+}
