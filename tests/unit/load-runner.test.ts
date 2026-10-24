@@ -201,6 +201,14 @@ describe("load validity wiring", () => {
     expectCodes: ["dropped_iterations", "vu_exhausted"],
   };
 
+  it("an expected INVALID run without a readable summary is a TEST BUG, not a skip", async () => {
+    const ctx = ctxWith({ k6: [k6("saturated", "/nonexistent/summary.json")] }, [saturatedRun]);
+    const r = await validityStage(ctx);
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons.join(" "), /saturated summary missing or unreadable, expected INVALID/);
+  });
+
   it("an expected INVALID run that shows its codes gives PASS, and a run without a summary is skipped", async () => {
     const ctx = ctxWith(
       { k6: [k6("saturated", writeSummary()), k6("ghost", "/nonexistent/summary.json")] },

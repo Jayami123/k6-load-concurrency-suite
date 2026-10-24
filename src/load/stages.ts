@@ -75,6 +75,9 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
     try {
       summary = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
     } catch {
+      // A run that expects INVALID must show its evidence, so a missing or unreadable summary is a mismatch, not a skip.
+      if ((spec?.expectValidity ?? "VALID") === "INVALID")
+        mismatch.push(`${k.label} summary missing or unreadable, expected INVALID`);
       continue;
     }
     const verdict = judgeValidity({
