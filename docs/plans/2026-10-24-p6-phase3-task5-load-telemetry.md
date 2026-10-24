@@ -16,7 +16,8 @@ defined there; if the merged code differs, the build stops at §5 check 3.
 - **Harness pin assumed.** Any. Process records read: `.harness/medusa-backend.pid` (+ `medusa-backend-2.pid`), `.harness/documenso-web.pid`, and for Cal
   `results/harness/cal.pgid` (the P6 bridge) **until Task 1 part B**, then `.harness/cal-web.pid` (Task 1 plans). No harness telemetry (D2).
 - **Environment change.** None (§11).
-- **Unit tests.** Baseline = Task 4's result (471 + 51 + 43 = **565** on today's base). This plan adds **+56** (§12); expected **621**.
+- **Unit tests.** B = count on main when the build starts (today's chain: 597 after Tasks 1 to 4). This plan adds **+56** (§12); expected B + 56 (**653** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** Q1 split into a new job `load-overhead`, move **both** Task 5 self-tests there, and keep `load-selftest` at 20 minutes (no raise). Q2 accept the cgroup reads. Q3 one chart per run. Q4 yes, the p95 panel is labelled "info, not a result". All closed in §13.
 - **Stop for owner review.** Yes (rule 10): a CI workflow change and a shared runner change.
 
 ## 2. What it proves
@@ -194,7 +195,7 @@ k6/selftest/coordinated-omission.js     CHANGED  calls the marker helpers when M
 k6/selftest/sampler-overhead.js         NEW      the P6-X-LOAD-006 script (open model against the stub)
 tests/unit/telemetry-*.test.ts, render-chart.test.ts, k6-points.test.ts, load-overhead.test.ts      NEW
 tsconfig.races.json                     CHANGED  (none if Task 3 already includes src/**)
-.github/workflows/perf.yml              CHANGED  load-selftest runs the two cases; uploads telemetry and charts
+.github/workflows/perf.yml              CHANGED  new job load-overhead runs the two cases; uploads telemetry and charts
 README.md                               CHANGED  "How to read the chart"
 ```
 
@@ -495,11 +496,11 @@ New artefacts: `telemetry-<label>.json`, `telemetry-<label>.csv`, `chart-<label>
 
 ## 10. CI
 
-Changes to `load-selftest` (the Task 3/4 product-free job), exact:
+Both Task 5 self-tests run in a **new product-free job `load-overhead`** on every event; `load-selftest` (Tasks 3 and 4) is not touched by this task and keeps its 20-minute timeout (no raise; Task 3 §9 plans it for the whole phase). `load-overhead` has the same set-up steps as `load-selftest` (checkout, setup-node, `npm ci`, install k6) and, in order:
 
 ```yaml
 - name: Telemetry self-test (P6-X-LOAD-002)
-  timeout-minutes: 8
+  timeout-minutes: 3
   run: |
     set -euo pipefail
     status=0
@@ -507,7 +508,7 @@ Changes to `load-selftest` (the Task 3/4 product-free job), exact:
     if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID (see the job summary)"; status=0; fi
     exit "$status"
 - name: Sampler overhead (P6-X-LOAD-006)
-  timeout-minutes: 8
+  timeout-minutes: 5
   run: npm run load:overhead-selftest
 - name: Print cgroup kind and runner identity (one-time probe)
   timeout-minutes: 1
@@ -516,16 +517,15 @@ Changes to `load-selftest` (the Task 3/4 product-free job), exact:
     env | grep -E '^(ImageOS|ImageVersion)=' || true
 ```
 
-The artefact upload already takes `results/load/` (Task 3); charts and telemetry files are in it after the token scan.
+followed by the token scan (cap 1) and the `load-overhead` artefact upload (charts and telemetry files are in `results/load/` after the token scan). Job timeout **25** (a new job; no existing timeout is raised).
 
-**Budget** (convention: slowest measured plus additions at their caps; at least 10 minutes under the job timeout; no timeout raised):
+**Budget** (one convention for every Phase 3 plan, Task 3 §9: Phase 2 closeout §2.7 worst case + cold start + pull at cap minus measured + each new step; "estimates" use measured/estimated durations, "at caps" use `timeout-minutes`; the set-up steps of a new job, the one-line probe step, the token scan and the upload are counted at their measured durations; at least 10 minutes under the job timeout; no timeout raised). No existing job changes.
 
-| Job             | Before this task (Task 4 plan §10) | Added                                                                                                                                 | Worst (min) | Timeout | Margin |
-| --------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | ------ |
-| `load-selftest` | 8.1                                | telemetry self-test 3 runs × (30 s + 10 s allowance) = 2.0; overhead 8 runs × (20 s + 5 s) = 3.3; probe step 0.1; chart rendering 0.2 | 13.7        | 20      | 6.3    |
+| Job                   | Set-up, install, scan, upload (estimate; install cap) | Telemetry self-test (estimate / cap)           | Overhead self-test (estimate / cap)                | Probe and chart (estimate) | Worst, estimates (min) | Worst, at caps (min) | Timeout | Margin (caps) |
+| --------------------- | ----------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- | -------------------------- | ---------------------- | -------------------- | ------- | ------------- |
+| `load-overhead` (new) | 0.7 / install cap 2.0                                 | 2.0 (3 runs × (30 s + 10 s allowance)) / **3** | 3.3 (8 runs × (20 s + 5 s) + 2 min set-up) / **5** | 0.3                        | 6.3                    | 11.0                 | **25**  | **14.0**      |
 
-**The margin is 6.3 minutes, under the 10-minute rule.** Options (Q1), none raises an existing timeout: (a) raise the _new_ job's timeout to 25 minutes (margin 11.3; it is a new job, not a raise); (b) split the overhead case into its own job `load-overhead` (8 runs, 3.3 min + 2 min setup = 5.3, timeout 20 → margin 14.7); (c) run `P6-X-LOAD-006` on `main`, nightly and dispatch only. **Proposed: (b)**: `load-selftest` returns to 10.1 minutes (a 25-minute timeout, margin 14.9) and `load-overhead` runs on every event with its own 20-minute timeout. The build uses (b); the table above is for the single-job layout the roadmap hints at.
-Per-job worst after (b): `load-selftest` 10.1 min against 25 (margin 14.9); `load-overhead` 5.3 against 20 (margin 14.7).
+Each new step and its 80 % stop rule: telemetry self-test cap **3** (was 8; estimate 2.0, stop rule 2.4); overhead self-test cap **5** (was 8; estimate 3.3, stop rule 4.0); probe step cap 1 (estimate 0.1, stop rule 0.8); install cap 2 (estimate 0.04, stop rule 1.6); token scan cap 1 (estimate 0.1, stop rule 0.8). `load-selftest` stays at 4.4 min (estimates) and 9.9 min (at caps) against 20 (Task 3 §9). The 25-minute timeout of the _new_ job gives 14.0 minutes of margin at caps (a 20-minute timeout would leave 9.0, under the rule).
 
 ## 11. Environment changes
 
@@ -533,7 +533,7 @@ None for Cursor Cloud or Claude Code cloud: the sampler needs only `/proc`, `/sy
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-telemetry origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (565 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-load-telemetry origin/main` (after Tasks 3 and 4 are merged). Counts relative to B (B = count on main when the build starts; 597 today).
 
 | Step | Commit subject                                                              | `git add` paths                                                                                                                                                                  | `npm run check` expected           |
 | ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -589,27 +589,27 @@ After step 10: `git push -u origin feat/<build date>-p6-load-telemetry`, `gh pr 
 - `P6-X-LOAD-013`: add a second marker pair at mid-run (drift check for soaks, Phase 4).
 - `P6-X-LOAD-014`: a `pg_stat_statements` panel once the harness H1 exists (Phase 5, D2); not before.
 
-**Open questions for the owner.**
+**Owner decisions (all four questions closed 2026-10-24).**
 
-- **Q1.** Budget layout of §10: split `P6-X-LOAD-006` into its own job `load-overhead` (proposed), or keep one job with a 25-minute timeout?
-- **Q2.** Accept `docker stats` replaced by cgroup reads (contradiction C1)?
-- **Q3.** Chart: one HTML file per k6 run (proposed) or one per case with tabs?
-- **Q4.** Is the p95 panel acceptable in the chart ("info, not a result") given D9 and `P6-RULE-003`? Proposed: yes, labelled; the job summary shows no latency.
+- **Q1 (closed: split into `load-overhead`, both self-tests move there, `load-selftest` keeps 20).** Budget layout of §10.
+- **Q2 (closed: accept).** Accept `docker stats` replaced by cgroup reads (contradiction C1)?
+- **Q3 (closed: one chart per run).** Chart: one HTML file per k6 run (proposed) or one per case with tabs?
+- **Q4 (closed: yes, labelled "info, not a result").** Is the p95 panel acceptable in the chart ("info, not a result") given D9 and `P6-RULE-003`? Proposed: yes, labelled; the job summary shows no latency.
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] Unit tests green: `npm run check` exit 0 with **B + 56** (621 on today's base).
+- [ ] Unit tests green: `npm run check` exit 0 with **B + 56** (653 on today's chain).
 - [ ] CI on the PR and once on `main`: `P6-X-LOAD-002` `normal` has no gap longer than 2 intervals and `chart-normal.html` exists; `forcedGap` is INVALID with `telemetry_gap`; `forcedSkew` is INVALID with `clock_skew`; the case outcome is `PASS`.
 - [ ] `P6-X-LOAD-006`: medians with and without the sampler within ±2 % requests, ±10 % p95, equal drops (job `load-overhead`).
 - [ ] Telemetry, chart and `run-meta.json` uploaded after a clean token scan; the chart opens offline (no external reference, tested).
 - [ ] The palette validator output for light and dark is in the PR.
-- [ ] `npm run check` green; no existing job timeout raised; both product-free jobs at least 10 minutes under their timeout.
+- [ ] `npm run check` green; no existing job timeout raised; `load-selftest` (20) and `load-overhead` (25, new) at least 10 minutes under their timeouts at caps.
 
 ## 15. Rule 20 self-check
 
 - (a) Done-when in §14; gaps: cgroup v2 on the runner and the DB-role degradation (§3.8), read from the first CI run and a build-time probe.
 - (b) Existing names grepped at `5acd2a0`: `createReadOnlyPool`, `selectRows`, `assertSelectOnly` (`src/oracles/pg.ts`), `medusaDatabaseUrlFromEnv`, `calDatabaseUrlFromEnv` (`src/races/env.ts`), `documensoDatabaseUrlFromEnv` (`src/documenso/env.ts`),
   `scripts/evidence-token-scan.mjs` (`findHits`, `scanTree`), `.harness/*.pid` names, `results/harness/cal.pgid` (`scripts/harness.mjs`). Task 3/4 names are checked at build time (§5 check 3). Everything else is NEW with a skeleton.
-- (c) CI time: §10 shows the single-job margin (6.3) is under the rule and proposes the split (14.9 and 14.7); the build uses the split.
+- (c) CI time: §10; `load-overhead` 6.3 (estimates) and 11.0 (at caps) against 25; `load-selftest` unchanged.
 - (d) Skeletons: §6. Steps with `git add` paths, subjects and expected output: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q4 are recorded in §1 and §13.
