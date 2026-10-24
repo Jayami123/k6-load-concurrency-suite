@@ -77,4 +77,4 @@ None for Cursor Cloud or Claude Code cloud (no tool, host or setting). /proc is 
 - Environment change: none.
 - Unexplained red CI: the cal jobs are red from the inherited Task 1 pin (explained in Task 1's body).
 - Timeout raised, test merged or split, or assertion weakened: no.
-- Secret printed, "Jayami" or footer line added, git add -A, or force-push: no.
+- Secret printed, the owner name or footer line added, git add -A, or force-push: no.
