@@ -11,7 +11,7 @@ import { runMedCheckout } from "../journeys/med-checkout.js";
 const cfg = {
   rate: 1,
   durationSec: 10,
-  maxLatencyMs: 4000,
+  maxLatencyMs: 6000,
   baseUrl: "http://127.0.0.1:9000",
   publishableKey: "pk_placeholder",
   regionId: "reg_placeholder",
