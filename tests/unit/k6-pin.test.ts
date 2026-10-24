@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-// @ts-expect-error -- plain .mjs module without types
 import { compareK6Version } from "../../scripts/lib/k6-pin.mjs";
 
 describe("k6 pin", () => {
