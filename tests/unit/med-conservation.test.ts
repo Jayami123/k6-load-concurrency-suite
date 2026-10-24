@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { findHits } from "../../scripts/evidence-token-scan.mjs";
-import { judgeConservation, type ConservationCounters } from "../../src/load/med-conservation.ts";
+import {
+  conservationCounters,
+  judgeConservation,
+  type ConservationCounters,
+} from "../../src/load/med-conservation.ts";
 
 const S = 5;
 
@@ -37,6 +41,20 @@ function failing(
 }
 
 describe("medusa conservation judge", () => {
+  it("reads the custom counters from the k6 summary layout (metrics.<name>.count)", () => {
+    const counters = conservationCounters({
+      metrics: {
+        iterations: { count: 31 },
+        p6_orders: { count: 15 },
+        p6_refused_clean: { count: 16 },
+        dropped_iterations: { count: 0 },
+      },
+    });
+    assert.equal(counters.iterations, 31);
+    assert.equal(counters.orders, 15);
+    assert.equal(counters.refusedClean, 16);
+  });
+
   it("a clean run passes every check", () => {
     const out = judgeConservation({ counters: clean(), snapshot: snap(5, 5, 5, 5), stock: S });
     assert.deepEqual(

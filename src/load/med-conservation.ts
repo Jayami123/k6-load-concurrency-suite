@@ -103,9 +103,11 @@ export function judgeConservation(i: ConservationInput): {
 /** Reads the custom counters of the main run from its k6 summary export. A missing counter is 0. */
 export function conservationCounters(summary: unknown): ConservationCounters {
   const metrics =
-    (summary as { metrics?: Record<string, { values?: { count?: number } }> }).metrics ?? {};
+    (summary as { metrics?: Record<string, { count?: number; values?: { count?: number } }> })
+      .metrics ?? {};
+  // k6's summary export writes a counter's total as metrics.<name>.count (not under values).
   const count = (name: string): number => {
-    const value = metrics[name]?.values?.count;
+    const value = metrics[name]?.count ?? metrics[name]?.values?.count;
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
   };
   const parsed = parseK6Summary(summary);
