@@ -85,3 +85,34 @@ Artifact `race-histograms-medusa-multi-instance-memory` (id 12555533333) of run 
   against three units is a real oversell beyond the expected characterization. Whether the bound itself is too tight is an
   open question for the owner; no assertion was changed.
 - The top-level `expect(histogram.verdict).toBe("pass")` stays and stays red for this run. Not weakened.
+
+## CI run 40096192555 (workflow_dispatch, head 3237fe9)
+
+| Job | Conclusion | Duration |
+| --- | --- | --- |
+| medusa-multi-instance (memory) | **failure** (RACE-003 red) | 8 min 33 s |
+| medusa-smoke | **failure** (`Check`: unit tests) | 0 min 44 s |
+| cal-state-races | success | 12 min 32 s |
+| medusa-multi-instance (redis) | success | 10 min 19 s |
+| medusa-order-races | success | 16 min 50 s |
+| documenso-smoke | success | 9 min 05 s |
+| cal-smoke | success | 7 min 40 s |
+| load-overhead | success | 4 min 36 s |
+| load-selftest | success | 2 min 53 s |
+| medusa-cancel-extras | success | 5 min 05 s |
+| twenty-smoke | success | 3 min 53 s |
+| twenty-obs | success | 4 min 25 s |
+| twenty-races | success | 5 min 23 s |
+
+**RACE-003 (same finding as above, second run).** Artifact `race-histograms-medusa-multi-instance-memory` (id 12561247464),
+`races/P6-MED-RACE-003.json`, commit 3237fe9, verdict `fail`. 49 of 50 trials oversold. One trial failed the invariant
+`src/medusa/invariants.ts:443-446`: trial 36, `PRODUCT BUG: 7 orders exceed instances x S = 6`. The first run had two such trials
+(17 and 20). Label: **PRODUCT BUG (SUSPECTED)**, unchanged. The assertion `expect(histogram.verdict).toBe("pass")` is not changed.
+
+**medusa-smoke `Check` failure: TEST BUG (stale cache-key suffix).** The failing unit test is
+`tests/unit/harness-pin.test.ts` "is the suffix of every build cache key in perf.yml". On 3237fe9 one build key from the
+Task 2 job `medusa-multi-instance` still said `-h0.2.14` (`.github/workflows/perf.yml`, the medusa build key), while the
+pin is v0.2.15. The same test failed locally on the same content (`expected ['0.2.15'], actual ['0.2.15', '0.2.14']`).
+This is the drift check doing its job; the key came from Task 2's new job, which was written before the pin bump. Fixed on
+Task 2 (`ci(perf): move the medusa multi-instance build key to harness v0.2.15`) and merged up. It did not change any product
+or test result. The fix landed after this run's head, so the next dispatch of this branch re-tests it.
