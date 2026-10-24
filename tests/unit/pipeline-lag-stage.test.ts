@@ -33,7 +33,7 @@ describe("pipeline stage", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "pipe-"));
     const stage = makePipelineStage({
       openPool: () => ({ end: async () => {} }) as never,
-      readInput: async () => ({ input: full() }),
+      readInput: async () => ({ input: full(), expectedEmails: new Map() }),
       drain: async () => ({ drained: true, drainMs: 120 }),
     });
     const ctx = {

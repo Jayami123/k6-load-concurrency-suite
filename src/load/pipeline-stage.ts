@@ -8,6 +8,7 @@ import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
 import type { RunContext } from "../documenso/run-case.ts";
 import { closePool, createReadOnlyPool, selectRows } from "../oracles/pg.ts";
 import { waitForDrainPool } from "./reconcile/documenso.ts";
+import { expectedEmailsOf, readCompletionEmails, type RecipientRow } from "./pipeline-email.ts";
 import { judgeWebhookRetry, type RetryInput } from "./webhook-retry.ts";
 import {
   joinStages,
@@ -60,6 +61,13 @@ FROM "BackgroundJob"
 WHERE "jobId" = 'send.document.completed.emails'
   AND payload->>'envelopeId' IN (SELECT id FROM "Envelope" WHERE title LIKE $1)`;
 
+/** The run's recipients: the token of each signing link (the join key of the completion emails) and the mailbox address. */
+export const PIPELINE_RECIPIENTS_SQL = `
+SELECT r.token AS token, r."envelopeId" AS "envelopeId", r.email AS email
+FROM "Recipient" r
+JOIN "Envelope" e ON e.id = r."envelopeId"
+WHERE e.title LIKE $1 AND e."deletedAt" IS NULL`;
+
 const num = (v: string | null | undefined): number | null =>
   v === null || v === undefined ? null : Number(v);
 const docIdOf = (secondaryId: string): number | null => {
@@ -67,12 +75,12 @@ const docIdOf = (secondaryId: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-/** Reads the run's rows and joins them into the StageInput. Emails are not matched (Inbucket has no envelope key): listed as pending. */
+/** Reads the run's rows and joins them into the StageInput. Emails are matched by the token of their completion link (pipeline-email.ts). */
 export async function readPipelineInput(
   pool: pg.Pool,
   run: RunContext,
   prefixLike: string,
-): Promise<{ input: StageInput; pendingEmails: boolean }> {
+): Promise<{ input: StageInput; expectedEmails: Map<string, number> }> {
   const docs = await selectRows<{
     envelopeId: string;
     secondaryId: string;
@@ -108,6 +116,8 @@ export async function readPipelineInput(
     status: string;
     completedAtMs: string | null;
   }>(pool, PIPELINE_EMAIL_JOBS_SQL, [prefixLike]);
+  const recipients = await selectRows<RecipientRow>(pool, PIPELINE_RECIPIENTS_SQL, [prefixLike]);
+  const emails = await readCompletionEmails(run.inbucket, recipients);
   const input: StageInput = {
     documents,
     sealJobs: seals.map((s) => ({
@@ -148,9 +158,9 @@ export async function readPipelineInput(
       status: j.status,
       completedAtMs: num(j.completedAtMs),
     })),
-    emails: [],
+    emails,
   };
-  return { input, pendingEmails: true };
+  return { input, expectedEmails: expectedEmailsOf(recipients) };
 }
 
 export interface PipelineVerdict {
@@ -159,7 +169,6 @@ export interface PipelineVerdict {
   reasons: string[];
   summary: LagSummary;
   knownBugs: Record<string, number>;
-  pending: string[];
 }
 
 /** Pure. Missing or duplicated stages (except the known double seal, counted), lags over the contract, and an undrained backlog are PRODUCT BUGs. */
@@ -167,11 +176,11 @@ export function evaluatePipeline(
   input: StageInput,
   drain: { drained: boolean; drainMs: number },
   contractMs = CONTRACT_MS,
+  expectedEmails?: Map<string, number>,
 ): PipelineVerdict {
   const summary = summariseLag(joinStages(input), contractMs);
   const reasons: string[] = [];
   const knownBugs: Record<string, number> = {};
-  const pending = ["email (Inbucket messages carry no envelope key; not matched)"];
   if (summary.documents === 0) {
     return {
       ok: false,
@@ -179,11 +188,10 @@ export function evaluatePipeline(
       reasons: ["TEST BUG: no documents of the run found (join key or scope)"],
       summary,
       knownBugs,
-      pending,
     };
   }
   for (const stage of STAGES) {
-    if (stage === "email") continue; // pending, see above
+    if (stage === "email") continue; // judged below, per recipient
     if (summary.missing[stage] > 0)
       reasons.push(
         `PRODUCT BUG: ${stage} missing for ${summary.missing[stage]} of ${summary.documents} documents`,
@@ -194,6 +202,22 @@ export function evaluatePipeline(
   for (const key of ["webhookJob", "receiverOk", "emailJob"] as const) {
     if ((summary.duplicated[key] ?? 0) > 0)
       reasons.push(`PRODUCT BUG: ${key} duplicated for ${summary.duplicated[key] ?? 0} documents`);
+  }
+  if (expectedEmails) {
+    // One completion email per recipient: fewer is a missing email, more is a duplicated one.
+    const got = new Map<string, number>();
+    for (const e of input.emails) got.set(e.envelopeId, (got.get(e.envelopeId) ?? 0) + 1);
+    let missing = 0;
+    let duplicated = 0;
+    for (const doc of input.documents) {
+      const want = expectedEmails.get(doc.envelopeId) ?? 0;
+      const have = got.get(doc.envelopeId) ?? 0;
+      if (have < want) missing += 1;
+      else if (have > want) duplicated += 1;
+    }
+    if (missing > 0)
+      reasons.push(`PRODUCT BUG: email missing for ${missing} of ${summary.documents} documents`);
+    if (duplicated > 0) reasons.push(`PRODUCT BUG: email duplicated for ${duplicated} documents`);
   }
   if (summary.overContract > 0)
     reasons.push(
@@ -206,13 +230,16 @@ export function evaluatePipeline(
     reasons,
     summary,
     knownBugs,
-    pending,
   };
 }
 
 export interface PipelineDeps {
   openPool: () => pg.Pool;
-  readInput: (pool: pg.Pool, run: RunContext, prefixLike: string) => Promise<{ input: StageInput }>;
+  readInput: (
+    pool: pg.Pool,
+    run: RunContext,
+    prefixLike: string,
+  ) => Promise<{ input: StageInput; expectedEmails: Map<string, number> }>;
   drain: (pool: pg.Pool, prefixLike: string) => Promise<{ drained: boolean; drainMs: number }>;
 }
 
@@ -238,8 +265,8 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
     const pool = deps.openPool();
     try {
       const drain = await deps.drain(pool, prefixLike);
-      const { input } = await deps.readInput(pool, run, prefixLike);
-      const verdict = evaluatePipeline(input, drain);
+      const { input, expectedEmails } = await deps.readInput(pool, run, prefixLike);
+      const verdict = evaluatePipeline(input, drain, CONTRACT_MS, expectedEmails);
       const doc = {
         schema: 1,
         contractMs: CONTRACT_MS,
@@ -253,7 +280,10 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
         max: verdict.summary.max,
         overContract: verdict.summary.overContract,
         knownBugs: verdict.knownBugs,
-        pending: verdict.pending,
+        emails: {
+          expected: [...expectedEmails.values()].reduce((a, b) => a + b, 0),
+          matched: input.emails.length,
+        },
       };
       const text = JSON.stringify(doc, null, 2);
       const file = path.join(ctx.outDir, "pipeline-lag.json");
