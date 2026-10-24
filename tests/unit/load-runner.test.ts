@@ -40,7 +40,6 @@ function ctxWith(over: Partial<LoadContext> = {}, runs: K6RunSpec[] = []): LoadC
     k6: [],
     invalid: [],
     secrets: {},
-    handles: {},
     results: {},
     ...over,
   };
