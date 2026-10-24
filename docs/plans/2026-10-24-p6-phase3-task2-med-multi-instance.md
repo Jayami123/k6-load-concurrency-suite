@@ -19,7 +19,7 @@ D14, "Rules that hold for every task". Input report:
 - **Harness pin assumed.** The first released tag that contains harness H3 (`51b7d1e`). **`v0.2.13` does not exist today**:
   the newest tag is `v0.2.12` (§3.1). This task is **blocked until Task 1 has bumped the pin**. Every harness fact below
   was probed on harness `main` `51b7d1e`, installed into a throwaway copy of this repo (§3.2), not on a tag.
-- **Unit tests.** B = count on main when the build starts (today's chain: 471 on `main`, 481 after Task 1 part A; the two env readers were moved to Task 1, plan `…task1-harness-bump.md` §6.4). This plan adds **+22** (§12): 21 plus one routing test for the second leg (`pickInstance`, §6.3). Expected after the build: B + 22 (**503** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Unit tests.** B = count on main when the build starts (today's chain: 471 on `main`, 481 after Task 1 part A; the two env readers were moved to Task 1, plan `…task1-harness-bump.md` §6.4). This plan adds **+22** (§12): 21 plus one routing test for the second leg (`pickInstance`, §6.3). Expected after the build: B + 22 (**503** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 separate job: yes. Q2 yes, `-003` asserts `oversold >= 1` with 8 PR trials. Q3 yes, the "characterization" annotation, no `test.fail()`. Q4 `P6-MED-RACE-016` later. Q5 the maintainer cuts the harness release after the consumer check. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): the plan adds a CI job to `perf.yml` and depends on a harness pin bump.
 
@@ -727,13 +727,13 @@ Convention (every Phase 3 plan): worst case = Phase 2 closeout §2.7 worst case 
 
 Inputs (all measured, §3.9): job overhead = `medusa-smoke` slowest green job 22.0 min (run 39927945708) − its race step 1184 s (19.7 min) = 2.3 min, of which the pull is under 20 s; with the pull at its cap, 2.3 + 5.7 = **8.0 min**. Cold start after the suffix bump **+1.1**. Start Medusa (slowest 49 s, plus 10 s for the second backend) → **1.0 min**. `down` 1.3 s → **0.1 min**. Per trial 16.51 s (slowest known `-001`; build-time probe confirms). One case, no reruns: (50 + 1) × 16.51 s + 6 s setup = 848 s = **14.1 min**; with the full invalid budget (50 + 1 + 10) × 16.51 s + 6 s = 1013 s = **16.9 min**.
 
-| Design                                            | Worst, estimates (min)                  | Worst, at caps (min)                    | Timeout | Margin (caps) | Verdict |
-| ------------------------------------------------- | --------------------------------------- | --------------------------------------- | ------- | ------------- | ------- |
-| Add both cases to `medusa-smoke`                  | 33.0 + 2 × 14.1 + 2.2 = 63.4            | 33.0 + 2 × 16.9 + 2.2 = 69.0            | 45      | −24.0         | no      |
-| One new job, both modes in sequence               | 8.0 + 1.1 + 2.0 + 28.2 + 0.2 = 39.5     | 8.0 + 1.1 + 2.0 + 33.8 + 0.2 = 45.1     | 45      | −0.1          | no      |
-| **One job, two matrix legs, one runner per mode** | 8.0 + 1.1 + 1.0 + 14.1 + 0.1 = **24.3** | 8.0 + 1.1 + 1.0 + 16.9 + 0.1 = **27.1** | 45      | **17.9**      | **yes** |
+| Design                                            | Worst, estimates (min)                        | Worst, at caps (min)                          | Timeout | Margin (caps) | Verdict |
+| ------------------------------------------------- | --------------------------------------------- | --------------------------------------------- | ------- | ------------- | ------- |
+| Add both cases to `medusa-smoke`                  | 33.0 + 2 × 14.1 + 2.2 + 1.0 = 64.4            | 33.0 + 2 × 16.9 + 2.2 + 1.0 = 70.0            | 45      | −25.0         | no      |
+| One new job, both modes in sequence               | 8.0 + 1.1 + 2.0 + 28.2 + 0.2 + 0.5 = 40.0     | 8.0 + 1.1 + 2.0 + 33.8 + 0.2 + 0.5 = 45.6     | 45      | −0.6          | no      |
+| **One job, two matrix legs, one runner per mode** | 8.0 + 1.1 + 1.0 + 14.1 + 0.1 + 0.5 = **24.8** | 8.0 + 1.1 + 1.0 + 16.9 + 0.1 + 0.5 = **27.6** | 45      | **17.4**      | **yes** |
 
-(`medusa-smoke` base 33.0 = 26.2 + 1.1 + 5.7.) `medusa-smoke` is already at 26.2 min worst case and a 24.1 min race-step estimate against a 24.0 stop rule (closeout §2.7), so nothing is added to it (Q1, closed: separate job). Race step of a leg: 14.1 min estimate, 16.9 min with the full invalid budget, against a 30-min step timeout (stop rule 24.0) → under it. PR legs: `-002` (3 + 1 + 2) × 16.51 + 6 = 105 s = 1.8 min; `-003` (8 + 1 + 2) × 16.51 + 6 = 188 s = 3.1 min; step timeout 10 min (stop rule 8.0) → under it. Both legs run in parallel, so the workflow wall time is the longer leg.
+(`medusa-smoke` base 33.0 = 26.2 + 1.1 + 5.7. The extra 0.5 is the new small steps of the job, counted at their estimates: guard 0.1, log memory 0.1, token scan 0.1, uploads 0.2; the summary and Stop steps are already inside the measured 2.3 min job overhead. Their caps (2, 1, 2, 3 + 3, 3 minutes) sum to 14, but no step approaches its cap; each has its 80 % stop rule in the step table below.) `medusa-smoke` is already at 26.2 min worst case and a 24.1 min race-step estimate against a 24.0 stop rule (closeout §2.7), so nothing is added to it (Q1, closed: separate job). Race step of a leg: 14.1 min estimate, 16.9 min with the full invalid budget, against a 30-min step timeout (stop rule 24.0) → under it. PR legs: `-002` (3 + 1 + 2) × 16.51 + 6 = 105 s = 1.8 min; `-003` (8 + 1 + 2) × 16.51 + 6 = 188 s = 3.1 min; step timeout 10 min (stop rule 8.0) → under it. Both legs run in parallel, so the workflow wall time is the longer leg.
 
 **Phase 2 follow-ups that stack on the existing Medusa jobs (listed so the budget is read together; this task adds nothing to these jobs).**
 
@@ -846,8 +846,8 @@ Every new step, with its estimate and its 80 % stop rule (80 % of its `timeout-m
 The setup steps before Start Medusa (checkout, fork checkout, verify, stub roots, setup-node, `npm ci`, corepack, pnpm store, Medusa
 deps, build cache, admin password) are the 2.3 min of measured overhead above; their caps are copied from `medusa-order-races`.
 
-Worst case, restated: **job `medusa-multi-instance` leg, 24.3 min (estimates) and 27.1 min (at caps) against a 45-min timeout,
-margin 17.9 min**; race step 14.1 to 16.9 min against a 30-min timeout (stop rule 24.0).
+Worst case, restated: **job `medusa-multi-instance` leg, 24.8 min (estimates) and 27.6 min (at caps) against a 45-min timeout,
+margin 17.4 min**; race step 14.1 to 16.9 min against a 30-min timeout (stop rule 24.0).
 
 ## 11. Environment changes
 
@@ -916,7 +916,7 @@ After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
 ### Owner decisions (all five questions closed 2026-10-24)
 
 - **Q1 (closed: yes, separate job).** Accept a separate two-leg job `medusa-multi-instance` instead of adding the cases to `medusa-smoke`? Numbers in §10.1
-  (69.0 min worst case at caps in `medusa-smoke`, 27.1 min per leg in the new job).
+  (70.0 min worst case at caps in `medusa-smoke`, 27.6 min per leg in the new job).
 - **Q2 (closed: yes, `oversold >= 1` with 8 PR trials).** Accept `-003` asserting `oversold ≥ 1` with 8 PR trials (false red 6e-5 at the probe's lower rate), instead of
   recording only on PRs? Proposed: yes; recording-only would let a silent change of Medusa's default lock pass.
 - **Q3 (closed: yes, "characterization", no `test.fail()`).** `-003` as a Playwright `characterization` annotation (not `test.fail()`, not an issue label): confirm the wording
@@ -949,6 +949,6 @@ After step 8: `git push -u origin feat/<build date>-p6-med-multi-instance`, open
   `medusa-order-races` job. From Task 1 (not built here): `medusaSecondBaseUrlFromEnv`, `medusaLockModeFromEnv`. NEW:
   `src/medusa/harness-log.ts` and its functions, `checkTwoInstanceTraffic`, `classifyTwoInstanceLoser`, `checkMemoryLockCharacterization`,
   `MEDUSA_TWO_INSTANCE_CASES`, the two specs, the job; each has a skeleton in §6.
-- (c) CI time: §10.1 uses the closeout §2.7 sources, the cold start, the pull at its cap, the invalid budget, the warm-up and setup; 24.3 (estimates) and 27.1 (at caps) minutes against 45.
+- (c) CI time: §10.1 uses the closeout §2.7 sources, the cold start, the pull at its cap, the invalid budget, the warm-up and setup; 24.8 (estimates) and 27.6 (at caps) minutes against 45.
 - (d) Skeletons: §6. Steps with `git add` paths, commit subjects and expected output: §12.
 - (e) The owner's answers to Q1 to Q5 are recorded in §1 and §13 (the Task 8 report's Q1 and Q6 answers are cited as given there).
