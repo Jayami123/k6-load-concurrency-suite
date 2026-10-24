@@ -16,6 +16,12 @@ export interface K6RunSpec {
   env: Record<string, string>; // non-secret inputs; also written to k6-config.json
   secretEnv?: string[]; // NAMES of env vars to forward from the runner's environment; values never logged or written
   expectExit?: number; // default 0 (99 = thresholds crossed)
+  /** The maxVUs the scenario was built with, read by the validity judge (Task 4). */
+  maxVUs?: number;
+  /** Expected validity of this run (Task 4): a run that is meant to be saturated expects INVALID. */
+  expectValidity?: "VALID" | "INVALID";
+  /** Invalid codes the expected INVALID run must show (Task 4). */
+  expectCodes?: InvalidCode[];
 }
 
 export interface LoadCase {
@@ -62,6 +68,7 @@ export interface K6RunResult {
   startedAtMs: number;
   endedAtMs: number;
   pid: number; // for the sampler (Task 5) and the CPU guard (Task 4)
+  resources?: ResourceSummary;
 }
 
 export interface LoadContext {
@@ -77,9 +84,77 @@ export interface LoadContext {
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
   results: Partial<Record<StageName, StageResult>>;
+  /** Run metadata (Task 4, P6-RULE-003); written to run-meta.json. */
+  meta?: RunMeta;
 }
 
 export type Stage = (ctx: LoadContext) => Promise<StageResult>;
 export type StageSet = Record<StageName, Stage>;
 
 export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV";
+
+export type InvalidCode =
+  | "dropped_iterations"
+  | "vu_exhausted"
+  | "k6_cpu"
+  | "runner_cpu"
+  | "runner_memory"
+  | "telemetry_gap"
+  | "clock_skew";
+
+/** detail: counts only, no URL, token or id. */
+export interface InvalidReason {
+  code: InvalidCode;
+  detail: string;
+}
+
+export interface ValidityVerdict {
+  verdict: "VALID" | "INVALID";
+  reasons: InvalidReason[];
+}
+
+/** Per-run resource summary written by the sampler of src/load/proc-stats.ts. Absent when /proc could not be read. */
+export interface ResourceSummary {
+  samples: number;
+  intervalMs: number;
+  k6CoresAvg: number;
+  k6CoresMax: number;
+  runnerBusyPctAvg: number;
+  runnerBusyPctMax: number;
+  memAvailablePctMin: number;
+}
+
+export interface RunMeta {
+  schema: 1;
+  caseId: string;
+  runId: string;
+  profile: LoadProfileName;
+  label: "functional load, not capacity";
+  rate: number;
+  durationSec: number;
+  plannedIterations: number;
+  startedAt: string;
+  finishedAt?: string;
+  environment: {
+    kind: "github-actions" | "local";
+    event?: string;
+    workflow?: string;
+    ref?: string;
+    sha?: string;
+    runUrl?: string;
+    attempt?: number;
+    runnerImage: string;
+    imageVersion: string;
+    runnerOs: string;
+    runnerArch: string;
+    nproc: number;
+    memTotalMb: number;
+  };
+  software: {
+    k6: string;
+    harness: string;
+    node: string;
+    products: Partial<Record<"medusa" | "cal" | "documenso" | "twenty", string>>;
+  };
+  limits: Record<string, number>;
+}

@@ -36,6 +36,10 @@ describe("load summary", () => {
     assert.equal(parseK6Summary({ metrics: { vus_max: { max: 75 } } }).vusMax, 75);
   });
 
+  it("reads peakVus from vus.max", () => {
+    assert.equal(parseK6Summary({ metrics: { vus: { min: 1, max: 80 } } }).peakVus, 80);
+  });
+
   it("lists the thresholds that crossed (value true), not the passing ones", () => {
     const s = parseK6Summary({
       metrics: {

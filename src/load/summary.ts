@@ -4,6 +4,8 @@ export interface K6Summary {
   iterations: number;
   dropped: number;
   vusMax: number;
+  /** vus.max: the most VUs k6 had at once (Task 4). */
+  peakVus: number;
   p95Ms: number;
   medMs: number;
   maxMs: number;
@@ -44,6 +46,7 @@ export function parseK6Summary(json: unknown): K6Summary {
     iterations: num(metric(json, "iterations")?.count),
     dropped: num(metric(json, "dropped_iterations")?.count),
     vusMax: num(vusMax?.value ?? vusMax?.max),
+    peakVus: num(metric(json, "vus")?.max),
     p95Ms: num(httpDuration?.["p(95)"]),
     medMs: num(httpDuration?.med),
     maxMs: num(httpDuration?.max),
