@@ -14,8 +14,9 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 to 7 merged.
 - **Harness pin.** Unchanged (single Medusa instance).
 - **Environment change.** None.
-- **Unit tests.** Baseline = the count after Task 7 (471 + 51 + 43 + 56 + 33 + 16 = **670** on today's base). This plan adds **+17** (§12); expected **687**.
-- **Stop for owner review.** Yes (rule 10): `perf.yml` step added; Q1 asks about the stock rule.
+- **Unit tests.** B = count on main when the build starts (today's chain: 702 after Tasks 1 to 7). This plan adds **+17** (§12); expected B + 17 (**719** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 554 -> T4 597 -> T5 653 -> T6 686 -> T7 702 -> T8 719 -> T9 743 -> T10 777.
+- **Owner decisions taken (2026-10-24, recorded, not open).** D5 amended: the Medusa LOAD steps run in `medusa-load` (new job, timeout 45; recorded in the Task 7 plan). Q1 accept `S = ceil(planned / 2)`. Q2 count `F-M2` ghost orders until fixed upstream, then flip to fail (Task 6 Q2; the flip is a recorded follow-up there). Q3 the 10 s PR profile with `S = 5` is enough. All closed in §13.
+- **Stop for owner review.** Yes (rule 10): `perf.yml` step added.
 
 ## 2. What it proves
 
@@ -76,14 +77,14 @@ The interface list above, plus from `main`: `src/medusa/oracle.ts` (`readOversel
 
 ## 5. Build-time recheck
 
-| #   | Check                    | Command                                                                                                                                                        | Expected                                               |
-| --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| 1   | Base                     | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                  | descendant of `5acd2a0`                                |
-| 2   | Baseline                 | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                            | exit 0, `# tests 670` (or what Task 7 left)            |
-| 3   | Task 7 names             | `grep -n "export function runMedCheckout\|export async function medusaSetup\|p6_refused_at_line_item" k6/journeys/med-checkout.js src/load/products/medusa.ts` | all found; otherwise stop and report                   |
-| 4   | Known bugs still current | `grep -n "F-M2\|F-M5" README.md docs/BACKLOG.md \| head`                                                                                                       | present; if fixed upstream, drop the classifier branch |
-| 5   | Loser bodies             | `npm run up:medusa`; run the case once on the VM (`npm run load:medusa-conservation -- --profile pr`)                                                          | refusals are `400 not_allowed`; 5 orders; 0 other      |
-| 6   | Cleanup                  | after the run: the leak check lines in `verdict.json`                                                                                                          | empty                                                  |
+| #   | Check                    | Command                                                                                                                                                        | Expected                                                 |
+| --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 1   | Base                     | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                  | descendant of `5acd2a0`                                  |
+| 2   | Baseline                 | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                            | exit 0, `# tests` = B (702 once Tasks 1 to 7 are merged) |
+| 3   | Task 7 names             | `grep -n "export function runMedCheckout\|export async function medusaSetup\|p6_refused_at_line_item" k6/journeys/med-checkout.js src/load/products/medusa.ts` | all found; otherwise stop and report                     |
+| 4   | Known bugs still current | `grep -n "F-M2\|F-M5" README.md docs/BACKLOG.md \| head`                                                                                                       | present; if fixed upstream, drop the classifier branch   |
+| 5   | Loser bodies             | `npm run up:medusa`; run the case once on the VM (`npm run load:medusa-conservation -- --profile pr`)                                                          | refusals are `400 not_allowed`; 5 orders; 0 other        |
+| 6   | Cleanup                  | after the run: the leak check lines in `verdict.json`                                                                                                          | empty                                                    |
 
 ## 6. Design
 
@@ -242,14 +243,15 @@ New artefacts: none beyond Task 7's; `audit.json` and `verdict.json` carry count
 
 ## 10. CI budget
 
-Convention: worst case = slowest green job + additions at their caps, at least 10 minutes under the timeout, no timeout raised. Per Task 7 §10, the Medusa LOAD steps run in the new job `medusa-load` (timeout 45; Q1 of Task 7). This plan's step estimate: VM full-profile time `5 + 30 + 1 + 7 (cleanup of 15 orders) + 0.5 + 5 (token scan, summary)` = about 50 s, ×2 for the runner = **1.7 min**; Task 7 reserved 2.4 min for it.
+Convention (one for every Phase 3 plan, Task 3 §9): worst case = Phase 2 closeout §2.7 worst case + the Task 1 cold start (Medusa +1.1) + the image pull at its 6-minute cap minus the measured 0.3 (+5.7) + each new step, "estimates" at its measured/estimated duration and "at caps" at its `timeout-minutes`; at least 10 minutes under the job timeout; no timeout raised. Per Task 7 §10 and the owner's D5 amendment, the Medusa LOAD steps run in the new job `medusa-load` (timeout 45). This plan's step estimate: VM full-profile time `5 + 30 + 1 + 7 (cleanup of 15 orders) + 0.5 + 5 (token scan, summary)` = about 50 s, ×2 for the runner = **1.7 min**.
 
-| Job                                                | Slowest green (min)                                         | This plan's addition                                  | Worst (min)                        | Timeout | Margin          |
-| -------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ------- | --------------- |
-| `medusa-load` (Task 7 proposal)                    | 16.7 reserved with all three Medusa LOAD steps (Task 7 §10) | step cap 6 min on `main`, 4 on PRs (use 2.4 reserved) | 16.7 (estimates); **31.0** at caps | **45**  | **14.0** (caps) |
-| `medusa-smoke` (if Task 7 Q1 answers "no new job") | 26.2                                                        | 1.7 + Task 7's 1.9 + install 3.0 = 32.8               | 32.8 (Tasks 7+8 only)              | 45      | 12.2            |
+| Job                                                   | Base (min)                                                                                       | Added by Tasks 7 and 8 (estimate / cap)                   | Worst, estimates (min) | Worst, at caps (min)          | Timeout | Margin (caps)                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ---------------------- | ----------------------------- | ------- | -------------------------------------------- |
+| `medusa-load` (Task 7 job; Tasks 7 and 8 steps)       | install 0.04 / 2.0, pull 0.3 / 6.0, start 0.9 / 1.0, overhead 2.0, scan and upload 1.0, cold 1.1 | Task 7 step 1.9 / 6.0; this plan's step 1.7 / 6.0         | 8.9                    | 25.1                          | **45**  | **19.9**                                     |
+| `medusa-load` with Task 10's step as well             | as above                                                                                         | + Task 10 step 1.5 / 6.0                                  | 10.4                   | 31.1                          | 45      | 13.9                                         |
+| `medusa-smoke` (rejected D5 fallback, for the record) | 33.0 (26.2 + 1.1 + 5.7)                                                                          | install 0.04 / 2.0; Task 7 step 1.9; this plan's step 1.7 | **38.6**               | 47.0 (33.0 + 2.0 + 6.0 + 6.0) | 45      | 6.4 (estimates); −2.0 (caps): **not viable** |
 
-Step: `LOAD P6-MED-LOAD-002 (functional load, not capacity)`, `timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}`, run `npm run load:medusa-conservation -- --profile pr|full`, INVALID → `::warning::` (exit 3 mapped to 0, same wrapper as Task 7), then the existing token scan and upload `load-medusa` (the artefact directory is per case: `results/load/P6-MED-LOAD-002`). Trials: none (not a race). No timeout is raised.
+This plan's step: `LOAD P6-MED-LOAD-002 (functional load, not capacity)`, `timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}` (estimate 1.7, 80 % stop rule 4.8 main and 3.2 PR), run `npm run load:medusa-conservation -- --profile pr|full`, INVALID → `::warning::` (exit 3 mapped to 0, same wrapper as Task 7), then the existing token scan and upload `load-medusa` (the artefact directory is per case: `results/load/P6-MED-LOAD-002`). The step adds no work to `medusa-smoke`, whose Phase 2 follow-ups (F-M4 `test.fail()` with 5 PR trials in `medusa-cancel-extras`, `P6-MED-RACE-009` PR trials 13 → 20 in the `medusa-smoke` race step, and the 24.1 vs 24.0 stop-rule BACKLOG item) are listed in Task 7 §10. Trials: none (not a race). No timeout is raised.
 
 ## 11. Environment changes
 
@@ -257,7 +259,7 @@ None. Cursor Cloud and Claude Code cloud already have k6 (Task 3), Docker and No
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-load-conservation origin/main` (after Task 7 is merged). Counts relative to B (670 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-med-load-conservation origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 702 today after Tasks 1 to 7).
 
 | Step | Commit subject                                                            | `git add` paths                                                                           | `npm run check` expected           |
 | ---- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -291,18 +293,18 @@ After step 7: `git push -u origin feat/<build date>-p6-med-load-conservation`, `
 - `P6-MED-LOAD-011`: the same stream with two variants of one inventory item (shared stock), proving the refusal arrives at the item level and not per variant.
 - `P6-X-LOAD-018`: an optional `--stock` flag on `run-load.ts` to override `S` for local probes (not used in CI).
 
-**Open questions for the owner.**
+**Owner decisions (all three questions closed 2026-10-24).**
 
-- **Q1.** `S = ceil(planned / 2)` (about half of the arrivals get a refusal) or a different ratio?
-- **Q2.** Should `F-M2` ghost orders fail the conservation run once the bug is fixed upstream (today: counted only)? Same question as Task 6 Q2; answer once for both.
-- **Q3.** PR profile 10 s with `S = 5` is enough, or should PRs also use 30 s (+20 s per PR)?
+- **Q1 (closed: accept).** `S = ceil(planned / 2)` (about half of the arrivals get a refusal) or a different ratio?
+- **Q2 (closed: count `F-M2` until fixed upstream, then flip to fail; the flip is the follow-up recorded in Task 6).** Should `F-M2` ghost orders fail the conservation run once the bug is fixed upstream (today: counted only)? Same question as Task 6 Q2; answer once for both.
+- **Q3 (closed: 10 s with `S = 5` is enough on PRs).** PR profile 10 s with `S = 5` is enough, or should PRs also use 30 s (+20 s per PR)?
 
 ## 14. Done when (roadmap, made measurable)
 
 - [ ] `P6-MED-LOAD-002` VALID and green on the PR and once on `main`: `verdict.json` outcome `PASS`, orders equal `S`, all refusals clean, no 5xx, `dropped_iterations` 0.
 - [ ] `audit.json` and the conservation findings are in the artefact `load-medusa` after a clean token scan; the job summary shows orders, refusals and `knownBugs`.
 - [ ] A proven product bug, if the run finds one, is recorded with repeated evidence (rule 13) and reported, not hidden.
-- [ ] `npm run check` exit 0 with **B + 17** (687 on today's base); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 17** (719 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
@@ -310,4 +312,4 @@ After step 7: `git push -u origin feat/<build date>-p6-med-load-conservation`, `
 - (b) Existing names grepped at `5acd2a0`: `src/medusa/{oracle,run-case,invariants,admin}.ts` functions in §4, README "Known product bugs", `perf.yml` jobs. NEW: `classifyRefusal`, `judgeConservation`, `conservationStage`, `makeMedusaSetup`, `MED_LOAD_002`, `load:medusa-conservation`. Names from Tasks 3 to 7 are checked at build time (§5 check 3).
 - (c) CI time: §10.
 - (d) Skeletons: §6. Steps with `git add` paths and expected counts: §12.
-- (e) No owner answer is recorded.
+- (e) The owner's answers to Q1 to Q3 are recorded in §1 and §13.
