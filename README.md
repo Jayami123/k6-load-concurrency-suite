@@ -680,6 +680,8 @@ npm run load:validity-selftest              # P6-X-LOAD-004, about 1 min
 npm run load:telemetry-selftest             # P6-X-LOAD-002, about 1.5 min
 npm run load:overhead-selftest              # P6-X-LOAD-006, about 3 min
 npm run load:medusa-conservation -- --profile pr   # P6-MED-LOAD-002, inventory conservation (stock runs out), about 1.5 min, needs the Medusa stack up
+npm run load:documenso-pipeline -- --profile pr   # P6-DOC-LOAD-002, pipeline lag: every stage once, within 30 s, needs the Documenso stack up
+npm run load:documenso-webhook-retry -- --profile pr   # P6-DOC-LOAD-008, the receiver answers 500 once per event; Documenso must retry
 node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/load
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
