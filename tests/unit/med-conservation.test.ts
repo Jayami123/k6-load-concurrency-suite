@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { findHits } from "../../scripts/evidence-token-scan.mjs";
 import {
   conservationCounters,
+  failedFindings,
   judgeConservation,
   type ConservationCounters,
 } from "../../src/load/med-conservation.ts";
@@ -151,5 +152,19 @@ describe("medusa conservation judge", () => {
     });
     const out = judgeConservation({ counters, snapshot: snap(6, 6, 5, 4), stock: S });
     for (const f of out.findings) assert.deepEqual(findHits(f.detail), [], f.detail);
+  });
+
+  it("a dropped iteration is INVALID, not a failure: no-drops and an unjudgeable exhaustion are not classified", () => {
+    const counters = clean({ iterations: 4, orders: 4, refusedClean: 0, dropped: 2 });
+    const out = judgeConservation({ counters, snapshot: snap(4, 4, 4, 4), stock: S });
+    assert.equal(out.findings.find((f) => f.check === "no-drops")?.ok, false);
+    assert.deepEqual(failedFindings(out.findings, counters), []);
+  });
+
+  it("a conservation PRODUCT BUG stays active when iterations were dropped", () => {
+    const counters = clean({ dropped: 2 });
+    const out = judgeConservation({ counters, snapshot: snap(6, 6, 5, 4), stock: S });
+    const failed = failedFindings(out.findings, counters);
+    assert.ok(failed.some((f) => f.check === "orders-le-stock" && f.kind === "PRODUCT BUG"));
   });
 });

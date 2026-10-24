@@ -211,10 +211,13 @@ export function runMedCheckout(cfg, opts = {}) {
       },
     },
   ];
-  const out = runJourney({
-    steps,
-    deps: { check: (n, ok) => check(null, { [n]: () => ok }), sleep, now: Date.now },
-  });
-  if (classify && !terminal) iterFailed.add(1); // a failed step that is not a refusal
-  return out;
+  try {
+    return runJourney({
+      steps,
+      deps: { check: (n, ok) => check(null, { [n]: () => ok }), sleep, now: Date.now },
+    });
+  } finally {
+    // A step that throws (for example a null shipping_options) still ends the iteration with one counter.
+    if (classify && !terminal) iterFailed.add(1); // a failed step that is not a refusal
+  }
 }
