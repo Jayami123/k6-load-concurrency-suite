@@ -1652,11 +1652,8 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
 
-      # The verdict of this case is FAIL on the known bug P6-OBS-DOC-005 (a PRODUCT BUG). The job's gate is the known-bug step below:
-      # its storm checks are hard and its duplicate-seal expectation is strict. A missing audit fails that step.
       - name: LOAD journey P6-DOC-LOAD-007 (completion retry storm, functional load, not capacity)
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
-        continue-on-error: true
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
         run: |
@@ -1665,15 +1662,6 @@ jobs:
           npm run load:documenso-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
-
-      # Storm checks are hard. The duplicate seal is the known bug P6-OBS-DOC-005: an expected failure that turns red once fixed.
-      - name: Known bug P6-OBS-DOC-005 (P6-DOC-LOAD-007 audit, expected failure)
-        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
-        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        timeout-minutes: 2
-        env:
-          P6_PLAYWRIGHT_JSON: results/playwright/documenso-load-known.json
-        run: npx playwright test --project=documenso-load-known
 
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}

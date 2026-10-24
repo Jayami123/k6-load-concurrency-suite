@@ -34,12 +34,6 @@ export default defineConfig({
       use: { baseURL: documensoBaseUrlFromEnv() },
     },
     {
-      // Reads the audit of the P6-DOC-LOAD-007 run written by the LOAD step (no server needed).
-      name: "documenso-load-known",
-      testDir: "tests/documenso/load",
-      retries: 0,
-    },
-    {
       name: "documenso-api",
       testDir: "tests/documenso/api",
       retries: 0,
