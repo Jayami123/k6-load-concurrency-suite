@@ -69,10 +69,10 @@ separate tests, and the README has the entry with the evidence, the suspected ar
 
 Final head `fca02b2`, run [40139142246](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40139142246) (full profile):
 **success**, 14 of 14 jobs green. `documenso-smoke` passes with `P6-DOC-LOAD-007` as the expected failure (known-bug step: storm
-test passed, duplicate-seal test ✘ as expected). Job durations: medusa-smoke 21 min 39 s, medusa-order-races 15 min 50 s, cal-state-races
-7 min 31 s, medusa-multi-instance (redis) 10 min 33 s, medusa-multi-instance (memory) 9 min 50 s, cal-smoke 5 min 41 s,
-documenso-smoke 7 min 10 s, twenty-races 6 min 03 s, twenty-obs 4 min 12 s, medusa-cancel-extras 3 min 56 s, load-overhead 4 min 37 s,
-twenty-smoke 3 min 42 s, medusa-load 3 min 12 s, load-selftest 2 min 57 s.
+test passed, duplicate-seal test ✘ as expected). Job durations: medusa-smoke 21 min 41 s, medusa-order-races 15 min 53 s, cal-state-races
+7 min 31 s, medusa-multi-instance (redis) 10 min 33 s, medusa-multi-instance (memory) 8 min 50 s, cal-smoke 5 min 41 s,
+documenso-smoke 7 min 11 s, twenty-races 6 min 03 s, twenty-obs 4 min 12 s, medusa-cancel-extras 3 min 56 s, load-overhead 4 min 37 s,
+twenty-smoke 3 min 42 s, medusa-load 3 min 12 s, load-selftest 2 min 55 s.
 
 Earlier runs (same retry-storm code; the only later change is the known-bug marker):
 
@@ -85,7 +85,7 @@ Earlier runs (same retry-storm code; the only later change is the known-bug mark
 - `40137277800` (67406f9, full, repeat 2): failure in `documenso-smoke` only (duplicate seal, 31 of 31), control `P6-DOC-LOAD-002`
   one seal per envelope with 62 of 62 emails matched.
 
-Documenso per run (full profile, 31 envelopes, 62 recipients): first requests timed out 62, retries 217 (per run), 5xx 0; seal
+Documenso per run (full profile, 30 or 31 envelopes, about 62 recipients): first requests timed out 62, retries 217 (per run), 5xx 0; seal
 jobs per envelope 2; `DOCUMENT_COMPLETED` rows 2 per envelope; completion emails 2 per recipient (the audit records "more than one";
 the exact count of 2 comes from the database in the first run and from the final run's per-envelope audit).
 
