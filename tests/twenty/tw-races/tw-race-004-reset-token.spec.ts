@@ -68,7 +68,7 @@ test("P6-TW-RACE-004 PRODUCT BUG: N=10 parallel redemptions of one reset token m
   test.info().annotations.push({
     type: "issue",
     description:
-      "P6-TW-RACE-004 PRODUCT BUG: one reset token is redeemed more than once under concurrency (check-then-act, no lock)",
+      "P6-TW-RACE-004: PRODUCT BUG, one reset token is redeemed more than once under concurrency (check-then-act, no lock)",
   });
   test.fail();
   for (const t of trials) {
