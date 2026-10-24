@@ -18,3 +18,23 @@ export function clockOffset(url) {
   if (typeof serverNowMs !== "number") return undefined;
   return serverNowMs - (t0 + t1) / 2;
 }
+
+/**
+ * setup() helper: records the offset at the start of the run when the runner gave a marker (MARKER_URL). Without one it does nothing.
+ * @param {string | undefined} url
+ */
+export function recordClockStart(url) {
+  if (!url) return;
+  const offset = clockOffset(url);
+  if (offset !== undefined) clockStart.add(offset);
+}
+
+/**
+ * teardown() helper: records the offset at the end of the run when the runner gave a marker (MARKER_URL). Without one it does nothing.
+ * @param {string | undefined} url
+ */
+export function recordClockEnd(url) {
+  if (!url) return;
+  const offset = clockOffset(url);
+  if (offset !== undefined) clockEnd.add(offset);
+}

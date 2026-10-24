@@ -7,6 +7,7 @@
 import { check, sleep } from "k6";
 import { loadLoadConfig } from "../lib/config.js";
 import { request } from "../lib/http.js";
+import { recordClockEnd, recordClockStart } from "../lib/markers.js";
 import { closedModelScenario, openModelScenario, standardOptions } from "../lib/pure/options.js";
 
 // Defaults equal k6/selftest/config.example.json. They let `k6 inspect` run the init context without a config file;
@@ -45,6 +46,15 @@ export const options = standardOptions({
   scenarios: { main: scenario },
   thresholds: { checks: ["rate==1"] },
 });
+
+// The runner sets MARKER_URL for a telemetry run (Task 5); a standalone run has none and records nothing.
+export function setup() {
+  recordClockStart(__ENV.MARKER_URL);
+}
+
+export function teardown() {
+  recordClockEnd(__ENV.MARKER_URL);
+}
 
 export default function () {
   const res = request("GET", `http://127.0.0.1:${cfg.port}/work`, "GET /work");
