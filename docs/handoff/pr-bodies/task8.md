@@ -29,4 +29,3 @@ Adds the Medusa conservation check for the load case `P6-MED-LOAD-002` (plan tas
 ## Merge order
 
 Task 1 → Task 2 → Task 3 → Task 4 → Task 5 → Task 6 → Task 7 → Task 8 → Task 9, each with `--no-ff`. No merge to `main` yet.
-
