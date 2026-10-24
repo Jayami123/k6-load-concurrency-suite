@@ -12,8 +12,11 @@ Pins qa-portfolio-harness to the released tag v0.2.15 (tag object 303a432, commi
 backend (H3: MEDUSA_SECOND_BASE_URL and MEDUSA_LOCK), the Cal up/down fix, and the Linux Cal listener fix that v0.2.14
 lacked (the `no listener pid could be read` error, see the run history below).
 
-With the listener fix in place, the temporary Cal bridge in `scripts/harness.mjs` is removed (part B). Its CI helpers
-(`HARNESS_UP_TIMEOUT_MS`, the long-running Cal bridge step and its log uploads) go with it, and the README drops the bridge text.
+Part B was applied in part: the CI pieces are gone (`HARNESS_UP_TIMEOUT_MS`, the long-running Cal bridge step, its `cal-harness-log`
+upload) and the README and `.env.example` drop the bridge text (commit 03116db). The bridge code itself is still in
+`scripts/harness.mjs` (`LONG_RUNNING.cal`, the pgid and log files it writes). Its removal is gated by the probes B1 to B7 of
+plan section 6.8 on the pinned tag with the bridge disabled, and those probes have not been run on v0.2.15. Until they pass the bridge
+stays in the code.
 
 Plan: docs/plans/2026-10-24-p6-phase3-task1-harness-bump.md (parts A and B), companion
 docs/plans/2026-10-24-p6-phase3-task1-harness-cal-up-down.md.
