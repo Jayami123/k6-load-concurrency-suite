@@ -213,6 +213,29 @@ describe("env", () => {
     );
   });
 
+  it("medusaSecondBaseUrlFromEnv rejects the primary origin in another spelling (TEST BUG)", () => {
+    assert.throws(
+      () => medusaSecondBaseUrlFromEnv({ MEDUSA_SECOND_BASE_URL: "HTTP://127.0.0.1:9000" }),
+      /TEST BUG/,
+    );
+    assert.throws(
+      () =>
+        medusaSecondBaseUrlFromEnv({
+          MEDUSA_BASE_URL: "http://127.0.0.1:9000",
+          MEDUSA_SECOND_BASE_URL: "HTTP://127.0.0.1:9000/",
+        }),
+      /TEST BUG/,
+    );
+    assert.throws(
+      () =>
+        medusaSecondBaseUrlFromEnv({
+          MEDUSA_BASE_URL: "http://127.0.0.1:9000/",
+          MEDUSA_SECOND_BASE_URL: "http://127.0.0.1:9000/",
+        }),
+      /TEST BUG/,
+    );
+  });
+
   it("medusaLockModeFromEnv defaults to memory", () => {
     assert.equal(medusaLockModeFromEnv({}), "memory");
     assert.equal(medusaLockModeFromEnv({ MEDUSA_LOCK: "" }), "memory");
