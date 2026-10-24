@@ -39,9 +39,9 @@ health smokes (D10). Plan: docs/plans/2026-10-24-p6-phase3-task4-load-validity.m
 
 perf.yml workflow_dispatch on this branch, run 40080601245 (head 2f1cc6d): `load-selftest` success (job 2 min 53 s: the
 coordinated-omission self-test 1 min 32 s, the validity self-test 1 min 2 s, the LOAD table and runner identity under 1 s each).
-The cal jobs failed at `Start Cal (harness up)` with the inherited Task 1 listener-pid error; medusa-smoke was still in its race
-step when this was written. Other jobs: medusa-cancel-extras, medusa-order-races, medusa-multi-instance (both legs), documenso-smoke,
-twenty-smoke, twenty-races, twenty-obs all success.
+The run finished with the cal jobs (`cal-smoke`, `cal-state-races`) failing at `Start Cal (harness up)` with the inherited Task 1
+listener-pid error. Every other job succeeded: `medusa-smoke` (22 min), `medusa-multi-instance` (redis 10 min, memory 11 min),
+`medusa-order-races` (10 min), `medusa-cancel-extras` (3 min), `documenso-smoke` (7 min), `twenty-smoke`, `twenty-races`, `twenty-obs`.
 
 ## Budget
 
