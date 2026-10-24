@@ -134,18 +134,17 @@ npm run down:cal                # always; it also stops the Cal web process
 
 `bootstrap.sh` generates the secrets in the Cal product `.env` (never printed or committed).
 Later `up:cal` runs reuse the Next.js build. The self-test writes `results/races/cal-self-test.json`
-(gitignored); the harness log is `results/harness/cal-up.log`.
+(gitignored); the Cal web server log is `node_modules/qa-portfolio-harness/.harness/cal-web.log`.
 
 - `GET /pro/30min` not HTTP 200 → **PRODUCT BUG** (paste status and body start).
 - A burst above `RACE_MAX_SPREAD_MS` is invalid and rerun (see "Rerun on spread"); too many → **TEST BUG**
   (runner too noisy).
 - `up:cal` exits 1, out of memory, a blocked host, Docker or disk errors → **ENV** (paste the last
-  40 lines of `cal-up.log`).
+  40 lines of the `up:cal` output).
 - The Cal database keeps its data between local runs (the harness keeps its Docker volume).
 
 CI runs the same self-test (`RACE_TRIALS=3`) in the `cal-smoke` job and uploads
-`race-histograms-cal`. `scripts/harness.mjs` starts Cal in its own process group and stops that
-group on `down` (a temporary bridge until the harness does this itself).
+`race-histograms-cal`.
 
 ### Cal identical-slot histogram (`P6-CAL-RACE-001`)
 
