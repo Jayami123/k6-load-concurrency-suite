@@ -297,7 +297,7 @@ export const CAL_LOAD_001: LoadCase = {
     full: { rate: 2, durationSec: 30, maxLatencyMs: 1000 },
   },
   runs: () => [{ label: "main", script: "k6/cases/cal-load-001.js", env: {} }],
-  stages: { setup: calSetup, reconcile: reconcileStage, cleanup: calCleanup },
+  stages: { setup: calSetup({}), reconcile: reconcileStage, cleanup: calCleanup },
 };
 
 /** P6-MED-LOAD-001: one checkout per iteration against a stocked variant (plan §6.2). */
