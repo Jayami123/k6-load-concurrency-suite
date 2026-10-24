@@ -77,10 +77,16 @@ export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: 
   return { outcome: "PASS", reasons: [] };
 }
 
-function summaryFor(k: K6RunResult): Record<string, unknown> {
+export function summaryFor(k: K6RunResult): Record<string, unknown> {
   if (!existsSync(k.summaryPath))
     return { label: k.label, exitCode: k.exitCode, summary: "missing" };
-  const s = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
+  let s: ReturnType<typeof parseK6Summary>;
+  try {
+    s = parseK6Summary(JSON.parse(readFileSync(k.summaryPath, "utf8")));
+  } catch {
+    // A k6 crash can leave a truncated file. Keep verdict.json writable and say why the summary is empty.
+    return { label: k.label, exitCode: k.exitCode, summary: "unreadable" };
+  }
   return {
     label: k.label,
     exitCode: k.exitCode,
