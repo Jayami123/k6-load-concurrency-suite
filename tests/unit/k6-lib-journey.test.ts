@@ -102,4 +102,26 @@ describe("k6 lib journey", () => {
     assert.equal(out.completed, true);
     assert.equal(out.state.cartId, "c1");
   });
+  it("a step with stop: true ends the journey as completed and skips the rest", () => {
+    const f = fakeDeps();
+    let ran = false;
+    const out = runJourney({
+      steps: [
+        { name: "a", run: () => ({ ok: true, stop: true }) },
+        {
+          name: "b",
+          run: () => {
+            ran = true;
+            return { ok: true };
+          },
+        },
+      ],
+      deps: f.deps,
+    });
+    assert.equal(out.completed, true);
+    assert.equal(out.failedStep, null);
+    assert.equal(ran, false);
+    assert.equal(out.steps.length, 1);
+    assert.deepEqual(f.checks, [["a", true]]);
+  });
 });
