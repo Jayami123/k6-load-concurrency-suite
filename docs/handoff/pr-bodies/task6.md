@@ -33,8 +33,10 @@ fails the run, owner Q1). Plan: docs/plans/2026-10-24-p6-phase3-task6-load-recon
 
 ## CI
 
-perf.yml workflow_dispatch on this branch: see the handoff for the run id and result. No job changes in this PR, so CI checks
-that the stack still passes.
+perf.yml workflow_dispatch on this branch, run 40081928914 (head cd63a80). At 09:30 UTC the run was still in progress. Finished:
+`cal-smoke` and `cal-state-races` were running `Start Cal (harness up)` (the inherited Task 1 listener-pid error), and `twenty-smoke`,
+`medusa-cancel-extras` succeeded. Still running at that time: the rest, including `load-selftest` and `load-overhead`. The final
+result is on the run page; it is not recorded here. No job changes in this PR, so CI checks that the stack still passes.
 
 ## Budget
 
