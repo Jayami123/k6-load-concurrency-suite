@@ -14,7 +14,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` = `5acd2a0`, plus Tasks 3 to 7 merged (Task 8 is independent).
 - **Harness pin.** Unchanged.
 - **Environment change.** None.
-- **Unit tests.** B = count on main when the build starts (today's chain: 723 after Tasks 1 to 8). This plan adds **+24** (§12); expected B + 24 (**747** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 556 -> T4 599 -> T5 655 -> T6 688 -> T7 706 -> T8 723 -> T9 747 -> T10 781. If Task 8 is not merged first the deltas still hold.
+- **Unit tests.** B = count on main when the build starts (today's chain: 726 after Tasks 1 to 8). This plan adds **+24** (§12); expected B + 24 (**750** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784. If Task 8 is not merged first the deltas still hold.
 - **Owner decisions taken (2026-10-24, recorded, not open).** D5 amended (Medusa only, Task 7). Q1 accept the 30 s drain and per-stage contracts. Q2 **no label yet** for the no-backoff webhook retry; if it is labelled later the id is `P6-OBS-DOC-004` (`-003` is taken), and only after `P6-DOC-LOAD-010` repeats three times (rule 13). Q3 yes, `-008` runs on PRs too, with the Documenso LOAD step caps of §10. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): `perf.yml` steps added.
 
@@ -89,7 +89,7 @@ The interface list above, plus from `main`: `src/documenso/oracle.ts` (`SEAL_JOB
 | #   | Check                      | Command                                                                                                                                                | Expected                                                                                                    |
 | --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | 1   | Base                       | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                          | descendant of `5acd2a0`                                                                                     |
-| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                    | exit 0, `# tests` = B (723 once Tasks 1 to 8 are merged)                                                    |
+| 2   | Baseline                   | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                    | exit 0, `# tests` = B (726 once Tasks 1 to 8 are merged)                                                    |
 | 3   | Task 7 names               | `grep -n "export function runDocSign\|export async function documensoSetup\|p6_docs_completed" k6/journeys/doc-sign.js src/load/products/documenso.ts` | found; otherwise stop and report                                                                            |
 | 4   | Receiver default           | `grep -n "writeHead(200" src/receivers/webhook-receiver.ts`                                                                                            | one hit, status 200 constant (the responder option replaces it)                                             |
 | 5   | Retry behaviour at the ref | the §3.5 fail-first probe on the VM, 5 documents                                                                                                       | per event: FAILED then SUCCESS, `retried=1`; if not, `-008` moves to "Later" with the evidence              |
@@ -276,7 +276,7 @@ None. Documenso still needs Node 24 (`scripts/harness.mjs` picks `/opt/node24`);
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
-Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-doc-load-pipeline-lag origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 723 today).
+Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-doc-load-pipeline-lag origin/main` (after Task 7 is merged). Counts relative to B (B = count on main when the build starts; 726 today).
 
 | Step | Commit subject                                                                   | `git add` paths                                                                                                                                                                         | `npm run check` expected           |
 | ---- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -322,7 +322,7 @@ Before step 6 run each case once on the VM (`npm run up:documenso`; `npm run loa
 - [ ] `P6-DOC-LOAD-002` VALID and green on the PR and once on `main`: every document reaches every stage exactly once, backlog drains within 30 s, `verdict.json` outcome `PASS`, `pipeline-lag.json` shipped.
 - [ ] `P6-DOC-LOAD-008` VALID and green the same way: one accepted delivery per event, `WebhookCall` FAILED then SUCCESS.
 - [ ] Stage p50/p95/max and the drain time are in the job summary and in the artefacts after a clean token scan; none of them is published as a performance number.
-- [ ] `npm run check` exit 0 with **B + 24** (747 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
+- [ ] `npm run check` exit 0 with **B + 24** (750 on today's chain); no job timeout raised; every new step has `timeout-minutes`.
 
 ## 15. Rule 20 self-check
 
