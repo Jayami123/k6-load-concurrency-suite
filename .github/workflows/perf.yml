@@ -1545,6 +1545,25 @@ jobs:
           set -euo pipefail
           npm run test:documenso-api
 
+      - name: LOAD journey P6-DOC-LOAD-001 (functional load, not capacity)
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:documenso -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
+          exit "$status"
+
+      - name: Token scan of the LOAD results
+        if: ${{ !cancelled() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs results/load
+
       # Plan D27, risk R7: the web log and the race histograms are scanned before anything is uploaded.
       - name: Check Documenso artefacts for tokens
         id: web_log_check
@@ -1573,25 +1592,6 @@ jobs:
               exit 1
             fi
           done
-
-      - name: LOAD journey P6-DOC-LOAD-001 (functional load, not capacity)
-        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
-        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 4 }}
-        run: |
-          set -euo pipefail
-          status=0
-          npm run load:documenso -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
-          if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
-          exit "$status"
-
-      - name: Token scan of the LOAD results
-        if: ${{ !cancelled() }}
-        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
-        timeout-minutes: 2
-        run: |
-          set -euo pipefail
-          node scripts/evidence-token-scan.mjs results/load
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
