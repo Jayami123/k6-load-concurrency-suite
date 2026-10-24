@@ -82,4 +82,4 @@ install of k6 2 s; the self-test step 1 min 32 s; token scan and upload under 2 
 - Environment change: YES. The k6 pin 2.3.0 and the installer, in CI and both clouds (steps above).
 - Unexplained red CI: the cal jobs are red from the inherited Task 1 pin (explained in Task 1's body).
 - Timeout raised, test merged or split, or assertion weakened: no. Two `timeout-minutes` values are new, none raised.
-- Secret printed, "Jayami" or footer line added, git add -A, or force-push: no.
+- Secret printed, the owner name or footer line added, git add -A, or force-push: no.
