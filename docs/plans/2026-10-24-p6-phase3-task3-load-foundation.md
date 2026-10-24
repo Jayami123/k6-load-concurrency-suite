@@ -15,7 +15,7 @@ D6, D9, D11, "Rules that hold for every task". **Tasks 4 to 10 build on the inte
 - **Harness pin assumed.** Any: this task starts no product. (`v0.2.12` today; Task 1 may bump it first.)
 - **Environment change: yes** (one pinned k6 in CI and both clouds, §11). Stop for owner review: yes (rule 10: CI workflow, k6 pin).
 - **Pinned k6.** `2.3.0` (§3.2), in a new `.k6-version` file.
-- **Unit tests.** B = count on main when the build starts (today's chain: 503 after Tasks 1 and 2). This plan adds **+54** (§12). Expected after the build: B + 54 (**557** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784.
+- **Unit tests.** B = count on main when the build starts (today's chain: 503 after Tasks 1 and 2). This plan adds **+54** (§12). Expected after the build: B + 54 (**557** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 601 -> T5 657 -> T6 690 -> T7 708 -> T8 728 -> T9 752 -> T10 786.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 pin k6 2.3.0. Q2 `k6/lib` stays JavaScript for now. Q3 the hook downloads k6 automatically and warns on failure. Q4 accept (INVALID handling is then set by Task 4 Q1: a warning with a green job). Q5 accept. `twenty-smoke` keeps its existing `grafana/setup-k6-action` step, pinned to `.k6-version` (§6.8). `load-selftest` keeps its 20-minute timeout for the whole phase; Task 5's two self-tests run in `load-overhead`. All questions are closed in §13.
 - **Priority.** P0 (roadmap).
 
