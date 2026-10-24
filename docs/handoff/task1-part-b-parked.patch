@@ -1,0 +1,102 @@
+diff --git a/.env.example b/.env.example
+index 68b661e..fe53805 100644
+--- a/.env.example
++++ b/.env.example
+@@ -55,9 +55,6 @@ CAL_DB_URL=
+ # Override CAL_DB_URL for the P6 oracle only.
+ P6_CAL_DATABASE_URL=
+ 
+-# Max wait for a long-running harness up (Cal), in ms. Default 3600000.
+-HARNESS_UP_TIMEOUT_MS=
+-
+ # Documenso web URL. 127.0.0.1 only. Default when unset: http://127.0.0.1:3001
+ DOCUMENSO_BASE_URL=
+ 
+diff --git a/.github/workflows/perf.yml b/.github/workflows/perf.yml
+index 965e739..69adad6 100644
+--- a/.github/workflows/perf.yml
++++ b/.github/workflows/perf.yml
+@@ -708,11 +708,10 @@ jobs:
+       - name: Start Cal (harness up)
+         id: cal_up
+         if: ${{ steps.cal_pull.outcome == 'success' }}
++        # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
++        # Below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
++        timeout-minutes: 30
+         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+-        env:
+-          # 30 min (plan O10): slowest Cal start in recent CI was 83 s, so the cap is far above normal.
+-          # Below the 60-min job timeout, so a stalled up still reaches cleanup and logs.
+-          HARNESS_UP_TIMEOUT_MS: "1800000"
+         run: |
+           set -euo pipefail
+           SECONDS=0
+@@ -787,14 +786,6 @@ jobs:
+           if-no-files-found: warn
+           retention-days: 14
+ 
+-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+-        if: ${{ failure() }}
+-        with:
+-          name: cal-harness-log
+-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
+-          if-no-files-found: warn
+-          retention-days: 14
+-
+       # Cal's web server log (the harness writes it under its package dir): it holds the Prisma code
+       # behind every redacted 400, found by the traceId in the response body.
+       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+@@ -976,10 +967,9 @@ jobs:
+       - name: Start Cal (harness up)
+         id: cal_up
+         if: ${{ steps.cal_pull.outcome == 'success' }}
++        # 30 min: the harness up returns once Cal is healthy (the cold start is about 3 min); the cap is below the job timeout.
++        timeout-minutes: 30
+         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+-        env:
+-          # 40 min here (plan O10 caps cal-smoke only). Worst case of this job: setup 10 + up 40 + cases 19 + teardown 2 = 71 min.
+-          HARNESS_UP_TIMEOUT_MS: "2400000"
+         run: |
+           set -euo pipefail
+           npm run up:cal
+@@ -1044,14 +1034,6 @@ jobs:
+           if-no-files-found: warn
+           retention-days: 14
+ 
+-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+-        if: ${{ failure() }}
+-        with:
+-          name: cal-state-harness-log
+-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/harness/cal-up.log
+-          if-no-files-found: warn
+-          retention-days: 14
+-
+       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+         if: ${{ always() }}
+         with:
+diff --git a/README.md b/README.md
+index 3363563..563c4a1 100644
+--- a/README.md
++++ b/README.md
+@@ -134,18 +134,17 @@ npm run down:cal                # always; it also stops the Cal web process
+ 
+ `bootstrap.sh` generates the secrets in the Cal product `.env` (never printed or committed).
+ Later `up:cal` runs reuse the Next.js build. The self-test writes `results/races/cal-self-test.json`
+-(gitignored); the harness log is `results/harness/cal-up.log`.
++(gitignored); the Cal web server log is `node_modules/qa-portfolio-harness/.harness/cal-web.log`.
+ 
+ - `GET /pro/30min` not HTTP 200 → **PRODUCT BUG** (paste status and body start).
+ - A burst above `RACE_MAX_SPREAD_MS` is invalid and rerun (see "Rerun on spread"); too many → **TEST BUG**
+   (runner too noisy).
+ - `up:cal` exits 1, out of memory, a blocked host, Docker or disk errors → **ENV** (paste the last
+-  40 lines of `cal-up.log`).
++  40 lines of the `up:cal` output).
+ - The Cal database keeps its data between local runs (the harness keeps its Docker volume).
+ 
+ CI runs the same self-test (`RACE_TRIALS=3`) in the `cal-smoke` job and uploads
+-`race-histograms-cal`. `scripts/harness.mjs` starts Cal in its own process group and stops that
+-group on `down` (a temporary bridge until the harness does this itself).
++`race-histograms-cal`.
+ 
+ ### Cal identical-slot histogram (`P6-CAL-RACE-001`)
+ 
