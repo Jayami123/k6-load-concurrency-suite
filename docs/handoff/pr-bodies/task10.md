@@ -67,8 +67,34 @@ PRODUCT BUG until the CI repeats of rule 13. The assertion stays as it is: no `t
 
 ## CI
 
-Run: pending (dispatched with `gh workflow run perf.yml --ref feat/2026-10-24-p6-retry-storms` on 6a76e3b, run 40134262533). The
-result line is added here after the single read.
+Run `40134262533` (perf.yml, `workflow_dispatch` on the code tip `6a76e3b`, profile `full`): **failure**. 13 of 14 jobs succeeded.
+The only failed step is `LOAD journey P6-DOC-LOAD-007` in `documenso-smoke`, the PRODUCT BUG (SUSPECTED) below.
+
+| Job                            | Conclusion                           | Duration    |
+| ------------------------------ | ------------------------------------ | ----------- |
+| cal-smoke                      | success                              | 6 min 09 s  |
+| medusa-smoke                   | success                              | 12 min 05 s |
+| documenso-smoke                | **failure** (step `P6-DOC-LOAD-007`) | 7 min 58 s  |
+| twenty-obs                     | success                              | 4 min 28 s  |
+| medusa-multi-instance (memory) | success                              | 10 min 14 s |
+| medusa-cancel-extras           | success                              | 4 min 48 s  |
+| cal-state-races                | success                              | 9 min 41 s  |
+| medusa-load                    | success                              | 3 min 20 s  |
+| twenty-smoke                   | success                              | 2 min 52 s  |
+| medusa-order-races             | success                              | 12 min 34 s |
+| medusa-multi-instance (redis)  | success                              | 8 min 12 s  |
+| twenty-races                   | success                              | 5 min 02 s  |
+| load-selftest                  | success                              | 2 min 50 s  |
+| load-overhead                  | success                              | 4 min 37 s  |
+
+New LOAD steps (all PASS and VALID, no INVALID annotation): `P6-CAL-LOAD-007` (33 s), `P6-CAL-LOAD-009` (33 s), `P6-MED-LOAD-006` (41 s).
+`P6-DOC-LOAD-007` (full profile, 31 intents): FAIL. In the `load-documenso` artifact, all 31 documents have two seal jobs, two
+`DOCUMENT_COMPLETED` rows and two completion emails per recipient (62 recipients). The storm held: 62 of 31 first requests timed out,
+217 retries. No 5xx. The Task 6 audit reports the same "unexpected double seal with sequential completions". The local reproduction
+matched this in two earlier runs, and the no-retry control `P6-DOC-LOAD-002` passed in CI with one seal per envelope.
+
+Label: **PRODUCT BUG (SUSPECTED)**. It is reproduced at full count in CI and locally, but the rule-13 label needs repeated full-count
+CI runs, so the owner decides on the label and on the handling of the red `documenso-smoke` job. The assertion is unchanged.
 
 ## Not in this PR
 
