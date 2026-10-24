@@ -704,7 +704,7 @@ plus, before the upload steps of that job, a token scan of `results/load` (`node
 medusa-load:
   name: medusa-load
   runs-on: ubuntu-24.04
-  timeout-minutes: 30
+  timeout-minutes: 45
   env: { ...the medusa-order-races env block... }
   steps:
     [
@@ -759,14 +759,14 @@ The runner's `tokenScan` stage and the job's `node scripts/evidence-token-scan.m
 
 Convention: worst case = slowest measured job (Phase 2 closeout §2.7) + additions; at least 10 minutes under the job timeout; no timeout raised. LOAD step estimate = VM full-profile step time of §3.4 doubled for runner speed (an estimate until the first CI run), and the step is capped by its own `timeout-minutes` (6, PR 4).
 
-| Job                               | Slowest green (min) | Task 3 install (cap) | Retired smoke (min) | This plan's LOAD step (estimate, ×2)                                                                                      | Worst (min)         | Timeout | Margin   |
-| --------------------------------- | ------------------- | -------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------- | -------- |
-| `cal-smoke`                       | 9.7                 | +3.0                 | −0.02               | 41 s × 2 = 1.4                                                                                                            | 14.1                | 60      | 45.9     |
-| `documenso-smoke`                 | 6.9                 | +3.0                 | −0.02               | 45 s × 2 = 1.5                                                                                                            | 11.4                | 45      | 33.6     |
-| `medusa-smoke` (D5 as written)    | 26.2                | +3.0                 | −0.02               | 56 s × 2 = 1.9 (Task 7); Tasks 8 and 10 add about 2.4 and 2.4                                                             | 36.0 with all three | 45      | **9.0**  |
-| **`medusa-load` (new, proposed)** | n/a                 | install 3.0 (cap)    | n/a                 | pull cap 6.0 + start 1.0 (measured worst 0.9) + job overhead 2.0 + three LOAD steps 1.9 + 2.4 + 2.4 + scan and upload 1.0 | **16.7**            | 30      | **13.3** |
+| Job                               | Slowest green (min) | Task 3 install (cap) | Retired smoke (min) | This plan's LOAD step (estimate, ×2)                                                                                      | Worst (min)                                                          | Timeout | Margin          |
+| --------------------------------- | ------------------- | -------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | --------------- |
+| `cal-smoke`                       | 9.7                 | +3.0                 | −0.02               | 41 s × 2 = 1.4                                                                                                            | 14.1                                                                 | 60      | 45.9            |
+| `documenso-smoke`                 | 6.9                 | +3.0                 | −0.02               | 45 s × 2 = 1.5                                                                                                            | 11.4                                                                 | 45      | 33.6            |
+| `medusa-smoke` (D5 as written)    | 26.2                | +3.0                 | −0.02               | 56 s × 2 = 1.9 (Task 7); Tasks 8 and 10 add about 2.4 and 2.4                                                             | 36.0 with all three                                                  | 45      | **9.0**         |
+| **`medusa-load` (new, proposed)** | n/a                 | install 3.0 (cap)    | n/a                 | pull cap 6.0 + start 1.0 (measured worst 0.9) + job overhead 2.0 + three LOAD steps 1.9 + 2.4 + 2.4 + scan and upload 1.0 | 16.7 (estimates); **31.0** with three LOAD steps at their 6 min caps | **45**  | **14.0** (caps) |
 
-With D5 as written, `medusa-smoke` reaches 36.0 minutes once Tasks 7, 8 and 10 are all in (margin 9.0, under the 10-minute rule) and its race step already sits at 24.1 minutes against a 24.0 stop rule (Phase 2 Q7, F12), so nothing is squeezed into it: **Q1 proposes the separate job** `medusa-load` (fresh stack, 13.3 minutes of margin). With only this task built, `medusa-smoke` would be 26.2 + 3.0 + 1.9 = 31.1 (margin 13.9) and would fit; the job is proposed now so Tasks 8 and 10 do not need a second CI restructuring.
+With D5 as written, `medusa-smoke` reaches 36.0 minutes once Tasks 7, 8 and 10 are all in (margin 9.0, under the 10-minute rule) and its race step already sits at 24.1 minutes against a 24.0 stop rule (Phase 2 Q7, F12), so nothing is squeezed into it: **Q1 proposes the separate job** `medusa-load` (fresh stack, timeout 45, 14.0 minutes of margin even with Tasks 7, 8 and 10 at their step caps: 3.0 + 6.0 + 1.0 + 2.0 + 18 + 1.0 = 31.0). With only this task built, `medusa-smoke` would be 26.2 + 3.0 + 1.9 = 31.1 (margin 13.9) and would fit; the job is proposed now so Tasks 8 and 10 do not need a second CI restructuring.
 `medusa-order-races` (21.3) and `medusa-cancel-extras` (7.7) lose their k6 install (−0.02 each). Per-step caps: LOAD steps `timeout-minutes` 4 (PR) / 6.
 
 ## 11. Environment changes

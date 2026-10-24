@@ -242,12 +242,12 @@ New artefacts: none beyond Task 7's; `audit.json` and `verdict.json` carry count
 
 ## 10. CI budget
 
-Convention: worst case = slowest green job + additions at their caps, at least 10 minutes under the timeout, no timeout raised. Per Task 7 §10, the Medusa LOAD steps run in the new job `medusa-load` (timeout 30; Q1 of Task 7). This plan's step estimate: VM full-profile time `5 + 30 + 1 + 7 (cleanup of 15 orders) + 0.5 + 5 (token scan, summary)` = about 50 s, ×2 for the runner = **1.7 min**; Task 7 reserved 2.4 min for it.
+Convention: worst case = slowest green job + additions at their caps, at least 10 minutes under the timeout, no timeout raised. Per Task 7 §10, the Medusa LOAD steps run in the new job `medusa-load` (timeout 45; Q1 of Task 7). This plan's step estimate: VM full-profile time `5 + 30 + 1 + 7 (cleanup of 15 orders) + 0.5 + 5 (token scan, summary)` = about 50 s, ×2 for the runner = **1.7 min**; Task 7 reserved 2.4 min for it.
 
-| Job                                                | Slowest green (min)                                         | This plan's addition                                  | Worst (min)           | Timeout | Margin   |
-| -------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- | --------------------- | ------- | -------- |
-| `medusa-load` (Task 7 proposal)                    | 16.7 reserved with all three Medusa LOAD steps (Task 7 §10) | step cap 6 min on `main`, 4 on PRs (use 2.4 reserved) | **16.7**              | 30      | **13.3** |
-| `medusa-smoke` (if Task 7 Q1 answers "no new job") | 26.2                                                        | 1.7 + Task 7's 1.9 + install 3.0 = 32.8               | 32.8 (Tasks 7+8 only) | 45      | 12.2     |
+| Job                                                | Slowest green (min)                                         | This plan's addition                                  | Worst (min)                        | Timeout | Margin          |
+| -------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ------- | --------------- |
+| `medusa-load` (Task 7 proposal)                    | 16.7 reserved with all three Medusa LOAD steps (Task 7 §10) | step cap 6 min on `main`, 4 on PRs (use 2.4 reserved) | 16.7 (estimates); **31.0** at caps | **45**  | **14.0** (caps) |
+| `medusa-smoke` (if Task 7 Q1 answers "no new job") | 26.2                                                        | 1.7 + Task 7's 1.9 + install 3.0 = 32.8               | 32.8 (Tasks 7+8 only)              | 45      | 12.2            |
 
 Step: `LOAD P6-MED-LOAD-002 (functional load, not capacity)`, `timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}`, run `npm run load:medusa-conservation -- --profile pr|full`, INVALID → `::warning::` (exit 3 mapped to 0, same wrapper as Task 7), then the existing token scan and upload `load-medusa` (the artefact directory is per case: `results/load/P6-MED-LOAD-002`). Trials: none (not a race). No timeout is raised.
 
