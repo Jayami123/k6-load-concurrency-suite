@@ -19,7 +19,7 @@ D14, "Rules that hold for every task". Input report:
 - **Harness pin assumed.** The first released tag that contains harness H3 (`51b7d1e`). **`v0.2.13` does not exist today**:
   the newest tag is `v0.2.12` (§3.1). This task is **blocked until Task 1 has bumped the pin**. Every harness fact below
   was probed on harness `main` `51b7d1e`, installed into a throwaway copy of this repo (§3.2), not on a tag.
-- **Unit tests.** B = count on main when the build starts (today's chain: 471 on `main`, 481 after Task 1 part A; the two env readers were moved to Task 1, plan `…task1-harness-bump.md` §6.4). This plan adds **+22** (§12): 21 plus one routing test for the second leg (`pickInstance`, §6.3). Expected after the build: B + 22 (**503** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 600 -> T5 656 -> T6 689 -> T7 707 -> T8 726 -> T9 750 -> T10 784.
+- **Unit tests.** B = count on main when the build starts (today's chain: 471 on `main`, 481 after Task 1 part A; the two env readers were moved to Task 1, plan `…task1-harness-bump.md` §6.4). This plan adds **+22** (§12): 21 plus one routing test for the second leg (`pickInstance`, §6.3). Expected after the build: B + 22 (**503** today). Chain in merge order: 471 -> T1 481 -> T2 503 -> T3 557 -> T4 601 -> T5 657 -> T6 690 -> T7 708 -> T8 728 -> T9 752 -> T10 786.
 - **Owner decisions taken (2026-10-24, recorded, not open).** Q1 separate job: yes. Q2 yes, `-003` asserts `oversold >= 1` with 8 PR trials. Q3 yes, the "characterization" annotation, no `test.fail()`. Q4 `P6-MED-RACE-016` later. Q5 the maintainer cuts the harness release after the consumer check. All closed in §13.
 - **Stop for owner review.** Yes (rule 10): the plan adds a CI job to `perf.yml` and depends on a harness pin bump.
 
@@ -200,7 +200,7 @@ Decides: each lock mode needs its own `down` then `up`; the CI job runs one mode
 
 ### 3.8 Memory (VM, proof only)
 
-After the 24 `redis` trials: primary `VmRSS` 1,143,376 kB (VmHWM the same), second 372,152 kB (VmHWM 646,600 kB); Postgres
+After the 24 `redis` trials: primary `VmRSS` 1,143,376 kB (VmHWM the same), second 372,152 kB (VmHWM 646,601 kB); Postgres
 247.9 MiB; Redis 5.6 MiB; `free -m` used 2,346 MB of 16,091 MB. The primary carries all cart setup, so it grows. GitHub's
 `ubuntu-24.04` runner has 16 GB (4 vCPU) for public repositories: **build-time probe must confirm** in CI by logging `free -m`
 and both pids' RSS at the end of each leg (§10, step "Log memory").
