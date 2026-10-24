@@ -486,6 +486,7 @@ describe("two-instance invariants", () => {
     overrides: Partial<Parameters<typeof checkMemoryLockCharacterization>[0]>,
   ) => ({
     s: 3,
+    n: 15,
     instances: 2,
     orderCount: 3,
     uniqueOrderIds: 3,
@@ -555,24 +556,12 @@ describe("two-instance invariants", () => {
     assert.ok(out.violations.some((line) => line === "PRODUCT BUG: HTTP 500"));
   });
 
-  it("checkMemoryLockCharacterization flags orders above instances x S", () => {
+  // The RACE-003 trial 45 shape of run 40120499660: 7 orders, backend 0 admitted 3, backend 1 admitted 4, S = 3, N = 15.
+  // Hard invariants hold, so there are no violations; the distribution is the characterization finding.
+  it("checkMemoryLockCharacterization passes trial-45-shaped data and records the per-backend distribution", () => {
     const out = checkMemoryLockCharacterization(
       memoryInput({
-        orderCount: 7,
-        uniqueOrderIds: 7,
-        httpWinnerCount: 7,
-        reservationQty: 7,
-        reserved: 7,
-        statuses: [200, 200, 200, 200, 200, 200, 200],
-      }),
-    );
-    assert.ok(out.violations.some((line) => /7 orders exceed instances x S = 6/.test(line)));
-  });
-
-  // The RACE-003 trial 45 pattern of run 40120499660: instance 0 admitted 3, instance 1 admitted 4, S = 3.
-  it("checkMemoryLockCharacterization names the backend that admitted more than S", () => {
-    const out = checkMemoryLockCharacterization(
-      memoryInput({
+        n: 15,
         orderCount: 7,
         uniqueOrderIds: 7,
         httpWinnerCount: 7,
@@ -581,16 +570,18 @@ describe("two-instance invariants", () => {
         statuses: [200, 400, 400, 200, 400, 200, 400, 200, 400, 200, 200, 400, 200, 400, 400],
       }),
     );
+    assert.deepEqual(out.violations, []);
     assert.ok(
-      out.violations.includes("PRODUCT BUG (SUSPECTED): instance 1 admitted 4 orders for S=3"),
+      out.findings.includes("CHARACTERIZATION: per backend admitted [3, 4], most 4 for S=3"),
     );
-    assert.ok(!out.violations.some((line) => /instance 0 admitted/.test(line)));
+    assert.ok(out.findings.includes("CHARACTERIZATION: oversold, 7 orders for S=3"));
   });
 
-  // The RACE-003 trial 39 pattern: instance 1 admitted 4 while the total (5) is within instances x S = 6.
-  it("checkMemoryLockCharacterization flags a per-backend excess even when the total is within the bound", () => {
+  // The RACE-003 trial 39 shape: backend 1 admitted 4, total 5. Also a hard-invariant pass.
+  it("checkMemoryLockCharacterization passes trial-39-shaped data", () => {
     const out = checkMemoryLockCharacterization(
       memoryInput({
+        n: 15,
         orderCount: 5,
         uniqueOrderIds: 5,
         httpWinnerCount: 5,
@@ -599,23 +590,52 @@ describe("two-instance invariants", () => {
         statuses: [400, 200, 200, 400, 400, 400, 400, 200, 400, 200, 400, 200, 400, 400, 400],
       }),
     );
+    assert.deepEqual(out.violations, []);
     assert.ok(
-      out.violations.includes("PRODUCT BUG (SUSPECTED): instance 1 admitted 4 orders for S=3"),
+      out.findings.includes("CHARACTERIZATION: per backend admitted [1, 4], most 4 for S=3"),
     );
-    assert.ok(!out.violations.some((line) => /exceed instances x S/.test(line)));
   });
 
-  it("checkMemoryLockCharacterization passes when every backend admits at most S", () => {
+  it("checkMemoryLockCharacterization flags a ghost order in either direction", () => {
     const out = checkMemoryLockCharacterization(
       memoryInput({
-        orderCount: 5,
-        uniqueOrderIds: 5,
-        httpWinnerCount: 5,
-        reservationQty: 5,
-        reserved: 3,
-        statuses: [200, 200, 200, 200, 200, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400],
+        n: 15,
+        orderCount: 4,
+        uniqueOrderIds: 3,
+        httpWinnerCount: 3,
+        reservationQty: 3,
       }),
     );
-    assert.ok(!out.violations.some((line) => /admitted/.test(line)));
+    assert.ok(
+      out.violations.some((line) => /ghost order\(s\): database 4 != returned unique 3/.test(line)),
+    );
+  });
+
+  it("checkMemoryLockCharacterization flags more orders than N", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        n: 3,
+        orderCount: 4,
+        uniqueOrderIds: 4,
+        httpWinnerCount: 4,
+        reservationQty: 4,
+        statuses: [200, 200, 200, 200],
+      }),
+    );
+    assert.ok(out.violations.some((line) => line === "PRODUCT BUG: 4 orders exceed N = 3"));
+  });
+
+  it("checkMemoryLockCharacterization passes when no backend exceeds S", () => {
+    const out = checkMemoryLockCharacterization(
+      memoryInput({
+        n: 15,
+        orderCount: 3,
+        uniqueOrderIds: 3,
+        httpWinnerCount: 3,
+        reservationQty: 3,
+      }),
+    );
+    assert.deepEqual(out.violations, []);
+    assert.ok(!out.findings.some((line) => /oversold/.test(line)));
   });
 });
