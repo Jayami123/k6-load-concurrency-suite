@@ -1,0 +1,11 @@
+{
+  "rate": 1,
+  "durationSec": 10,
+  "maxLatencyMs": 2000,
+  "baseUrl": "http://127.0.0.1:3000",
+  "eventTypeId": 1,
+  "eventTypeSlug": "30min",
+  "host": "pro",
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-cal-load-007",
+  "windowDays": 28
+}
