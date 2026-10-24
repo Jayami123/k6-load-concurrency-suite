@@ -11,7 +11,9 @@ export function classifyRefusal(status, type, message) {
   if (status === 400 && type === "not_allowed") {
     const m = String(message || "");
     if (/Updating Status from ".*" to ".*" is not allowed/.test(m)) return "ghost"; // F-M2 / F-M5 mechanism
-    if (/Not enough stock|Insufficient inventory/i.test(m)) return "clean"; // loser at line item or at complete
+    // loser at the line item ("Not enough stock available ...") or at complete (medusa confirm-inventory step)
+    if (/Not enough stock|Insufficient inventory|does not have the required inventory/i.test(m))
+      return "clean";
   }
   return "other"; // anything else (including every 5xx)
 }
