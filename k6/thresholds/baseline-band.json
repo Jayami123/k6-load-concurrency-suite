@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "metric": "steady baseline band",
+  "unit": "ms for latencies; per second for rates; fraction for error rate",
+  "release": "p6-phase4a",
+  "windowSec": 10,
+  "minWindowRequests": 40,
+  "products": {
+    "P6-CAL-LOAD-003": {
+      "caseId": "P6-CAL-LOAD-003",
+      "profile": "steady",
+      "rate": 4,
+      "durationSec": 120,
+      "n": 3,
+      "runIds": ["40242002499", "40242007346", "40242009224"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40242009224": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40242007346": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40242002499": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": [],
+      "metrics": {
+        "p50Ms": {
+          "min": 42.3840315,
+          "median": 65.209431,
+          "max": 69.763857,
+          "n": 3
+        },
+        "p95Ms": {
+          "min": 54.145180649999986,
+          "median": 79.7687208,
+          "max": 82.59452764999999,
+          "n": 3
+        },
+        "p99Ms": {
+          "min": 80.03916252999997,
+          "median": 138.66249824999957,
+          "max": 143.5311489100001,
+          "n": 3
+        },
+        "errorRate": {
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "n": 3
+        },
+        "requestsPerSec": {
+          "min": 8.016083942254134,
+          "median": 8.016216086449951,
+          "max": 8.024142131350958,
+          "n": 3
+        }
+      },
+      "windowP95": {
+        "min": 49.804377,
+        "median": 80.936557,
+        "max": 234.342816,
+        "n": 33,
+        "windows": 33
+      }
+    },
+    "P6-MED-LOAD-002": {
+      "caseId": "P6-MED-LOAD-002",
+      "profile": "steady",
+      "rate": 0.7,
+      "durationSec": 120,
+      "n": 3,
+      "runIds": ["40242002499", "40242007346", "40242009224"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40242009224": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40242007346": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40242002499": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": [],
+      "metrics": {
+        "p50Ms": {
+          "min": 60.600829,
+          "median": 61.195626,
+          "max": 68.309355,
+          "n": 3
+        },
+        "p95Ms": {
+          "min": 214.45864339999997,
+          "median": 220.63347279999996,
+          "max": 220.7828778,
+          "n": 3
+        },
+        "p99Ms": {
+          "min": 251.07305456000026,
+          "median": 258.81622900000013,
+          "max": 267.7810113200001,
+          "n": 3
+        },
+        "errorRate": {
+          "min": 0,
+          "median": 0,
+          "max": 0,
+          "n": 3
+        },
+        "requestsPerSec": {
+          "min": 4.2360237070249855,
+          "median": 4.236332061811041,
+          "max": 4.236621110099834,
+          "n": 3
+        }
+      },
+      "windowP95": {
+        "min": 217.56953,
+        "median": 228.650434,
+        "max": 314.197084,
+        "n": 15,
+        "windows": 15
+      }
+    }
+  }
+}
