@@ -161,7 +161,13 @@ export function smokeP95For(b: SmokeBaseline, caseId: SmokeCaseId): number {
   return b.cases[caseId].medianP95Ms;
 }
 
-/** The p95 reference of the Cal knee (plan task 2 §6.5): read from the shipped file; throws when it cannot be read or parsed. */
-export function readSmokeReference(file = "k6/thresholds/smoke-p95.json"): number {
-  return smokeP95For(parseSmokeBaseline(JSON.parse(readFileSync(file, "utf8"))), "P6-CAL-LOAD-001");
+/**
+ * The p95 reference of a knee (plan task 2 §6.5, task 3 §6.5): read from the shipped file; throws when it cannot be read or parsed.
+ * The Cal knee reads the Cal smoke; the Medusa knee reads the Medusa smoke.
+ */
+export function readSmokeReference(
+  caseId: SmokeCaseId = "P6-CAL-LOAD-001",
+  file = "k6/thresholds/smoke-p95.json",
+): number {
+  return smokeP95For(parseSmokeBaseline(JSON.parse(readFileSync(file, "utf8"))), caseId);
 }

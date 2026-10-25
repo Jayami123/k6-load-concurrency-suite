@@ -117,7 +117,7 @@ async function measureStormMinComplete(
 export async function medusaSetupWith(
   ctx: LoadContext,
   deps: MedusaDeps,
-  stockFor: (planned: number) => number = (planned) => planned + 20,
+  stockFor: (planned: number, ctx: LoadContext) => number = (planned) => planned + 20,
   stormProbeCarts?: number,
 ): Promise<StageResult> {
   loadRepoEnv();
@@ -125,7 +125,7 @@ export async function medusaSetupWith(
     const dataPrefix = caseDataPrefix(ctx.runPrefix, ctx.caseDef.id);
     const { rate, durationSec, maxLatencyMs } = ctx.profile;
     const planned = Math.round(rate * durationSec);
-    const s = stockFor(planned);
+    const s = stockFor(planned, ctx);
     const token = await deps.seed();
     ctx.secrets.MEDUSA_ADMIN_TOKEN = token;
     const catalog = await deps.catalog(token);
@@ -158,6 +158,7 @@ export async function medusaSetupWith(
     ctx.config.audit = {
       product: "medusa",
       prefixLike: likeLiteralPrefix(dataPrefix),
+      prefix: dataPrefix,
       variantId: stocked.variantId,
       inventoryItemId: stocked.inventoryItemId,
       locationId: catalog.locationId,
@@ -242,9 +243,12 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
   return reasons.length === 0 ? { ok: true, reasons: [] } : { ok: false, kind: "TEST BUG", reasons };
 }
 
-/** The stock rule is the case's: P6-MED-LOAD-001 keeps planned + 20 (Task 7); P6-MED-LOAD-002 sells out (Task 8). */
+/**
+ * The stock rule is the case's: P6-MED-LOAD-001 keeps planned + 20 (Task 7); P6-MED-LOAD-002 sells out (Task 8); a knee case
+ * sizes it from its plan through the context (plan task 3 §6.4).
+ */
 export const makeMedusaSetup =
-  (opts: { stockFor: (planned: number) => number; stormProbeCarts?: number }) =>
+  (opts: { stockFor: (planned: number, ctx: LoadContext) => number; stormProbeCarts?: number }) =>
   (ctx: LoadContext): Promise<StageResult> =>
     medusaSetupWith(ctx, defaultDeps, opts.stockFor, opts.stormProbeCarts);
 

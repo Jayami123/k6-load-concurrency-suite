@@ -104,7 +104,20 @@ export function kneeDefaultsFor(profileName: string): KneePlanSpec {
     : { startRate: 2, stepRate: 2, holdSec: 12, rampSec: 2, maxSteps: 3 };
 }
 
-/** The knee plan of a run: the dispatch inputs (ctx.env) over the profile's defaults. Setup and runs() both call it. */
-export function kneePlanFor(ctx: LoadContext): KneePlanSpec {
-  return kneePlanFromInputs(ctx.env, kneeDefaultsFor(ctx.profileName));
+/** The Medusa knee's defaults per profile (plan task 3 §6.4): 0.5 per second, +0.5 per step; `full` 8 steps of 30 s, `pr` 3 steps of 10 s. */
+export function medKneeDefaultsFor(profileName: string): KneePlanSpec {
+  return profileName === "full"
+    ? { startRate: 0.5, stepRate: 0.5, holdSec: 30, rampSec: 2, maxSteps: 8 }
+    : { startRate: 0.5, stepRate: 0.5, holdSec: 10, rampSec: 2, maxSteps: 3 };
+}
+
+/**
+ * The knee plan of a run: the dispatch inputs (ctx.env) over the product's defaults for the profile. Setup and runs() both call it.
+ * Cal uses kneeDefaultsFor (the default); Medusa passes medKneeDefaultsFor.
+ */
+export function kneePlanFor(
+  ctx: LoadContext,
+  defaultsFor: (profileName: string) => KneePlanSpec = kneeDefaultsFor,
+): KneePlanSpec {
+  return kneePlanFromInputs(ctx.env, defaultsFor(ctx.profileName));
 }

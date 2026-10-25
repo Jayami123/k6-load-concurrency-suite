@@ -52,6 +52,7 @@ export type AuditStageConfig =
   | {
       product: "medusa";
       prefixLike: string;
+      prefix?: string;
       variantId: string;
       inventoryItemId: string;
       locationId: string;

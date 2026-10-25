@@ -1,0 +1,17 @@
+{
+  "startRate": 0.5,
+  "stepRate": 0.5,
+  "holdSec": 30,
+  "rampSec": 2,
+  "maxSteps": 8,
+  "smokeP95Ms": 171.6001092,
+  "pre": 40,
+  "max": 120,
+  "delayAbortEvalSec": 10,
+  "baseUrl": "http://127.0.0.1:9000",
+  "publishableKey": "pk_placeholder",
+  "regionId": "reg_placeholder",
+  "salesChannelId": "sc_placeholder",
+  "variantId": "variant_placeholder",
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-med-load-004"
+}
