@@ -95,11 +95,13 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
         detail: r.detail,
       }));
       const stopWindow = stop.stopStep === null ? undefined : windows[stop.stopStep];
-      const stopPostTrimSamples = stopWindow
-        ? (telemetry.samples ?? []).filter(
-            (x) => x.t >= stopWindow.fromMs + 2000 && x.t <= stopWindow.toMs - 2000,
-          ).length
-        : undefined;
+      // Undefined when no telemetry samples were recorded: zero means recorded and none fall in the trimmed window.
+      const stopPostTrimSamples =
+        stopWindow && telemetry.samples
+          ? telemetry.samples.filter(
+              (x) => x.t >= stopWindow.fromMs + 2000 && x.t <= stopWindow.toMs - 2000,
+            ).length
+          : undefined;
       const report = buildKneeReport({
         caseId: ctx.caseDef.id,
         runId: ctx.runId,
