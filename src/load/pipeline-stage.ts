@@ -10,6 +10,9 @@ import { closePool, createReadOnlyPool, selectRows } from "../oracles/pg.ts";
 import { waitForDrainPool } from "./reconcile/documenso.ts";
 import { expectedEmailsOf, readCompletionEmails, type RecipientRow } from "./pipeline-email.ts";
 import { judgeWebhookRetry, type RetryInput } from "./webhook-retry.ts";
+import { classifyIntents, type IntentLog } from "./knee/intents.ts";
+import { docRowsByIntent } from "./knee/doc-intents.ts";
+import { intentCountersFor } from "./reconcile/index.ts";
 import {
   joinStages,
   STAGES,
@@ -24,7 +27,7 @@ export const CONTRACT_MS = 30_000;
 
 /** The run's documents: the envelope, its document id, completion time and last signature (from the recipient rows). */
 export const PIPELINE_DOCUMENTS_SQL = `
-SELECT e.id AS "envelopeId", e."secondaryId" AS "secondaryId",
+SELECT e.id AS "envelopeId", e."secondaryId" AS "secondaryId", e.title AS "title",
   (EXTRACT(EPOCH FROM e."completedAt") * 1000)::bigint::text AS "completedAtMs",
   (SELECT (EXTRACT(EPOCH FROM MAX(r."signedAt")) * 1000)::bigint::text FROM "Recipient" r WHERE r."envelopeId" = e.id) AS "lastSignedMs"
 FROM "Envelope" e
@@ -80,10 +83,15 @@ export async function readPipelineInput(
   pool: pg.Pool,
   run: RunContext,
   prefixLike: string,
-): Promise<{ input: StageInput; expectedEmails: Map<string, number> }> {
+): Promise<{
+  input: StageInput;
+  expectedEmails: Map<string, number>;
+  titles: Array<{ title: string; completed: boolean }>;
+}> {
   const docs = await selectRows<{
     envelopeId: string;
     secondaryId: string;
+    title: string;
     completedAtMs: string | null;
     lastSignedMs: string | null;
   }>(pool, PIPELINE_DOCUMENTS_SQL, [prefixLike]);
@@ -160,7 +168,8 @@ export async function readPipelineInput(
     })),
     emails,
   };
-  return { input, expectedEmails: expectedEmailsOf(recipients) };
+  const titles = docs.map((d) => ({ title: d.title, completed: d.completedAtMs !== null }));
+  return { input, expectedEmails: expectedEmailsOf(recipients), titles };
 }
 
 export interface PipelineVerdict {
@@ -233,13 +242,104 @@ export function evaluatePipeline(
   };
 }
 
+/** A knee run's intents for the unfinished documents (plan task 4 §6.4): every envelope of the run, its title and whether it completed. */
+export interface KneeDocuments {
+  prefix: string;
+  started: number;
+  interrupted: number;
+  log: IntentLog;
+  rows: Array<{ title: string; completed: boolean }>;
+}
+
+/**
+ * Pure. Judges the unfinished envelopes of a knee run per intent (plan task 4 §6.4 step 2): an envelope of no started intent is a
+ * ghost; two envelopes of one intent a duplicate; an unfinished envelope of an `ok` or a `fail` intent a PRODUCT BUG; only an
+ * indeterminate intent may leave one, and at most `interrupted` of those (more is a TEST BUG).
+ */
+export function judgeUnfinished(k: KneeDocuments): { reasons: string[]; indeterminate: number } {
+  const { rowsByIntent, unfinishedByIntent, ghostRows } = docRowsByIntent(k.rows, k.prefix);
+  const reasons: string[] = [];
+  let ghosts = ghostRows;
+  for (const [intent, rows] of rowsByIntent) {
+    if (intent < 0 || intent >= k.started) ghosts += rows;
+    else if (rows > 1)
+      reasons.push(`PRODUCT BUG: intent ${intent} has ${rows} envelopes (duplicate document)`);
+  }
+  if (ghosts > 0)
+    reasons.push(`PRODUCT BUG: ${ghosts} envelope(s) map to no started intent (ghost document)`);
+  const classes = classifyIntents(k.log, k.started);
+  const ok = new Set(classes.ok);
+  const fail = new Set(classes.fail);
+  let indeterminate = 0;
+  for (const [intent, unfinished] of unfinishedByIntent) {
+    if (intent < 0 || intent >= k.started) continue; // counted as ghosts above
+    if (ok.has(intent))
+      reasons.push(
+        `PRODUCT BUG: intent ${intent} was told ok and has ${unfinished} unfinished envelope(s)`,
+      );
+    else if (fail.has(intent))
+      reasons.push(
+        `PRODUCT BUG: intent ${intent} was told fail and has ${unfinished} unfinished envelope(s)`,
+      );
+    else indeterminate += unfinished;
+  }
+  if (indeterminate > k.interrupted)
+    reasons.push(
+      `TEST BUG: ${indeterminate} unfinished envelope(s) of indeterminate intents, more than the ${k.interrupted} interrupted`,
+    );
+  return { reasons, indeterminate };
+}
+
+/**
+ * Pure. The knee's judgement: the unfinished documents are taken out of the stage input and judged per intent; the completed
+ * documents are judged as in any run (evaluatePipeline). Without `knee` this is evaluatePipeline.
+ */
+export function evaluatePipelineKnee(
+  input: StageInput,
+  drain: { drained: boolean; drainMs: number },
+  knee: KneeDocuments | undefined,
+  contractMs = CONTRACT_MS,
+  expectedEmails?: Map<string, number>,
+): PipelineVerdict {
+  if (!knee) return evaluatePipeline(input, drain, contractMs, expectedEmails);
+  const completed = input.documents.filter((d) => d.completedAtMs !== null);
+  const ids = new Set(completed.map((d) => d.envelopeId));
+  const completedEmails = expectedEmails
+    ? new Map([...expectedEmails].filter(([envelopeId]) => ids.has(envelopeId)))
+    : undefined;
+  const verdict = evaluatePipeline(
+    { ...input, documents: completed },
+    drain,
+    contractMs,
+    completedEmails,
+  );
+  const judged = judgeUnfinished(knee);
+  const reasons = [...verdict.reasons, ...judged.reasons];
+  return {
+    ok: reasons.length === 0,
+    kind:
+      reasons.length === 0
+        ? undefined
+        : reasons.some((r) => r.startsWith("PRODUCT BUG"))
+          ? "PRODUCT BUG"
+          : "TEST BUG",
+    reasons,
+    summary: verdict.summary,
+    knownBugs: verdict.knownBugs,
+  };
+}
+
 export interface PipelineDeps {
   openPool: () => pg.Pool;
   readInput: (
     pool: pg.Pool,
     run: RunContext,
     prefixLike: string,
-  ) => Promise<{ input: StageInput; expectedEmails: Map<string, number> }>;
+  ) => Promise<{
+    input: StageInput;
+    expectedEmails: Map<string, number>;
+    titles?: Array<{ title: string; completed: boolean }>;
+  }>;
   drain: (pool: pg.Pool, prefixLike: string) => Promise<{ drained: boolean; drainMs: number }>;
 }
 
@@ -265,8 +365,23 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
     const pool = deps.openPool();
     try {
       const drain = await deps.drain(pool, prefixLike);
-      const { input, expectedEmails } = await deps.readInput(pool, run, prefixLike);
-      const verdict = evaluatePipeline(input, drain, CONTRACT_MS, expectedEmails);
+      const { input, expectedEmails, titles } = await deps.readInput(pool, run, prefixLike);
+      // A knee run judges the unfinished documents per intent (plan task 4 §6.4); a Phase 3 run is judged as before.
+      const isKnee = ctx.caseDef?.runs?.(ctx)?.some((r) => r.knee) === true;
+      const main = isKnee ? (ctx.k6.find((k) => k.label === "main") ?? ctx.k6[0]) : undefined;
+      const summary = main ? JSON.parse(readFileSync(main.summaryPath, "utf8")) : undefined;
+      const counters = isKnee ? await intentCountersFor(ctx, summary) : undefined;
+      const knee =
+        counters && titles
+          ? {
+              prefix: prefixLike.replace(/%$/, ""),
+              started: counters.started,
+              interrupted: counters.interrupted,
+              log: counters.log,
+              rows: titles,
+            }
+          : undefined;
+      const verdict = evaluatePipelineKnee(input, drain, knee, CONTRACT_MS, expectedEmails);
       const doc = {
         schema: 1,
         contractMs: CONTRACT_MS,
