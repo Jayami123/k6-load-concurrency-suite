@@ -161,7 +161,7 @@ jobs:
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/evidence" --redact --no-banner --exit-code 1
+          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/evidence" --config .gitleaks.toml --redact --no-banner --exit-code 1
 
       - name: Build one zip per run and the checksum file
         timeout-minutes: 10
