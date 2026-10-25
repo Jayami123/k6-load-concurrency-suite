@@ -139,4 +139,16 @@ describe("smoke baseline", () => {
     (b.cases["P6-CAL-LOAD-001"] as unknown as { medianP95Ms: unknown }).medianP95Ms = "Infinity";
     assert.throws(() => parseSmokeBaseline(b), /finite number/);
   });
+
+  it("two runs with the same run id are rejected, and no baseline is built", () => {
+    const dup = [
+      run("P6-CAL-LOAD-001", "1001", 100),
+      run("P6-CAL-LOAD-001", "1001", 200),
+      run("P6-CAL-LOAD-001", "1003", 300),
+    ];
+    assert.throws(
+      () => buildSmokeBaseline(input({ "P6-CAL-LOAD-001": dup })),
+      /duplicate GitHub Actions run id\(s\): 1001/,
+    );
+  });
 });

@@ -76,8 +76,11 @@ export function buildSmokeBaseline(input: {
         `${caseId}: ${scored.length} usable run(s), need at least 3. Excluded: ${reasons || "none"}`,
       );
     }
-    const first = scored[0]!.r;
     const ids = scored.map((s) => runIdOf(s.r.meta)!);
+    const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+    if (duplicates.length > 0)
+      throw new Error(`${caseId}: duplicate GitHub Actions run id(s): ${duplicates.join(", ")}`);
+    const first = scored[0]!.r;
     cases[caseId] = {
       product: SMOKE_CASES[caseId],
       profile: "full",

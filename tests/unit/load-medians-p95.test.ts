@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { pickMetric, runIdOf, type LoadRunRecord } from "../../src/load/medians.ts";
+import {
+  pickMetric,
+  runIdOf,
+  selectPublishable,
+  type LoadRunRecord,
+} from "../../src/load/medians.ts";
 import type { RunMeta } from "../../src/load/types.ts";
 
 function record(over: { runUrl?: string; p95Ms?: number } = {}): LoadRunRecord {
@@ -37,5 +42,35 @@ describe("p95 medians", () => {
     assert.equal(pickMetric("p95", record({ p95Ms: Number.POSITIVE_INFINITY })), undefined);
     const nullP95 = { verdict: { k6: [{ p95Ms: null }] }, meta: {} } as unknown as LoadRunRecord;
     assert.equal(pickMetric("p95", nullP95), undefined);
+  });
+
+  it("selectPublishable leaves out a publishable run that has no GitHub Actions run id", () => {
+    const publishable = (runUrl?: string): LoadRunRecord =>
+      ({
+        verdict: { runId: "x", outcome: "PASS", validity: { verdict: "VALID" } },
+        meta: {
+          caseId: "P6-CAL-LOAD-001",
+          runId: "x",
+          environment: {
+            kind: "github-actions",
+            event: "workflow_dispatch",
+            ref: "main",
+            runUrl,
+            runnerImage: "ubuntu24",
+            imageVersion: "20261023.334.3",
+            nproc: 4,
+          },
+          software: { products: { cal: "x" } },
+        },
+      }) as unknown as LoadRunRecord;
+    const { used, excluded } = selectPublishable([
+      publishable("https://github.com/o/r/actions/runs/1001"),
+      publishable(undefined),
+    ]);
+    assert.equal(used.length, 1);
+    assert.deepEqual(
+      excluded.map((e) => e.why),
+      [["no GitHub Actions run id"]],
+    );
   });
 });

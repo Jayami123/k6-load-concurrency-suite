@@ -22,6 +22,7 @@ export function selectPublishable(runs: LoadRunRecord[]): {
   const excluded: Array<{ runId: string; why: string[] }> = [];
   for (const run of runs) {
     const why = [...isPublishable(run.meta).reasons];
+    if (why.length === 0 && runIdOf(run.meta) === undefined) why.push("no GitHub Actions run id");
     if (run.verdict.outcome !== "PASS") why.push(`outcome ${run.verdict.outcome}`);
     if (run.verdict.validity?.verdict !== "VALID") why.push("validity INVALID or missing");
     if (why.length === 0) used.push(run);
