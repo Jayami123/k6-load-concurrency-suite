@@ -9,6 +9,7 @@ import { clockHooks } from "../lib/markers.js";
 // Defaults equal k6/cases/med-load-002.example.json (see k6/cases/med-load-001.js for why).
 const cfg = {
   rate: 1,
+  timeUnitSec: 1,
   durationSec: 10,
   maxLatencyMs: 4000,
   baseUrl: "http://127.0.0.1:9000",
@@ -29,6 +30,7 @@ export const options = standardOptions({
       rate: cfg.rate,
       durationSec: cfg.durationSec,
       maxLatencyMs: cfg.maxLatencyMs,
+      timeUnitSec: cfg.timeUnitSec,
       exec: "journey",
       tags,
     }),

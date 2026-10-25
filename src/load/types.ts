@@ -1,5 +1,6 @@
 export type LoadProduct = "stub" | "medusa" | "cal" | "documenso";
-export type LoadProfileName = "pr" | "full";
+/** `steady` is the baseline at half the knee (plan Phase 4 task 5): only the steady cases define it. */
+export type LoadProfileName = "pr" | "full" | "steady";
 
 /** One workload size. `rate` is iterations per second (timeUnit 1s). Sizes come from the case's probe (D1). */
 export interface LoadProfile {
@@ -7,10 +8,15 @@ export interface LoadProfile {
   durationSec: number;
   /** Slowest single iteration expected, in ms: input of the Little's-law sizing (k6/lib/pure/sizing.js). */
   maxLatencyMs: number;
+  /** The time unit of the rate in seconds (default 1). 10 lets a rate of 0.5 per second run as 5 per 10 s (plan task 5 §3.5). */
+  timeUnitSec?: number;
 }
 
 /** Labels a case or run can carry (plan task 1 §6.2). The knee label is set only by the knee cases. */
-export type LoadLabel = "functional load, not capacity" | "knee range, environment-bound";
+export type LoadLabel =
+  | "functional load, not capacity"
+  | "knee range, environment-bound"
+  | "steady baseline, environment-bound";
 
 /**
  * The held-step plan of a knee run (plan task 1 §6.2). Rates are iterations per second with a resolution of 0.1 (plan §3.9 R1).
@@ -60,7 +66,7 @@ export interface LoadCase {
   title: string;
   product: LoadProduct;
   label: LoadLabel; // D1, P6-RULE-003: printed in verdict.json and the job summary
-  profiles: Record<LoadProfileName, LoadProfile>;
+  profiles: Record<"pr" | "full", LoadProfile> & { steady?: LoadProfile };
   runs: (ctx: LoadContext) => K6RunSpec[]; // evaluated after setup, so ids made in setup can go into env
   /** Telemetry for this case (Task 5): one sampler and one marker per k6 run, one chart per run. */
   telemetry?: { product: LoadProduct };

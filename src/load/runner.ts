@@ -172,7 +172,7 @@ export async function runLoad(caseDef: LoadCase, opts: RunOptions): Promise<Load
   const outDir = path.join(opts.outRoot ?? LOAD_ROOT, caseDef.id, runId);
   mkdirSync(outDir, { recursive: true });
   const startedAt = new Date().toISOString();
-  const profile = caseDef.profiles[opts.profile];
+  const profile = caseDef.profiles[opts.profile]!; // the CLI checks the profile exists before it calls runLoad
   const ctx: LoadContext = {
     caseDef,
     profileName: opts.profile,

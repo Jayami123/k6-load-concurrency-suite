@@ -655,6 +655,33 @@ export const CAL_LOAD_009: LoadCase = {
  * P6-CAL-LOAD-005: the Cal booking knee (plan task 2 §6.5). Held ramping-arrival-rate steps; the knee is the first saturated resource,
  * and the per-intent audit reconciles the bookings. The plan comes from the dispatch inputs; setup reads the slot supply once.
  */
+/** The steady slot count of a Cal steady run: 1.05 x rate x duration, one slot per iteration (plan Phase 4 task 5 §6.3). */
+function calSteadySlots(ctx: LoadContext): number {
+  return Math.ceil(1.05 * ctx.profile.rate * ctx.profile.durationSec);
+}
+
+/**
+ * P6-CAL-LOAD-003: the Cal steady baseline at half the knee's lower bound (plan Phase 4 task 5). The steady profile is derived from
+ * k6/thresholds/knee-bounds.json by withSteadyProfile; pr and full keep a fixed rate for a smoke of the machinery.
+ */
+export const CAL_LOAD_003: LoadCase = {
+  id: "P6-CAL-LOAD-003",
+  telemetry: { product: "cal" },
+  title: "Cal booking journey steady baseline at half the knee",
+  product: "cal",
+  label: "steady baseline, environment-bound",
+  profiles: {
+    pr: { rate: 3, durationSec: 30, maxLatencyMs: 2000 },
+    full: { rate: 3, durationSec: 120, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-003.js", env: {} }],
+  stages: {
+    setup: (ctx) => calSetup({ slots: { count: calSteadySlots(ctx) } })(ctx),
+    reconcile: reconcileStage,
+    cleanup: calCleanup,
+  },
+};
+
 export const CAL_LOAD_005: LoadCase = {
   id: "P6-CAL-LOAD-005",
   telemetry: { product: "cal" },
@@ -1002,6 +1029,7 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
+  [CAL_LOAD_003.id]: CAL_LOAD_003,
   [DOC_LOAD_005.id]: DOC_LOAD_005,
   [MED_LOAD_004.id]: MED_LOAD_004,
   [MED_LOAD_006.id]: MED_LOAD_006,

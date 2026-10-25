@@ -25,6 +25,24 @@ describe("k6 lib options", () => {
     );
   });
 
+  it("a fractional rate is written over a longer time unit", () => {
+    const s = openModelScenario({
+      rate: 0.5,
+      durationSec: 120,
+      maxLatencyMs: 4000,
+      timeUnitSec: 10,
+    });
+    assert.equal(s.rate, 5);
+    assert.equal(s.timeUnit, "10s");
+    assert.equal(s.preAllocatedVUs, 3);
+  });
+
+  it("the default time unit leaves the open scenario unchanged", () => {
+    const s = openModelScenario({ rate: 40, durationSec: 30, maxLatencyMs: 1600 });
+    assert.equal(s.rate, 40);
+    assert.equal(s.timeUnit, "1s");
+  });
+
   it("ramping scenario sizes the pool for the peak rate", () => {
     const s = rampingOpenScenario({
       startRate: 10,
@@ -64,5 +82,16 @@ describe("k6 lib options", () => {
       () => assertCorrectnessThresholds({ http_req_duration: ["p(95)<500"] }),
       /latency\/throughput gate/,
     );
+  });
+});
+
+describe("open model rate", () => {
+  it("throws on a rate that is not a whole number of starts per unit", () => {
+    assert.throws(
+      () => openModelScenario({ rate: 0.5, durationSec: 30 }),
+      /rate 0.5 over 1s is not a whole number of starts/,
+    );
+    assert.throws(() => openModelScenario({ rate: 0.2, durationSec: 30, timeUnitSec: 1 }));
+    assert.doesNotThrow(() => openModelScenario({ rate: 0.7, durationSec: 30, timeUnitSec: 10 }));
   });
 });

@@ -16,7 +16,22 @@ export const SYSTEM_TAGS = [
 ];
 
 /**
- * @param {{ rate: number, durationSec: number, maxLatencyMs?: number, exec?: string, startTimeSec?: number, tags?: Record<string, string>, preAllocated?: number, maxVus?: number }} o
+ * k6 takes whole numbers per time unit. Rounding would change the arrival rate silently (0.5 per second would become 1), so a rate
+ * that is not a whole number of starts per unit throws.
+ * @param {number} rate
+ * @param {number} timeUnitSec
+ * @returns {number}
+ */
+function wholeStartsPerUnit(rate, timeUnitSec) {
+  const perUnit = rate * timeUnitSec;
+  const whole = Math.round(perUnit);
+  if (!(timeUnitSec > 0) || whole < 1 || Math.abs(perUnit - whole) > 1e-6)
+    throw new Error(`rate ${rate} over ${timeUnitSec}s is not a whole number of starts`);
+  return whole;
+}
+
+/**
+ * @param {{ rate: number, durationSec: number, maxLatencyMs?: number, exec?: string, startTimeSec?: number, tags?: Record<string, string>, preAllocated?: number, maxVus?: number, timeUnitSec?: number }} o
  * @returns {Record<string, unknown>}
  */
 export function openModelScenario({
@@ -28,12 +43,14 @@ export function openModelScenario({
   tags,
   preAllocated,
   maxVus,
+  timeUnitSec = 1,
 }) {
+  // A fractional rate (0.5 per second) is written over a longer unit (5 per 10 s).
   const pre = preAllocated ?? preAllocatedVUs({ rate, maxLatencyMs: maxLatencyMs ?? 1000 });
   return {
     executor: "constant-arrival-rate",
-    rate,
-    timeUnit: "1s",
+    rate: wholeStartsPerUnit(rate, timeUnitSec),
+    timeUnit: `${timeUnitSec}s`,
     duration: `${durationSec}s`,
     preAllocatedVUs: pre,
     maxVUs: maxVus ?? maxVUs(pre),
