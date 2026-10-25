@@ -187,6 +187,10 @@ export function formatKneeTable(r: KneeReport): string {
   const lines: string[] = [];
   lines.push(`### Knee report ${r.caseId} (${r.runId}): ${r.verdict}`);
   if (r.limitation) lines.push(`Limitation: ${r.limitation}.`);
+  if (r.stop?.lowSampleStop)
+    lines.push(
+      `Low-sample stop: the stop (${r.stop.reasons.join(", ")}) rests on ${r.stop.requests ?? "?"} request(s) with ${r.stop.errors ?? "?"} error(s), fewer than the minimum request count, so it is flagged.`,
+    );
   if (r.range) {
     const reasons = r.stop ? r.stop.reasons.join(", ") : "none";
     lines.push(
