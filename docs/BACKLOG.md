@@ -114,3 +114,13 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   password and CSRF value back in its body (`sValidator` without a hook, `email-password.ts` L66; unchanged at upstream
   `8707e33c`). The echo goes only to the sender; the risk is logs that store response bodies. No test, no public issue; the
   Task 9 plan (Appendix F) holds a private-advisory draft for the owner. **Done when** the owner decides whether to send it.
+
+## Phase 3 carry-over (2026-10-25 closeout)
+
+- **P6-MED-LOAD-006 storm TEST BUG.** The first attempt in run 40178773022 found 3 of 30 first attempts timing out, below the
+  50% the storm judge needs. Done when the storm reaches its threshold reliably, in a PR of its own, with no judge weakened.
+- **P6-OBS-DOC-006 (suspected).** Documenso reset-password with an unknown token returns HTTP 500, probably the same root cause
+  as `P6-OBS-DOC-001`. Done when the root cause is confirmed or ruled out and a draft exists.
+- **cal-smoke step-cap total.** The step caps of `cal-smoke` sum to more than its job timeout. Done when a follow-up PR fixes it.
+- **Upstream drafts.** Drafts for the Cal link-usage mismatch and the Documenso double seal are in `docs/upstream/`. Done when the
+  owner files them or decides not to.
