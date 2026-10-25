@@ -1,24 +1,24 @@
-# P6 Phase 4 Task 1: breakpoint method and knee report (`P6-RULE-006`) (plan only)
+# P6 Phase 4 Task 1: breakpoint method and knee report (`P6-X-LOAD-021`, proves `P6-RULE-006`) (plan only)
 
 This is the plan a weaker model builds from. It changes nothing in the repo. Structure follows
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md). Scope source: roadmap
 [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) "Task 1", D2 (stop rule), D3, D11, D13. Rules:
 [docs/agent-rules.md](../agent-rules.md).
 
-**Paths.** Every path is a path on `main` after the Phase 3 stack has merged. A path that exists only on the Task 10 branch
-(`origin/feat/2026-10-24-p6-retry-storms`) is marked "(Phase 3 Task 10, merging)". This task needs nothing from Task 10 and does not
-need the Task 11 medians (it can be built first); it reads `k6/thresholds/smoke-p95.json` only through an injected number, so the
-self-test uses a constant.
+**Paths.** Every path is a path on `main` (`origin/main` at `2db9726` or later). The Phase 3 stack is merged: Task 10 is PR #62
+(`63c4d87`), the product LOAD telemetry and the median tooling are PR #64 (`0b07594`), the smoke baseline is PR #65 (`6e307cf`). This task reads
+`k6/thresholds/smoke-p95.json` only through an injected number, so the self-test uses a constant; the product knee plans (Tasks 2 to 4) read it through
+`parseSmokeBaseline` and `smokeP95For` of `src/load/smoke-baseline.ts` (on main, PR #65, `6e307cf`).
 
 ## 1. Header
 
-- **Task.** Phase 4 Task 1. Case: `P6-RULE-006` (method and report format, self-tested on the stub; the LOAD case id is `P6-RULE-006`).
+- **Task.** Phase 4 Task 1. Case: `P6-X-LOAD-021` (the self-test of the method and the report format, run on the stub). It proves rule `P6-RULE-006`; the rule id is the proof's name, the case id is a `P6-X-LOAD-nnn` id like every other self-test case (Q5, §13).
 - **Plan branch.** `plan/2026-10-25-p6-phase4a-plans` (no PR, never deleted).
 - **Build branch (pattern).** `feat/<build date>-p6-breakpoint-method`.
-- **Base.** `origin/main` after Phase 3 Tasks 3, 4, 5 and 6 (they are merged: `ba3ee19`).
+- **Base.** `origin/main` after PRE-1 (the `P6-MED-LOAD-006` storm fix; `docs/plans/2026-10-25-p6-phase4-pre1-med-load-006-storm-fix.md`); PRE-2 is independent of this task (it only touches `cal-smoke`). `2db9726` today.
 - **Harness pin.** Unchanged (`v0.2.15`). **Environment change.** None. The cgroup question of §3.8 is a finding, not a change.
-- **Unit tests.** B1 = count on `main` when the build starts. Measured on 2026-10-25: **790** on `main` (`ba3ee19`), 818 on the Task
-  10 head (`c48faff`), 841 expected after Task 11. This plan adds **+61** (§12; 49 of the first draft plus 12 from the product probes of §3.9); expected B1 + 61.
+- **Unit tests.** B1 = the count on `main` when the build starts, measured at build time (**865** at `2db9726` today: Node 24, `node --test tests/unit/*.test.ts`, 178 suites, all pass;
+  PRE-1 and PRE-2 add their own deltas first). This plan adds **+68** (§12); expected B1 + 68.
 - **Stop for owner review.** Yes (rule 10): a new CI job in `perf.yml`; the label type and `K6RunSpec` get additive fields. No harness
   pin and no shared runner change.
 
@@ -133,7 +133,7 @@ request, 136 bytes gzipped per request). `readPointsGz` (`src/load/chart/k6-poin
 string limit is `buffer.constants.MAX_STRING_LENGTH` = 536,870,888 characters on this VM, so the synchronous reader fails above about
 **160,000 requests per run**. A product knee of 20 minutes at a few hundred requests per second is 100,000 to 600,000 requests, and
 would make 14 to 80 MB of gzip. Therefore knee mode needs a **streaming** reader (§6.6), and keeps the points file only when it is at
-most 25 MB (the Actions artefact only; Phase 3 Task 11 already keeps `.json.gz` out of the permanent release).
+most 25 MB (the Actions artefact only; `.json.gz` is outside the release allowlist that PR #63 (`5db87d7`) shipped, `.github/workflows/evidence-release.yml` line 140, so points never reach the release).
 
 ### 3.5 The "non-conflict error" definition per product (roadmap probe item 2)
 
@@ -191,10 +191,13 @@ pool is **not** observable from outside (only its effect on `db.total` and `db.a
 
 1. **`max_connections` of the product databases** (for `db_conn`): needs one read-only `SELECT current_setting('max_connections')::int`
    in the sampler at start. UNPROBED: product stacks are probed in Tasks 2 to 4; the select goes through `assertSelectOnly`.
-2. **The database container source on the runner.** On this VM `stat -f -c %T /sys/fs/cgroup` is `tmpfs`, `detectCgroup` treats that as
-   cgroup v1 and the v1 paths do not exist, so the source errored on 31 of 31 samples (probed with a Cal stack, Phase 3 Task 11 plan
-   §3.4). On the GitHub runner (cgroup v2) it should work: **UNPROBED: confirm in the first CI dispatch**. If it also errors there,
-   `db_cpu` is silently absent and the report must say so (§6.4 handles a missing source).
+2. **The database container source: a VM-only failure, the runner reads it.** On the Claude Code cloud VM `stat -f -c %T /sys/fs/cgroup` is `tmpfs`, `detectCgroup`
+   treats that as cgroup v1 and the v1 paths do not exist, so the source errored on 31 of 31 samples (probed with a Cal stack on the VM, 2026-10-25). On the GitHub
+   runner it works: in the three zips of release `p6-phase3` (`p6-40177412186-evidence.zip`, `p6-40178773022-evidence.zip`, `p6-40180625279-evidence.zip`, release target
+   `7301cf1`, PR #67) all **30 of 30** `load-*/P6-*/*/telemetry-main.json` files report `sources.container` `present: true, errors: 0`, and the same holds for `proc`, `db`, `log`
+   and `probe` (counted on 2026-10-25 from the public assets). So the 31-of-31 failure is a VM effect, not a runner effect. A VM with a `tmpfs` cgroup file system still lists the
+   source as absent (§6.4 handles a missing source). The proposed extra `P6-X-LOAD-013` of the Phase 3 Task 11 plan (a `docker-stats` fallback) serves local VMs only and is
+   **not** a prerequisite of this task.
 3. **Stub self-test timing on the runner**: the job estimate of §9 is from the VM.
 4. **`delayAbortEval` against short holds**: probed at hold 8 to 10 s with 4 s; the product plans set hold and delay from their own rate
    (a step needs at least 100 samples before its p95 is read; Task 2 to 4 plans size it).
@@ -215,11 +218,12 @@ Each has its evidence in the plan named.
   step 1, Documenso step 2, the burn stub step 2: the step before or at the stop. The host CPU (`runner_cpu`, the 4-vCPU box shared by k6, the product and Postgres) needs a per-second
   source: `src/load/telemetry/host-stats.ts` reads `/proc/stat` deltas (`busyFraction`) and `MemAvailable`; the maximum seen in the probes was 46 to 69 % of the box, never the limit. The
   sampler also reads `SELECT current_setting('max_connections')::int` once at start (read-only, through `assertSelectOnly`) for `db_conn` (Medusa's is 100: 7 to 11 connections in use).
-- **R3. Every audit needs the iterations a stop interrupted.** When k6 aborts, in-flight iterations lose their answer although the work is committed: Cal database 318 vs client 311
-  and 334 vs 327 (k6: 336 started, 327 completed, 9 interrupted); Documenso 197 vs 192 completed with 27 to 36 unfinished documents; Medusa orders of interrupted checkouts are counted by
-  the audit as ghost orders (`F-M2`). The common part is here: the reconcile stage passes `interrupted = max(0, started - completed)` (the summary's `p6_step_started` total minus `iterations`)
-  to every audit, and each audit accepts `0 <= database - client <= interrupted` (Cal orders, Medusa orders, Documenso completed envelopes). A difference beyond the slack stays a `PRODUCT BUG
-(SUSPECTED)` with both numbers; below zero too. Medusa's `no-ghost-orders` counts under `F-M2` only the excess. The Documenso pipeline part is in Task 4.
+- **R3. Every audit reconciles per intent, not by count.** When k6 aborts, in-flight iterations lose their answer although the work is committed (Cal database 318 vs client 311 and
+  334 vs 327: k6 336 started, 327 completed, 9 interrupted; Documenso 197 vs 192 completed with 27 to 36 unfinished documents; Medusa orders of interrupted checkouts read as `F-M2` ghost
+  orders). A count slack (`0 <= database - client <= interrupted`) would let up to `interrupted` duplicate or ghost writes pass unseen, which is exactly the bug class this suite exists to
+  find. So the reconcile is **per intent** (Jepsen-style indeterminate operations): every started iteration is an intent, the client logs one outcome line per finished iteration, and the
+  audit compares rows to intents. Design in §6.8; this task owns it, Tasks 2 to 6 cite it. `interrupted = p6_step_started total - iterations` is still passed to the audit, but only as the
+  upper bound of the number of indeterminate intents, never as slack for a difference.
 - **R4. One parser for the dispatch inputs.** Tasks 2 to 4 take the plan from workflow inputs (`KNEE_START_RATE`, `KNEE_STEP_RATE`, `KNEE_HOLD_SEC`, `KNEE_RAMP_SEC`, `KNEE_MAX_STEPS`; empty
   string = default). `src/load/knee/plan-input.ts` (`kneePlanFromInputs(env, defaults)`) validates them once: rates 0.1 to 100 with one decimal, hold 10 to 120 s, ramp 0 to 10 s, steps 1 to 30,
   and a planned total of at most 5,000 iterations; otherwise `ENV: knee plan out of bounds` with the field named.
@@ -228,29 +232,30 @@ Each has its evidence in the plan named.
 
 Phase 3 Task 3 (`k6/lib/pure/{options,sizing,prefix,config,journey}.js`, `k6/lib/{config,http,markers}.js`, `src/load/{stub-server,runner,
 stages,k6-process,summary,types,cases}.ts`), Task 4 (`src/load/validity.ts`, `run-meta.ts`, `readiness.ts`), Task 5
-(`src/load/telemetry/*`, `src/load/chart/*`), Task 6 (`src/load/reconcile/*`). All present on `main`. From Task 11:
-`src/load/smoke-baseline.ts` (`parseSmokeBaseline`, `smokeP95For`) and `k6/thresholds/smoke-p95.json`; this task imports neither (the
-product knee plans will).
+(`src/load/telemetry/*`, `src/load/chart/*`), Task 6 (`src/load/reconcile/*`), Task 10 (on main, PR #62, `63c4d87`), the product LOAD telemetry hooks
+(PR #64, `0b07594`: every product `LoadCase` has `telemetry: { product }`, the k6 cases export `const { setup, teardown } = clockHooks(__ENV.MARKER_URL)` from `k6/lib/markers.js`).
+All present on `main`. The smoke reference (PR #65, `6e307cf`) is `k6/thresholds/smoke-p95.json` read through `parseSmokeBaseline` and `smokeP95For` (`src/load/smoke-baseline.ts`);
+this task imports neither (the product knee plans will).
 
 ## 5. Build-time recheck
 
-| #   | Check                       | Command                                                                                                                                                                                                                                               | Expected                                                                                    |
-| --- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 1   | Base                        | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                                                                                                         | contains Tasks 3 to 6 (`git log --oneline origin/main \| grep -c "P6-X-LOAD-00[1456]"` ≥ 4) |
-| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                                                   | exit 0; `# tests` = B1 (790 / 818 / 841); write B1 into the PR                              |
-| 3   | Names                       | `grep -n "export function rampingOpenScenario\|export function assertCorrectnessThresholds" k6/lib/pure/options.js; grep -n "export function judgeValidity" src/load/validity.ts; grep -n "export function readPointsGz" src/load/chart/k6-points.ts` | four hits; otherwise stop                                                                   |
-| 4   | Pinned k6                   | `k6 version`                                                                                                                                                                                                                                          | `k6 v2.3.0`                                                                                 |
-| 5   | The mechanism still works   | the scratch script of §3.1 against the slot stub                                                                                                                                                                                                      | exit 99, trip in the step above the stub limit, `{step:i}` submetrics in the summary        |
-| 6   | Burn stub deterministic     | `node src/load/stub-server.ts 0 0 0 1 5` (after step 5), then `curl` 20 times and time it                                                                                                                                                             | each answer takes ≥ 5 ms                                                                    |
-| 7   | Telemetry on the stub group | after step 7: `npm run load:knee-selftest -- --profile pr` and read `telemetry-knee.json`                                                                                                                                                             | `sources.proc.present` true, `samples[*].proc.cpuTicks` rising                              |
+| #   | Check                       | Command                                                                                                                                                                                                                                               | Expected                                                                                                         |
+| --- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1   | Base                        | `git fetch origin main && git log -1 --format=%h origin/main`                                                                                                                                                                                         | `2db9726` or a descendant that contains PRE-1 (`git log --oneline origin/main \| grep -c "P6-MED-LOAD-006"` ≥ 1) |
+| 2   | Baseline                    | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                                                   | exit 0; `# tests` = B1 (865 at `2db9726`; measure again, PRE-1 and PRE-2 move it); write B1 into the PR          |
+| 3   | Names                       | `grep -n "export function rampingOpenScenario\|export function assertCorrectnessThresholds" k6/lib/pure/options.js; grep -n "export function judgeValidity" src/load/validity.ts; grep -n "export function readPointsGz" src/load/chart/k6-points.ts` | four hits; otherwise stop                                                                                        |
+| 4   | Pinned k6                   | `k6 version`                                                                                                                                                                                                                                          | `k6 v2.3.0`                                                                                                      |
+| 5   | The mechanism still works   | the scratch script of §3.1 against the slot stub                                                                                                                                                                                                      | exit 99, trip in the step above the stub limit, `{step:i}` submetrics in the summary                             |
+| 6   | Burn stub deterministic     | `node src/load/stub-server.ts 0 0 0 1 5` (after step 5), then `curl` 20 times and time it                                                                                                                                                             | each answer takes ≥ 5 ms                                                                                         |
+| 7   | Telemetry on the stub group | after step 7: `npm run load:knee-selftest -- --profile pr` and read `telemetry-knee.json`                                                                                                                                                             | `sources.proc.present` true, `samples[*].proc.cpuTicks` rising                                                   |
 
 ## 6. Design
 
 ### 6.1 File tree
 
 ```text
-k6/lib/pure/knee.js                         NEW      buildKneePlan, stepAt, kneeVus, stopRuleThresholds, classifyResponse (pure, no k6 import)
-k6/lib/knee.js                              NEW      k6-facing: kneeOptions, beginKneeIteration, observeKneeResponse, kneeHooks
+k6/lib/pure/knee.js                         NEW      buildKneePlan, stepAt, kneeVus, stopRuleThresholds, classifyResponse, intentLine (pure, no k6 import)
+k6/lib/knee.js                              NEW      k6-facing: kneeOptions, beginKneeIteration, endKneeIteration (intent line), observeKneeResponses, kneeHooks (wraps clockHooks)
 k6/lib/http.js                              CHANGED  + observeResponses(fn): every request() passes its response to the observer
 k6/selftest/breakpoint-stub.js              NEW      the self-test script (standalone with k6 run)
 k6/selftest/breakpoint-stub.example.json    NEW      its example config
@@ -262,7 +267,9 @@ src/load/knee/stage.ts                      NEW      kneeStage (reconcile slot),
 src/load/knee/plan-input.ts                 NEW      kneePlanFromInputs (workflow inputs → KneePlanSpec, validated)
 src/load/telemetry/host-stats.ts            NEW      readHostSample (/proc/stat busy fraction, MemAvailable)
 src/load/telemetry/sampler.ts               CHANGED  + host source; max_connections read once
-src/load/reconcile/{index,cal,medusa,types}.ts   CHANGED  counters { clientCount, interrupted }; audits accept 0 <= db - client <= interrupted
+src/load/knee/intents.ts                    NEW      parseIntentLog, classifyIntents, auditByIntent (pure, §6.8)
+src/load/reconcile/{index,cal,medusa,types}.ts   CHANGED  counters { clientCount, intents? }; with intents the audits reconcile per intent instead of by count
+k6/journeys/{cal-book,med-checkout,doc-sign}.js  CHANGED  opts.onCommit?.() at the lines that add to the commit counter (absent in every Phase 3 case)
 src/load/chart/k6-points.ts                 CHANGED  + readPointsGzStream (streaming); readPointsGz stays for small runs
 src/load/chart/render-chart.ts              CHANGED  + optional step bands
 src/load/published.ts                       CHANGED  + formatPublishedKnee
@@ -277,7 +284,7 @@ package.json                                CHANGED  + load:knee-selftest
 .github/workflows/perf.yml                  CHANGED  + job load-knee-selftest
 README.md                                   CHANGED  + "How to read a knee"
 tests/unit/{k6-lib-knee,knee-step-stats,knee-stop-rule,knee-first-saturated,knee-report,knee-validity,knee-stage,load-cases-knee,k6-points-stream,stub-server-burn}.test.ts   NEW
-tests/unit/{knee-plan-input,reconcile-knee-slack,telemetry-host}.test.ts   NEW
+tests/unit/{knee-plan-input,knee-intents,reconcile-intents,knee-journey-hooks,telemetry-host}.test.ts   NEW
 tests/unit/{render-chart,load-table,load-published}.test.ts   CHANGED (+1, +1, +2 counted in §12)
 ```
 
@@ -352,6 +359,17 @@ export function stopRuleThresholds(plan, { stopP95Ms, errorRate, delayAbortEvalS
 export function classifyResponse(product, status, message) {
   /* table of §3.5; reuses CAL_REDACTED and classifyRefusal */
 }
+
+/**
+ * The outcome line of §6.8: `{"intent":n,"outcome":"ok"|"fail"}`, plus `"net":true` on a fail whose iteration saw a response with status 0.
+ * @param {number} intent exec.scenario.iterationInTest
+ * @param {boolean} committed the journey's commit counter was added to (opts.onCommit ran)
+ * @param {boolean} sawNetworkError
+ * @returns {string}
+ */
+export function intentLine(intent, committed, sawNetworkError) {
+  /* JSON.stringify of the object; `net` only when !committed && sawNetworkError */
+}
 ```
 
 `k6/lib/knee.js` (NEW, k6-facing):
@@ -360,10 +378,11 @@ export function classifyResponse(product, status, message) {
 import exec from "k6/execution";
 import { Counter, Gauge, Rate } from "k6/metrics";
 import { observeResponses } from "./http.js";
-import { recordClockEnd, recordClockStart } from "./markers.js";
+import { clockHooks } from "./markers.js";
 import {
   buildKneePlan,
   classifyResponse,
+  intentLine,
   kneeVus,
   stepAt,
   stopRuleThresholds,
@@ -380,33 +399,41 @@ export function kneeOptions(cfg) {
   /* scenario: executor ramping-arrival-rate, startRate, stages from buildKneePlan, preAllocatedVUs/maxVUs from cfg.pre/cfg.max */
 }
 
-/** call first in every iteration: tags the VU with the step ("ramp" outside a hold) and counts the iteration start. */
+/** call first in every iteration: tags the VU with the step ("ramp" outside a hold), counts the iteration start, returns the intent number. */
+let sawNetworkError = false; // per VU: a response with status 0 (timeout, reset) during the current iteration
 export function beginKneeIteration(plan) {
   const idx = stepAt(plan, Date.now() - exec.scenario.startTime);
   const tag = idx === null ? "ramp" : String(idx);
   exec.vu.tags.step = tag;
   started.add(1, { step: tag });
+  sawNetworkError = false;
+  return exec.scenario.iterationInTest;
+}
+
+/** call last in every iteration (§6.8): one outcome line per finished iteration. `committed` = the journey's own commit counter was added to. */
+export function endKneeIteration(intent, committed) {
+  console.log(intentLine(intent, committed, sawNetworkError));
 }
 
 /** once in the init context: every response made through request() is classified for this product. */
 export function observeKneeResponses(product) {
   observeResponses((res) => {
+    if (res.status === 0) sawNetworkError = true;
     const cls = classifyResponse(product, res.status, jsonMessage(res));
     nonconflict.add(cls === "error");
     if (cls === "conflict") conflicts.add(1);
   });
 }
 
-/** setup() and teardown(): the clock markers of Phase 3 plus the knee origin. */
+/** setup() and teardown(): the Phase 3 clock markers (clockHooks of k6/lib/markers.js, shipped in PR #64) plus the knee origin. */
 export function kneeHooks(markerUrl) {
+  const clock = clockHooks(markerUrl);
   return {
     setup() {
-      recordClockStart(markerUrl);
+      clock.setup();
       t0.add(Date.now());
     },
-    teardown() {
-      recordClockEnd(markerUrl);
-    },
+    teardown: clock.teardown,
   };
 }
 ```
@@ -431,12 +458,18 @@ The doc-sign journey's multipart `create` step calls `http.post` directly; it ge
 `k6/selftest/breakpoint-stub.js` (NEW) skeleton:
 
 ```js
-// Breakpoint self-test (P6-RULE-006). Standalone, against a stub started by hand:
+// Breakpoint self-test (P6-X-LOAD-021, proves P6-RULE-006). Standalone, against a stub started by hand:
 //   node src/load/stub-server.ts 18080 0 0 1 5          (a 5 ms CPU-burn stub, about 200 requests/s)
 //   P6_LOAD_CONFIG=k6/selftest/breakpoint-stub.example.json k6 run k6/selftest/breakpoint-stub.js
 import { check } from "k6";
 import { loadLoadConfig } from "../lib/config.js";
-import { kneeHooks, kneeOptions, beginKneeIteration, observeKneeResponses } from "../lib/knee.js";
+import {
+  kneeHooks,
+  kneeOptions,
+  beginKneeIteration,
+  endKneeIteration,
+  observeKneeResponses,
+} from "../lib/knee.js";
 import { request } from "../lib/http.js";
 import { buildKneePlan } from "../lib/pure/knee.js";
 
@@ -454,13 +487,14 @@ const cfg = {
   ...loadLoadConfig([]),
 };
 const plan = buildKneePlan(cfg);
-export const options = kneeOptions({ ...cfg, plan, tags: { case: "P6-RULE-006" } });
+export const options = kneeOptions({ ...cfg, plan, tags: { case: "P6-X-LOAD-021" } });
 export const { setup, teardown } = kneeHooks(__ENV.MARKER_URL);
 observeKneeResponses("stub");
 export default function () {
-  beginKneeIteration(plan);
+  const intent = beginKneeIteration(plan);
   const res = request("GET", `http://127.0.0.1:${cfg.port}/work`, "GET /work");
   check(res, { "status 200": (r) => r.status === 200 });
+  endKneeIteration(intent, res.status === 200); // the stub has no database: "committed" = the answer was 200
 }
 ```
 
@@ -588,7 +622,7 @@ export function buildKneeReport(input: {
   meta: RunMeta;
   conflicts: number;
 }): KneeReport;
-export function formatKneeTable(r: KneeReport): string; // markdown: header line with the range and reasons, one row per step, the first saturated resource
+export function formatKneeTable(r: KneeReport): string; // markdown: header line with the range and reasons, one row per step, the first saturated resource; a plan that ended without a stop prints "no knee up to step N (rate R)" as a lower bound, here and in the job summary
 /** Pure: knee-mode validity (§3.3). Returns the dropped-iteration reason for the first clean step short of its plan by more than the allowance, and `no_knee`/`knee_below_start`. */
 export function kneeInvalidReasons(
   steps: StepStat[],
@@ -624,9 +658,9 @@ argument `burnMs`. Unit test: a 5 ms burn makes 3 sequential answers take at lea
 
 ```ts
 export const KNEE_RULE_006: LoadCase = {
-  id: "P6-RULE-006",
+  id: "P6-X-LOAD-021",
   title:
-    "Breakpoint method self-test: a CPU-bound stub, a starved generator and a plan without a knee",
+    "Breakpoint method self-test (proves P6-RULE-006): a CPU-bound stub, a starved generator and a plan without a knee",
   product: "stub",
   label: "knee range, environment-bound",
   profiles: {
@@ -751,6 +785,86 @@ README text (step 9): a section "How to read a knee" explaining the form above, 
 knee is "between step s and s+1" with both rates, why the stop rule is not a gate, and the commands of §10. It never uses the bare
 word "capacity".
 
+### 6.8 Per-intent reconciliation (this task owns it; Tasks 2 to 6 cite it)
+
+An **intent** is one started iteration, named by `exec.scenario.iterationInTest` (0-based, global across VUs). The three journeys already persist it:
+
+| Product   | Where the intent is stored                                                                  | Source line                                            |
+| --------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Cal       | attendee email ``attendeeEmail(cfg.prefix, `i${n}`)``, `n = exec.scenario.iterationInTest`  | `k6/journeys/cal-book.js:17` (index) and `:61` (email) |
+| Medusa    | cart email `${iterationId(cfg.prefix, exec.scenario.iterationInTest)}@qa.local`             | `k6/journeys/med-checkout.js:39`                       |
+| Documenso | document title `${iterationId(cfg.prefix, n)} journey`, `n = exec.scenario.iterationInTest` | `k6/journeys/doc-sign.js:22` (index) and `:37` (title) |
+
+`iterationId(prefix, n)` is `${prefix}-i${n}` (`k6/lib/pure/prefix.js:31-32`). Probe of the contract (k6 2.3.0 on the VM, no product, 2026-10-25): at 500 iterations per second
+2,001 `console.log` lines carried the distinct intents 0 to 2000, 0 of them unparsable; with `maxVUs 2`, a 50 ms iteration and `gracefulStop 0s`, `p6_step_started` was 146, `iterations` 144,
+the log held 144 lines with intents 0 to 143, and `dropped_iterations` was 655: **dropped iterations take no intent number, and the started intents without a line are the interrupted
+ones**. The summary export has **no** `iterations_interrupted` metric (its metric names were `vus vus_max dropped_iterations p6_step_started data_sent data_received iteration_duration
+iterations`), so `interrupted = p6_step_started total − iterations`.
+
+**Client side.** Each knee script runs its journey with `opts.onCommit`, a new optional member called at the exact lines where the journey adds to its commit counter (`acceptedCounter`,
+`cal-book.js:83` and `:90`; `ordersCounter`, `med-checkout.js:195` and `:227`; `completedCounter`, `doc-sign.js:185`); no Phase 3 case passes it. After the journey the script calls
+`endKneeIteration(intent, committed)`, which writes one line with `console.log`:
+
+```text
+{"intent":3,"outcome":"ok"}                      committed: the client counted the commit
+{"intent":4,"outcome":"fail"}                    finished without the commit and the client got HTTP answers
+{"intent":5,"outcome":"fail","net":true}         finished without the commit and a response had status 0 (timeout or reset): the commit is unknown
+```
+
+k6 writes it to stderr, which `runK6` captures in `k6-<label>.log` (`src/load/k6-process.ts`, `stdio: ["ignore", out, out]`), as
+`time="…" level=info msg="{\"intent\":3,\"outcome\":\"ok\"}" source=console` (probed). The log is an allowed evidence kind (`.log`). An iteration k6 interrupted has no line.
+
+**Runner side** (`src/load/knee/intents.ts`, pure):
+
+```ts
+export type IntentOutcome = "ok" | "fail";
+export interface IntentLog {
+  outcomes: Map<number, { outcome: IntentOutcome; net: boolean }>;
+  duplicateLines: number[]; // an intent that has two lines: TEST BUG
+  beyondStarted: number[]; // an intent >= started: TEST BUG
+}
+export function parseIntentLog(logText: string, started: number): IntentLog;
+/** Started set = 0..started-1. ok / fail / indeterminate (no line, or fail with net:true). */
+export function classifyIntents(
+  log: IntentLog,
+  started: number,
+): { ok: number[]; fail: number[]; indeterminate: number[]; noLine: number[] };
+export interface IntentAudit {
+  findings: Array<{ kind: "PRODUCT BUG" | "TEST BUG"; text: string }>; // ids and counts only
+  counts: {
+    started: number;
+    ok: number;
+    fail: number;
+    indeterminate: number;
+    ghostRows: number;
+    duplicateRows: number;
+  };
+}
+/** rowsByIntent: rows per intent; ghostRows: rows whose label maps to no started intent. */
+export function auditByIntent(input: {
+  started: number;
+  log: IntentLog;
+  rowsByIntent: Map<number, number>;
+  ghostRows: number;
+  interrupted: number;
+}): IntentAudit;
+```
+
+**Rules** (every one has a test in `reconcile-intents`, §12):
+
+1. A database row that maps to no started intent is a **ghost write**: `PRODUCT BUG (SUSPECTED)`.
+2. An intent with more than one row is a **duplicate write**: `PRODUCT BUG (SUSPECTED)` (the count slack of the first draft would have hidden up to `interrupted` of them).
+3. An `ok` intent must have exactly 1 row; with 0 rows the client was told success for work that is not there: `PRODUCT BUG (SUSPECTED)`.
+4. A `fail` intent (without `net`) must have 0 rows: with 1 row the client was told failure for committed work: `PRODUCT BUG (SUSPECTED)`.
+5. Only an indeterminate intent (no line, or `fail` with `net: true`) may have 0 or 1 row. The intents with no line must number at most `interrupted`; more is a `TEST BUG` (a
+   journey that finishes without a line, or a lost log).
+
+`makeReconcileStage` (`src/load/reconcile/index.ts`) passes `counters.intents = { started, interrupted, log }` to `reconcile()` when the run has `spec.knee` (`started` from `p6_step_started`, `interrupted` as above,
+`log` from `parseIntentLog` over the run's `stdoutPath`); with `intents` present `evaluateCalAudit` and `evaluateMedusaAudit` replace their count checks (`client-matches-db`, `no-ghost-orders`) by the five rules. The product plans supply `rowsByIntent`: the row-to-intent mapping is a read-only SELECT per product (Cal: attendee emails of accepted and pending bookings; Medusa: order emails;
+Documenso: envelope titles), written with `assertSelectOnly` in the plan of that product. The old `client-matches-db` check stays for the non-knee runs of Phase 3. **UNPROBED, in the
+first `load-knee-selftest` CI run:** whether `gracefulStop` drains in-flight iterations after an `abortOnFail` stop. The measurement: compare `p6_step_started`, the outcome-line count and
+`iterations` in `k6-knee-summary.json` and `k6-knee.log` (the plan does not rely on either answer: an iteration without a line is indeterminate either way).
+
 ## 7. Oracles and assertions
 
 This task has no product oracle. Its correctness contract is the self-test's, evaluated by `kneeStage` from the three summaries:
@@ -768,7 +882,7 @@ change only with new probe data and an owner decision. No expected-failure marke
 
 ## 8. Data isolation, cleanup, leak check
 
-No product data. The run directory is `results/load/P6-RULE-006/<run id>/` (git-ignored). The runner starts two stub children in their
+No product data. The run directory is `results/load/P6-X-LOAD-021/<run id>/` (git-ignored). The runner starts two stub children in their
 own process groups and stops them in `cleanup`; the leak check asserts no process of those groups remains (`/proc`) and both ports
 refuse a connection (as Phase 3 Task 3 does for its in-process stub). Reports and telemetry carry counts and rates only; the token scan
 runs over the run directory in the `tokenScan` stage and `findHits` runs over each report before it is written.
@@ -776,32 +890,34 @@ runs over the run directory in the `tokenScan` stage and `findHits` runs over ea
 ## 9. CI, token scan, budget
 
 New job `load-knee-selftest` in `.github/workflows/perf.yml` on every event (PR, push, dispatch, schedule), product-free, own
-timeout; no existing job changes and no timeout is raised.
+timeout (35); no existing job changes and no timeout is raised. The steps copy `load-selftest` (same file, `perf.yml` lines 2263 to 2330) step for step, with the same caps.
+Durations of the copied steps are read from the jobs API (`https://api.github.com/repos/Jayami123/k6-load-concurrency-suite/actions/runs/<run id>/jobs`, no
+authentication) for the three evidence runs of release `p6-phase3`: 40177412186, 40178773022 and 40180625279 (`load-selftest` job, id 121130735846 in the last one). The table
+uses the maximum over the three runs.
 
-| Step                                          | `timeout-minutes` | Estimate PR profile (min) | Estimate full profile (min) | Stop rule (80 %)                |
-| --------------------------------------------- | ----------------- | ------------------------- | --------------------------- | ------------------------------- |
-| checkout                                      | 2                 | 0.1                       | 0.1                         | 1.6                             |
-| setup-node                                    | 3                 | 0.1                       | 0.1                         | 2.4                             |
-| `npm ci`                                      | 3                 | 0.2                       | 0.2                         | 2.4                             |
-| install k6                                    | 2                 | 0.05                      | 0.05                        | 1.6                             |
-| knee self-test (`npm run load:knee-selftest`) | 6                 | 2.5                       | 4.0                         | **4.8**                         |
-| job summary                                   | 1                 | 0.05                      | 0.05                        | 0.8                             |
-| token scan                                    | 1                 | 0.05                      | 0.05                        | 0.8                             |
-| upload artefact `load-knee-selftest`          | 3                 | 0.1                       | 0.1                         | 2.4                             |
-| **Job**                                       | **timeout 35**    | **3.1**                   | **4.6**                     | worst at caps 21, **margin 14** |
+| step name (as in YAML)                                             | timeout-minutes | estimate (source)                                                             | 80 % stop | runs on this event? |
+| ------------------------------------------------------------------ | --------------- | ----------------------------------------------------------------------------- | --------- | ------------------- |
+| `actions/checkout@3d3c42e5…` (v7.0.1)                              | 2               | 2 s (max of the 3 runs; step "Run actions/checkout")                          | 96 s      | all four events     |
+| `actions/setup-node@949feb24…` (v7.1.0)                            | 3               | 3 s (max of the 3 runs)                                                       | 144 s     | all four events     |
+| Install P6 dependencies                                            | 3               | 9 s (max of the 3 runs)                                                       | 144 s     | all four events     |
+| Install k6 (pinned in .k6-version, checksum-verified)              | 2               | 1 s (max of the 3 runs)                                                       | 96 s      | all four events     |
+| Knee self-test (P6-X-LOAD-021)                                     | 6               | UNPROBED: VM 150 s (pr profile), 240 s (full profile); runner in first CI run | 288 s     | all four events     |
+| Job summary (LOAD table)                                           | 2               | 1 s (max of the 3 runs)                                                       | 96 s      | all four events     |
+| Check artefacts for tokens (`id: token_scan`)                      | 1               | 0 s (max of the 3 runs)                                                       | 48 s      | all four events     |
+| `actions/upload-artifact@cf430e03…` (v7.0.2), `load-knee-selftest` | 3               | 2 s (max of the 3 runs)                                                       | 144 s     | all four events     |
 
-Estimates: PR profile = three runs, `knee` ~45 s (three steps of 12 s plus ~6 s abort, VM), `undersized` and `norule` ~40 s each
-(three steps of 12 s), each plus ~10 s of setup, stub start, telemetry and report; full profile has 22 s steps. The full profile
-estimate 4.0 min is under the 4.8-minute stop rule; if the first CI dispatch shows more, the fix is a shorter hold or fewer steps,
-never a higher timeout. **Confirm in the first CI dispatch.** Artefacts: `verdict.json`, `run-meta.json`, `k6-<label>-summary.json`,
-`k6-<label>.log`, `k6-<label>.json.gz`, `telemetry-<label>.{json,csv}`, `chart-<label>.html`, `knee-report-<label>.{json,md}`. The
-token scan (`node scripts/evidence-token-scan.mjs results/load`) runs before the upload. None of the existing job budgets change.
+Sum of the step caps: 2 + 3 + 3 + 2 + 6 + 2 + 1 + 3 = **22 min**. Job timeout **35**. 35 − 22 = **13 ≥ 10**. (The old text "worst at caps 21, margin 14" is replaced by this table.)
+The self-test step estimate (VM, three runs: `knee` about 45 s, `undersized` and `norule` about 40 s each, each plus about 10 s of setup, stub start, telemetry and report in the
+pr profile; 22 s steps in the full profile) is UNPROBED on the runner: **confirm in the first CI dispatch**. A measured duration above 80 % of a cap is a stop and report; the fix is a
+shorter hold or fewer steps, never a higher cap or timeout. Artefact `load-knee-selftest` (retention 14 days, as every `perf.yml` upload): `verdict.json`, `run-meta.json`,
+`k6-<label>-summary.json`, `k6-<label>.log` (which carries the intent lines of §6.8), `k6-<label>.json.gz`, `telemetry-<label>.{json,csv}`, `chart-<label>.html`,
+`knee-report-<label>.{json,md}`. The token scan (`node scripts/evidence-token-scan.mjs results/load`) runs before the upload. None of the existing job budgets change.
 
 ## 10. Expected output of the self-test run
 
 ```text
 $ npm run load:knee-selftest -- --profile pr
-P6-RULE-006 (knee range, environment-bound) run 20261025T120000Z-3fa9c0d1
+P6-X-LOAD-021 (knee range, environment-bound) run 20261025T120000Z-3fa9c0d1
   setup        ok   burn stub pid 4711 (own group), delay stub pid 4712
   k6 knee      exit 99  steps 0..2 of 5 (stopped), stop step 2 (220/s) p95 339 ms >= 60 ms
   k6 undersized exit 0  steps 3 of 3, started 666 of 1000 in step 0
@@ -810,7 +926,7 @@ P6-RULE-006 (knee range, environment-bound) run 20261025T120000Z-3fa9c0d1
   undersized   INVALID dropped_iterations, no_knee
   norule       INVALID no_knee
   tokenScan    ok   clean
-  verdict      PASS  results/load/P6-RULE-006/20261025T120000Z-3fa9c0d1/verdict.json
+  verdict      PASS  results/load/P6-X-LOAD-021/20261025T120000Z-3fa9c0d1/verdict.json
 ```
 
 (Numbers are VM values from §3; the run ids and times differ.) Standalone, no runner:
@@ -820,44 +936,49 @@ k6/selftest/breakpoint-stub.js`; exit 99 with the threshold line of §3.1.
 ## 11. Environment changes (exact steps)
 
 None for Cursor Cloud (`.cursor/environment.json`, `.cursor/Dockerfile`) or Claude Code cloud (setup script,
-`.claude/hooks/session-start.sh`). Nothing is pasted by hand; no repo setting changes. Cloud VM note (not a change): on a VM whose
-`/sys/fs/cgroup` is `tmpfs` the database container source reads nothing (§3.8); the report lists it as absent.
+`.claude/hooks/session-start.sh`). Nothing is pasted by hand; no repo setting changes. Cloud VM note (not a change): on the Claude Code cloud VM, whose
+`/sys/fs/cgroup` is `tmpfs`, the database container source reads nothing; on the GitHub runner it reads (30 of 30 files, §3.8 item 2). The report lists an absent source as absent.
 
 ## 12. Build order (one commit per step; `npm run check` after each)
 
 Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Branch: `git switch -c feat/<build date>-p6-breakpoint-method origin/main`.
 Counts are relative to B1 (§5 check 2).
 
-| Step | Commit subject                                                                  | `git add` paths                                                                                                                                                                                                                                                                                                                                                                                                                         | Expected (`npm run check`)                                               |
-| ---- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 0    | `docs(plans): bring the phase 4 task 1 plan onto the build branch`              | `docs/plans/2026-10-25-p6-phase4-task1-breakpoint-method.md`                                                                                                                                                                                                                                                                                                                                                                            | exit 0, B1                                                               |
-| 1    | `feat(k6): add the knee plan, stop thresholds and response classifier`          | `k6/lib/pure/knee.js tests/unit/k6-lib-knee.test.ts`                                                                                                                                                                                                                                                                                                                                                                                    | exit 0, **B1 + 8**; `k6 inspect` ok                                      |
-| 2    | `feat(load): read the per-step statistics of a knee run`                        | `src/load/knee/step-stats.ts tests/unit/knee-step-stats.test.ts src/load/types.ts`                                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 12**                                                      |
-| 3    | `feat(load): add the stop rule and the first saturated resource rule`           | `src/load/knee/stop-rule.ts src/load/knee/first-saturated.ts tests/unit/knee-stop-rule.test.ts tests/unit/knee-first-saturated.test.ts`                                                                                                                                                                                                                                                                                                 | exit 0, **B1 + 26**                                                      |
-| 4    | `feat(load): add the knee report, its validity and the published form`          | `src/load/knee/knee-report.ts src/load/published.ts tests/unit/knee-report.test.ts tests/unit/knee-validity.test.ts tests/unit/load-published.test.ts`                                                                                                                                                                                                                                                                                  | exit 0, **B1 + 38**                                                      |
-| 5    | `feat(load): parse and bound the knee plan inputs`                              | `src/load/knee/plan-input.ts tests/unit/knee-plan-input.test.ts`                                                                                                                                                                                                                                                                                                                                                                        | exit 0, **B1 + 42**                                                      |
-| 6    | `feat(load): let the audits accept the iterations a stop interrupted`           | `src/load/reconcile/index.ts src/load/reconcile/cal.ts src/load/reconcile/medusa.ts src/load/reconcile/types.ts tests/unit/reconcile-knee-slack.test.ts`                                                                                                                                                                                                                                                                                | exit 0, **B1 + 46**; the existing reconcile tests unchanged              |
-| 7    | `feat(load): sample the host cpu and the database connection limit`             | `src/load/telemetry/host-stats.ts src/load/telemetry/sampler.ts tests/unit/telemetry-host.test.ts`                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 49**; the existing sampler tests unchanged                |
-| 8    | `feat(load): add a cpu-burn mode to the stub`                                   | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 51**                                                      |
-| 9    | `feat(k6): add the knee library and the breakpoint self-test script`            | `k6/lib/knee.js k6/lib/http.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json`                                                                                                                                                                                                                                                                                                                                 | exit 0, B1 + 51; `k6 inspect: N script(s) ok.` (N + 2)                   |
-| 10   | `feat(load): add the knee stage, the streaming points reader and the self-test` | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 61**; `npm run load:knee-selftest -- --profile pr` exit 0 |
-| 11   | `ci(perf): run the knee self-test in its own job`                               | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 61                                      |
-| 12   | `docs: explain how to read a knee`                                              | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 61                                   |
+| Step | Commit subject                                                                         | `git add` paths                                                                                                                                                                                                                                                                                                                                                                                                                         | Expected (`npm run check`)                                               |
+| ---- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 0    | `docs(plans): bring the phase 4 task 1 plan onto the build branch`                     | `docs/plans/2026-10-25-p6-phase4-task1-breakpoint-method.md`                                                                                                                                                                                                                                                                                                                                                                            | exit 0, B1                                                               |
+| 1    | `feat(k6): add the knee plan, stop thresholds, response classifier and intent line`    | `k6/lib/pure/knee.js tests/unit/k6-lib-knee.test.ts`                                                                                                                                                                                                                                                                                                                                                                                    | exit 0, **B1 + 9**; `k6 inspect` ok                                      |
+| 2    | `feat(load): read the per-step statistics of a knee run`                               | `src/load/knee/step-stats.ts tests/unit/knee-step-stats.test.ts src/load/types.ts`                                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 13**                                                      |
+| 3    | `feat(load): add the stop rule and the first saturated resource rule`                  | `src/load/knee/stop-rule.ts src/load/knee/first-saturated.ts tests/unit/knee-stop-rule.test.ts tests/unit/knee-first-saturated.test.ts`                                                                                                                                                                                                                                                                                                 | exit 0, **B1 + 27**                                                      |
+| 4    | `feat(load): add the knee report, its validity and the published form`                 | `src/load/knee/knee-report.ts src/load/published.ts tests/unit/knee-report.test.ts tests/unit/knee-validity.test.ts tests/unit/load-published.test.ts`                                                                                                                                                                                                                                                                                  | exit 0, **B1 + 39**                                                      |
+| 5    | `feat(load): parse and bound the knee plan inputs`                                     | `src/load/knee/plan-input.ts tests/unit/knee-plan-input.test.ts`                                                                                                                                                                                                                                                                                                                                                                        | exit 0, **B1 + 43**                                                      |
+| 6    | `feat(load): reconcile the audits per intent after a stop`                             | `src/load/knee/intents.ts src/load/reconcile/index.ts src/load/reconcile/cal.ts src/load/reconcile/medusa.ts src/load/reconcile/types.ts tests/unit/knee-intents.test.ts tests/unit/reconcile-intents.test.ts`                                                                                                                                                                                                                          | exit 0, **B1 + 52**; the existing reconcile tests unchanged              |
+| 7    | `feat(load): sample the host cpu and the database connection limit`                    | `src/load/telemetry/host-stats.ts src/load/telemetry/sampler.ts tests/unit/telemetry-host.test.ts`                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 55**; the existing sampler tests unchanged                |
+| 8    | `feat(load): add a cpu-burn mode to the stub`                                          | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 57**                                                      |
+| 9    | `feat(k6): add the knee library, the commit hooks and the breakpoint self-test script` | `k6/lib/knee.js k6/lib/http.js k6/journeys/cal-book.js k6/journeys/med-checkout.js k6/journeys/doc-sign.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json tests/unit/knee-journey-hooks.test.ts`                                                                                                                                                                                                               | exit 0, **B1 + 58**; `k6 inspect: N script(s) ok.` (N + 2)               |
+| 10   | `feat(load): add the knee stage, the streaming points reader and the self-test`        | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 68**; `npm run load:knee-selftest -- --profile pr` exit 0 |
+| 11   | `ci(perf): run the knee self-test in its own job`                                      | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 68                                      |
+| 12   | `docs: explain how to read a knee`                                                     | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 68                                   |
 
-New unit tests by name (61): `k6-lib-knee` (8: plan shape with `timeUnit "10s"` targets, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
+New unit tests by name (68): `k6-lib-knee` (9: plan shape with `timeUnit "10s"` targets, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
 minimum and cap; `stopRuleThresholds` keys, `p(95)<X`, `rate<=0.01`, `abortOnFail`, empty submetric lists; `classifyResponse` Cal; Medusa; Documenso with a 429; `standardOptions` still
-throws on `http_req_duration`); `knee-step-stats` (4: full summary; Rate `passes` is the error count; missing step is not reached and counts 0; planned = rate x hold); `knee-stop-rule` (6: p95
-equal to the limit trips; just below does not; error rate exactly 1 % does not, 1.01 % does; under `minRequests` is ignored; first step wins; reasons list error_rate before p95);
-`knee-first-saturated` (8: cores from ticks; half of the samples; a blip that later recovers is not saturated; tie broken by priority; `db_wait`; `none_observed`; absent source listed and never
-named, edge trimming; **the run-relative `app_cpu` level of §3.9 R2 and `runner_cpu`**); `knee-report` (7: range is last clean to stop step; stop at step 0 is a TEST BUG finding; no stop is
-`NO_KNEE`; a clean step short of its plan by more than the allowance is INVALID, with the floor of 2 at 15 planned iterations; the stop step's drops are ignored; markdown table; JSON passes
-`findHits`); `knee-validity` (3: dropped replaced by the per-step rule; `no_knee`; generator codes still apply); `load-published` (2: knee string has range, rule, resource, environment; refuses a
-non-KNEE and a non-publishable meta); `knee-plan-input` (4: defaults for empty strings; one-decimal rates; bounds and the 5,000-iteration cap name the field; non-numeric input is rejected);
-`reconcile-knee-slack` (4: Cal `0 <= db - client <= interrupted` passes; beyond the slack and below zero are findings; Medusa counts under `F-M2` only the excess; the counters read
-`interrupted` from a summary); `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
+throws on `http_req_duration`; **`intentLine` output parses back with the regex of `parseIntentLog`**); `knee-step-stats` (4: full summary; Rate `passes` is the error count; missing step is not
+reached and counts 0; planned = rate x hold); `knee-stop-rule` (6: p95 equal to the limit trips; just below does not; error rate exactly 1 % does not, 1.01 % does; under `minRequests` is ignored;
+first step wins; reasons list error_rate before p95); `knee-first-saturated` (8: cores from ticks; half of the samples; a blip that later recovers is not saturated; tie broken by priority;
+`db_wait`; `none_observed`; absent source listed and never named, edge trimming; **the run-relative `app_cpu` level of §3.9 R2 and `runner_cpu`**); `knee-report` (7: range is last clean to
+stop step; stop at step 0 is a TEST BUG finding; no stop is `NO_KNEE`; a clean step short of its plan by more than the allowance is INVALID, with the floor of 2 at 15 planned iterations; the
+stop step's drops are ignored; markdown table, including the `no knee up to step N (rate R)` lower-bound line of Q6; JSON passes `findHits`); `knee-validity` (3: dropped replaced by the per-step rule; `no_knee`; generator codes still apply); `load-published`
+(2: knee string has range, rule, resource, environment; refuses a non-KNEE and a non-publishable meta); `knee-plan-input` (4: defaults for empty strings; one-decimal rates; bounds and the
+5,000-iteration cap name the field; non-numeric input is rejected); **`knee-intents` (3: `parseIntentLog` reads k6 console lines with escaped quotes and ignores every other line; a repeated
+intent line and a line with an intent at or above `started` are reported as TEST BUG findings; a `fail` line with `net: true` is classified indeterminate, a plain `fail` is not)**;
+**`reconcile-intents` (6, §6.8: a duplicate that the old count slack would have hidden is a finding; a ghost row (an intent never started, or a label that maps to no intent) is a finding; an
+indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding; more indeterminate intents than `interrupted` is a TEST BUG)**;
+**`knee-journey-hooks` (1: in each of the three journey files every line that adds to the commit counter is followed by an `opts.onCommit` call inside the same block, and the Phase 3 cases
+never pass `onCommit`)**; `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
 writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value is not kept); `load-cases-knee` (2: the case and its three runs;
 `package.json` has the script); `k6-points-stream` (2: equals the sync reader on a fixture; handles a file larger than one chunk); `render-chart` (+1: step bands); `load-table` (+1: knee block).
-Count: 8 + 4 + 6 + 8 + 7 + 3 + 2 + 4 + 4 + 3 + 2 + 4 + 2 + 2 + 1 + 1 = **61** (steps: 1 → +8, 2 → +4, 3 → +14, 4 → +12, 5 → +4, 6 → +4, 7 → +3, 8 → +2, 10 → +10 = 4 + 2 + 2 + 1 + 1).
+Count: 9 + 4 + 6 + 8 + 7 + 3 + 2 + 4 + 3 + 6 + 1 + 3 + 2 + 4 + 2 + 2 + 1 + 1 = **68** (steps: 1 → +9, 2 → +4, 3 → +14, 4 → +12, 5 → +4, 6 → +9, 7 → +3, 8 → +2, 9 → +1, 10 → +10). The
+first draft had 61 with four slack tests; the per-intent contract replaces them with six, adds the log parser (3), the `intentLine` round trip (1) and the hooks guard (1).
 
 After step 12: `git push -u origin feat/<build date>-p6-breakpoint-method`, `gh pr create` (rule 3), read CI once (rule 15): `load-knee-selftest`
 green on the PR; once more on `main` after the merge (roadmap done-when). Merge only when the owner says "merge".
@@ -870,7 +991,7 @@ green on the PR; once more on `main` after the merge (roadmap done-when). Merge 
 | R2  | A transient stall trips a product step early (few samples at low rate) | `minRequests` 20 and `delayAbortEval`; the product plans set hold so a step has ≥ 100 requests; ≥ 3 runs expose the spread                                                  |
 | R3  | `exec.vu.tags` has a per-iteration cost                                | the Phase 3 overhead relations (`P6-X-LOAD-006`) are re-run in the same CI job family; the stub run shows the sampler/generator CPU in `ResourceSummary`                    |
 | R4  | The synchronous points reader breaks on a large run                    | §3.4; streaming reader, 25 MB keep rule                                                                                                                                     |
-| R5  | `observeResponses` misses a request that bypasses `request()`          | only the doc-sign multipart create does; handled by `observe()`; a build check greps `k6/journeys` for direct `http.get`/`http.post` calls (proposed extra `P6-X-LOAD-015`) |
+| R5  | `observeResponses` misses a request that bypasses `request()`          | only the doc-sign multipart create does; handled by `observe()`; a build check greps `k6/journeys` for direct `http.get`/`http.post` calls (proposed extra `P6-X-LOAD-023`) |
 | R6  | The README word test blocks natural phrasing                           | use "knee range"; the test is not weakened                                                                                                                                  |
 
 **Contradictions with the roadmap.**
@@ -884,36 +1005,48 @@ green on the PR; once more on `main` after the merge (roadmap done-when). Merge 
 | C5  | stop rule from "the LOAD runner; k6 aborts (`abortOnFail`, or the runner stops k6; plan decides)" | option A works and is standalone                                                     | k6 aborts; the runner re-evaluates and must agree              |
 | C6  | "k6 aborts on the rule" with k6 thresholds                                                        | `assertCorrectnessThresholds` forbids latency thresholds (RULE-001, D9)              | separate `stopRuleThresholds`, §3.7                            |
 | C7  | rates are iterations per second                                                                   | k6 accepts whole targets only; Medusa's steps are 0.5, 1.0, 1.5                      | `timeUnit` 10 s, rates with one decimal (§3.9 R1)              |
-| C8  | the post-load audit after the stop                                                                | in-flight iterations committed work the client never saw                             | audits accept the interrupted slack (§3.9 R3)                  |
+| C8  | the post-load audit after the stop                                                                | in-flight iterations committed work the client never saw                             | audits reconcile per intent, not by count (§3.9 R3, §6.8)      |
 
 **Proposed extras (out of scope until accepted; new IDs).**
 
-- `P6-X-LOAD-014`: run the `knee` leg three times in CI and assert the three ranges are identical (the A/A seed for Phase 4b Task 11).
-- `P6-X-LOAD-015`: a unit test that fails when a `k6/journeys/*.js` calls `http.get`/`http.post` directly (keeps `observeResponses` complete).
+- `P6-X-LOAD-022`: run the `knee` leg three times in CI and assert the three ranges are identical (the A/A seed for Phase 4b Task 11).
+- `P6-X-LOAD-023`: a unit test that fails when a `k6/journeys/*.js` calls `http.get`/`http.post` directly (keeps `observeResponses` complete).
 
-**Open decisions** (option, evidence, recommended default).
+(Ids: `grep -rhoE "P6-X-LOAD-0[0-9][0-9]" docs src k6 tests README.md | sort -u` on the merged branch lists `-001` to `-020`: `-009` Phase 5, `-010` and `-011` Phase 3 Task 3,
+`-012` Phase 3 Task 4, `-013` and `-014` Phase 3 Task 5, `-015` and `-016` Phase 3 Task 6, `-017` Task 7, `-018` Task 8, `-019` Task 9, `-020` Task 10 (each a proposed extra). The next free
+number is therefore **`-021`**, which is the self-test case id; the extras of this plan take `-022` and `-023`. The Phase 3 Task 11 plan's own extras are numbered `-012` and `-013` in the
+file on main and collide with Phase 3 Tasks 4 and 5; that file is not edited here, and Task 11 shipped neither.)
 
-- **Q1. Stop mechanism.** (a) k6 aborts on per-step thresholds and the runner re-evaluates (recommended; §3.1); (b) one k6 process per
-  step; (c) the runner stops k6 from streamed output. **Default: (a).**
-- **Q2. Points file in knee mode.** (a) streaming reader, keep ≤ 25 MB in the 14-day artefact, never in the release (recommended; §3.4);
-  (b) no `--out json` in knee mode (no per-second request chart). **Default: (a).**
-- **Q3. Primary stop reason when both trip in one step.** (a) list both, `error_rate` first as in D2's wording (recommended); (b) p95
-  first. **Default: (a).**
-- **Q4. RSS as a saturation resource.** (a) context series only (recommended; §3.6 point 5); (b) a level of 90 % of a memory limit.
-  Evidence: nothing outside the process knows its limit; harness H2 is Phase 5. **Default: (a).**
-- **Q5. The self-test LOAD case id.** (a) `P6-RULE-006` (recommended; the rule id is the proof's id); (b) a new `P6-X-LOAD-0nn` id.
-  Evidence: ids `-009` (Phase 5), `-010`, `-011` (proposed in Phase 3 Task 3) are taken. **Default: (a).**
-- **Q6. A plan that ends without a stop.** (a) INVALID `no_knee` (recommended: "above step N" is a lower bound, not a knee);
-  (b) report `NO_KNEE` as a result. **Default: (a).**
+**Decisions (owner, 2026-10-25).**
+
+- **Q1. Stop mechanism.** Decided (owner, 2026-10-25): (a) k6 aborts on per-step thresholds and the runner re-evaluates — the §3.1 probe shows it works and runs standalone.
+  Options considered: (a) k6 aborts on per-step thresholds and the runner re-evaluates (§3.1); (b) one k6 process per step; (c) the runner stops k6 from streamed output.
+- **Q2. Points file in knee mode.** Decided (owner, 2026-10-25): (a) streaming reader, at most 25 MB kept in the Actions artefact, never in the release — the exclusion is already enforced on main
+  (PR #63, no `.gz` kind in the allowlist) and the artefact now lives 90 days in `knee.yml` (Task 2 Q6).
+  Options considered: (a) streaming reader, keep ≤ 25 MB in the artefact, never in the release (§3.4); (b) no `--out json` in knee mode (no per-second request chart).
+- **Q3. Primary stop reason when both trip in one step.** Decided (owner, 2026-10-25): (a) list both, `error_rate` first — it follows D2's wording.
+  Options considered: (a) list both, `error_rate` first; (b) p95 first.
+- **Q4. RSS as a saturation resource.** Decided (owner, 2026-10-25): (a) context series only — nothing outside the process knows its memory limit (harness H2 is Phase 5).
+  Options considered: (a) context series only (§3.6 point 5); (b) a level of 90 % of a memory limit.
+- **Q5. The self-test LOAD case id.** Decided (owner, 2026-10-25): (b) a new `P6-X-LOAD-0nn` id whose description says it proves `P6-RULE-006` — the repo keeps case ids and rule ids apart: every existing
+  self-test case is `P6-X-LOAD-nnn` (`src/load/cases.ts`: `-001`, `-002`, `-004`, `-006`) and no case uses a `P6-RULE` id. The next free number is **`P6-X-LOAD-021`** (grep result in §13: `-009` to `-020` are
+  taken or proposed; `-017` to `-020` are proposed extras of Phase 3 Tasks 7 to 10, so `-017` is not free).
+  Options considered: (a) `P6-RULE-006` (the old default); (b) a new `P6-X-LOAD-0nn` id. Evidence: ids `-009` (Phase 5), `-010` and `-011` (Phase 3 Task 3) and the others above are taken.
+- **Q6. A plan that ends without a stop.** Decided (owner, 2026-10-25): (a) INVALID `no_knee`; the report and the job summary print "no knee up to step N (rate R)" as a lower bound — "above step N" is a
+  lower bound, not a knee. Options considered: (a) INVALID `no_knee`; (b) report `NO_KNEE` as a result.
+- **Q7. Audits after a stop (new).** Decided (owner, 2026-10-25): per-intent reconciliation replaces the count slack (§6.8) — a count slack lets up to `interrupted` duplicate or ghost writes pass unseen, which is
+  the bug class this suite exists to find. UNPROBED — confirm in the first `load-knee-selftest` CI run: whether `gracefulStop` drains in-flight iterations after an `abortOnFail` stop (compare `p6_step_started`,
+  the outcome lines and `iterations`).
+  Options considered: (a) `0 <= database - client <= interrupted` (the first draft); (b) per-intent reconciliation with indeterminate intents.
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] `npm run check` exit 0 with **B1 + 61** unit tests; the new tests cover the stop rule, the report and the first-saturated rule from fixtures.
+- [ ] `npm run check` exit 0 with **B1 + 68** unit tests; the new tests cover the stop rule, the report, the first-saturated rule and the per-intent audit from fixtures.
 - [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM, `knee-report-knee.md` says "between step 1 (140/s) and step 2 (220/s)"
       (values from the plan constants), first saturated `app_cpu`; `undersized` and `norule` are INVALID with their codes.
 - [ ] The job `load-knee-selftest` is green on the PR and once on `main` after the merge; the artefact holds the reports and the chart.
 - [ ] `k6 run k6/selftest/breakpoint-stub.js` works standalone (D6) with the example config; exit 99 and the threshold line.
-- [ ] The report meets `P6-RULE-006`: a step range with both rates, the stop reasons, the run id and environment label, the first
+- [ ] The report meets `P6-RULE-006` (case `P6-X-LOAD-021`): a step range with both rates, the stop reasons, the run id and environment label, the first
       saturated resource from the rule (or `none_observed` / the absent sources); README "How to read a knee" is in.
 
 ## 15. Rule 20 self-check
@@ -921,11 +1054,11 @@ green on the PR; once more on `main` after the merge (roadmap done-when). Merge 
 - (a) Roadmap "Done when": unit tests (§12), stub self-test in CI on the PR and on `main` (§9, §14), report format (§6.4, §6.7), standalone
   `k6 run` (§10, §14), `npm run check` green. Gap: the first-saturated rule is proven on fixtures plus the stub's CPU; product
   resources are exercised in Tasks 2 to 4.
-- (b) Existing names grepped on the Task 10 head (all present): `rampingOpenScenario`, `assertCorrectnessThresholds`, `standardOptions`,
+- (b) Existing names grepped on `main` at `2db9726` (all present): `rampingOpenScenario`, `assertCorrectnessThresholds`, `standardOptions`,
   `SYSTEM_TAGS` in `k6/lib/pure/options.js`; `judgeValidity` and `VALIDITY_LIMITS`; `validityStage`, `runAllK6` in `src/load/stages.ts`;
   `readPointsGz`, `aggregatePoints`; `samplerStart`, `openSources`; `finishRunTelemetry`; `startStub`, `stubDelayMs`; `evaluateVerdict`;
   `CAL_REDACTED`, `classifyAttempt`; `classifyRefusal`; `formatPublishedNumber`. NEW with skeletons: every file marked NEW in §6.1.
-- (c) CI time: §9; worst at caps 21 min of a 35-minute timeout (margin 14); no existing timeout raised; full-profile estimate under
+- (c) CI time: §9 (exact table, 22 min of caps in a 35-minute timeout, margin 13); no existing timeout raised; full-profile estimate under
   the 80 % stop rule.
 - (d) Skeletons §6; steps with `git add` paths, subjects and expected output §12.
-- (e) No owner answer is recorded as given; every choice above is an open decision with a default.
+- (e) Every owner answer is recorded in "Decisions (owner, 2026-10-25)" (§13); Q7 is the per-intent audit decision added on 2026-10-25.
