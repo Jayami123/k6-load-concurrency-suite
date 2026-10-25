@@ -50,7 +50,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Rul
 | 3    | Raise the arrival rate inside the `pr`/`full` profiles                                                                                                                                                                                                                                                                                                                                                                                                                                                     | none: the storm depends on the latency of one request, not on load; a higher rate only raises the latency a little and changes the case's validity limits | rejected                                                                                                                                                                    |
 | 4    | Add a server-side delay                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | only through existing harness configuration; none exists, and a fork or harness edit is a **hard stop** for this work                                     | rejected                                                                                                                                                                    |
 
-**Recommended: option 1** (decision Q1 below is open until the owner answers).
+**Decided: option 1** (decision Q1 below; gate in §7).
 
 ## 4. Steps (junior guide)
 
@@ -98,6 +98,7 @@ Sum of the capped steps (script of PRE-2 §4): 22 on pull requests, 28 otherwise
 
 ## 7. Done when
 
+- [ ] **Gate, before the PR is opened:** the owner downloads artefact 12592554291 (`gh run download 40178773022 -n load-medusa`, authenticated, before about 2026-11-08) and the builder reads `p6_attempts`, `p6_retry_*` and `http_req_duration` of attempt `20261025T090121Z-c53f65ef` in `k6-main-summary.json`; if the quick answers were non-ok replies (R3), stop and revise the plan.
 - [ ] `npm run check` exit 0 with B0 + 4 unit tests, including the regression test on the storm configuration.
 - [ ] **10 consecutive full-profile runs reach the storm** (`judgeStorm` ok, `firstTimeouts / intents >= 0.5`): UNPROBED; measure in the fix PR's dispatches (`gh workflow run perf.yml --ref <branch>` is the owner's act; the PR's own CI adds the `pr`-profile runs). Report the 10 run ids and each share.
 - [ ] `STORM_SHARE` and `judgeStorm` are byte-identical to `main` (`git diff origin/main -- src/load/retry-validity.ts` is empty).
@@ -116,4 +117,4 @@ Sum of the capped steps (script of PRE-2 §4): 22 on pull requests, 28 otherwise
 
 - **Order.** Decided (owner, 2026-10-25): PRE-1 is built first, before Task 1's PR, and merged before Task 3 — the case runs on every PR, and a red `perf.yml` run cannot enter a release.
 - **Judge.** Decided (owner, 2026-10-25): `judgeStorm` and `STORM_SHARE` stay unchanged; a case that cannot reach the storm is fixed in the case, never in the judge.
-- **Q1. Fix option.** Open (no owner answer recorded): recommended default option 1 (§3). Options: 1 measured timeout, 2 constant 25 ms, 3 higher rate (rejected), 4 server delay (rejected, hard stop).
+- **Q1. Fix option.** Decided (owner, 2026-10-25): option 1 (measured timeout, a quarter of the fastest of three probe `complete` calls, clamped 5..100 ms). The storm is the case's precondition, not its assertion, so sizing the stimulus to the runner is legitimate; the judge and `STORM_SHARE` stay byte-identical. Gate: before the PR is opened, the owner downloads artefact 12592554291 (`gh run download 40178773022 -n load-medusa`, authenticated, before about 2026-11-08) and the builder reads `p6_attempts`, `p6_retry_*` and `http_req_duration` of attempt `20261025T090121Z-c53f65ef`; if the quick answers were non-ok replies (R3), stop and revise the plan.
