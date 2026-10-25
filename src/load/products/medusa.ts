@@ -75,7 +75,8 @@ async function measureStormMinComplete(
     leaf: "probe",
     s: carts,
     onCreated: (ids) => {
-      ctx.config.probeProductId = ids.productId;
+      // createStockedVariant calls this twice (product, then inventory item): a call without a product id must not erase it.
+      if (ids.productId !== undefined) ctx.config.probeProductId = ids.productId;
     },
   });
   ctx.config.probeProductId = probe.productId;
@@ -132,8 +133,9 @@ export async function medusaSetupWith(
       leaf: "load",
       s,
       onCreated: (ids) => {
-        ctx.config.productId = ids.productId;
-        ctx.config.inventoryItemId = ids.inventoryItemId;
+        // Called once per id: a call without an id leaves the recorded one alone, so cleanup never loses a product.
+        if (ids.productId !== undefined) ctx.config.productId = ids.productId;
+        if (ids.inventoryItemId !== undefined) ctx.config.inventoryItemId = ids.inventoryItemId;
       },
     });
     ctx.config = {
