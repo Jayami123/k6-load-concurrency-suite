@@ -920,6 +920,29 @@ shorter hold or fewer steps, never a higher cap or timeout. Artefact `load-knee-
 `k6-<label>-summary.json`, `k6-<label>.log` (which carries the intent lines of §6.8), `k6-<label>.json.gz`, `telemetry-<label>.{json,csv}`, `chart-<label>.html`,
 `knee-report-<label>.{json,md}`. The token scan (`node scripts/evidence-token-scan.mjs results/load`) runs before the upload. None of the existing job budgets change.
 
+## 9A. Self-test calibration (measured 2026-10-25, owner decision on step 10)
+
+The knee self-test was calibrated on the VM after the plan was written, because its first expected range (140 to 220 iterations/s)
+and its expected stop placement did not hold. The approved change set: the knee run's step rates and the stop delay of the self-test
+config only; the p95 limit, the 1 % error limit, the 2 s edge trim, the 0.9 CPU floor and the `app_cpu` expectation stay.
+
+- **Measured.** The stub's capacity is about 190 requests/s (a 5 ms burn on one thread). Step 190/s is clean with p95 58.8 ms, just under
+  the 60 ms limit (`smokeP95Ms` 6 x 10). Steps 194, 200, 220 and 240 trip the p95 limit.
+- **Stop timing (corrected from the owner's premise).** The owner's premise was that the stop lands about half of `delayAbortEvalSec` into
+  the step. Measured: `delayAbortEvalSec` 4 gives a stop at 1.9 s into the held step, 8 gives 3.9 s (at 194/s), 12 gives 1.8 s (at 220/s).
+  The stop is set by the queue building past the p95 limit, not by the delay: with the delay at 12 s the abort still fired 2 s into the
+  step, at 28 s of the run. The delay is kept at 12 s as approved; it does not move the stop.
+- **Post-trim samples.** The stop step's usable window is its hold minus the 2 s edge trim at each end. The approved requirement was at
+  least 4 s of such samples, which needs the stop at 6 s or later into the hold. The measured stop at the self-test config is 3.9 to 4.0 s,
+  about 2 s of samples (3 runs). **This requirement is not met by the approved change set.** It was met once (stop at 7.9 s, rate 191/s),
+  and not reproduced in three runs. The `app_cpu` expectation still holds, because the first saturated step (1, 171/s) is measured from
+  the steps before the stop.
+- **Expected range (3 local runs, `--profile pr`, identical).** Rates 151, 171, 191, 211, 231 (start 151, step 20, hold 10 s, ramp 2 s).
+  Range 171 to 191 iterations/s, stop at step 2 (191/s) on p95, first saturated `app_cpu` at step 1. The stop times were 3.9, 4.0 and
+  3.9 s into the hold. The case's expectation is set to 171 to 191 and `app_cpu`; the self-test passes (exit 0).
+- **Open.** The 4 s post-trim requirement needs an owner decision: accept about 2 s (the expectation is then checked on the steps before the
+  stop, as the run shows), or change the stop mechanism (for example, a hold that the stub overloads for longer, or a different stub).
+
 ## 10. Expected output of the self-test run
 
 ```text
