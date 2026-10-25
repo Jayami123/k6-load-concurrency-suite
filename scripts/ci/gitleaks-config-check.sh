@@ -30,6 +30,11 @@ write "$work/ok" "$medusa" "{ \"baseUrl\": \"http://127.0.0.1:9000\", \"publisha
 write "$work/planted-field" "$medusa" "{ \"publishableKey\": \"$key\", \"apiKey\": \"zQ7mK2pX9vB4nR8tY1wL6sD3fG5hJ0cQ\" }"
 write "$work/bad-value" "$medusa" "{ \"publishableKey\": \"zQ7mK2pX9vB4nR8tY1wL6sD3fG5hJ0cQ8wLp\" }"
 write "$work/wrong-path" "$cal" "{ \"publishableKey\": \"$key\" }"
+write "$work/prefixed-dir" "other-$medusa" "{ \"publishableKey\": \"$key\" }"
+write "$work/own-lines" "$medusa" "{
+  \"publishableKey\": \"$key\",
+  \"apiKey\": \"zQ7mK2pX9vB4nR8tY1wL6sD3fG5hJ0cQ\"
+}"
 
 # expect <name> <dir> <pass|fail>
 expect() {
@@ -48,5 +53,7 @@ expect "publishable key in a Medusa LOAD attempt" "$work/ok" pass
 expect "planted secret in another Medusa field" "$work/planted-field" fail
 expect "non-pk value in publishableKey" "$work/bad-value" fail
 expect "publishable key outside Medusa LOAD" "$work/wrong-path" fail
+expect "publishable key in a prefixed directory name" "$work/prefixed-dir" fail
+expect "planted secret on its own line beside a valid key" "$work/own-lines" fail
 
 exit "$fail"
