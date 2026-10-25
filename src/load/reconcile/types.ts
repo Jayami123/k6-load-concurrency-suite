@@ -53,4 +53,6 @@ export type AuditStageConfig =
       prefixLike: string;
       drainTimeoutMs?: number;
       sequentialCompletions: boolean;
+      /** Known bugs the case declares (LoadCase.knownBugs): their duplicates are counted, not violations. */
+      knownBugs?: string[];
     };

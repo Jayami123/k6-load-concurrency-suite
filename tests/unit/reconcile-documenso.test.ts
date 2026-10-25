@@ -146,3 +146,34 @@ describe("documenso audit reader", () => {
     }
   });
 });
+
+describe("documenso reconciliation: declared known bug P6-OBS-DOC-005", () => {
+  const retry = (): DocumensoSnapshot => ({
+    envelopes: [
+      { status: "COMPLETED", sealJobs: 2, stuckJobs: 0, completedAudit: 2 },
+      { status: "COMPLETED", sealJobs: 2, stuckJobs: 0, completedAudit: 2 },
+    ],
+    clientCompleted: 2,
+    sequentialCompletions: true,
+  });
+
+  it("duplicate seals and completion rows are counted under the declared bug, not violations or unexpected", () => {
+    const r = evaluateDocumensoAudit(retry(), SCOPE, DRAINED, ["P6-OBS-DOC-005"]);
+    assert.deepEqual(r.violations, []);
+    assert.deepEqual(r.unexpected, []);
+    assert.ok((r.knownBugs["P6-OBS-DOC-005"] ?? 0) > 0);
+  });
+
+  it("without the declaration the same duplicates are violations and unexpected", () => {
+    const r = evaluateDocumensoAudit(retry(), SCOPE, DRAINED, []);
+    assert.ok(r.violations.length > 0);
+    assert.ok(r.unexpected.length > 0);
+  });
+
+  it("a completed envelope with no completion row stays a violation even when the bug is declared", () => {
+    const s = retry();
+    s.envelopes[0] = { status: "COMPLETED", sealJobs: 1, stuckJobs: 0, completedAudit: 0 };
+    const r = evaluateDocumensoAudit(s, SCOPE, DRAINED, ["P6-OBS-DOC-005"]);
+    assert.ok(r.violations.some((v) => v.text.includes("completion audit row")));
+  });
+});

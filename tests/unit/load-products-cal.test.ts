@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type pg from "pg";
+import type { PrivateLinkInput } from "../../src/cal/private-link.ts";
 import {
   calCleanupWith,
   calSetupWith,
   calWindowDays,
   type CalDeps,
+  type CalLinkDeps,
 } from "../../src/load/products/cal.ts";
 import type { LoadContext } from "../../src/load/types.ts";
 
@@ -40,6 +42,7 @@ function fakeCtx(): LoadContext {
     runPrefix: "p6-qa-20261024T010203Z-3fa9c0d1",
     config: {},
     secrets: {},
+    handles: {},
   } as unknown as LoadContext;
 }
 
@@ -102,5 +105,134 @@ describe("cal product setup and cleanup", () => {
     assert.equal(out.ok, false);
     assert.equal(out.kind, "TEST BUG");
     assert.deepEqual(out.reasons, ["TEST BUG: cancel booking 1 failed: cancel refused"]);
+  });
+});
+
+describe("cal private-link setup and restore", () => {
+  function linkDeps(over: Partial<CalLinkDeps> = {}): {
+    deps: CalLinkDeps;
+    set: PrivateLinkInput[][];
+  } {
+    const set: PrivateLinkInput[][] = [];
+    const deps: CalLinkDeps = {
+      password: () => "pw-not-logged",
+      login: async () => "session=cookie-value-xyz",
+      readLinks: async () => [
+        { link: "prior-a", maxUsageCount: 3, usageCount: 1, expiresAt: null },
+      ],
+      setLinks: async (_base, _cookie, _event, links) => {
+        set.push(links);
+      },
+      ...over,
+    };
+    return { deps, set };
+  }
+
+  it("the setup sets planned + 2 cap-1 links with unique lower-case ids", async () => {
+    const ctx = fakeCtx(); // rate 2 x 30 s = 60 planned, so 62 links
+    const { pool } = fakePool([[HOST_ROW]]);
+    const { deps, set } = linkDeps();
+    const out = await calSetupWith(
+      ctx,
+      { openPool: () => pool, cancel: async () => {}, links: deps },
+      { privateLinks: true },
+    );
+    assert.equal(out.ok, true);
+    const links = set[0] ?? [];
+    assert.equal(links.length, 62);
+    assert.ok(links.every((l) => l.maxUsageCount === 1));
+    const ids = links.map((l) => l.link);
+    assert.equal(new Set(ids).size, 62);
+    assert.ok(ids.every((id) => id === id.toLowerCase() && /^[a-z0-9-]+$/.test(id)));
+    assert.equal((ctx.config.links as string[]).length, 62);
+  });
+
+  it("the host cookie is in ctx.secrets and never in ctx.config", async () => {
+    const ctx = fakeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    const { deps } = linkDeps();
+    await calSetupWith(
+      ctx,
+      { openPool: () => pool, cancel: async () => {}, links: deps },
+      { privateLinks: true },
+    );
+    assert.equal(ctx.secrets.CAL_HOST_COOKIE, "session=cookie-value-xyz");
+    assert.doesNotMatch(JSON.stringify(ctx.config), /cookie-value-xyz|pw-not-logged/);
+  });
+
+  it("a failed restore of the prior links is a TEST BUG line", async () => {
+    const ctx = fakeCtx();
+    const { pool } = fakePool([[HOST_ROW], []]); // setup reads the host row; the cleanup queries find nothing
+    let calls = 0;
+    const { deps } = linkDeps({
+      setLinks: async () => {
+        calls += 1;
+        if (calls === 2) throw new Error("restore refused");
+      },
+    });
+    const dbDeps = { openPool: () => pool, cancel: async () => {}, links: deps };
+    await calSetupWith(ctx, dbDeps, { privateLinks: true });
+    const out = await calCleanupWith(ctx, dbDeps);
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.deepEqual(out.reasons, ["TEST BUG: prior links not restored: restore refused"]);
+  });
+});
+
+describe("cal private-link setup refuses saved links with an expiry", () => {
+  it("setup fails as a TEST BUG and sets no link when a saved link has an expiry", async () => {
+    const ctx = fakeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    const set: PrivateLinkInput[][] = [];
+    const deps: CalLinkDeps = {
+      password: () => "pw-not-logged",
+      login: async () => "session=cookie-value-xyz",
+      readLinks: async () => [
+        { link: "timed", maxUsageCount: 1, usageCount: 0, expiresAt: new Date("2030-01-01") },
+      ],
+      setLinks: async (_base, _cookie, _event, links) => {
+        set.push(links);
+      },
+    };
+    const out = await calSetupWith(
+      ctx,
+      { openPool: () => pool, cancel: async () => {}, links: deps },
+      { privateLinks: true },
+    );
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.match(out.reasons[0] ?? "", /saved private links have an expiry/);
+    assert.deepEqual(set, []);
+  });
+});
+
+describe("cal cleanup restores the prior links even when the pool cannot open", () => {
+  it("openPool throws, the cleanup reports it, and the prior links are still restored", async () => {
+    const ctx = fakeCtx();
+    ctx.handles.calPriorLinks = [
+      { link: "prior-a", maxUsageCount: 3, usageCount: 1, expiresAt: null },
+    ];
+    ctx.secrets.CAL_HOST_COOKIE = "session=cookie-value-xyz";
+    ctx.config.baseUrl = "http://127.0.0.1:3000";
+    ctx.config.eventTypeId = 7;
+    const restored: PrivateLinkInput[][] = [];
+    const out = await calCleanupWith(ctx, {
+      openPool: () => {
+        throw new Error("pool refused");
+      },
+      cancel: async () => {},
+      links: {
+        password: () => "unused",
+        login: async () => "unused",
+        readLinks: async () => [],
+        setLinks: async (_base, _cookie, _event, links) => {
+          restored.push(links);
+        },
+      },
+    });
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.match(out.reasons[0] ?? "", /cal cleanup failed: pool refused/);
+    assert.deepEqual(restored, [[{ link: "prior-a", maxUsageCount: 3, usageCount: 1 }]]);
   });
 });

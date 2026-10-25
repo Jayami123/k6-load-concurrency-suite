@@ -1,0 +1,8 @@
+{
+  "rate": 1,
+  "durationSec": 10,
+  "maxLatencyMs": 3000,
+  "baseUrl": "http://127.0.0.1:3001",
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-doc-load-007",
+  "pdfPath": "/path/to/documenso/assets/example.pdf"
+}
