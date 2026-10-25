@@ -45,9 +45,9 @@ function folder(runId: string, p95: number, over: { validity?: string } = {}): R
     } as unknown as RunMeta,
     summary: {
       metrics: {
-        http_req_duration: { values: { med: p95 / 2, "p(95)": p95, "p(99)": p95 * 1.3 } },
-        http_req_failed: { values: { rate: 0 } },
-        http_reqs: { values: { rate: 3 } },
+        http_req_duration: { med: p95 / 2, "p(95)": p95, "p(99)": p95 * 1.3 },
+        http_req_failed: { value: 0 },
+        http_reqs: { rate: 3 },
       },
     },
     bins: bins(5, p95, 130),

@@ -825,6 +825,21 @@ The GitHub Actions job is `documenso-knee` in `knee.yml`, dispatch only, and it 
 "Documenso production build, jobs in the web process, rate limits bypassed" environment. Its results are uploaded as the
 `knee-documenso` artifact, with the pipeline lag file and the audit beside the knee report.
 
+## Steady baselines
+
+`npm run load:cal-steady` and `npm run load:medusa-steady` run the steady cases (`P6-CAL-LOAD-003`, `P6-MED-LOAD-002`) at 50 % of the
+knee lower bound in `k6/thresholds/knee-bounds.json`, for 120 s. A missing bounds file ends the run with ENV (exit 2). The steady
+runs are dispatched from `main` with `knee.yml` and `mode: steady`; the results are the `steady-cal` and `steady-medusa` artifacts.
+
+The band in `k6/thresholds/baseline-band.json` is the spread over the VALID steady runs (min, median and max). It is a record, not
+a gate: no k6 script reads it. The window p95 is taken over 10-second windows of the hold that have at least 40 requests, from the
+per-second p95s of the points file. A window max can come from one slow second.
+
+| Product         | Rate (iter/s) | Runs | p95 ms (min / median / max) | Window p95 ms (min / median / max) | Error rate | HTTP req/s (median) | Environment                     | Run ids                               |
+| --------------- | ------------- | ---- | --------------------------- | ---------------------------------- | ---------- | ------------------- | ------------------------------- | ------------------------------------- |
+| P6-CAL-LOAD-003 | 4             | 3    | 54.1 / 79.8 / 82.6          | 49.8 / 80.9 / 234.3 (33 windows)   | 0          | 8.0                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
+| P6-MED-LOAD-002 | 0.7           | 3    | 214.5 / 220.6 / 220.8       | 217.6 / 228.7 / 314.2 (15 windows) | 0          | 4.2                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
