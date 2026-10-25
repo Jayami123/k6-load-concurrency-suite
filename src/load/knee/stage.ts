@@ -4,17 +4,47 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { findHits } from "../../../scripts/evidence-token-scan.mjs";
 import { summaryCounter } from "../reconcile/index.ts";
-import type { LoadContext, RunMeta, Stage, StageResult } from "../types.ts";
+import type { K6RunResult, LoadContext, RunMeta, Stage, StageResult } from "../types.ts";
 import { firstSaturated, type RuleSample, type Window } from "./first-saturated.ts";
 import { formatSealLag, type KneeSealLag } from "./lag-by-step.ts";
 import { buildKneeReport, formatKneeTable, kneeInvalidReasons } from "./knee-report.ts";
 import { stepStatsFromSummary } from "./step-stats.ts";
-import { evaluateStopRule, STOP_DEFAULTS, type StopRule } from "./stop-rule.ts";
+import {
+  abortedStepOf,
+  evaluateStopRule,
+  STOP_DEFAULTS,
+  type StopRule,
+  type StopVerdict,
+} from "./stop-rule.ts";
+import type { StepStat } from "./step-stats.ts";
 
 interface TelemetryFile {
   samples?: RuleSample[];
   sources?: Record<string, { present: boolean; errors?: number }>;
   limits?: { maxConnections?: number; fdsSoftLimit?: number };
+}
+
+/**
+ * The stop of a run. The post-run rule decides from the final step statistics. When k6 aborted (exit 99) and that rule found
+ * no stop, the step k6 named in its log is the stop: k6 judged the running p95, which can be over the limit mid-step while the
+ * final p95 of the step is under it.
+ */
+function stopOf(run: K6RunResult, stats: StepStat[], rule: StopRule): StopVerdict {
+  const verdict = evaluateStopRule(stats, rule);
+  if (verdict.stopStep !== null || run.exitCode !== 99) return verdict;
+  if (!existsSync(run.stdoutPath)) return verdict;
+  const aborted = abortedStepOf(readFileSync(run.stdoutPath, "utf8"));
+  if (aborted === null) return verdict;
+  const step = stats.find((s) => s.index === aborted.index);
+  return {
+    ...verdict,
+    stopStep: aborted.index,
+    reasons: aborted.reasons,
+    abortLogged: true,
+    stopRequests: step?.requests,
+    stopErrors: step?.errors,
+    lowSampleStop: (step?.requests ?? 0) < rule.minRequests,
+  };
 }
 
 /** The knee summary of one run, written for the LOAD table (plan task 1 §6.4). Counts and rates only. */
@@ -72,7 +102,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
       const summary = JSON.parse(readFileSync(run.summaryPath, "utf8")) as Record<string, unknown>;
       const stats = stepStatsFromSummary(summary, plan);
       const rule: StopRule = { smokeP95Ms: plan.smokeP95Ms, ...STOP_DEFAULTS };
-      const stop = evaluateStopRule(stats, rule);
+      const stop = stopOf(run, stats, rule);
 
       // The k6 abort and the post-run rule must agree (plan §6.4): exit 99 needs a stop step, exit 0 must not have one.
       if (run.exitCode === 99 && stop.stopStep === null)
@@ -147,7 +177,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
           problems.push("stop on error_rate, expected p95");
         if (stop.stopStep !== null) {
           const st = stats[stop.stopStep]!;
-          if (!(st.p95Ms !== undefined && st.p95Ms >= limitMs))
+          if (!stop.abortLogged && !(st.p95Ms !== undefined && st.p95Ms >= limitMs))
             problems.push(`stop step ${stop.stopStep} p95 is not over ${limitMs} ms`);
           for (const earlier of stats.filter(
             (x) => x.index < stop.stopStep! && x.requests >= rule.minRequests,

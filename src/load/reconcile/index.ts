@@ -78,7 +78,7 @@ export async function reconcile(
     case "medusa":
       return reconcileMedusa(pool, cfg, counters.clientCount, counters.intents);
     case "documenso":
-      return reconcileDocumenso(pool, cfg, counters.clientCount);
+      return reconcileDocumenso(pool, cfg, counters.clientCount, counters.intents?.interrupted);
   }
 }
 
