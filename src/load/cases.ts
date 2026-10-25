@@ -11,6 +11,7 @@ import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
+import { kneePlanFor } from "./knee/plan-input.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
@@ -648,6 +649,37 @@ export const CAL_LOAD_009: LoadCase = {
   },
 };
 
+/**
+ * P6-CAL-LOAD-005: the Cal booking knee (plan task 2 §6.5). Held ramping-arrival-rate steps; the knee is the first saturated resource,
+ * and the per-intent audit reconciles the bookings. The plan comes from the dispatch inputs; setup reads the slot supply once.
+ */
+export const CAL_LOAD_005: LoadCase = {
+  id: "P6-CAL-LOAD-005",
+  telemetry: { product: "cal" },
+  title: "Cal booking journey knee: held ramping-arrival-rate steps",
+  product: "cal",
+  label: "knee range, environment-bound",
+  profiles: {
+    // rate = start rate; durationSec = total planned seconds of the default plan (9 steps x 32 s); maxLatencyMs sizes nothing here
+    pr: { rate: 2, durationSec: 96, maxLatencyMs: 2000 }, // 3 steps (2, 4, 6/s) x 12 s hold: a smoke of the machinery
+    full: { rate: 2, durationSec: 288, maxLatencyMs: 2000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/cal-load-005.js",
+      env: {},
+      allowExits: [0, 99],
+      knee: { ...kneePlanFor(ctx), smokeP95Ms: ctx.config.smokeP95Ms as number, maxVUs: 160 },
+    },
+  ],
+  stages: {
+    setup: calSetup({ knee: true }),
+    reconcile: composeStages([kneeStage, reconcileStage]),
+    cleanup: calCleanup,
+  },
+};
+
 /** P6-MED-LOAD-006: the complete request retried after a 100 ms timeout; one order, one payment, stock once (plan task 10 §6.6). */
 export const MED_LOAD_006: LoadCase = {
   id: "P6-MED-LOAD-006",
@@ -867,6 +899,7 @@ export const CASES: Record<string, LoadCase> = {
   [DOC_LOAD_008.id]: DOC_LOAD_008,
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
+  [CAL_LOAD_005.id]: CAL_LOAD_005,
   [MED_LOAD_006.id]: MED_LOAD_006,
   [DOC_LOAD_007.id]: DOC_LOAD_007,
   [KNEE_RULE_006.id]: KNEE_RULE_006,

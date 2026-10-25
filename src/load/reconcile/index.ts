@@ -74,7 +74,7 @@ export async function reconcile(
 ): Promise<AuditResult> {
   switch (cfg.product) {
     case "cal":
-      return reconcileCal(pool, cfg, counters.clientCount);
+      return reconcileCal(pool, cfg, counters.clientCount, counters.intents);
     case "medusa":
       return reconcileMedusa(pool, cfg, counters.clientCount, counters.intents);
     case "documenso":

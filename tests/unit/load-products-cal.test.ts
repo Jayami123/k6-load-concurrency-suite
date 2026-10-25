@@ -236,3 +236,74 @@ describe("cal cleanup restores the prior links even when the pool cannot open", 
     assert.deepEqual(restored, [[{ link: "prior-a", maxUsageCount: 3, usageCount: 1 }]]);
   });
 });
+
+/** Free slots of the window: one every 30 minutes from its start, so the knee's supply has room for any plan. */
+function slotsFrom(count: number): CalDeps["freeSlots"] {
+  return async (fromIso) =>
+    Array.from({ length: count }, (_, i) =>
+      new Date(Date.parse(fromIso) + i * 30 * 60000).toISOString(),
+    );
+}
+
+describe("cal knee setup", () => {
+  const kneeCtx = (): LoadContext =>
+    ({ ...fakeCtx(), profileName: "full", env: {} }) as unknown as LoadContext;
+
+  it("the knee setup writes one slot start per iteration, the plan fields and a 28-day window", async () => {
+    const ctx = kneeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    const deps: CalDeps = {
+      openPool: () => pool,
+      cancel: async () => {},
+      freeSlots: slotsFrom(4000),
+      smokeP95: () => 77.12,
+    };
+    const out = await calSetupWith(ctx, deps, { knee: true });
+    assert.equal(out.ok, true);
+    const starts = ctx.config.slotStarts as string[];
+    assert.equal(starts.length, 2835);
+    assert.deepEqual(starts, [...starts].sort());
+    assert.equal(ctx.config.windowDays, 28);
+    assert.equal(ctx.config.startRate, 2);
+    assert.equal(ctx.config.holdSec, 30);
+    assert.equal(ctx.config.smokeP95Ms, 77.12);
+  });
+
+  it("a supply shorter than the plan is a TEST BUG before any load", async () => {
+    const ctx = kneeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    const deps: CalDeps = {
+      openPool: () => pool,
+      cancel: async () => {},
+      freeSlots: slotsFrom(10),
+      smokeP95: () => 77.12,
+    };
+    const out = await calSetupWith(ctx, deps, { knee: true });
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.match(out.reasons[0] ?? "", /TEST BUG: slot supply 10 < needed 2835/);
+    assert.equal(ctx.config.slotStarts, undefined);
+  });
+
+  it("an unreadable smoke reference is an ENV failure with its own reason, and no slots are read", async () => {
+    const ctx = kneeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    let read = false;
+    const deps: CalDeps = {
+      openPool: () => pool,
+      cancel: async () => {},
+      freeSlots: async () => {
+        read = true;
+        return [];
+      },
+      smokeP95: () => {
+        throw new Error("no file");
+      },
+    };
+    const out = await calSetupWith(ctx, deps, { knee: true });
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "ENV");
+    assert.deepEqual(out.reasons, ["ENV: smoke p95 reference unreadable"]);
+    assert.equal(read, false);
+  });
+});

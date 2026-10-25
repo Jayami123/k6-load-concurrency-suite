@@ -87,3 +87,38 @@ describe("cal audit reader", () => {
     assert.doesNotThrow(() => assertSelectOnly(OVERLAP_PAIRS_SQL));
   });
 });
+
+describe("cal reconciliation per intent (knee runs)", () => {
+  const counters = {
+    started: 2,
+    interrupted: 0,
+    log: {
+      outcomes: new Map([
+        [0, { outcome: "ok" as const, net: false, ghost: false }],
+        [1, { outcome: "ok" as const, net: false, ghost: false }],
+      ]),
+      duplicateLines: [],
+      beyondStarted: [],
+    },
+  };
+
+  it("an ok intent without a row is a PRODUCT BUG; the client count check does not run", () => {
+    const s = {
+      liveBookings: 1,
+      nonAccepted: 0,
+      overlapPairs: 0,
+      clientAccepted: 2,
+      intents: { counters, rowsByIntent: new Map([[0, 1]]), ghostRows: 0 },
+    };
+    const r = evaluateCalAudit(s, SCOPE);
+    assert.ok(r.violations.some((v) => /intent 1 was told ok but has no row/.test(v.text)));
+    assert.equal(
+      r.checks.some((c) => c.name === "client-matches-db"),
+      false,
+    );
+    assert.equal(
+      r.checks.some((c) => c.name === "per-intent"),
+      true,
+    );
+  });
+});
