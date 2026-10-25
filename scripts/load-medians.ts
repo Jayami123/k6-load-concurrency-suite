@@ -35,7 +35,11 @@ const runs: LoadRunRecord[] = folders.map((folder) => ({
 }));
 const s = summarizeMedian(runs, (r) => pickMetric(metric, r));
 const runIds = runs
-  .filter((r) => !s.excluded.some((e) => e.runId === (r.verdict.runId ?? r.meta.runId)))
+  .filter(
+    (r) =>
+      !s.excluded.some((e) => e.runId === (r.verdict.runId ?? r.meta.runId)) &&
+      pickMetric(metric, r) !== undefined,
+  )
   .map((r) => runIdOf(r.meta))
   .filter((id): id is string => id !== undefined)
   .sort((a, b) => Number(a) - Number(b));

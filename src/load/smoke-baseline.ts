@@ -63,7 +63,7 @@ export function buildSmokeBaseline(input: {
     // A run without a p95 value is left out of the median and out of n, the run ids and the environment alike.
     const scored = used.flatMap((r) => {
       const p95 = pickMetric("p95", r);
-      return p95 === undefined ? [] : [{ r, p95 }];
+      return p95 === undefined || p95 <= 0 ? [] : [{ r, p95 }];
     });
     const noP95 = used
       .filter((r) => pickMetric("p95", r) === undefined)

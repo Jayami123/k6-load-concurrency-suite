@@ -31,4 +31,11 @@ describe("p95 medians", () => {
   it("pickMetric p95 reads k6[0].p95Ms", () => {
     assert.equal(pickMetric("p95", record({ p95Ms: 233 })), 233);
   });
+
+  it("pickMetric leaves out a p95 that is not a finite number", () => {
+    assert.equal(pickMetric("p95", record({ p95Ms: Number.NaN })), undefined);
+    assert.equal(pickMetric("p95", record({ p95Ms: Number.POSITIVE_INFINITY })), undefined);
+    const nullP95 = { verdict: { k6: [{ p95Ms: null }] }, meta: {} } as unknown as LoadRunRecord;
+    assert.equal(pickMetric("p95", nullP95), undefined);
+  });
 });

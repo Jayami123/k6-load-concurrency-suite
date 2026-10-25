@@ -67,8 +67,9 @@ export function runIdOf(meta: RunMeta): string | undefined {
 
 export type MedianMetric = "requests" | "dropped" | "iterations" | "p95";
 
-/** One metric of the first k6 run of a verdict (k6[0]); undefined when the verdict has none. */
+/** One metric of the first k6 run of a verdict (k6[0]); undefined when the verdict has none or the value is not a finite number. */
 export function pickMetric(metric: MedianMetric, r: LoadRunRecord): number | undefined {
-  const k6 = (r.verdict as { k6?: Array<Record<string, number>> }).k6?.[0];
-  return k6?.[metric === "p95" ? "p95Ms" : metric];
+  const k6 = (r.verdict as { k6?: Array<Record<string, unknown>> }).k6?.[0];
+  const value = k6?.[metric === "p95" ? "p95Ms" : metric];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
