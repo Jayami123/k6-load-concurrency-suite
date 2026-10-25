@@ -7,7 +7,8 @@ import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
 import { reconcileCal } from "./cal.ts";
 import { reconcileDocumenso } from "./documenso.ts";
 import { reconcileMedusa } from "./medusa.ts";
-import type { AuditResult, AuditStageConfig } from "./types.ts";
+import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
+import { parseIntentLog } from "../knee/intents.ts";
 import type { LoadContext, Stage, StageResult } from "../types.ts";
 
 /** Runs stages in order and merges their data. A not-ok stage does not stop the next one; the first failing kind is reported. */
@@ -69,13 +70,13 @@ export function summaryCounter(summary: unknown, name: string): number | undefin
 export async function reconcile(
   cfg: AuditStageConfig,
   pool: import("pg").Pool,
-  counters: { clientCount?: number },
+  counters: { clientCount?: number; intents?: IntentCounters },
 ): Promise<AuditResult> {
   switch (cfg.product) {
     case "cal":
       return reconcileCal(pool, cfg, counters.clientCount);
     case "medusa":
-      return reconcileMedusa(pool, cfg, counters.clientCount);
+      return reconcileMedusa(pool, cfg, counters.clientCount, counters.intents);
     case "documenso":
       return reconcileDocumenso(pool, cfg, counters.clientCount);
   }
@@ -98,6 +99,22 @@ const defaultDeps: ReconcileDeps = {
   reconcile,
 };
 
+/**
+ * The intent counters of a knee run (plan task 1 §6.8): the log of the main run, `started` from p6_step_started and
+ * `interrupted` = started - iterations. undefined for every run without a knee plan.
+ */
+export async function intentCountersFor(
+  ctx: LoadContext,
+  summary: unknown,
+): Promise<IntentCounters | undefined> {
+  const main = ctx.k6.find((k) => k.label === "main") ?? ctx.k6[0];
+  if (!main || !ctx.caseDef.runs(ctx).some((r) => r.label === "main" && r.knee)) return undefined;
+  const started = summaryCounter(summary, "p6_step_started") ?? 0;
+  const iterations = summaryCounter(summary, "iterations") ?? 0;
+  const log = parseIntentLog(readFileSync(main.stdoutPath, "utf8"), started);
+  return { started, interrupted: Math.max(0, started - iterations), log };
+}
+
 /** Builds the audit stage. Writes audit.json (numbers, ids and check names only) after a token scan. */
 export function makeReconcileStage(deps: ReconcileDeps = defaultDeps): Stage {
   return async (ctx: LoadContext): Promise<StageResult> => {
@@ -113,7 +130,8 @@ export function makeReconcileStage(deps: ReconcileDeps = defaultDeps): Stage {
       // The case's declared known bugs travel with the Documenso audit config (LoadCase.knownBugs).
       const audited =
         cfg.product === "documenso" ? { ...cfg, knownBugs: ctx.caseDef.knownBugs } : cfg;
-      result = await deps.reconcile(audited, pool, { clientCount });
+      const intents = await intentCountersFor(ctx, summary);
+      result = await deps.reconcile(audited, pool, { clientCount, intents });
     } finally {
       await closePool(pool);
     }
