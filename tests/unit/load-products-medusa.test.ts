@@ -193,4 +193,21 @@ describe("medusa product setup and cleanup", () => {
     assert.deepEqual(out.reasons, ["TEST BUG: cleanup product failed: boom"]);
     assert.equal(customersSwept, true);
   });
+
+  it("a later failure keeps the product id the first stock callback recorded, so cleanup can delete it", async () => {
+    const ctx = fakeCtx();
+    const result = await medusaSetupWith(
+      ctx,
+      deps({
+        stock: async (input) => {
+          // createStockedVariant calls onCreated twice: once with the product id, once with the inventory item id.
+          input.onCreated?.({ productId: "prod_9" });
+          input.onCreated?.({ inventoryItemId: "ii_9" });
+          throw new Error("TEST BUG: location level step failed");
+        },
+      }),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(ctx.config.productId, "prod_9");
+  });
 });
