@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      medusa_retry_repeats:
+        description: "Verification only: run P6-MED-LOAD-006 this many times (1 to 10) in medusa-load and no other job. Empty = the full run."
+        required: false
+        default: ""
+        type: string
   # Nightly full-count races (roadmap D2). 02:17 UTC, off the top of the hour.
   schedule:
     - cron: "17 2 * * *"
@@ -34,6 +40,7 @@ jobs:
   medusa-smoke:
     name: medusa-smoke
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 45
     env:
       P6_WORKING_DIRECTORY: p6
@@ -221,6 +228,7 @@ jobs:
   medusa-order-races:
     name: medusa-order-races
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 45
     env:
       P6_WORKING_DIRECTORY: p6
@@ -510,7 +518,7 @@ jobs:
           node scripts/write-ci-job-summary.ts
 
       - name: LOAD journey P6-MED-LOAD-001 (functional load, not capacity)
-        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
         run: |
@@ -521,7 +529,7 @@ jobs:
           exit "$status"
 
       - name: LOAD journey P6-MED-LOAD-002 (inventory conservation, functional load, not capacity)
-        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
         run: |
@@ -532,7 +540,7 @@ jobs:
           exit "$status"
 
       - name: LOAD journey P6-MED-LOAD-006 (complete retry storm, functional load, not capacity)
-        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
         run: |
@@ -541,6 +549,28 @@ jobs:
           npm run load:medusa-retry -- --profile "${{ github.event_name == 'pull_request' && 'pr' || 'full' }}" || status=$?
           if [ "$status" -eq 3 ]; then echo "::warning::LOAD run INVALID; excluded from medians (P6-RULE-005)"; status=0; fi
           exit "$status"
+
+      # Verification only (workflow_dispatch with medusa_retry_repeats): P6-MED-LOAD-006 runs N times, each a fresh run with
+      # its own run id. A run that is not PASS (INVALID included) fails the step; no run is excused.
+      # Cap 25 min: N x about 1 min (full profile, setup and cleanup included) gives 10 min; 80 % stop at 20 min. The job
+      # budget in this mode is 2 + 6 + 2 + 25 = 35 of 45 min, margin 10.
+      - name: VERIFY P6-MED-LOAD-006 repeated (dispatch only)
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.medusa_retry_repeats != '' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        timeout-minutes: 25
+        env:
+          REPEATS: ${{ inputs.medusa_retry_repeats }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REPEATS" =~ ^([1-9]|10)$ ]]; then
+            echo "::error::medusa_retry_repeats must be 1 to 10, got ${REPEATS}"
+            exit 1
+          fi
+          for i in $(seq 1 "$REPEATS"); do
+            echo "P6-MED-LOAD-006 repeat ${i} of ${REPEATS}"
+            npm run load:medusa-retry -- --profile full || { echo "::error::repeat ${i} did not finish PASS (exit $?)"; exit 1; }
+          done
+          node scripts/ci/check-retry-repeats.ts results/load/P6-MED-LOAD-006 "$REPEATS"
 
       - name: Token scan of the LOAD results
         if: ${{ !cancelled() }}
@@ -575,6 +605,7 @@ jobs:
   medusa-cancel-extras:
     name: medusa-cancel-extras
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 30
     env:
       P6_WORKING_DIRECTORY: p6
@@ -736,6 +767,7 @@ jobs:
   medusa-multi-instance:
     name: medusa-multi-instance (${{ matrix.lock }})
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -951,6 +983,7 @@ jobs:
   cal-smoke:
     name: cal-smoke
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 60
     env:
       P6_WORKING_DIRECTORY: p6
@@ -1245,6 +1278,7 @@ jobs:
   cal-state-races:
     name: cal-state-races
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 85
     env:
       P6_WORKING_DIRECTORY: p6
@@ -1452,6 +1486,7 @@ jobs:
   documenso-smoke:
     name: documenso-smoke
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 45
     env:
       P6_WORKING_DIRECTORY: p6
@@ -1725,6 +1760,7 @@ jobs:
   twenty-smoke:
     name: twenty-smoke
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 20
     env:
       P6_WORKING_DIRECTORY: p6
@@ -1918,6 +1954,7 @@ jobs:
   twenty-races:
     name: twenty-races
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 33
     env:
       P6_WORKING_DIRECTORY: p6
@@ -2097,6 +2134,7 @@ jobs:
   twenty-obs:
     name: twenty-obs
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 27
     env:
       P6_WORKING_DIRECTORY: p6
@@ -2263,6 +2301,7 @@ jobs:
   load-selftest:
     name: load-selftest
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2332,6 +2371,7 @@ jobs:
   load-overhead:
     name: load-overhead
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
