@@ -646,7 +646,55 @@ Phase 2 of the master plan is **done**. The cases are evidenced from `main` runs
 `P6-MED-RACE-006` is in "Later" (no gift-card route at the pinned Medusa). Open product bugs: the Phase 2 rows of "Known
 product bugs".
 
-## Phase 3 (next)
+## Phase 3 results
+
+Functional load, not capacity. The LOAD cases show that each product completes its profile with its checks passing. Phase 3
+does not measure how much load a product can take.
+
+The numbers are medians from three `main` dispatches per case, with one selected VALID attempt per case, all on `0b07594`
+(the merge of #64):
+[40177412186](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40177412186), [40178773022](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40178773022) and
+[40180625279](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40180625279). Every selected attempt is PASS and VALID, and no iteration is dropped.
+The `run-meta` links point at the release zip of run 40177412186; the zips of the other two runs are listed in the release
+notes. The `p6-phase3` release is dispatched after this PR merges, so the links become valid then.
+
+### Cal
+
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-CAL-LOAD-001` | 3 selected VALID attempts | 124               | 0                  | 77.12                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-CAL-LOAD-007` | 3 selected VALID attempts | 152               | 0                  | 66.97                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-CAL-LOAD-009` | 3 selected VALID attempts | 157               | 0                  | 120.30               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+
+### Medusa
+
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-MED-LOAD-001` | 3 selected VALID attempts | 272               | 0                  | 171.60               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-MED-LOAD-002` | 3 selected VALID attempts | 185               | 0                  | 165.09               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-MED-LOAD-006` | 3 selected VALID attempts | 343               | 0                  | 217.80               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+
+### Documenso
+
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-DOC-LOAD-001` | 3 selected VALID attempts | 281               | 0                  | 233.13               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-002` | 3 selected VALID attempts | 281               | 0                  | 230.11               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-007` | 3 selected VALID attempts | 467               | 0                  | 88.25                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-008` | 3 selected VALID attempts | 281               | 0                  | 232.38               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+
+Footnotes to the Medusa rows: in run 40178773022, `P6-MED-LOAD-001`, `P6-MED-LOAD-002` and `P6-MED-LOAD-006` each ran twice.
+The first attempts of `-001` and `-002` PASSED and are used. The first attempt of `-006` FAILED with a TEST BUG (the retry
+storm did not reach its threshold: 3 of 30 first attempts timed out); its second attempt PASSED and is used, by the owner's
+decision. The excluded attempts are listed in the release notes.
+
+The journey smoke medians in `k6/thresholds/smoke-p95.json` are the p95 values of `P6-CAL-LOAD-001` (77.12 ms),
+`P6-MED-LOAD-001` (171.60 ms) and `P6-DOC-LOAD-001` (233.13 ms), from the same three runs.
+
+Phase 3 replaced the master-plan Phase 3 ("k6 smoke and ramp for all products; `baseline.json`") with foundations and
+correctness under load, and redefined the IDs as the Phase 3 roadmap (Note 5) describes.
+
+### Carried into Phase 4: two Medusa backends
 
 1. `P6-MED-RACE-002` and `P6-MED-RACE-003`: two Medusa backends on one database. `-002` uses a Redis lock; `-003`
    characterizes the in-memory lock. The harness `v0.2.14` starts and stops a second Medusa backend
@@ -666,6 +714,10 @@ product bugs".
    npm run race:medusa -- --grep "P6-MED-RACE-002"
    npm run down:medusa   # always; switching the lock mode needs a down first
    ```
+
+### Phase 4 (next)
+
+The next phase is in [the Phase 4 roadmap](docs/plans/2026-10-22-p6-phase4-roadmap.md).
 
 ## How to read a LOAD run
 
