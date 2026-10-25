@@ -4,6 +4,7 @@
 import { loadLoadConfig } from "../lib/config.js";
 import { openModelScenario, standardOptions } from "../lib/pure/options.js";
 import { runMedCheckout } from "../journeys/med-checkout.js";
+import { clockHooks } from "../lib/markers.js";
 
 // Defaults equal k6/cases/med-load-002.example.json (see k6/cases/med-load-001.js for why).
 const cfg = {
@@ -35,6 +36,8 @@ export const options = standardOptions({
   thresholds: { checks: ["rate==1"], http_req_failed: ["rate==0"] }, // 400 is expected, declared through expectStatuses(400)
   tags,
 });
+
+export const { setup, teardown } = clockHooks(__ENV.MARKER_URL);
 
 export function journey() {
   runMedCheckout(cfg, { classify: true });

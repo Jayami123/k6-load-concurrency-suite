@@ -5,6 +5,7 @@ import { loadLoadConfig } from "../lib/config.js";
 import { buildPlan } from "../lib/retry.js";
 import { openModelScenario, standardOptions } from "../lib/pure/options.js";
 import { runCalBook } from "../journeys/cal-book.js";
+import { clockHooks } from "../lib/markers.js";
 
 // Defaults equal k6/cases/cal-load-007.example.json. They let `k6 inspect` run the init context without a config file;
 // a real run always passes every value through P6_LOAD_CONFIG, which wins over these.
@@ -44,6 +45,8 @@ export const options = standardOptions({
   thresholds: { checks: ["rate==1"], p6_retry_5xx: ["count==0"] },
   tags,
 });
+
+export const { setup, teardown } = clockHooks(__ENV.MARKER_URL);
 
 export function journey() {
   runCalBook(cfg, { retryPlan: RETRY });
