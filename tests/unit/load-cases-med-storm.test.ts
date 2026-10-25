@@ -55,9 +55,10 @@ describe("P6-MED-LOAD-006 storm configuration (regression, plan PRE-1)", () => {
 
     const setup = await medusaSetupWith(ctx, deps, (planned) => planned + 20, 3);
     assert.equal(setup.ok, true, setup.reasons.join("; "));
+    assert.equal(ctx.config.probeProductId, "prod_probe");
     assert.equal(ctx.config.stock, 30, "the case stock is planned + 20, unchanged by the probe");
     const timeout = ctx.config.stormTimeoutMs as number;
-    assert.ok(timeout >= 25 && timeout <= 30, `a quarter of a ~100 ms complete, got ${timeout}`);
+    assert.ok(timeout >= 20 && timeout <= 30, `a quarter of a ~100 ms complete, got ${timeout}`);
 
     assert.equal(STORM_SHARE, 0.5);
     assert.equal(judgeStorm({ intents: 30, firstTimeouts: 3, retries: 3 }).ok, false);

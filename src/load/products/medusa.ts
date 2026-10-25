@@ -78,6 +78,7 @@ async function measureStormTimeout(
       ctx.config.probeProductId = ids.productId;
     },
   });
+  ctx.config.probeProductId = probe.productId;
   const prepare = deps.prepareCart ?? prepareReadyCart;
   const complete = deps.complete ?? completeCart;
   const times: number[] = [];
