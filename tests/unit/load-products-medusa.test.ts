@@ -8,6 +8,8 @@ import {
   type MedusaDeps,
 } from "../../src/load/products/medusa.ts";
 import type { LoadContext } from "../../src/load/types.ts";
+import { kneePlanFor, medKneeDefaultsFor } from "../../src/load/knee/plan-input.ts";
+import { stockForKnee } from "../../src/load/knee/med-stock.ts";
 
 const CATALOG = {
   token: "tok-1",
@@ -209,5 +211,41 @@ describe("medusa product setup and cleanup", () => {
     );
     assert.equal(result.ok, false);
     assert.equal(ctx.config.productId, "prod_9");
+  });
+});
+
+describe("medusa knee stock from the context", () => {
+  it("stockFor receives the context, and a knee sizes the stock from its plan (587 for the default plan)", async () => {
+    const seen: number[] = [];
+    const ctx = { ...fakeCtx(), profileName: "full", env: {} } as unknown as LoadContext;
+    const out = await medusaSetupWith(
+      ctx,
+      deps({
+        stock: async (input) => {
+          seen.push(input.s);
+          return { productId: "prod_1", variantId: "var_1", inventoryItemId: "ii_1", title: "t" };
+        },
+      }),
+      (_planned, c) => stockForKnee(kneePlanFor(c, medKneeDefaultsFor)),
+    );
+    assert.equal(out.ok, true);
+    assert.deepEqual(seen, [587]);
+    assert.equal(ctx.config.stock, 587);
+  });
+
+  it("the old callers still get planned + 20 and any other rule of planned alone", async () => {
+    const seen: number[] = [];
+    const ctx = fakeCtx();
+    await medusaSetupWith(
+      ctx,
+      deps({
+        stock: async (input) => {
+          seen.push(input.s);
+          return { productId: "prod_1", variantId: "var_1", inventoryItemId: "ii_1", title: "t" };
+        },
+      }),
+      (planned) => Math.ceil(planned / 2),
+    );
+    assert.deepEqual(seen, [30]);
   });
 });

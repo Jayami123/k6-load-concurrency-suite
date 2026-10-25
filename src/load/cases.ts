@@ -11,7 +11,9 @@ import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
-import { kneePlanFor } from "./knee/plan-input.ts";
+import { kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
+import { stockForKnee } from "./knee/med-stock.ts";
+import { readSmokeReference } from "./smoke-baseline.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
@@ -680,6 +682,56 @@ export const CAL_LOAD_005: LoadCase = {
   },
 };
 
+/** The Medusa knee's setup: the stock from its plan, and the p95 reference of P6-MED-LOAD-001 (plan task 3 §6.4, §6.5). */
+const medKneeProductSetup = makeMedusaSetup({
+  stockFor: (_planned, ctx) => stockForKnee(kneePlanFor(ctx, medKneeDefaultsFor)),
+});
+const medKneeSetup: Stage = async (ctx) => {
+  let smokeP95Ms: number;
+  try {
+    smokeP95Ms = readSmokeReference("P6-MED-LOAD-001");
+  } catch {
+    return { ok: false, kind: "ENV", reasons: ["ENV: smoke p95 reference unreadable"] };
+  }
+  const setup = await medKneeProductSetup(ctx);
+  if (setup.ok) ctx.config.smokeP95Ms = smokeP95Ms;
+  return setup;
+};
+
+/**
+ * P6-MED-LOAD-004: the Medusa checkout knee (plan task 3 §6.4). The same held-step knee as P6-CAL-LOAD-005, on the checkout journey:
+ * the stock covers every order the plan can place, so a stock-out never ends a run.
+ */
+export const MED_LOAD_004: LoadCase = {
+  id: "P6-MED-LOAD-004",
+  title: "Medusa checkout journey knee: held ramping-arrival-rate steps",
+  product: "medusa",
+  label: "knee range, environment-bound",
+  profiles: {
+    pr: { rate: 0.5, durationSec: 102, maxLatencyMs: 10000 }, // 3 steps (0.5, 1.0, 1.5/s) x 10 s hold + ramps: a smoke of the machinery
+    full: { rate: 0.5, durationSec: 256, maxLatencyMs: 10000 }, // 8 steps x 32 s
+  },
+  telemetry: { product: "medusa" },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/med-load-004.js",
+      env: {},
+      allowExits: [0, 99],
+      knee: {
+        ...kneePlanFor(ctx, medKneeDefaultsFor),
+        smokeP95Ms: ctx.config.smokeP95Ms as number,
+        maxVUs: 120,
+      },
+    },
+  ],
+  stages: {
+    setup: medKneeSetup,
+    reconcile: composeStages([kneeStage, reconcileStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
 /** P6-MED-LOAD-006: the complete request retried after a 100 ms timeout; one order, one payment, stock once (plan task 10 §6.6). */
 export const MED_LOAD_006: LoadCase = {
   id: "P6-MED-LOAD-006",
@@ -900,6 +952,7 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
+  [MED_LOAD_004.id]: MED_LOAD_004,
   [MED_LOAD_006.id]: MED_LOAD_006,
   [DOC_LOAD_007.id]: DOC_LOAD_007,
   [KNEE_RULE_006.id]: KNEE_RULE_006,

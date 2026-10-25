@@ -9,6 +9,7 @@ import {
 import { selectRows } from "../../oracles/pg.ts";
 import { checkCaptureCap, checkRefundCap } from "../../medusa/invariants.ts";
 import { auditByIntent } from "../knee/intents.ts";
+import { MED_INTENT_ROWS_SQL, medRowsByIntent } from "../knee/med-intents.ts";
 import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
 import { addFinding } from "./types.ts";
 
@@ -202,16 +203,7 @@ export async function readMedusaSnapshot(
   };
 }
 
-/** Orders per cart email of the case prefix (the email carries the intent, plan task 1 §6.8). Read-only. */
-export const ORDERS_PER_EMAIL_SQL = `SELECT o.email AS email, count(*)::int AS n FROM "order" o WHERE o.email LIKE $1 AND o.deleted_at IS NULL GROUP BY o.email`;
-
-/** The intent number in a cart email `<prefix>-i<n>@qa.local`; undefined for any other email. */
-export function intentOfEmail(email: string): number | undefined {
-  const m = /-i(\d+)@qa\.local$/.exec(email);
-  return m ? Number(m[1]) : undefined;
-}
-
-/** Reads, then evaluates. Knee runs pass the intent counters: the audit then reconciles per intent. */
+/** Reads, then evaluates. Knee runs pass the intent counters: the audit then reconciles per intent (plan task 3 §6.4b). */
 export async function reconcileMedusa(
   pool: pg.Pool,
   cfg: Extract<AuditStageConfig, { product: "medusa" }>,
@@ -220,17 +212,12 @@ export async function reconcileMedusa(
 ): Promise<AuditResult> {
   const snapshot = await readMedusaSnapshot(pool, cfg, clientOrders);
   if (intents) {
-    const rows = await selectRows<{ email: string; n: number }>(pool, ORDERS_PER_EMAIL_SQL, [
+    if (cfg.prefix === undefined)
+      throw new Error("TEST BUG: medusa audit config has no prefix for the per-intent audit");
+    const rows = await selectRows<{ id: string; email: string }>(pool, MED_INTENT_ROWS_SQL, [
       cfg.prefixLike,
     ]);
-    const rowsByIntent = new Map<number, number>();
-    let ghostRows = 0;
-    for (const r of rows) {
-      const intent = intentOfEmail(r.email);
-      if (intent === undefined) ghostRows += r.n;
-      else rowsByIntent.set(intent, (rowsByIntent.get(intent) ?? 0) + r.n);
-    }
-    snapshot.intents = { counters: intents, rowsByIntent, ghostRows };
+    snapshot.intents = { counters: intents, ...medRowsByIntent(rows, cfg.prefix) };
   }
   return evaluateMedusaAudit(snapshot, cfg.prefixLike);
 }
