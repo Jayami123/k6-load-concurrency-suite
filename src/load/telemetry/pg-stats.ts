@@ -62,3 +62,16 @@ export async function readPgSample(pool: pg.Pool): Promise<PgSample> {
     client.release();
   }
 }
+
+export const PG_MAX_CONNECTIONS_SQL = `SELECT current_setting('max_connections')::int AS max_connections`;
+
+/** The server's max_connections, read once per run (plan task 1 §3.9 R2, for the db_conn rule). Read-only. */
+export async function readMaxConnections(pool: pg.Pool): Promise<number> {
+  const client = await pool.connect();
+  try {
+    const [row] = await selectRowsOn<{ max_connections: number }>(client, PG_MAX_CONNECTIONS_SQL);
+    return Number(row?.max_connections);
+  } finally {
+    client.release();
+  }
+}
