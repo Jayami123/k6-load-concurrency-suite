@@ -10,6 +10,8 @@ export interface StubOptions {
   now?: () => number;
   /** Only 127.0.0.1 is accepted; any other value is a TEST BUG. */
   host?: string;
+  /** Spins this many ms of wall time on the one Node thread before each answer (plan task 1 §6.3): a CPU-bound stub. */
+  burnMs?: number;
 }
 
 /**
@@ -38,6 +40,10 @@ export function startStub(o: StubOptions): Promise<{ port: number; close(): Prom
       res.writeHead(404).end();
       return;
     }
+    if (o.burnMs) {
+      const end = performance.now() + o.burnMs;
+      while (performance.now() < end);
+    }
     const delay = stubDelayMs(now() - started, o);
     setTimeout(() => {
       res.writeHead(200, { "content-type": "application/json" });
@@ -60,13 +66,14 @@ export function startStub(o: StubOptions): Promise<{ port: number; close(): Prom
   });
 }
 
-// Standalone: node src/load/stub-server.ts <port> <serviceMs> <stallMs> <periodMs>
+// Standalone: node src/load/stub-server.ts <port> <serviceMs> <stallMs> <periodMs> [burnMs]
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [port, serviceMs, stallMs, periodMs] = process.argv.slice(2).map(Number);
+  const [port, serviceMs, stallMs, periodMs, burnMs] = process.argv.slice(2).map(Number);
   startStub({
     port: port ?? 18080,
     serviceMs: serviceMs ?? 25,
     stallMs: stallMs ?? 1500,
     periodMs: periodMs ?? 10000,
+    burnMs: burnMs || undefined,
   }).then((stub) => console.log(`stub on 127.0.0.1:${stub.port}`));
 }
