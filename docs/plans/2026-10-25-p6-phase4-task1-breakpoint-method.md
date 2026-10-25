@@ -943,6 +943,22 @@ config only; the p95 limit, the 1 % error limit, the 2 s edge trim, the 0.9 CPU 
 - **Open.** The 4 s post-trim requirement needs an owner decision: accept about 2 s (the expectation is then checked on the steps before the
   stop, as the run shows), or change the stop mechanism (for example, a hold that the stub overloads for longer, or a different stub).
 
+**Owner decisions on PR #73 (2026-10-25), applied:**
+
+- **Assertions are machine-independent.** The self-test checks: a knee is found on the p95 stop rule (not error or `no_knee`); the stop
+  step is the first step over the p95 limit, with the step before it under; the range is last clean rate to stop rate, consistent with
+  the step schedule; the first saturated resource is `app_cpu`; the stop step has at least 2 post-trim telemetry samples
+  (`MIN_POST_TRIM_SAMPLES`); `undersized` reports `dropped_iterations`; `norule` reports `no_knee`. No fixed rate range is asserted.
+- **The 4 s post-trim requirement is withdrawn.** The 2-sample minimum replaces it.
+- **Corrected mechanism.** The stop comes from queue growth past the 60 ms p95 limit, not from `delayAbortEvalSec`. Measured, `--profile
+  pr`, rates 151/20:
+  - delay 4 s: stop at 9.9 s (6 post-trim samples) and at 3.9 s (2 samples) in two runs;
+  - delay 12 s: stop at 3.9 s and 4.0 s (2 samples each) in two runs, and at 1.9 s on the CI runner (0 samples).
+
+  The delay does not decide the stop time. Near the stub's capacity (about 190/s) the stop time varies from run to run, so the 2-sample
+  minimum is not reliably met, on the VM or on the runner. `delayAbortEvalSec` is therefore reverted to the default 4.
+- **Reference values only (not asserted).** VM: range 171 to 191/s. CI runner (run 40209610689): range 191 to 211/s.
+
 ## 10. Expected output of the self-test run
 
 ```text
