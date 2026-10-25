@@ -10,11 +10,11 @@ One zip per CI run. Each zip holds the `*.json`, `*.log`, `*.csv`, `*.html` and 
 
 All three are `perf.yml` runs on `main` at `0b07594`, the merge of PR #64 (telemetry and median tooling).
 
-| Run                                                                                                    | Event    | Head SHA  | What it proves                                                                                 |
-| ------------------------------------------------------------------------------------------------------ | -------- | --------- | ---------------------------------------------------------------------------------------------- |
-| [40177412186](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40177412186) (run 1) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, one attempt each.                 |
-| [40178773022](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40178773022) (run 2) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, with two deviations listed below. |
-| [40180625279](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40180625279) (run 3) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, one attempt each.                 |
+| Run                                                                                                    | Event    | Head SHA  | What it proves                                                                                       |
+| ------------------------------------------------------------------------------------------------------ | -------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| [40177412186](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40177412186) (run 1) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, one attempt each.                       |
+| [40178773022](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40178773022) (run 2) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, with the three deviations listed below. |
+| [40180625279](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40180625279) (run 3) | dispatch | `0b07594` | All 14 jobs green. All 10 product LOAD cases PASS and VALID, one attempt each.                       |
 
 The LOAD cases are `P6-CAL-LOAD-001`, `-007`, `-009`; `P6-MED-LOAD-001`, `-002`, `-006`; `P6-DOC-LOAD-001`, `-002`, `-007`,
 `-008`.

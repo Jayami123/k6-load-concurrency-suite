@@ -10,13 +10,13 @@ for one envelope, and sends each recipient the completion email twice. A control
 ## Steps to Reproduce
 
 1. Create a document with one recipient, and sign every field as that recipient, so that the document is ready to complete.
-2. Send `completeDocumentWithToken` for that document three times in parallel: one request, then two retries after a
-   short client timeout.
-3. Count the envelope's seals, its `completed` audit rows and the completion emails to the recipient.
-4. Repeat with one completion request only, as the control.
+2. Send the completion request for that document. Let the client time out (the case uses a short client timeout).
+3. Retry the completion in parallel, as `P6-DOC-LOAD-007` does (the CI runs sent 217 retries per run, for 31 envelopes).
+4. Count the envelope's seals, its `completed` audit rows and the completion emails to each recipient.
+5. Repeat without the retries, as the control `P6-DOC-LOAD-002`.
 
-In the k6 load case `P6-DOC-LOAD-007`, the parallel retries produced two seals and two completion rows for one envelope in the
-earlier CI runs below. The control `P6-DOC-LOAD-002` produced one seal per envelope in the same runs.
+In the k6 load case `P6-DOC-LOAD-007`, the retried completions produced two seals and two completion rows for one envelope in
+the earlier CI runs below. The control `P6-DOC-LOAD-002` produced one seal per envelope in the same runs.
 
 ## Expected Behavior
 
@@ -26,8 +26,12 @@ One seal, one `completed` audit row, and one completion email per recipient, how
 
 Two seals and two `completed` audit rows for one envelope when the completion is retried in parallel.
 
-Evidence (CI, `P6-DOC-LOAD-007` before the declared-bug gate): runs 40134262533, 40135722015, 40137277800 and 40139142246. Control: `P6-DOC-LOAD-002`, one seal per envelope, in the same runs. The case is registered as the declared known
-bug `P6-OBS-DOC-005`, so the gate reports it as observed rather than failing the run.
+Evidence (CI, `P6-DOC-LOAD-007` before the declared-bug gate): runs 40134262533, 40135722015 and 40137277800 (full profile,
+31 envelopes each): 31 of 31 envelopes with more than one seal job and more than one `DOCUMENT_COMPLETED` row; 62 of 62
+recipients with more than one completion email; 62 first requests timed out and 217 retries sent per run; no 5xx. Control
+`P6-DOC-LOAD-002` in the same runs: one seal per envelope, and 62 of 62 emails matched. Run 40139142246 shows the same
+duplicate seal. The case is registered as the declared known bug `P6-OBS-DOC-005`, so the gate reports it as observed
+rather than failing the run.
 
 ## Screenshots (optional)
 
