@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
@@ -8,6 +9,7 @@ import { evaluateOverhead, type OverheadRun } from "./overhead.ts";
 import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
+import { kneeStage } from "./knee/stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
@@ -693,6 +695,165 @@ export const DOC_LOAD_007: LoadCase = {
   },
 };
 
+/**
+ * P6-X-LOAD-021: the breakpoint method's self-test (plan task 1 §6.4, proves P6-RULE-006). Two child stubs of the case, each in
+ * its own process group: the burn stub (5 ms of CPU per answer, the knee) and a delay stub (25 ms, the starved generator and the
+ * no-knee plan use it too). Three k6 runs: the knee, an under-sized generator, and a plan that never trips.
+ */
+const KNEE_STUB = "src/load/stub-server.ts";
+const knee: { children: ChildProcess[] } = { children: [] };
+
+function kneeHold(profile: string): number {
+  return profile === "full" ? 20 : 10;
+}
+
+/** Starts one stub as a child in its own process group and reads its port from the first stdout line. */
+function startKneeChild(args: string[]): Promise<{ child: ChildProcess; port: number }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [KNEE_STUB, ...args], {
+      detached: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    knee.children.push(child);
+    child.once("error", reject);
+    // A stub that exits before printing its port must fail the setup, not leave it waiting for data that never comes.
+    child.once("exit", (code) =>
+      reject(new Error(`TEST BUG: knee stub exited with ${code} before printing its port`)),
+    );
+    child.stdout?.once("data", (chunk: Buffer) => {
+      const m = /127\.0\.0\.1:(\d+)/.exec(String(chunk));
+      if (m) resolve({ child, port: Number(m[1]) });
+      else reject(new Error("TEST BUG: knee stub printed no port"));
+    });
+  });
+}
+
+const kneeSetup: Stage = async (ctx) => {
+  const burn = await startKneeChild(["0", "0", "0", "1", "5"]);
+  const slow = await startKneeChild(["0", "25", "0", "1"]);
+  ctx.config.ports = { knee: burn.port, slow: slow.port };
+  ctx.handles.appProcess = [{ recordPath: "", pgid: burn.child.pid ?? 0, label: "stub" }];
+  return { ok: true, reasons: [] };
+};
+
+const kneeCleanup: Stage = async (ctx) => {
+  const reasons: string[] = [];
+  const ports = (ctx.config.ports ?? {}) as Record<string, number>;
+  for (const child of knee.children) {
+    if (child.pid !== undefined) {
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+  }
+  // Reap each child, so a stopped stub is not a zombie that still shows in /proc.
+  await Promise.all(
+    knee.children.map(
+      (child) =>
+        new Promise<void>((resolve) => {
+          if (child.exitCode !== null || child.signalCode !== null) return resolve();
+          const timer = setTimeout(resolve, 5000);
+          child.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        }),
+    ),
+  );
+  for (const child of knee.children) {
+    if (child.pid !== undefined && !processGone(child.pid))
+      reasons.push(`knee stub pid ${child.pid} still alive after cleanup`);
+  }
+  for (const port of Object.values(ports)) {
+    if (!(await connectRefused(port)))
+      reasons.push(`knee stub port ${port} still listening after cleanup`);
+  }
+  knee.children = [];
+  for (const k of ctx.k6) {
+    if (!processGone(k.pid)) reasons.push(`k6 ${k.label} (pid ${k.pid}) still alive after the run`);
+  }
+  return reasons.length === 0
+    ? { ok: true, reasons: [] }
+    : { ok: false, kind: "TEST BUG", reasons };
+};
+
+/** The three knee runs of the self-test (plan §6.4). Each run's `knee` block carries its stub port. */
+export const KNEE_RULE_006: LoadCase = {
+  id: "P6-X-LOAD-021",
+  title:
+    "Breakpoint method self-test (proves P6-RULE-006): a CPU-bound stub, a starved generator and a plan without a knee",
+  product: "stub",
+  label: "knee range, environment-bound",
+  profiles: {
+    pr: { rate: 60, durationSec: 60, maxLatencyMs: 200 }, // hold 10 s
+    full: { rate: 60, durationSec: 110, maxLatencyMs: 200 }, // hold 20 s
+  },
+  telemetry: { product: "stub" },
+  runs: (ctx) => {
+    const hold = kneeHold(ctx.profileName);
+    const ports = (ctx.config.ports ?? {}) as Record<string, number>;
+    return [
+      {
+        label: "knee",
+        script: "k6/selftest/breakpoint-stub.js",
+        env: {},
+        allowExits: [99],
+        expectValidity: "VALID",
+        knee: {
+          startRate: 151,
+          stepRate: 20,
+          holdSec: hold,
+          rampSec: 2,
+          maxSteps: 5,
+          smokeP95Ms: 6,
+          maxVUs: 80,
+          port: ports.knee,
+          expect: { firstSaturated: "app_cpu" },
+        },
+      },
+      {
+        label: "undersized",
+        script: "k6/selftest/breakpoint-stub.js",
+        env: {},
+        allowExits: [0, 99],
+        expectValidity: "INVALID",
+        expectCodes: ["dropped_iterations"],
+        knee: {
+          startRate: 100,
+          stepRate: 150,
+          holdSec: hold,
+          rampSec: 2,
+          maxSteps: 3,
+          smokeP95Ms: 30,
+          maxVUs: 2,
+          port: ports.slow,
+        },
+      },
+      {
+        label: "norule",
+        script: "k6/selftest/breakpoint-stub.js",
+        env: {},
+        allowExits: [0],
+        expectValidity: "INVALID",
+        expectCodes: ["no_knee"],
+        knee: {
+          startRate: 100,
+          stepRate: 150,
+          holdSec: hold,
+          rampSec: 2,
+          maxSteps: 3,
+          smokeP95Ms: 30,
+          maxVUs: 100,
+          port: ports.slow,
+        },
+      },
+    ];
+  },
+  stages: { setup: kneeSetup, reconcile: kneeStage, cleanup: kneeCleanup },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -708,4 +869,5 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [MED_LOAD_006.id]: MED_LOAD_006,
   [DOC_LOAD_007.id]: DOC_LOAD_007,
+  [KNEE_RULE_006.id]: KNEE_RULE_006,
 };

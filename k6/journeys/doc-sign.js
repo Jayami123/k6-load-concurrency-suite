@@ -4,7 +4,7 @@ import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { iterationId } from "../lib/pure/prefix.js";
-import { request, retried, retryCounters } from "../lib/http.js";
+import { observe, request, retried, retryCounters } from "../lib/http.js";
 export const completedCounter = new Counter("p6_docs_completed");
 const TOKEN = __ENV.DOCUMENSO_API_TOKEN; // secret: environment only, never the config file, never logged
 
@@ -15,7 +15,7 @@ const signedOrAlready = (/** @type {{ status: number, body: unknown }} */ r) =>
 /**
  * @param {{ baseUrl: string, prefix: string }} cfg
  * @param {string | ArrayBuffer} pdf the fixture, opened once per VU by the case script
- * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): each recipient's completeDocumentWithToken is sent through the plan.
  */
 export function runDocSign(cfg, pdf, opts = {}) {
@@ -41,6 +41,7 @@ export function runDocSign(cfg, pdf, opts = {}) {
           },
           { headers: A, tags: { name: "POST envelope/create" } },
         );
+        observe(r);
         return { ok: r.status === 200, data: { envelopeId: r.json("id") } };
       },
     },
@@ -182,7 +183,10 @@ export function runDocSign(cfg, pdf, opts = {}) {
               "POST completeDocumentWithToken",
             ).status === 200 && ok;
         });
-        if (ok) completedCounter.add(1);
+        if (ok) {
+          completedCounter.add(1);
+          opts.onCommit?.();
+        }
         if (ok && opts.retryPlan) retryCounters.intentsOk.add(1);
         return { ok };
       },

@@ -11,7 +11,7 @@ const DAY = 86400000;
  * cfg.links (case -009): one private link per intent; the booking of intent n carries links[n]. opts.retryPlan (retry cases):
  * the booking request is sent through the plan (plan task 10 §6.2); without it the journey is unchanged.
  * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[] }} cfg
- * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  */
 export function runCalBook(cfg, opts = {}) {
   const n = exec.scenario.iterationInTest; // global, unique across VUs: the slot index
@@ -81,13 +81,17 @@ export function runCalBook(cfg, opts = {}) {
           const accepted = out.answers.some((r) => r.json("status") === "ACCEPTED");
           if (accepted) {
             acceptedCounter.add(1);
+            opts.onCommit?.();
             retryCounters.intentsOk.add(1);
           }
           return { ok: out.definite };
         }
         const r = request("POST", url, "POST book", body, { headers });
         const ok = r.status === 200 && r.json("status") === "ACCEPTED";
-        if (ok) acceptedCounter.add(1);
+        if (ok) {
+          acceptedCounter.add(1);
+          opts.onCommit?.();
+        }
         return { ok };
       },
     },

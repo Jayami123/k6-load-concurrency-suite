@@ -9,6 +9,21 @@ export interface LoadProfile {
   maxLatencyMs: number;
 }
 
+/** Labels a case or run can carry (plan task 1 §6.2). The knee label is set only by the knee cases. */
+export type LoadLabel = "functional load, not capacity" | "knee range, environment-bound";
+
+/**
+ * The held-step plan of a knee run (plan task 1 §6.2). Rates are iterations per second with a resolution of 0.1 (plan §3.9 R1).
+ * Planned iterations per step are rate x holdSec.
+ */
+export interface KneePlanSpec {
+  startRate: number;
+  stepRate: number;
+  holdSec: number;
+  rampSec: number;
+  maxSteps: number;
+}
+
 /** One k6 process of a case. Most cases have exactly one; the self-test has three. */
 export interface K6RunSpec {
   label: string; // "main", "open", "closed", "undersized"
@@ -28,13 +43,23 @@ export interface K6RunSpec {
   expectValidity?: "VALID" | "INVALID";
   /** Invalid codes the expected INVALID run must show (Task 4). */
   expectCodes?: InvalidCode[];
+  /** Exit codes the run may end with (plan task 1 §6.2). A knee run allows 0 and 99 (a stop is a result, not a failure). Default [expectExit ?? 0]. */
+  allowExits?: number[];
+  /** The knee plan of this run (plan task 1): steps, stop rule and the sizing the scenario was built with. */
+  knee?: KneePlanSpec & {
+    smokeP95Ms: number;
+    maxVUs: number;
+    /** The stub port the run's requests go to (the self-test only). */
+    port?: number;
+    expect?: { firstSaturated?: string };
+  };
 }
 
 export interface LoadCase {
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;
-  label: "functional load, not capacity"; // D1, P6-RULE-003: printed in verdict.json and the job summary
+  label: LoadLabel; // D1, P6-RULE-003: printed in verdict.json and the job summary
   profiles: Record<LoadProfileName, LoadProfile>;
   runs: (ctx: LoadContext) => K6RunSpec[]; // evaluated after setup, so ids made in setup can go into env
   /** Telemetry for this case (Task 5): one sampler and one marker per k6 run, one chart per run. */
@@ -119,7 +144,8 @@ export type InvalidCode =
   | "runner_cpu"
   | "runner_memory"
   | "telemetry_gap"
-  | "clock_skew";
+  | "clock_skew"
+  | "no_knee";
 
 /** detail: counts only, no URL, token or id. */
 export interface InvalidReason {
@@ -148,10 +174,12 @@ export interface RunMeta {
   caseId: string;
   runId: string;
   profile: LoadProfileName;
-  label: "functional load, not capacity";
+  label: LoadLabel;
   rate: number;
   durationSec: number;
   plannedIterations: number;
+  /** The knee plan of a knee run (plan task 1 §6.2); absent on every other run. */
+  knee?: KneePlanSpec;
   startedAt: string;
   finishedAt?: string;
   environment: {

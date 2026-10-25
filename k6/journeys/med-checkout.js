@@ -30,7 +30,7 @@ const ADDRESS = {
  * cfg: { baseUrl, publishableKey, regionId, salesChannelId, variantId, prefix } (written by the runner's setup, no secrets).
  * opts.classify (task 8): refusals are classified (clean, ghost, other) and every iteration ends in exactly one counter.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
- * @param {{ classify?: boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ * @param {{ classify?: boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
@@ -193,6 +193,7 @@ export function runMedCheckout(cfg, opts = {}) {
             if (key(r) !== key(first)) retryCounters.orderMismatch.add(1);
           if (out.resolved) {
             ordersCounter.add(1);
+            opts.onCommit?.();
             retryCounters.intentsOk.add(1);
           }
           // only a resolved order passes the step: a 200 that is not an order (a cart) is not a checkout, so the intent fails
@@ -207,6 +208,7 @@ export function runMedCheckout(cfg, opts = {}) {
         if (classify) {
           if (r.status === 200 && safeJson(r, "type") === "order") {
             end(ordersCounter);
+            opts.onCommit?.();
             return { ok: true };
           }
           if (r.status >= 500) return { ok: false }; // p6_iter_failed
@@ -225,6 +227,7 @@ export function runMedCheckout(cfg, opts = {}) {
         }
         if (r.status === 200 && r.json("type") === "order") {
           ordersCounter.add(1);
+          opts.onCommit?.();
           return { ok: true };
         }
         if (r.status === 400) {

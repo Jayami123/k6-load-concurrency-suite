@@ -8,7 +8,8 @@ import {
 } from "../../medusa/oracle.ts";
 import { selectRows } from "../../oracles/pg.ts";
 import { checkCaptureCap, checkRefundCap } from "../../medusa/invariants.ts";
-import type { AuditResult, AuditStageConfig } from "./types.ts";
+import { auditByIntent } from "../knee/intents.ts";
+import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
 import { addFinding } from "./types.ts";
 
 export interface MedusaVariantCounts {
@@ -33,6 +34,8 @@ export interface MedusaSnapshot {
   ordersWithoutPayment: number;
   stock?: number;
   clientOrders?: number;
+  /** Knee runs (plan task 1 §6.8): the per-intent audit replaces the client count check when present. */
+  intents?: { counters: IntentCounters; rowsByIntent: Map<number, number>; ghostRows: number };
 }
 
 /**
@@ -105,7 +108,24 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
   check("balances", money.length === 0, `${money.length} balance violation(s)`);
   for (const line of money) addFinding(result, { kind: "PRODUCT BUG", text: line });
 
-  if (s.clientOrders !== undefined) {
+  if (s.intents) {
+    const { counters, rowsByIntent, ghostRows } = s.intents;
+    const audit = auditByIntent({
+      started: counters.started,
+      log: counters.log,
+      rowsByIntent,
+      ghostRows,
+      interrupted: counters.interrupted,
+      failWithRowKnownBugId: "F-M2",
+    });
+    check(
+      "per-intent",
+      audit.findings.length === 0,
+      `${audit.counts.ok} ok, ${audit.counts.fail} fail, ${audit.counts.indeterminate} indeterminate, ${audit.counts.ghostRows} ghost row(s), ${audit.counts.duplicateRows} duplicate row(s)`,
+    );
+    for (const f of audit.findings)
+      addFinding(result, { kind: f.kind, text: f.text, knownBugId: f.knownBugId });
+  } else if (s.clientOrders !== undefined) {
     const difference = v.orderCount - s.clientOrders;
     check(
       "no-ghost-orders",
@@ -182,11 +202,35 @@ export async function readMedusaSnapshot(
   };
 }
 
-/** Reads, then evaluates. */
+/** Orders per cart email of the case prefix (the email carries the intent, plan task 1 §6.8). Read-only. */
+export const ORDERS_PER_EMAIL_SQL = `SELECT o.email AS email, count(*)::int AS n FROM "order" o WHERE o.email LIKE $1 AND o.deleted_at IS NULL GROUP BY o.email`;
+
+/** The intent number in a cart email `<prefix>-i<n>@qa.local`; undefined for any other email. */
+export function intentOfEmail(email: string): number | undefined {
+  const m = /-i(\d+)@qa\.local$/.exec(email);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** Reads, then evaluates. Knee runs pass the intent counters: the audit then reconciles per intent. */
 export async function reconcileMedusa(
   pool: pg.Pool,
   cfg: Extract<AuditStageConfig, { product: "medusa" }>,
   clientOrders?: number,
+  intents?: IntentCounters,
 ): Promise<AuditResult> {
-  return evaluateMedusaAudit(await readMedusaSnapshot(pool, cfg, clientOrders), cfg.prefixLike);
+  const snapshot = await readMedusaSnapshot(pool, cfg, clientOrders);
+  if (intents) {
+    const rows = await selectRows<{ email: string; n: number }>(pool, ORDERS_PER_EMAIL_SQL, [
+      cfg.prefixLike,
+    ]);
+    const rowsByIntent = new Map<number, number>();
+    let ghostRows = 0;
+    for (const r of rows) {
+      const intent = intentOfEmail(r.email);
+      if (intent === undefined) ghostRows += r.n;
+      else rowsByIntent.set(intent, (rowsByIntent.get(intent) ?? 0) + r.n);
+    }
+    snapshot.intents = { counters: intents, rowsByIntent, ghostRows };
+  }
+  return evaluateMedusaAudit(snapshot, cfg.prefixLike);
 }

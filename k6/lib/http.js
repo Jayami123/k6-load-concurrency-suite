@@ -85,6 +85,7 @@ export function retried(
     plan,
     (step, n) =>
       sendStep(step, method, url, name, body, params).map((r) => {
+        observe(r);
         const done = isDone(r);
         if (done) answers.push(r);
         // a 2xx that is not done is classed other (300), so runAttempts does not stop on it as an ok answer
@@ -112,9 +113,29 @@ export function retried(
  */
 export function request(method, url, name, body, params = {}) {
   const p = { ...params, tags: { ...(params.tags || {}), name } };
-  return method === "GET"
-    ? http.get(url, p)
-    : http.post(url, body === undefined ? null : JSON.stringify(body), p);
+  return observe(
+    method === "GET"
+      ? http.get(url, p)
+      : http.post(url, body === undefined ? null : JSON.stringify(body), p),
+  );
+}
+
+/** @type {((res: any) => void) | undefined} */
+let observer;
+
+/** Every response of request() and of each retry attempt goes to fn (plan task 1 §6.3). One observer per script. */
+/** @param {(res: any) => void} fn */
+export function observeResponses(fn) {
+  observer = fn;
+}
+
+/**
+ * Passes a response to the observer and returns it. The Documenso journey's multipart create calls it (plan task 1 §6.3).
+ * @param {any} res
+ */
+export function observe(res) {
+  if (observer) observer(res);
+  return res;
 }
 
 /**

@@ -1,9 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type pg from "pg";
 import { findGaps } from "./gaps.ts";
 import { readGroupStats, type AppProcess, type GroupStats } from "./proc-group.ts";
-import { readPgSample, type PgSample } from "./pg-stats.ts";
+import { readMaxConnections, readPgSample, type PgSample } from "./pg-stats.ts";
+import { readHostSample, type CpuTimes, type HostSample } from "./host-stats.ts";
 import { readContainerStats, type CgroupKind } from "./cgroup-stats.ts";
 import { createLogCounter, type LogCounts, type LogIo } from "./log-grep.ts";
 import { timedProbe, type ProbeResult } from "./probe.ts";
@@ -16,6 +17,8 @@ export interface TelemetrySample {
   container?: { cpuNs: number; memBytes: number };
   log?: LogCounts;
   probe?: ProbeResult;
+  /** The host the run shares (plan task 1 §3.9 R2); absent unless the sampler was asked for it. */
+  host?: HostSample;
   sampleCostMs: number;
 }
 
@@ -28,6 +31,8 @@ export interface TelemetryFile {
   sources: Record<string, { present: boolean; reason?: string; errors?: number }>;
   samples: TelemetrySample[];
   gaps: Array<{ fromMs: number; toMs: number; lengthMs: number }>;
+  /** Read once at start: the database's max_connections (plan task 1 §3.9 R2). Absent when the database was not read. */
+  limits?: { maxConnections?: number; fdsSoftLimit?: number };
 }
 
 export interface SamplerOptions {
@@ -43,6 +48,8 @@ export interface SamplerOptions {
   /** The product's log file; counts only are kept. */
   logFile?: string;
   logIo?: LogIo;
+  /** Read the host cpu and MemAvailable of each sample (plan task 1 §3.9 R2). Default off. */
+  host?: boolean;
   /** Self-test only: the loop stalls once for this long, after three samples. */
   injectGapMs?: number;
   now?: () => number;
@@ -50,6 +57,20 @@ export interface SamplerOptions {
   readGroup?: (pgid: number) => GroupStats;
   outDir?: string;
   label?: string;
+}
+
+/** The soft limit of open files of a process, from /proc/<pid>/limits. Undefined when unreadable or unlimited. */
+export function readFdsSoftLimit(pid: number | undefined): number | undefined {
+  if (pid === undefined) return undefined;
+  try {
+    const line = readFileSync(`/proc/${pid}/limits`, "utf8")
+      .split("\n")
+      .find((l) => l.startsWith("Max open files"));
+    const soft = line ? Number(line.trim().split(/\s+/)[3]) : NaN;
+    return Number.isFinite(soft) ? soft : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Sampler {
@@ -105,11 +126,43 @@ export function startSampler(opts: SamplerOptions): Sampler {
     }
   };
 
+  // Host reads carry the previous cpu reading; the database limit is read once, on the first sample.
+  let hostPrev: CpuTimes | undefined;
+  let limitsRead = false;
+  let maxConnections: number | undefined;
+  // The application's open-file soft limit, read once from /proc/<pid>/limits of its group leader (plan task 1 §3.6).
+  let fdsSoftLimit: number | undefined;
+  let fdsLimitRead = false;
+
   const readAll = async (sample: TelemetrySample): Promise<void> => {
     readProc(sample);
     const tasks: Array<Promise<void>> = [];
+    if (opts.appProcess && !fdsLimitRead) {
+      fdsLimitRead = true;
+      fdsSoftLimit = readFdsSoftLimit(opts.appProcess[0]?.pgid);
+    }
+    if (opts.host) {
+      const r = readHostSample(hostPrev);
+      hostPrev = r.cpu ?? hostPrev;
+      sample.host = r.sample;
+      // Neither the cpu nor the memory reading: the host source is unavailable for this sample and is counted as an error.
+      if (!r.cpu && r.sample.memAvailableKb === undefined) errors.host = (errors.host ?? 0) + 1;
+    }
     if (opts.pool) {
       const pool = opts.pool;
+      if (!limitsRead) {
+        limitsRead = true;
+        tasks.push(
+          readMaxConnections(pool).then(
+            (n) => {
+              maxConnections = n;
+            },
+            () => {
+              errors.limits = (errors.limits ?? 0) + 1;
+            },
+          ),
+        );
+      }
       tasks.push(
         readPgSample(pool).then(
           (db) => {
@@ -195,6 +248,7 @@ export function startSampler(opts: SamplerOptions): Sampler {
         sources.container = { present: true, errors: errors.container ?? 0 };
       if (opts.logFile) sources.log = { present: true, errors: errors.log ?? 0 };
       if (opts.probeUrl) sources.probe = { present: true, errors: errors.probe ?? 0 };
+      if (opts.host) sources.host = { present: true, errors: errors.host ?? 0 };
       const stoppedAtMs = now();
       const file: TelemetryFile = {
         schema: 1,
@@ -208,6 +262,9 @@ export function startSampler(opts: SamplerOptions): Sampler {
           samples.map((s) => s.t),
           intervalMs,
         ),
+        ...(maxConnections !== undefined || fdsSoftLimit !== undefined
+          ? { limits: { maxConnections, fdsSoftLimit } }
+          : {}),
       };
       if (opts.outDir) {
         mkdirSync(opts.outDir, { recursive: true });

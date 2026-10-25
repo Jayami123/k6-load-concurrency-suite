@@ -45,6 +45,7 @@
     "load:validity-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-004",
     "load:telemetry-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-002",
     "load:overhead-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-006",
+    "load:knee-selftest": "node scripts/load/run-load.ts --case P6-X-LOAD-021",
     "k6:install": "bash scripts/install-k6.sh",
     "check": "npm run format:check && npm run lint:actions && npm run typecheck && npm run k6:inspect && npm run test:unit"
   },

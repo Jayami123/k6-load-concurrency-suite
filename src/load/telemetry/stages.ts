@@ -14,7 +14,7 @@ import type {
   TelemetrySummary,
 } from "../types.ts";
 import { detectCgroup, discoverContainer } from "./cgroup-stats.ts";
-import { HARNESS_DIR, resolveAppProcess } from "./proc-group.ts";
+import { type AppProcess, HARNESS_DIR, resolveAppProcess } from "./proc-group.ts";
 import {
   finishRunTelemetry,
   startRunTelemetry,
@@ -141,6 +141,9 @@ export function createTelemetry(
 export const samplerStart: Stage = async (ctx) => {
   const product = ctx.caseDef.telemetry?.product ?? "stub";
   const sources = ctx.caseDef.telemetry ? await openSources(product, ctx.env) : { product };
+  // The knee self-test's burn stub is a child process of the case, not a product: its group comes from the setup (plan §6.4).
+  const app = ctx.handles.appProcess as AppProcess[] | undefined;
+  if (app) sources.appProcess = app;
   ctx.handles.telemetry = createTelemetry(ctx, sources);
   return { ok: true, reasons: [], data: { product } };
 };

@@ -5,6 +5,7 @@ import { runK6 } from "./k6-process.ts";
 import { startResourceSampler, type ResourceSampler } from "./proc-stats.ts";
 import { samplerStart, samplerStop, type TelemetryHandle } from "./telemetry/stages.ts";
 import { parseK6Summary } from "./summary.ts";
+import { kneeValidityInput } from "./knee/knee-report.ts";
 import { judgeValidity } from "./validity.ts";
 import type { K6RunResult, LoadContext, Stage, StageSet } from "./types.ts";
 
@@ -88,7 +89,7 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
         mismatch.push(`${k.label} summary missing or unreadable, expected INVALID`);
       continue;
     }
-    const verdict = judgeValidity({
+    const input = {
       summary,
       maxVUs: spec?.maxVUs ?? Number.POSITIVE_INFINITY,
       nproc,
@@ -100,11 +101,17 @@ export const validityStage: Stage = async (ctx: LoadContext) => {
             skewLimitMs: k.telemetry.skewLimitMs,
           }
         : undefined,
-    });
+    };
+    // A knee run judges dropped iterations per step (kneeInvalidReasons, plan task 1 §6.5), not on the whole summary.
+    const verdict = judgeValidity(spec?.knee ? kneeValidityInput(input) : input);
     k.validity = verdict;
     judged.push(k.label);
     const expected = spec?.expectValidity ?? "VALID";
-    if (expected === "VALID") {
+    if (spec?.knee) {
+      // A knee run's dropped iterations and missing knee are judged per step by the knee stage (plan §6.5); here only the
+      // generator codes count, and they are reasons whether or not the run expects INVALID.
+      for (const r of verdict.reasons) ctx.invalid.push(`${k.label}: ${r.code}: ${r.detail}`);
+    } else if (expected === "VALID") {
       for (const r of verdict.reasons) ctx.invalid.push(`${k.label}: ${r.code}: ${r.detail}`);
     } else {
       if (verdict.verdict !== "INVALID") mismatch.push(`${k.label} expected INVALID, was VALID`);

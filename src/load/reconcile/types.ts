@@ -1,4 +1,13 @@
+import type { IntentLog } from "../knee/intents.ts";
+
 export type AuditProduct = "cal" | "medusa" | "documenso";
+
+/** A knee run's intent counters (plan task 1 §6.8): with these the audits reconcile per intent, not by count. */
+export interface IntentCounters {
+  started: number;
+  interrupted: number; // p6_step_started total - iterations: the upper bound of indeterminate intents
+  log: IntentLog;
+}
 
 /** kind follows docs/agent-rules.md. knownBugId is set when the finding is an already-labelled bug; such findings go to knownBugs, not violations. */
 export interface Finding {
