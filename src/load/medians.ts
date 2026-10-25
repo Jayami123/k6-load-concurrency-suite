@@ -59,3 +59,16 @@ export function summarizeMedian(
     insufficient: values.length < minRuns,
   };
 }
+
+/** The GitHub Actions run id of a run: the digits after /actions/runs/ in meta.environment.runUrl; undefined when absent. */
+export function runIdOf(meta: RunMeta): string | undefined {
+  return /\/actions\/runs\/(\d+)/.exec(meta.environment.runUrl ?? "")?.[1];
+}
+
+export type MedianMetric = "requests" | "dropped" | "iterations" | "p95";
+
+/** One metric of the first k6 run of a verdict (k6[0]); undefined when the verdict has none. */
+export function pickMetric(metric: MedianMetric, r: LoadRunRecord): number | undefined {
+  const k6 = (r.verdict as { k6?: Array<Record<string, number>> }).k6?.[0];
+  return k6?.[metric === "p95" ? "p95Ms" : metric];
+}
