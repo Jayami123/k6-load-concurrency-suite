@@ -621,13 +621,13 @@ owner dispatches `knee.yml` three times on `main` (§14).
 
 ## 13. Risks, proposed extras, open decisions
 
-| ID  | Risk                                                           | Mitigation                                                                              |
-| --- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| R1  | The seal work makes steps slow and moves the knee between runs | the report is a range per run, min and max over runs                                    |
-| R2  | Drain longer than the job allows                               | measured 1.5 s; the 30 s contract is a PRODUCT BUG with job ids when broken             |
-| R3  | A transport reset under overload is read as saturation         | 1 in 3,196 is under the 1 % rule; the report lists transport errors separately          |
-| R4  | The limiter profile leaks into this job                        | the job never sets `DANGEROUS_BYPASS_RATE_LIMITS`; the environment line says "bypassed" |
-| R5  | The pipeline join is 0.05 s per document                       | counted in §9 (54 s at the default plan's worst case)                                   |
+| ID  | Risk                                                           | Mitigation                                                                                                                               |
+| --- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | The seal work makes steps slow and moves the knee between runs | the report is a range per run, min and max over runs                                                                                     |
+| R2  | Drain longer than the job allows                               | measured 1.5 s; the 30 s contract is a PRODUCT BUG with job ids when broken                                                              |
+| R3  | A transport reset under overload is read as saturation         | 1 in 3,196 is under the 1 % rule; the report lists transport errors separately                                                           |
+| R4  | The limiter profile leaks into this job                        | the job sets `DANGEROUS_BYPASS_RATE_LIMITS: "true"` exactly as `documenso-smoke` and never `false`; the environment line says "bypassed" |
+| R5  | The pipeline join is 0.05 s per document                       | counted in §9 (54 s at the default plan's worst case)                                                                                    |
 
 **Contradictions with the roadmap.**
 
