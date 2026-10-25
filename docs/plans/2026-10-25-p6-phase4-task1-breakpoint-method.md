@@ -830,7 +830,7 @@ export function classifyIntents(
   started: number,
 ): { ok: number[]; fail: number[]; indeterminate: number[]; noLine: number[] };
 export interface IntentAudit {
-  findings: Array<{ kind: "PRODUCT BUG" | "TEST BUG"; text: string }>; // ids and counts only
+  findings: Array<{ kind: "PRODUCT BUG" | "TEST BUG"; text: string; knownBugId?: string }>; // ids and counts only
   counts: {
     started: number;
     ok: number;
@@ -847,6 +847,8 @@ export function auditByIntent(input: {
   rowsByIntent: Map<number, number>;
   ghostRows: number;
   interrupted: number;
+  /** Set by a product whose known bug is exactly rule 4 (Medusa F-M2): a `fail` intent with 1 row is then counted under this id, not a violation. */
+  failWithRowKnownBugId?: string;
 }): IntentAudit;
 ```
 
@@ -855,7 +857,7 @@ export function auditByIntent(input: {
 1. A database row that maps to no started intent is a **ghost write**: `PRODUCT BUG (SUSPECTED)`.
 2. An intent with more than one row is a **duplicate write**: `PRODUCT BUG (SUSPECTED)` (the count slack of the first draft would have hidden up to `interrupted` of them).
 3. An `ok` intent must have exactly 1 row; with 0 rows the client was told success for work that is not there: `PRODUCT BUG (SUSPECTED)`.
-4. A `fail` intent (without `net`) must have 0 rows: with 1 row the client was told failure for committed work: `PRODUCT BUG (SUSPECTED)`.
+4. A `fail` intent (without `net`) must have 0 rows: with 1 row the client was told failure for committed work: `PRODUCT BUG (SUSPECTED)`, unless the product passes `failWithRowKnownBugId` (Medusa: `F-M2`, a checkout that answers 400 and leaves an order), in which case each such intent is counted once under that id and is not a violation. Duplicates and ghost rows are never counted under a known bug.
 5. Only an indeterminate intent (no line, or `fail` with `net: true`) may have 0 or 1 row. The intents with no line must number at most `interrupted`; more is a `TEST BUG` (a
    journey that finishes without a line, or a lost log).
 
@@ -972,7 +974,7 @@ stop step's drops are ignored; markdown table, including the `no knee up to step
 5,000-iteration cap name the field; non-numeric input is rejected); **`knee-intents` (3: `parseIntentLog` reads k6 console lines with escaped quotes and ignores every other line; a repeated
 intent line and a line with an intent at or above `started` are reported as TEST BUG findings; a `fail` line with `net: true` is classified indeterminate, a plain `fail` is not)**;
 **`reconcile-intents` (6, §6.8: a duplicate that the old count slack would have hidden is a finding; a ghost row (an intent never started, or a label that maps to no intent) is a finding; an
-indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding; more indeterminate intents than `interrupted` is a TEST BUG)**;
+indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding, and is counted under the known-bug id instead when `failWithRowKnownBugId` is set; more indeterminate intents than `interrupted` is a TEST BUG)**;
 **`knee-journey-hooks` (1: in each of the three journey files every line that adds to the commit counter (`.add(1)` on it, or `end(ordersCounter)`) is followed by an `opts.onCommit` call inside the same block, and the Phase 3 cases
 never pass `onCommit`)**; `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
 writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value is not kept); `load-cases-knee` (2: the case and its three runs;
