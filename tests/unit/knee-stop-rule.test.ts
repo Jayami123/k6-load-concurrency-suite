@@ -88,13 +88,19 @@ describe("abortedStepOf", () => {
   it("reads the step of a p95 abort from the k6 log", () => {
     const log =
       'time="2026-10-25T20:44:46Z" level=error msg="thresholds on metrics \'http_req_duration{step:4}\' were crossed; at least one has abortOnFail enabled, stopping test prematurely"';
-    assert.deepEqual(abortedStepOf(log), { index: 4, reason: "p95" });
+    assert.deepEqual(abortedStepOf(log), { index: 4, reasons: ["p95"] });
   });
 
   it("reads the step of an error-rate abort", () => {
     const log =
       "msg=\"thresholds on metrics 'p6_nonconflict_error{step:2}' were crossed; at least one\"";
-    assert.deepEqual(abortedStepOf(log), { index: 2, reason: "error_rate" });
+    assert.deepEqual(abortedStepOf(log), { index: 2, reasons: ["error_rate"] });
+  });
+
+  it("reads every metric crossed at the earliest step of one combined message", () => {
+    const log =
+      "msg=\"thresholds on metrics 'http_req_duration{step:5}, p6_nonconflict_error{step:4}, p6_nonconflict_error{step:4}' were crossed\"";
+    assert.deepEqual(abortedStepOf(log), { index: 4, reasons: ["error_rate"] });
   });
 
   it("is null when the log names no crossed threshold", () => {

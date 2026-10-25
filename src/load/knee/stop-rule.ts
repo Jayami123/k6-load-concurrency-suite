@@ -19,19 +19,35 @@ export interface StopVerdict {
   stopErrors?: number;
   /** True when the stop rested on fewer than minRequests requests (an error-rate abort on a small step). Owner decision, PR #73. */
   lowSampleStop?: boolean;
+  /** True when k6 aborted on the step (its log names it) and the final statistics of that step did not show the trip. */
+  abortLogged?: boolean;
 }
 
 /**
- * The step k6 aborted on, from its log: k6 names the crossed threshold, e.g. `http_req_duration{step:4}`. k6 judges the running
- * p95 of the step, so the final p95 in the summary can settle under the limit: the abort is the decision, and the log is its record.
+ * The step k6 aborted on, from its log. k6 names the crossed thresholds in one message, e.g.
+ * `thresholds on metrics 'http_req_duration{step:4}, p6_nonconflict_error{step:4}' were crossed`. The earliest step named is the
+ * stop, with every reason that crossed at that step. k6 judges the running p95 of the step, so the final p95 in the summary can
+ * settle under the limit: the abort is the decision, and the log is its record.
  */
-export function abortedStepOf(log: string): { index: number; reason: "error_rate" | "p95" } | null {
-  const m =
-    /thresholds on metrics '(http_req_duration|p6_nonconflict_error)\{step:(\d+)\}' were crossed/.exec(
-      log,
-    );
-  if (!m) return null;
-  return { index: Number(m[2]), reason: m[1] === "http_req_duration" ? "p95" : "error_rate" };
+export function abortedStepOf(
+  log: string,
+): { index: number; reasons: Array<"error_rate" | "p95"> } | null {
+  const message = /thresholds on metrics '([^']+)' (?:were|have been) crossed/.exec(log);
+  if (!message) return null;
+  const entries = [
+    ...message[1]!.matchAll(/(http_req_duration|p6_nonconflict_error)\{step:(\d+)\}/g),
+  ].map((m) => ({
+    index: Number(m[2]),
+    reason: m[1] === "http_req_duration" ? "p95" : "error_rate",
+  }));
+  if (entries.length === 0) return null;
+  const index = Math.min(...entries.map((e) => e.index));
+  const reasons = [
+    ...new Set(
+      entries.filter((e) => e.index === index).map((e) => e.reason as "error_rate" | "p95"),
+    ),
+  ].sort((a, b) => (a === b ? 0 : a === "error_rate" ? -1 : 1));
+  return { index, reasons };
 }
 
 /**

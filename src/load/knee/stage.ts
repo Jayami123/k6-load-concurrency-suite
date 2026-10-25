@@ -39,7 +39,8 @@ function stopOf(run: K6RunResult, stats: StepStat[], rule: StopRule): StopVerdic
   return {
     ...verdict,
     stopStep: aborted.index,
-    reasons: [aborted.reason],
+    reasons: aborted.reasons,
+    abortLogged: true,
     stopRequests: step?.requests,
     stopErrors: step?.errors,
     lowSampleStop: (step?.requests ?? 0) < rule.minRequests,
@@ -176,7 +177,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
           problems.push("stop on error_rate, expected p95");
         if (stop.stopStep !== null) {
           const st = stats[stop.stopStep]!;
-          if (!(st.p95Ms !== undefined && st.p95Ms >= limitMs))
+          if (!stop.abortLogged && !(st.p95Ms !== undefined && st.p95Ms >= limitMs))
             problems.push(`stop step ${stop.stopStep} p95 is not over ${limitMs} ms`);
           for (const earlier of stats.filter(
             (x) => x.index < stop.stopStep! && x.requests >= rule.minRequests,
