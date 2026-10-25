@@ -25,6 +25,8 @@ export interface KneeSummary {
   lowerRate?: number;
   upperRate?: number;
   firstSaturated: string;
+  /** The stop rested on fewer than minRequests requests (an error-rate abort on a small step). */
+  lowSampleStop?: boolean;
 }
 
 /** The knee stage. Writes knee-report-<label>.json and .md; a token-like value in them removes both and is a TEST BUG. */
@@ -180,6 +182,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
         lowerRate: report.range?.lowerRate,
         upperRate: report.range?.upperRate,
         firstSaturated: report.firstSaturated?.resource ?? "none_observed",
+        lowSampleStop: report.stop?.lowSampleStop,
       });
     } catch (err) {
       // One run's unreadable file is that run's TEST BUG; the other runs still get their reports.

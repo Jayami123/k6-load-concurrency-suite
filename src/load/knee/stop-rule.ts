@@ -14,17 +14,35 @@ export interface StopVerdict {
   stopStep: number | null;
   reasons: Array<"error_rate" | "p95">; // all that tripped at the stop step; D2 order puts error_rate first
   limitMs: number; // p95Factor x smokeP95Ms
+  /** The stop step's own request and error counts, so a reader sees what the decision rested on. */
+  stopRequests?: number;
+  stopErrors?: number;
+  /** True when the stop rested on fewer than minRequests requests (an error-rate abort on a small step). Owner decision, PR #73. */
+  lowSampleStop?: boolean;
 }
 
-/** First step (by index) that has >= minRequests and errorRate > rule.errorRate, or p95Ms >= p95Factor x smokeP95Ms. */
+/**
+ * First step (by index) whose error rate is over rule.errorRate, or whose p95 is over p95Factor x smokeP95Ms.
+ * An error-rate stop is always honoured, even on a step with fewer than minRequests requests: k6 aborts on the same rate, and the
+ * report flags it (lowSampleStop). minRequests applies to p95 only: a p95 from a few requests is not evidence.
+ */
 export function evaluateStopRule(stats: StepStat[], rule: StopRule): StopVerdict {
   const limitMs = rule.p95Factor * rule.smokeP95Ms;
   for (const step of [...stats].sort((a, b) => a.index - b.index)) {
-    if (step.requests < rule.minRequests) continue;
     const reasons: StopVerdict["reasons"] = [];
-    if (step.errorRate > rule.errorRate) reasons.push("error_rate");
-    if (step.p95Ms !== undefined && step.p95Ms >= limitMs) reasons.push("p95");
-    if (reasons.length > 0) return { stopStep: step.index, reasons, limitMs };
+    if (step.requests > 0 && step.errorRate > rule.errorRate) reasons.push("error_rate");
+    if (step.requests >= rule.minRequests && step.p95Ms !== undefined && step.p95Ms >= limitMs)
+      reasons.push("p95");
+    if (reasons.length > 0) {
+      return {
+        stopStep: step.index,
+        reasons,
+        limitMs,
+        stopRequests: step.requests,
+        stopErrors: step.errors,
+        lowSampleStop: step.requests < rule.minRequests,
+      };
+    }
   }
   return { stopStep: null, reasons: [], limitMs };
 }

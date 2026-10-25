@@ -13,7 +13,16 @@ export interface KneeReport {
   label: "knee range, environment-bound";
   verdict: "KNEE" | "NO_KNEE" | "INVALID";
   range?: { lowerStep: number; upperStep: number; lowerRate: number; upperRate: number };
-  stop?: { step: number; rate: number; reasons: string[]; limitMs: number };
+  stop?: {
+    step: number;
+    rate: number;
+    reasons: string[];
+    limitMs: number;
+    requests?: number;
+    errors?: number;
+    /** True when the stop rested on fewer than minRequests requests (owner decision, PR #73). */
+    lowSampleStop?: boolean;
+  };
   firstSaturated?: { resource: string; step: number | null };
   stopRule: { smokeP95Ms: number; p95Factor: number; errorRate: number; minRequests: number };
   steps: StepStat[];
@@ -127,6 +136,9 @@ export function buildKneeReport(input: {
             rate: steps[stop.stopStep]!.rate,
             reasons: stop.reasons,
             limitMs: stop.limitMs,
+            requests: stop.stopRequests,
+            errors: stop.stopErrors,
+            lowSampleStop: stop.lowSampleStop,
           },
     firstSaturated: { resource: input.saturated.resource, step: input.saturated.step },
     stopRule: {

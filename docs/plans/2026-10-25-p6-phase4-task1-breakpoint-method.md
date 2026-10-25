@@ -949,6 +949,11 @@ config only; the p95 limit, the 1 % error limit, the 2 s edge trim, the 0.9 CPU 
   (not error or `no_knee`); the stop step is the first step over the p95 limit, with the step before it under; the range is the last clean
   rate to the stop rate, consistent with the step schedule; the first saturated resource is `app_cpu`; `undersized` reports
   `dropped_iterations`; `norule` reports `no_knee`. No fixed rate range is asserted. The 2-sample post-trim minimum is removed.
+- **Error-rate stops on small steps (owner decision, PR #73).** The post-run stop rule now honours an error-rate stop even when the stop
+  step has fewer than `minRequests` requests, so it matches k6's `rate<=0.01` abort. Such a stop is reported as `error_rate` with the
+  step's actual request and error counts, and flagged `lowSampleStop: true` in the knee report and the verdict's knee summary, so a reader
+  sees that it rests on few requests. `minRequests` still applies to p95 only: a p95 from fewer requests does not trip the stop. No
+  per-step minimum iteration rule is added and the Task 3 rate defaults are unchanged.
 - **Known limitation (for every knee report, Tasks 2 to 4 included).** The stop step may have zero post-trim samples on a fast stop: the
   stop can come less than 2 s (the edge trim) into the hold, so no telemetry sample of that step survives the trim. The first saturated
   resource is then taken from the observed steps up to the stop, which is the rule's definition. A knee report must state this when the

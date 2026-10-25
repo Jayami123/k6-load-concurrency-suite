@@ -36,10 +36,35 @@ describe("knee stop rule", () => {
     assert.deepEqual(over.reasons, ["error_rate"]);
   });
 
-  it("a step under minRequests is ignored by both rules", () => {
-    const few = step(0, { requests: 19, errorRate: 0.5, p95Ms: 5000 });
-    assert.equal(evaluateStopRule([few], RULE).stopStep, null);
-    assert.equal(evaluateStopRule([{ ...few, requests: 20 }], RULE).stopStep, 0);
+  it("an error abort on a step with fewer than minRequests requests reports error_rate with lowSampleStop true", () => {
+    const v = evaluateStopRule(
+      [step(0, { requests: 10, errors: 2, errorRate: 0.2, p95Ms: 5 })],
+      RULE,
+    );
+    assert.equal(v.stopStep, 0);
+    assert.deepEqual(v.reasons, ["error_rate"]);
+    assert.equal(v.lowSampleStop, true);
+    assert.equal(v.stopRequests, 10);
+    assert.equal(v.stopErrors, 2);
+  });
+
+  it("an error abort with enough requests reports error_rate with lowSampleStop false", () => {
+    const v = evaluateStopRule(
+      [step(0, { requests: 40, errors: 4, errorRate: 0.1, p95Ms: 5 })],
+      RULE,
+    );
+    assert.equal(v.stopStep, 0);
+    assert.deepEqual(v.reasons, ["error_rate"]);
+    assert.equal(v.lowSampleStop, false);
+  });
+
+  it("p95 on a low-request step still needs minRequests", () => {
+    const v = evaluateStopRule(
+      [step(0, { requests: 10, errors: 0, errorRate: 0, p95Ms: 5000 })],
+      RULE,
+    );
+    assert.equal(v.stopStep, null);
+    assert.deepEqual(v.reasons, []);
   });
 
   it("the first step wins", () => {
