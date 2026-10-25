@@ -821,9 +821,9 @@ intent, not as a missing seal. The plan comes from the environment, and empty me
 journey per second, +1 per step, 30 s holds, 8 steps; `pr` is 1, +1, 12 s holds, 3 steps. The stop limit is ten times the
 P6-DOC-LOAD-001 p95 reference from `k6/thresholds/smoke-p95.json`.
 
-The GitHub Actions job is `documenso-knee` in `knee.yml`, dispatch only, and it must be dispatched from `main`. The environment line
-states "Documenso production build, jobs in the web process, rate limits bypassed". Its results are uploaded as the `knee-documenso`
-artifact, with the pipeline lag file and the audit beside the knee report.
+The GitHub Actions job is `documenso-knee` in `knee.yml`, dispatch only, and it must be dispatched from `main`. The job runs the
+"Documenso production build, jobs in the web process, rate limits bypassed" environment. Its results are uploaded as the
+`knee-documenso` artifact, with the pipeline lag file and the audit beside the knee report.
 
 ## How to read a knee
 
