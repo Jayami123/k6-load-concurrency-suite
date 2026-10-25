@@ -28,6 +28,7 @@ const meta = (over: Partial<RunMeta["environment"]> = {}, runId = "r"): RunMeta 
     runnerArch: "X64",
     nproc: 4,
     memTotalMb: 16000,
+    runUrl: "https://github.com/o/r/actions/runs/1",
     ...over,
   },
   software: { k6: "2.3.0", harness: "v0.2.14", node: "v22.23.3", products: {} },

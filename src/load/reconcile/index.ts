@@ -110,7 +110,10 @@ export function makeReconcileStage(deps: ReconcileDeps = defaultDeps): Stage {
     const pool = deps.openPool(cfg.product);
     let result: AuditResult;
     try {
-      result = await deps.reconcile(cfg, pool, { clientCount });
+      // The case's declared known bugs travel with the Documenso audit config (LoadCase.knownBugs).
+      const audited =
+        cfg.product === "documenso" ? { ...cfg, knownBugs: ctx.caseDef.knownBugs } : cfg;
+      result = await deps.reconcile(audited, pool, { clientCount });
     } finally {
       await closePool(pool);
     }

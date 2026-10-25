@@ -4,18 +4,25 @@ import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { iterationId } from "../lib/pure/prefix.js";
-import { request } from "../lib/http.js";
+import { request, retried, retryCounters } from "../lib/http.js";
 export const completedCounter = new Counter("p6_docs_completed");
 const TOKEN = __ENV.DOCUMENSO_API_TOKEN; // secret: environment only, never the config file, never logged
+
+/** A completion answer that ends a retry: SIGNED (200) or ALREADY_SIGNED (the first completion of the same recipient). */
+const signedOrAlready = (/** @type {{ status: number, body: unknown }} */ r) =>
+  r.status === 200 || String(r.body).includes("ALREADY_SIGNED");
 
 /**
  * @param {{ baseUrl: string, prefix: string }} cfg
  * @param {string | ArrayBuffer} pdf the fixture, opened once per VU by the case script
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ *   opts.retryPlan (plan task 10 §6.2): each recipient's completeDocumentWithToken is sent through the plan.
  */
-export function runDocSign(cfg, pdf) {
+export function runDocSign(cfg, pdf, opts = {}) {
   const n = exec.scenario.iterationInTest;
   const A = { authorization: `Bearer ${TOKEN}` },
     J = { ...A, "content-type": "application/json" };
+  if (opts.retryPlan) retryCounters.intents.add(1);
   /** @type {(path: string, body: unknown, name: string) => any} */
   const post = (path, body, name) =>
     request("POST", `${cfg.baseUrl}${path}`, name, body, { headers: J });
@@ -155,6 +162,19 @@ export function runDocSign(cfg, pdf) {
               },
               "POST signFieldWithToken",
             ).status === 200 && ok;
+          if (opts.retryPlan) {
+            const out = retried(
+              opts.retryPlan,
+              "POST",
+              `${cfg.baseUrl}/api/trpc/recipient.completeDocumentWithToken`,
+              "POST completeDocumentWithToken",
+              { json: { token: s.tokens[rid], documentId: s.documentId } },
+              { headers: J },
+              signedOrAlready,
+            );
+            ok = out.resolved && ok;
+            return;
+          }
           ok =
             post(
               "/api/trpc/recipient.completeDocumentWithToken",
@@ -163,6 +183,7 @@ export function runDocSign(cfg, pdf) {
             ).status === 200 && ok;
         });
         if (ok) completedCounter.add(1);
+        if (ok && opts.retryPlan) retryCounters.intentsOk.add(1);
         return { ok };
       },
     },

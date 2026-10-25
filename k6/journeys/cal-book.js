@@ -3,15 +3,19 @@ import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { attendeeEmail } from "../lib/pure/prefix.js";
-import { request } from "../lib/http.js";
+import { request, retried, retryCounters } from "../lib/http.js";
 export const acceptedCounter = new Counter("p6_bookings_accepted");
 const DAY = 86400000;
 
 /**
- * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number }} cfg
+ * cfg.links (case -009): one private link per intent; the booking of intent n carries links[n]. opts.retryPlan (retry cases):
+ * the booking request is sent through the plan (plan task 10 §6.2); without it the journey is unchanged.
+ * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[] }} cfg
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
  */
-export function runCalBook(cfg) {
+export function runCalBook(cfg, opts = {}) {
   const n = exec.scenario.iterationInTest; // global, unique across VUs: the slot index
+  if (opts.retryPlan) retryCounters.intents.add(1);
   const from = Math.floor(Date.now() / DAY) * DAY + 2 * DAY; // same rule as createSlotAllocator in src/cal/api.ts
   const input = {
     json: {
@@ -49,6 +53,8 @@ export function runCalBook(cfg) {
       run: (/** @type {Record<string, unknown>} */ s) => {
         const start = /** @type {string} */ (s.start);
         const end = new Date(Date.parse(start) + 30 * 60000).toISOString();
+        const link = cfg.links ? cfg.links[n] : undefined;
+        if (cfg.links !== undefined && link === undefined) return { ok: false }; // more iterations than links: TEST BUG
         const body = {
           responses: {
             name: "P6 Load",
@@ -64,11 +70,22 @@ export function runCalBook(cfg) {
           timeZone: "UTC",
           language: "en",
           metadata: {},
-          hasHashedBookingLink: false,
-        }; // = bookingBody() of src/cal/payloads.ts
-        const r = request("POST", `${cfg.baseUrl}/api/book/event`, "POST book", body, {
-          headers: { "Content-Type": "application/json" },
-        });
+          hasHashedBookingLink: link !== undefined,
+          hashedLink: link,
+        }; // = bookingBody() of src/cal/payloads.ts (hashedLink is dropped from the JSON when there is no link)
+        const url = `${cfg.baseUrl}/api/book/event`;
+        const headers = { "Content-Type": "application/json" };
+        if (opts.retryPlan) {
+          const out = retried(opts.retryPlan, "POST", url, "POST book", body, { headers });
+          // a 200 means the client saw the booking; a 409 or a redacted 400 is a definite answer too (counted, not a failure)
+          const accepted = out.answers.some((r) => r.json("status") === "ACCEPTED");
+          if (accepted) {
+            acceptedCounter.add(1);
+            retryCounters.intentsOk.add(1);
+          }
+          return { ok: out.definite };
+        }
+        const r = request("POST", url, "POST book", body, { headers });
         const ok = r.status === 200 && r.json("status") === "ACCEPTED";
         if (ok) acceptedCounter.add(1);
         return { ok };

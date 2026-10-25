@@ -4,7 +4,7 @@ import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { classifyRefusal } from "../lib/pure/refusal.js";
 import { iterationId } from "../lib/pure/prefix.js";
-import { request, expectStatuses, safeJson } from "../lib/http.js";
+import { request, expectStatuses, retried, retryCounters, safeJson } from "../lib/http.js";
 
 export const ordersCounter = new Counter("p6_orders"); // names fixed by the Task 6 plan
 const refusedAtLineItem = new Counter("p6_refused_at_line_item");
@@ -30,13 +30,15 @@ const ADDRESS = {
  * cfg: { baseUrl, publishableKey, regionId, salesChannelId, variantId, prefix } (written by the runner's setup, no secrets).
  * opts.classify (task 8): refusals are classified (clean, ghost, other) and every iteration ends in exactly one counter.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
- * @param {{ classify?: boolean }} [opts]
+ * @param {{ classify?: boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
   const classify = opts.classify === true;
   expectStatuses(400); // a clean refusal is not a failed request (D9)
   const email = `${iterationId(cfg.prefix, exec.scenario.iterationInTest)}@qa.local`; // lower-case, [a-z0-9-] prefix, unique per iteration
   const H = { "Content-Type": "application/json", "x-publishable-api-key": cfg.publishableKey };
+  if (opts.retryPlan) retryCounters.intents.add(1);
   let terminal = false; // set once per iteration by the terminal counter
   /** @param {Counter} counter */
   const end = (counter) => {
@@ -173,6 +175,29 @@ export function runMedCheckout(cfg, opts = {}) {
     {
       name: "complete",
       run: (/** @type {Record<string, any>} */ s) => {
+        if (opts.retryPlan) {
+          const out = retried(
+            opts.retryPlan,
+            "POST",
+            `${cfg.baseUrl}/store/carts/${s.cartId}/complete`,
+            "POST /store/carts/:id/complete",
+            undefined,
+            { headers: H, timeout: "30s" },
+            // an order is an answer with type "order"; a 200 with another type is not done
+            (r) => r.status === 200 && safeJson(r, "type") === "order",
+          );
+          // every 200 of this intent carries the same type and order id (an order created once, answered the same way)
+          const first = out.answers[0];
+          const key = (/** @type {any} */ r) => `${safeJson(r, "type")}|${safeJson(r, "order.id")}`;
+          for (const r of out.answers.slice(1))
+            if (key(r) !== key(first)) retryCounters.orderMismatch.add(1);
+          if (out.resolved) {
+            ordersCounter.add(1);
+            retryCounters.intentsOk.add(1);
+          }
+          // only a resolved order passes the step: a 200 that is not an order (a cart) is not a checkout, so the intent fails
+          return { ok: out.resolved };
+        }
         const r = call(
           "POST",
           `/carts/${s.cartId}/complete`,
