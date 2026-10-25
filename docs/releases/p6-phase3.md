@@ -29,6 +29,9 @@ The LOAD cases are `P6-CAL-LOAD-001`, `-007`, `-009`; `P6-MED-LOAD-001`, `-002`,
 2. **`P6-MED-LOAD-001`, run 2.** The case ran twice in run 2. Both attempts PASSED and are VALID. The baseline uses the
    first attempt (`20261025T090007Z-e68d9e61`), since two verdicts with one run id cannot share a baseline entry. The second
    attempt (`20261025T092142Z-22bb534c`) is not used.
+3. **`P6-MED-LOAD-002`, run 2.** Also ran twice in run 2. Both attempts PASSED and are VALID. The first attempt
+   (`20261025T090045Z-d8fe1494`) is used, as for `P6-MED-LOAD-001`. The second attempt (`20261025T092225Z-e2fb92fc`) is not
+   used. This deviation was missed when the notes were first written and is recorded here.
 
 ## Smoke baseline
 
