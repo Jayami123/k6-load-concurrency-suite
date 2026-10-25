@@ -10,6 +10,7 @@ import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
+import { spikeStage } from "./spike/stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
 import { docKneeDefaultsFor, kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
 import { stockForKnee } from "./knee/med-stock.ts";
@@ -34,7 +35,7 @@ import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../races/env.ts
 import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
 import type { RunContext } from "../documenso/run-case.ts";
 import { closePool, createReadOnlyPool } from "../oracles/pg.ts";
-import type { LoadCase, LoadContext, Stage, StageResult } from "./types.ts";
+import type { LoadCase, LoadContext, SpikeRunSpec, Stage, StageResult } from "./types.ts";
 
 const SERVICE_MS = 25;
 const STALL_MS = 1500;
@@ -1015,6 +1016,137 @@ export const KNEE_RULE_006: LoadCase = {
   stages: { setup: kneeSetup, reconcile: kneeStage, cleanup: kneeCleanup },
 };
 
+/**
+ * The spike rates (plan Phase 4 task 6 §6.4, §6.5): steady = 50 % and spike = 150 % of the knee's lower bound, rounded down to 0.1, from
+ * k6/thresholds/knee-bounds.json (Cal 8, Medusa 1.5). The Documenso rates are the limiter's own: 100 tRPC calls per minute over 4 calls
+ * per document. A unit test re-derives the bound rates from the file.
+ */
+export const SPIKE_RATES = {
+  cal: { steadyRate: 4, spikeRate: 12 },
+  medusa: { steadyRate: 0.7, spikeRate: 2.2 },
+  documenso: { steadyRate: 0.2, spikeRate: 0.6 },
+} as const;
+
+/** The spike of a run: 60 s steady, 30 s spike, 120 s watch on full; 10 s and 20 s on pr (a smoke of the machinery). */
+function spikeSpec(
+  ctx: LoadContext,
+  product: keyof typeof SPIKE_RATES,
+  timeUnitSec: number,
+): SpikeRunSpec {
+  const pr = ctx.profileName === "pr";
+  return {
+    product,
+    ...SPIKE_RATES[product],
+    steadySec: pr ? 10 : 60,
+    spikeSec: 30,
+    rampSec: 2,
+    watchSec: pr ? 20 : 120,
+    timeUnitSec,
+  };
+}
+
+/** Iterations the spike schedules: the steady and watch holds, the spike hold, and the two ramps at the mean of their rates. */
+function plannedIterations(s: SpikeRunSpec): number {
+  return (
+    s.steadyRate * (s.steadySec + s.watchSec) +
+    s.spikeRate * s.spikeSec +
+    (s.steadyRate + s.spikeRate) * s.rampSec
+  );
+}
+
+/** The Cal slot supply of a spike run: 1.05 x the planned iterations, one slot per iteration (as the steady case). */
+function calSpikeSlots(ctx: LoadContext): number {
+  return Math.ceil(1.05 * plannedIterations(spikeSpec(ctx, "cal", 1)));
+}
+
+/** P6-CAL-LOAD-004: the Cal booking spike at 150 % of the knee (characterisation: the product queues, it does not refuse). */
+export const CAL_LOAD_004: LoadCase = {
+  id: "P6-CAL-LOAD-004",
+  telemetry: { product: "cal" },
+  title: "Cal booking journey spike at 150 % of the knee: characterisation",
+  product: "cal",
+  label: "spike characterisation, environment-bound",
+  profiles: {
+    pr: { rate: SPIKE_RATES.cal.steadyRate, durationSec: 64, maxLatencyMs: 2000 },
+    full: { rate: SPIKE_RATES.cal.steadyRate, durationSec: 214, maxLatencyMs: 2000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/cal-load-004.js",
+      env: {},
+      allowExits: [0],
+      spike: spikeSpec(ctx, "cal", 1),
+    },
+  ],
+  stages: {
+    setup: (ctx) => calSetup({ slots: { count: calSpikeSlots(ctx) } })(ctx),
+    reconcile: composeStages([spikeStage, reconcileStage]),
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-MED-LOAD-003: the Medusa checkout spike at 150 % of the knee, with P6-MED-LOAD-010's abandoned carts in the same run. */
+export const MED_LOAD_003: LoadCase = {
+  id: "P6-MED-LOAD-003",
+  telemetry: { product: "medusa" },
+  title: "Medusa checkout journey spike at 150 % of the knee, with abandoned carts",
+  product: "medusa",
+  label: "spike characterisation, environment-bound",
+  profiles: {
+    pr: { rate: SPIKE_RATES.medusa.steadyRate, durationSec: 64, maxLatencyMs: 8000 },
+    full: { rate: SPIKE_RATES.medusa.steadyRate, durationSec: 214, maxLatencyMs: 8000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/med-load-003.js",
+      env: {},
+      allowExits: [0],
+      spike: spikeSpec(ctx, "medusa", 10),
+    },
+  ],
+  stages: {
+    setup: makeMedusaSetup({
+      stockFor: (planned) => Math.ceil(1.2 * planned) + 10,
+    }),
+    reconcile: composeStages([spikeStage, reconcileStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/**
+ * P6-DOC-LOAD-004: the Documenso signing spike at the limiter-bound rates, on the production-like limiter profile (the CI job's
+ * environment). Only this case may leave an unfinished document of a limited intent (plan §6.5).
+ */
+export const DOC_LOAD_004: LoadCase = {
+  id: "P6-DOC-LOAD-004",
+  telemetry: { product: "documenso" },
+  title: "Documenso signing journey spike on the limiter profile",
+  product: "documenso",
+  label: "limiter contract, environment-bound",
+  limitedFailMayLeaveUnfinished: true,
+  profiles: {
+    pr: { rate: SPIKE_RATES.documenso.steadyRate, durationSec: 64, maxLatencyMs: 8000 },
+    full: { rate: SPIKE_RATES.documenso.steadyRate, durationSec: 214, maxLatencyMs: 8000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-004.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+      allowExits: [0],
+      spike: spikeSpec(ctx, "documenso", 10),
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    reconcile: composeStages([spikeStage, reconcileStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1029,6 +1161,9 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
+  [CAL_LOAD_004.id]: CAL_LOAD_004,
+  [MED_LOAD_003.id]: MED_LOAD_003,
+  [DOC_LOAD_004.id]: DOC_LOAD_004,
   [CAL_LOAD_003.id]: CAL_LOAD_003,
   [DOC_LOAD_005.id]: DOC_LOAD_005,
   [MED_LOAD_004.id]: MED_LOAD_004,
