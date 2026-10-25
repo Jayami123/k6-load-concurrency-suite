@@ -43,6 +43,7 @@ observeSpikeResponses();
 export function journey() {
   const intent = beginSpikeIteration(plan);
   let committed = false;
-  runMedCheckout(cfg, { onCommit: () => (committed = true) });
+  // P6-MED-LOAD-010 in the same run: every fourth iteration abandons its cart (src/load/spike/med-abandon.ts, isAbandoned).
+  runMedCheckout(cfg, { onCommit: () => (committed = true), abandon: (n) => n % 4 === 3 });
   endSpikeIteration(intent, committed);
 }
