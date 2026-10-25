@@ -10,9 +10,6 @@ import { buildKneeReport, formatKneeTable, kneeInvalidReasons } from "./knee-rep
 import { stepStatsFromSummary } from "./step-stats.ts";
 import { evaluateStopRule, STOP_DEFAULTS, type StopRule } from "./stop-rule.ts";
 
-/** The self-test needs at least this many telemetry samples inside the stop step after its 2 s edge trim (owner decision, PR #73). */
-const MIN_POST_TRIM_SAMPLES = 2;
-
 interface TelemetryFile {
   samples?: RuleSample[];
   sources?: Record<string, { present: boolean; errors?: number }>;
@@ -151,16 +148,6 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
             report.range.upperRate !== schedule(stop.stopStep)
           )
             problems.push("range is not last clean rate to stop rate");
-          const w = windows[stop.stopStep];
-          const post = w
-            ? (telemetry.samples ?? []).filter(
-                (x) => x.t >= w.fromMs + 2000 && x.t <= w.toMs - 2000,
-              ).length
-            : 0;
-          if (post < MIN_POST_TRIM_SAMPLES)
-            problems.push(
-              `stop step ${stop.stopStep} has ${post} post-trim sample(s), need at least ${MIN_POST_TRIM_SAMPLES}`,
-            );
         }
         if (
           expect.firstSaturated !== undefined &&

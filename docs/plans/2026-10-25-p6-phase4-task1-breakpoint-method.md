@@ -945,11 +945,14 @@ config only; the p95 limit, the 1 % error limit, the 2 s edge trim, the 0.9 CPU 
 
 **Owner decisions on PR #73 (2026-10-25), applied:**
 
-- **Assertions are machine-independent.** The self-test checks: a knee is found on the p95 stop rule (not error or `no_knee`); the stop
-  step is the first step over the p95 limit, with the step before it under; the range is last clean rate to stop rate, consistent with
-  the step schedule; the first saturated resource is `app_cpu`; the stop step has at least 2 post-trim telemetry samples
-  (`MIN_POST_TRIM_SAMPLES`); `undersized` reports `dropped_iterations`; `norule` reports `no_knee`. No fixed rate range is asserted.
-- **The 4 s post-trim requirement is withdrawn.** The 2-sample minimum replaces it.
+- **Assertions are machine-independent** (owner decision, option 1 on PR #73). The self-test checks: a knee is found on the p95 stop rule
+  (not error or `no_knee`); the stop step is the first step over the p95 limit, with the step before it under; the range is the last clean
+  rate to the stop rate, consistent with the step schedule; the first saturated resource is `app_cpu`; `undersized` reports
+  `dropped_iterations`; `norule` reports `no_knee`. No fixed rate range is asserted. The 2-sample post-trim minimum is removed.
+- **Known limitation (for every knee report, Tasks 2 to 4 included).** The stop step may have zero post-trim samples on a fast stop: the
+  stop can come less than 2 s (the edge trim) into the hold, so no telemetry sample of that step survives the trim. The first saturated
+  resource is then taken from the observed steps up to the stop, which is the rule's definition. A knee report must state this when the
+  stop step has no post-trim sample.
 - **Corrected mechanism.** The stop comes from queue growth past the 60 ms p95 limit, not from `delayAbortEvalSec`. Measured, `--profile
 pr`, rates 151/20:
   - delay 4 s: stop at 9.9 s (6 post-trim samples) and at 3.9 s (2 samples) in two runs;

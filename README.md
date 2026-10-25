@@ -805,6 +805,9 @@ sessions and connections, database CPU, application file descriptors, or a probe
 cannot read is listed as absent and is never named. `none_observed` means no listed resource saturated; it is not a claim about the
 product.
 
+**Known limitation.** The stop step may have no telemetry sample after the 2-second edge trim, when the stop comes less than 2 s into the
+hold. The first saturated resource is then taken from the steps observed before the stop, and the report must say so.
+
 The stop rule is **not a gate**. It finds the range; it never passes or fails a product. A knee range is a property of the run's
 environment (`label: knee range, environment-bound`). The published form states the range, the stop rule that tripped, the first
 saturated resource, and the environment, with the run's `run-meta.json` link; it is only written for a KNEE on `main` in GitHub Actions.
