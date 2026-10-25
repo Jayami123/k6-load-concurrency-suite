@@ -49,6 +49,8 @@ export const options = kneeOptions({
   knee,
   smokeP95Ms: knee.smokeP95Ms,
   maxVUs: knee.maxVUs,
+  // A signing journey runs 3.5 s on average and 12 s at most on the Documenso knee (p95 10.3 s); the pool is sized from this.
+  iterationMs: 12000,
   delayAbortEvalSec: flat.delayAbortEvalSec,
   tags: { case: "P6-DOC-LOAD-005", journey: "doc-sign" },
 });
