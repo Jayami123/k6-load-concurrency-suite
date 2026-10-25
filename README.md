@@ -798,6 +798,19 @@ the knee table in the job summary, `knee-report-<label>.json` and `.md`, and the
 failure: exit 0 and exit 99 both pass the run. The knee range is a property of the environment that ran it, so the report carries that
 label with the range.
 
+## Run a Medusa knee
+
+`npm run load:medusa-knee -- --profile full` runs P6-MED-LOAD-004, the Medusa checkout knee, against a Medusa stack that the harness
+starts (`npm run up:medusa`, stopped with `npm run down:medusa`). The journey is the checkout of P6-MED-LOAD-001: browse, cart, line item,
+address, shipping, payment, complete. The stock is sized from the plan, so a stock-out never ends a run, and a refusal is never read as
+saturation. The plan comes from the environment, and empty means the profile's default: `full` is 0.5 orders per second, +0.5 per step,
+30 s holds, 8 steps; `pr` is 0.5, +0.5, 10 s holds, 3 steps. The ramp before each hold is 2 s. The stop limit is ten times the
+P6-MED-LOAD-001 p95 reference from `k6/thresholds/smoke-p95.json`.
+
+The GitHub Actions job is `medusa-knee` in `knee.yml`, dispatch only, and it must be dispatched from `main`. It runs the production build
+with the in-memory lock and the fake Redis, one backend, which the report's environment line states. Its results are uploaded as the
+`knee-medusa` artifact, staged under `load-medusa/` so the release scan allows the publishable key there.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
