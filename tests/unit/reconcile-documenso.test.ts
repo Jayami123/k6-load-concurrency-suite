@@ -76,6 +76,35 @@ describe("documenso reconciliation", () => {
     );
   });
 
+  it("an aborted knee may leave the database ahead of the client by its in-flight iterations", () => {
+    const s = { ...clean(), clientCompleted: 1, clientInterrupted: 1 };
+    const r = evaluateDocumensoAudit(s, SCOPE, DRAINED);
+    assert.equal(r.checks.find((c) => c.name === "client-matches-db")?.ok, true);
+    assert.deepEqual(r.violations, []);
+  });
+
+  it("the database ahead of the client by more than the in-flight iterations is a PRODUCT BUG", () => {
+    const r = evaluateDocumensoAudit(
+      { ...clean(), clientCompleted: 0, clientInterrupted: 1 },
+      SCOPE,
+      DRAINED,
+    );
+    assert.ok(
+      r.violations.some((v) => /client completed 0 envelopes, the database holds 2/.test(v.text)),
+    );
+  });
+
+  it("the database behind the client is a PRODUCT BUG even when iterations were in flight", () => {
+    const r = evaluateDocumensoAudit(
+      { ...clean(), clientCompleted: 3, clientInterrupted: 5 },
+      SCOPE,
+      DRAINED,
+    );
+    assert.ok(
+      r.violations.some((v) => /client completed 3 envelopes, the database holds 2/.test(v.text)),
+    );
+  });
+
   it("zero envelopes is a TEST BUG", () => {
     const r = evaluateDocumensoAudit(
       { envelopes: [], sequentialCompletions: false },

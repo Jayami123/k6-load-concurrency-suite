@@ -22,6 +22,19 @@ export interface StopVerdict {
 }
 
 /**
+ * The step k6 aborted on, from its log: k6 names the crossed threshold, e.g. `http_req_duration{step:4}`. k6 judges the running
+ * p95 of the step, so the final p95 in the summary can settle under the limit: the abort is the decision, and the log is its record.
+ */
+export function abortedStepOf(log: string): { index: number; reason: "error_rate" | "p95" } | null {
+  const m =
+    /thresholds on metrics '(http_req_duration|p6_nonconflict_error)\{step:(\d+)\}' were crossed/.exec(
+      log,
+    );
+  if (!m) return null;
+  return { index: Number(m[2]), reason: m[1] === "http_req_duration" ? "p95" : "error_rate" };
+}
+
+/**
  * First step (by index) whose error rate is over rule.errorRate, or whose p95 is over p95Factor x smokeP95Ms.
  * An error-rate stop is always honoured, even on a step with fewer than minRequests requests: k6 aborts on the same rate, and the
  * report flags it (lowSampleStop). minRequests applies to p95 only: a p95 from a few requests is not evidence.

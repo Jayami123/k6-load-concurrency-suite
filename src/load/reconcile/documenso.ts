@@ -14,6 +14,7 @@ export interface DocumensoEnvelopeRow {
 export interface DocumensoSnapshot {
   envelopes: DocumensoEnvelopeRow[];
   clientCompleted?: number;
+  clientInterrupted?: number;
   sequentialCompletions: boolean;
 }
 
@@ -105,11 +106,19 @@ export function evaluateDocumensoAudit(
   check("sealed-once", sealOnce, `${completed.length} completed envelope(s)`);
 
   if (s.clientCompleted !== undefined) {
-    const ok = completed.length === s.clientCompleted;
-    check("client-matches-db", ok, `client ${s.clientCompleted}, database ${completed.length}`);
+    // A knee that k6 stopped leaves iterations in flight. Each may still complete on the server after k6 stopped counting it,
+    // so the database may hold up to that many more than the client counted. No interruption: an exact match.
+    const interrupted = s.clientInterrupted ?? 0;
+    const extra = completed.length - s.clientCompleted;
+    const ok = extra >= 0 && extra <= interrupted;
+    check(
+      "client-matches-db",
+      ok,
+      `client ${s.clientCompleted}, database ${completed.length}, interrupted ${interrupted}`,
+    );
     if (!ok)
       bug(
-        `client completed ${s.clientCompleted} envelopes, the database holds ${completed.length} completed`,
+        `client completed ${s.clientCompleted} envelopes, the database holds ${completed.length} completed (${interrupted} interrupted)`,
       );
   }
   return result;
@@ -129,6 +138,7 @@ export async function readDocumensoSnapshot(
   pool: pg.Pool,
   cfg: Extract<AuditStageConfig, { product: "documenso" }>,
   clientCompleted?: number,
+  clientInterrupted?: number,
 ): Promise<DocumensoSnapshot> {
   const envelopes = await selectRows<{ id: string; secondaryId: string; status: string }>(
     pool,
@@ -150,7 +160,12 @@ export async function readDocumensoSnapshot(
       completedAudit: Number(audit[0]?.n ?? 0),
     });
   }
-  return { envelopes: rows, clientCompleted, sequentialCompletions: cfg.sequentialCompletions };
+  return {
+    envelopes: rows,
+    clientCompleted,
+    clientInterrupted,
+    sequentialCompletions: cfg.sequentialCompletions,
+  };
 }
 
 /** The drain of the run's stuck jobs, polled from the database (plan §6.5). */
@@ -173,8 +188,9 @@ export async function reconcileDocumenso(
   pool: pg.Pool,
   cfg: Extract<AuditStageConfig, { product: "documenso" }>,
   clientCompleted?: number,
+  clientInterrupted?: number,
 ): Promise<AuditResult> {
   const drain = await waitForDrainPool(pool, cfg.prefixLike, cfg.drainTimeoutMs);
-  const snapshot = await readDocumensoSnapshot(pool, cfg, clientCompleted);
+  const snapshot = await readDocumensoSnapshot(pool, cfg, clientCompleted, clientInterrupted);
   return evaluateDocumensoAudit(snapshot, cfg.prefixLike, drain, cfg.knownBugs ?? []);
 }
