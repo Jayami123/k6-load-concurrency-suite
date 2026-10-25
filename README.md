@@ -811,6 +811,20 @@ The GitHub Actions job is `medusa-knee` in `knee.yml`, dispatch only, and it mus
 with the in-memory lock and the fake Redis, one backend, which the report's environment line states. Its results are uploaded as the
 `knee-medusa` artifact, staged under `load-medusa/` so the release scan allows the publishable key there.
 
+## Run a Documenso knee
+
+`npm run load:documenso-knee -- --profile full` runs P6-DOC-LOAD-005, the Documenso signing knee, against a Documenso stack that the
+harness starts (`npm run up:documenso`, stopped with `npm run down:documenso`). Each iteration creates an envelope with two signers,
+signs and completes it. Its seal lag is measured per hold window: a completed document is placed in the step of its last signature,
+and the table gives the seal lag percentiles of each step beside the HTTP stop. A document still unfinished at the end is judged per
+intent, not as a missing seal. The plan comes from the environment, and empty means the profile's default: `full` is 1 signing
+journey per second, +1 per step, 30 s holds, 8 steps; `pr` is 1, +1, 12 s holds, 3 steps. The stop limit is ten times the
+P6-DOC-LOAD-001 p95 reference from `k6/thresholds/smoke-p95.json`.
+
+The GitHub Actions job is `documenso-knee` in `knee.yml`, dispatch only, and it must be dispatched from `main`. The environment line
+states "Documenso production build, jobs in the web process, rate limits bypassed". Its results are uploaded as the `knee-documenso`
+artifact, with the pipeline lag file and the audit beside the knee report.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
