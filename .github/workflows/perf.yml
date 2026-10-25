@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   # Scheduled runs get their own group so a nightly run and a push to main never cancel each other.
-  group: perf-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  # Each manual dispatch gets its own group, so dispatches on main never cancel one another.
+  group: perf-${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 defaults:
