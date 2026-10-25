@@ -31,7 +31,7 @@ attempt FAILED. This bends the rule that a run with a FAIL for a case is not use
 - **P6-RULE-002** (README numbers match the latest artefact): the README table numbers were computed from the `verdict.json`
   files of the three runs above (requests and p95 medians, dropped counts, first-attempt selection as in the README footnote).
   The journey medians equal the committed baseline. The Phase 3 results section contains no ideation figure.
-- **Done-when items** (plan §14): 11a and 11b merged except this PR; three VALID dispatch runs per LOAD case; telemetry csv,
+- **Done-when items** (plan §14): 11a and 11b merged except this PR; three selected PASS and VALID attempts per LOAD case; telemetry csv,
   json and html files present in each chosen run folder; the baseline file committed with its test; the release check comes
   after this PR merges; the README cites only these runs; the upstream drafts exist (below); `npm run check` green.
 
