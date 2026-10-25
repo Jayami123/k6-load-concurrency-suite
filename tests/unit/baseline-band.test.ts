@@ -160,3 +160,26 @@ describe("baseline band file", () => {
     );
   });
 });
+
+describe("baseline band inputs", () => {
+  it("rejects runs at different rates and ignores folders of another profile that share a run id", () => {
+    const a = folder("8001", 200);
+    const b = folder("8002", 200);
+    const c = folder("8003", 200);
+    b.meta = { ...b.meta, rate: 2 } as RunMeta;
+    assert.throws(
+      () => buildBand({ release: "p6-phase4a", caseId: "P6-CAL-LOAD-003", folders: [a, b, c] }),
+      /differ in rate or duration/,
+    );
+
+    const other = folder("8001", 900);
+    other.meta = { ...other.meta, profile: "full" } as RunMeta;
+    const band = buildBand({
+      release: "p6-phase4a",
+      caseId: "P6-CAL-LOAD-003",
+      folders: [folder("8001", 200), folder("8002", 200), folder("8003", 200), other],
+    });
+    assert.equal(band.n, 3);
+    assert.equal(band.metrics.p95Ms.max, 200);
+  });
+});

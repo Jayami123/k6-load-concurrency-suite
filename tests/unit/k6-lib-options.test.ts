@@ -84,3 +84,14 @@ describe("k6 lib options", () => {
     );
   });
 });
+
+describe("open model rate", () => {
+  it("throws on a rate that is not a whole number of starts per unit", () => {
+    assert.throws(
+      () => openModelScenario({ rate: 0.5, durationSec: 30 }),
+      /rate 0.5 over 1s is not a whole number of starts/,
+    );
+    assert.throws(() => openModelScenario({ rate: 0.2, durationSec: 30, timeUnitSec: 1 }));
+    assert.doesNotThrow(() => openModelScenario({ rate: 0.7, durationSec: 30, timeUnitSec: 10 }));
+  });
+});

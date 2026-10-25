@@ -32,12 +32,22 @@ if (profile !== "steady" && found.profiles[profile] === undefined)
 // The steady profile is sized from the knee bounds: without the file the steady baseline is not defined (plan task 5 §6.5).
 let caseDef: LoadCase = found;
 if (profile === "steady") {
-  let bounds;
+  let text: string;
   try {
-    bounds = parseKneeBounds(JSON.parse(readFileSync(KNEE_BOUNDS_FILE, "utf8")));
+    text = readFileSync(KNEE_BOUNDS_FILE, "utf8");
   } catch {
     fail(
       `ENV: knee bounds missing or unreadable (${KNEE_BOUNDS_FILE}; Phase 4 Tasks 2 and 3 not evidenced)`,
+    );
+  }
+  // The reason is fixed text: the parse error can carry file-controlled values.
+  let bounds;
+  try {
+    bounds = parseKneeBounds(JSON.parse(text));
+  } catch (err) {
+    const reason = err instanceof SyntaxError ? "invalid JSON" : "schema validation failed";
+    fail(
+      `ENV: knee bounds invalid (${KNEE_BOUNDS_FILE}: ${reason}; Phase 4 Tasks 2 and 3 not evidenced)`,
     );
   }
   try {

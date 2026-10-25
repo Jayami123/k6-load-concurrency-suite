@@ -119,10 +119,21 @@ export function buildBand(input: {
   caseId: string;
   folders: RunFolder[];
 }): BandProduct {
-  const records = input.folders.map((f) => ({ verdict: f.verdict, meta: f.meta }));
-  const { used, excluded } = selectPublishable(records);
+  // Folders of another case or profile are excluded before selection, so they cannot share a run id with a kept run.
+  const wrong: Array<{ runId: string; why: string[] }> = [];
+  const eligible = input.folders.filter((f) => {
+    const why: string[] = [];
+    if (f.meta.caseId !== input.caseId) why.push(`case ${f.meta.caseId} is not ${input.caseId}`);
+    if (f.meta.profile !== "steady") why.push(`profile ${f.meta.profile} is not steady`);
+    if (why.length > 0) wrong.push({ runId: f.verdict.runId ?? f.meta.runId, why });
+    return why.length === 0;
+  });
+  const { used, excluded: notPublishable } = selectPublishable(
+    eligible.map((f) => ({ verdict: f.verdict, meta: f.meta })),
+  );
+  const excluded = [...wrong, ...notPublishable];
   const usedIds = new Set(used.map((r) => r.verdict.runId ?? r.meta.runId));
-  const kept = input.folders.filter((f) => usedIds.has(f.verdict.runId ?? f.meta.runId));
+  const kept = eligible.filter((f) => usedIds.has(f.verdict.runId ?? f.meta.runId));
   if (kept.length < 3) {
     const reasons = excluded.map((e) => `${e.runId}: ${e.why.join("; ")}`).join(" | ");
     throw new Error(
@@ -136,12 +147,17 @@ export function buildBand(input: {
       `${input.caseId}: duplicate GitHub Actions run id(s): ${duplicates.join(", ")}`,
     );
 
+  // The band states one rate and one duration: runs at other values would merge into it unlabelled.
+  const rate = kept[0]!.meta.rate;
+  const duration = kept[0]!.meta.durationSec;
+  if (kept.some((f) => f.meta.rate !== rate || f.meta.durationSec !== duration))
+    throw new Error(`${input.caseId}: steady runs differ in rate or duration`);
+
   const values = kept.map(runValues);
   const metrics = {} as Record<BandMetric, Band>;
   for (const key of ["p50Ms", "p95Ms", "p99Ms", "errorRate", "requestsPerSec"] as const)
     metrics[key] = bandOf(values.map((v) => v[key]));
 
-  const duration = kept[0]!.meta.durationSec;
   const windows = kept.flatMap((f) => windowP95s(f.bins, WINDOW_SEC, duration));
   if (windows.length === 0)
     throw new Error(`${input.caseId}: no 10-second window has ${MIN_WINDOW_REQUESTS} requests`);
