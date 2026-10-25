@@ -784,6 +784,20 @@ redacted 400 (`P6-OBS-CAL-001`) and a 409 are counted, not failures. The retry a
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).
 
+## Run a Cal knee
+
+`npm run load:cal-knee -- --profile full` runs P6-CAL-LOAD-005, the Cal booking knee, against a Cal stack that the harness starts
+(`npm run up:cal`, stopped with `npm run down:cal`). Setup reads the free slots once: a supply shorter than the plan needs stops the run
+before any load, as a TEST BUG. The plan comes from environment variables, and empty means the profile's default: `full` is 2 iterations
+per second, +2 per step, 30 s holds, 9 steps; `pr` is 2, +2, 12 s holds, 3 steps. The ramp before each hold is 2 s. Rates are iterations
+per second with one decimal, at most 100; the planned iterations are at most 5,000.
+
+The GitHub Actions job is `knee.yml`, dispatch only, and it must be dispatched from `main`. Its inputs are `start_rate`, `step_rate`,
+`hold_sec` and `max_steps`; each one left empty takes the default above. The run's results are uploaded as the `knee-cal` artifact:
+the knee table in the job summary, `knee-report-<label>.json` and `.md`, and the run's `run-meta.json`. A stop is a result, not a
+failure: exit 0 and exit 99 both pass the run. The knee range is a property of the environment that ran it, so the report carries that
+label with the range.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
