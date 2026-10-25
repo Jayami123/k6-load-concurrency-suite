@@ -951,12 +951,13 @@ config only; the p95 limit, the 1 % error limit, the 2 s edge trim, the 0.9 CPU 
   (`MIN_POST_TRIM_SAMPLES`); `undersized` reports `dropped_iterations`; `norule` reports `no_knee`. No fixed rate range is asserted.
 - **The 4 s post-trim requirement is withdrawn.** The 2-sample minimum replaces it.
 - **Corrected mechanism.** The stop comes from queue growth past the 60 ms p95 limit, not from `delayAbortEvalSec`. Measured, `--profile
-  pr`, rates 151/20:
+pr`, rates 151/20:
   - delay 4 s: stop at 9.9 s (6 post-trim samples) and at 3.9 s (2 samples) in two runs;
   - delay 12 s: stop at 3.9 s and 4.0 s (2 samples each) in two runs, and at 1.9 s on the CI runner (0 samples).
 
   The delay does not decide the stop time. Near the stub's capacity (about 190/s) the stop time varies from run to run, so the 2-sample
   minimum is not reliably met, on the VM or on the runner. `delayAbortEvalSec` is therefore reverted to the default 4.
+
 - **Reference values only (not asserted).** VM: range 171 to 191/s. CI runner (run 40209610689): range 191 to 211/s.
 
 ## 10. Expected output of the self-test run
