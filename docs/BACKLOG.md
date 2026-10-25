@@ -121,6 +121,5 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   50% the storm judge needs. Done when the storm reaches its threshold reliably, in a PR of its own, with no judge weakened.
 - **P6-OBS-DOC-006 (suspected).** Documenso reset-password with an unknown token returns HTTP 500, probably the same root cause
   as `P6-OBS-DOC-001`. Done when the root cause is confirmed or ruled out and a draft exists.
-- **cal-smoke step-cap total.** The step caps of `cal-smoke` sum to more than its job timeout. Done when a follow-up PR fixes it.
 - **Upstream drafts.** Drafts for the Cal link-usage mismatch and the Documenso double seal are in `docs/upstream/`. Done when the
   owner files them or decides not to.
