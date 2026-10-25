@@ -195,7 +195,8 @@ export function runMedCheckout(cfg, opts = {}) {
             ordersCounter.add(1);
             retryCounters.intentsOk.add(1);
           }
-          return { ok: out.definite };
+          // only a resolved order passes the step: a 200 that is not an order (a cart) is not a checkout, so the intent fails
+          return { ok: out.resolved };
         }
         const r = call(
           "POST",
