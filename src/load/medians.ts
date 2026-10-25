@@ -22,6 +22,7 @@ export function selectPublishable(runs: LoadRunRecord[]): {
   const excluded: Array<{ runId: string; why: string[] }> = [];
   for (const run of runs) {
     const why = [...isPublishable(run.meta).reasons];
+    if (why.length === 0 && runIdOf(run.meta) === undefined) why.push("no GitHub Actions run id");
     if (run.verdict.outcome !== "PASS") why.push(`outcome ${run.verdict.outcome}`);
     if (run.verdict.validity?.verdict !== "VALID") why.push("validity INVALID or missing");
     if (why.length === 0) used.push(run);
@@ -58,4 +59,18 @@ export function summarizeMedian(
     excluded,
     insufficient: values.length < minRuns,
   };
+}
+
+/** The GitHub Actions run id of a run: the digits after /actions/runs/ in meta.environment.runUrl; undefined when absent. */
+export function runIdOf(meta: RunMeta): string | undefined {
+  return /\/actions\/runs\/(\d+)/.exec(meta.environment.runUrl ?? "")?.[1];
+}
+
+export type MedianMetric = "requests" | "dropped" | "iterations" | "p95";
+
+/** One metric of the first k6 run of a verdict (k6[0]); undefined when the verdict has none or the value is not a finite number. */
+export function pickMetric(metric: MedianMetric, r: LoadRunRecord): number | undefined {
+  const k6 = (r.verdict as { k6?: Array<Record<string, unknown>> }).k6?.[0];
+  const value = k6?.[metric === "p95" ? "p95Ms" : metric];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

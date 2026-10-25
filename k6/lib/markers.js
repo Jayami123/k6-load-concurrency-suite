@@ -38,3 +38,19 @@ export function recordClockEnd(url) {
   const offset = clockOffset(url);
   if (offset !== undefined) clockEnd.add(offset);
 }
+
+/**
+ * setup() and teardown() that record the clock offset at the start and at the end of the run when the runner gave a marker.
+ * Use as: export const { setup, teardown } = clockHooks(__ENV.MARKER_URL);
+ * @param {string | undefined} url
+ */
+export function clockHooks(url) {
+  return {
+    setup() {
+      recordClockStart(url);
+    },
+    teardown() {
+      recordClockEnd(url);
+    },
+  };
+}

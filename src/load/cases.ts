@@ -306,6 +306,7 @@ export const OVERHEAD_LOAD_006: LoadCase = {
 /** P6-CAL-LOAD-001: one booking per iteration, the slot index from the global iteration counter (plan §6.3). */
 export const CAL_LOAD_001: LoadCase = {
   id: "P6-CAL-LOAD-001",
+  telemetry: { product: "cal" },
   title: "Cal journey smoke: getSchedule, book",
   product: "cal",
   label: "functional load, not capacity",
@@ -320,6 +321,7 @@ export const CAL_LOAD_001: LoadCase = {
 /** P6-MED-LOAD-001: one checkout per iteration against a stocked variant (plan §6.2). */
 export const MED_LOAD_001: LoadCase = {
   id: "P6-MED-LOAD-001",
+  telemetry: { product: "medusa" },
   title: "Medusa journey smoke: browse, cart, checkout",
   product: "medusa",
   label: "functional load, not capacity",
@@ -334,6 +336,7 @@ export const MED_LOAD_001: LoadCase = {
 /** P6-DOC-LOAD-001: create, distribute, both recipients sign, the envelope completes once (plan §6.4). */
 export const DOC_LOAD_001: LoadCase = {
   id: "P6-DOC-LOAD-001",
+  telemetry: { product: "documenso" },
   title: "Documenso journey smoke: create, distribute, sign",
   product: "documenso",
   label: "functional load, not capacity",
@@ -356,6 +359,7 @@ export const DOC_LOAD_001: LoadCase = {
  * The reconcile stage is the post-load audit followed by the conservation judge. */
 export const MED_LOAD_002: LoadCase = {
   id: "P6-MED-LOAD-002",
+  telemetry: { product: "medusa" },
   title: "Inventory conservation under constant-arrival checkouts",
   product: "medusa",
   label: "functional load, not capacity",
@@ -374,6 +378,7 @@ export const MED_LOAD_002: LoadCase = {
 /** P6-DOC-LOAD-002: the pipeline lag at a steady rate; every stage exactly once, within the contract (plan task 9 §6.5). */
 export const DOC_LOAD_002: LoadCase = {
   id: "P6-DOC-LOAD-002",
+  telemetry: { product: "documenso" },
   title: "Documenso pipeline lag at a steady rate",
   product: "documenso",
   label: "functional load, not capacity",
@@ -399,6 +404,7 @@ export const DOC_LOAD_002: LoadCase = {
 /** P6-DOC-LOAD-008: the receiver answers 500 to the first delivery of each event; Documenso must retry it (plan task 9 §3.5). */
 export const DOC_LOAD_008: LoadCase = {
   id: "P6-DOC-LOAD-008",
+  telemetry: { product: "documenso" },
   title: "Documenso webhook retry after one 500",
   product: "documenso",
   label: "functional load, not capacity",
@@ -605,6 +611,7 @@ const documensoRetryStage: Stage = async (ctx) => {
 /** P6-CAL-LOAD-007: a booking retried after a short client timeout; one accepted booking per intent (plan task 10 §6.6). */
 export const CAL_LOAD_007: LoadCase = {
   id: "P6-CAL-LOAD-007",
+  telemetry: { product: "cal" },
   title: "Cal booking retried after a short client timeout",
   product: "cal",
   label: "functional load, not capacity",
@@ -623,6 +630,7 @@ export const CAL_LOAD_007: LoadCase = {
 /** P6-CAL-LOAD-009: the same retries with one cap-1 private link per intent (plan task 10 §6.5, §6.6). */
 export const CAL_LOAD_009: LoadCase = {
   id: "P6-CAL-LOAD-009",
+  telemetry: { product: "cal" },
   title: "Cal private link retried after a short client timeout",
   product: "cal",
   label: "functional load, not capacity",
@@ -641,6 +649,7 @@ export const CAL_LOAD_009: LoadCase = {
 /** P6-MED-LOAD-006: the complete request retried after a 100 ms timeout; one order, one payment, stock once (plan task 10 §6.6). */
 export const MED_LOAD_006: LoadCase = {
   id: "P6-MED-LOAD-006",
+  telemetry: { product: "medusa" },
   title: "Medusa complete retried after a short client timeout",
   product: "medusa",
   label: "functional load, not capacity",
@@ -660,6 +669,7 @@ export const MED_LOAD_006: LoadCase = {
 /** P6-DOC-LOAD-007: completeDocumentWithToken retried in parallel after a short timeout; one seal, one email set (plan task 10 §6.6). */
 export const DOC_LOAD_007: LoadCase = {
   id: "P6-DOC-LOAD-007",
+  telemetry: { product: "documenso" },
   title: "Documenso completion retried in parallel after a short client timeout",
   product: "documenso",
   label: "functional load, not capacity",
