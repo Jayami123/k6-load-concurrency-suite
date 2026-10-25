@@ -798,15 +798,15 @@ export const KNEE_RULE_006: LoadCase = {
         allowExits: [99],
         expectValidity: "VALID",
         knee: {
-          startRate: 60,
-          stepRate: 80,
+          startRate: 151,
+          stepRate: 20,
           holdSec: hold,
           rampSec: 2,
           maxSteps: 5,
           smokeP95Ms: 6,
           maxVUs: 80,
           port: ports.knee,
-          expect: { lowerRate: 140, upperRate: 220, firstSaturated: "app_cpu" },
+          expect: { lowerRate: 171, upperRate: 191, firstSaturated: "app_cpu" },
         },
       },
       {
