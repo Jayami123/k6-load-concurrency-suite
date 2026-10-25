@@ -1,4 +1,4 @@
-import type { KneePlanSpec } from "../types.ts";
+import type { KneePlanSpec, LoadContext } from "../types.ts";
 
 /** Bounds of the knee plan inputs (plan task 1 R4). Rates are iterations per second with one decimal. */
 export const KNEE_BOUNDS = {
@@ -95,4 +95,16 @@ export function kneePlanFromInputs(
     );
   }
   return plan;
+}
+
+/** The defaults of a knee plan per profile (plan task 2 §6.5): `full` is the 9-step default, `pr` a 3-step smoke of the machinery. */
+export function kneeDefaultsFor(profileName: string): KneePlanSpec {
+  return profileName === "full"
+    ? { startRate: 2, stepRate: 2, holdSec: 30, rampSec: 2, maxSteps: 9 }
+    : { startRate: 2, stepRate: 2, holdSec: 12, rampSec: 2, maxSteps: 3 };
+}
+
+/** The knee plan of a run: the dispatch inputs (ctx.env) over the profile's defaults. Setup and runs() both call it. */
+export function kneePlanFor(ctx: LoadContext): KneePlanSpec {
+  return kneePlanFromInputs(ctx.env, kneeDefaultsFor(ctx.profileName));
 }

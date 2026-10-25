@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { caseDataPrefix } from "../../../k6/lib/pure/prefix.js";
-import { cancelBooking } from "../../cal/api.ts";
+import { cancelBooking, getFreeSlots } from "../../cal/api.ts";
 import { caseLiveBookings, leakCheck, resolveHostSetup } from "../../cal/oracle.ts";
 import { hostPasswordFromProducts, loginAsHost } from "../../cal/session.ts";
 import { privateLinkId, setPrivateLinks, type PrivateLinkInput } from "../../cal/private-link.ts";
@@ -8,6 +8,9 @@ import { readEventLinks } from "../../cal/state-oracle.ts";
 import { likeLiteralPrefix } from "../../medusa/payloads.ts";
 import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
 import { calBaseUrlFromEnv, calDatabaseUrlFromEnv } from "../../races/env.ts";
+import { pickSlotStarts, slotsNeeded, supplyWindowDays } from "../knee/cal-supply.ts";
+import { kneePlanFor } from "../knee/plan-input.ts";
+import { readSmokeReference } from "../smoke-baseline.ts";
 import { loadRepoEnv } from "../env.ts";
 import type { LoadContext, StageResult } from "../types.ts";
 
@@ -37,11 +40,17 @@ export interface CalDeps {
   openPool: () => pg.Pool;
   cancel: (uid: string) => Promise<void>;
   links?: CalLinkDeps;
+  /** The free slots of a window (the knee's supply read, plan task 2 §6.4). */
+  freeSlots?: (fromIso: string, toIso: string, eventTypeId: number) => Promise<string[]>;
+  /** The P6-CAL-LOAD-001 p95 reference the knee stops at 10 times (plan task 2 §6.5). */
+  smokeP95?: () => number;
 }
 
 export interface CalSetupOptions {
   /** Load case -009: one cap-1 private link per intent, set for the run and restored in cleanup. */
   privateLinks?: boolean;
+  /** Load case -005: the knee's slot supply, the plan fields and the smoke reference (plan task 2 §6.4). */
+  knee?: boolean;
 }
 
 const defaultLinks: CalLinkDeps = {
@@ -55,6 +64,8 @@ const defaultDeps: CalDeps = {
   openPool: () => createReadOnlyPool(calDatabaseUrlFromEnv()),
   cancel: cancelBooking,
   links: defaultLinks,
+  freeSlots: getFreeSlots,
+  smokeP95: () => readSmokeReference(),
 };
 
 const message = (err: unknown): string =>
@@ -106,6 +117,37 @@ async function setupPrivateLinks(
   );
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * The knee's slot supply (plan task 2 §6.4): S slots from the free slots of the supply window, one start per iteration, the
+ * plan fields, the smoke reference and the 28-day window of each iteration. A short supply throws TEST BUG before any load.
+ */
+async function setupKneeSupply(
+  ctx: LoadContext,
+  deps: CalDeps,
+  eventTypeId: number,
+): Promise<void> {
+  const plan = kneePlanFor(ctx);
+  let smokeP95Ms: number;
+  try {
+    smokeP95Ms = (deps.smokeP95 ?? (() => readSmokeReference()))();
+  } catch {
+    throw new Error("ENV: smoke p95 reference unreadable");
+  }
+  const count = slotsNeeded(plan);
+  // The same first day as createSlotAllocator: 00:00 UTC of the day after tomorrow.
+  const from = Math.floor(Date.now() / DAY_MS) * DAY_MS + 2 * DAY_MS;
+  const to = from + supplyWindowDays(count) * DAY_MS;
+  const offered = await (deps.freeSlots ?? getFreeSlots)(
+    new Date(from).toISOString(),
+    new Date(to).toISOString(),
+    eventTypeId,
+  );
+  ctx.config.slotStarts = pickSlotStarts(offered, count);
+  Object.assign(ctx.config, plan, { windowDays: 28, smokeP95Ms });
+}
+
 /** Resolves the host and event type from the database and writes the case config. Never writes a secret. */
 export async function calSetupWith(
   ctx: LoadContext,
@@ -136,7 +178,11 @@ export async function calSetupWith(
       userId,
       eventTypeId,
       prefixLike: likeLiteralPrefix(dataPrefix),
+      prefix: dataPrefix,
     };
+    if (opts.knee === true) {
+      await setupKneeSupply(ctx, deps, eventTypeId);
+    }
     if (opts.privateLinks === true) {
       await setupPrivateLinks(ctx, pool, deps.links ?? defaultLinks, {
         baseUrl,
@@ -147,7 +193,10 @@ export async function calSetupWith(
     }
     return { ok: true, reasons: [] };
   } catch (err) {
-    return { ok: false, kind: "TEST BUG", reasons: [`cal setup failed: ${message(err)}`] };
+    const text = message(err);
+    return text.startsWith("ENV:")
+      ? { ok: false, kind: "ENV", reasons: [text] }
+      : { ok: false, kind: "TEST BUG", reasons: [`cal setup failed: ${text}`] };
   } finally {
     await closePool(pool);
   }

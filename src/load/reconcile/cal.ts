@@ -1,6 +1,9 @@
 import type pg from "pg";
 import { caseLiveBookings, readOverlapPairs } from "../../cal/oracle.ts";
-import type { AuditResult, AuditStageConfig } from "./types.ts";
+import { selectRows } from "../../oracles/pg.ts";
+import { auditByIntent } from "../knee/intents.ts";
+import { CAL_INTENT_ROWS_SQL, calRowsByIntent } from "../knee/cal-intents.ts";
+import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
 import { addFinding } from "./types.ts";
 
 /** Counts from the database after the run, scoped to the run's prefix. Pure input; the reads are added with the Cal product case (Task 7). */
@@ -9,9 +12,11 @@ export interface CalSnapshot {
   nonAccepted: number;
   overlapPairs: number;
   clientAccepted?: number;
+  /** Knee runs (plan task 2 §6.4b): the per-intent audit replaces the client count check when present. */
+  intents?: { counters: IntentCounters; rowsByIntent: Map<number, number>; ghostRows: number };
 }
 
-/** Pure. Checks in order: rows, accepted-only, client-matches-db, no-overlap (a known bug, counted). */
+/** Pure. Checks in order: rows, accepted-only, client-matches-db (or per-intent), no-overlap (a known bug, counted). */
 export function evaluateCalAudit(s: CalSnapshot, prefixLike: string): AuditResult {
   const result: AuditResult = {
     schema: 1,
@@ -44,7 +49,24 @@ export function evaluateCalAudit(s: CalSnapshot, prefixLike: string): AuditResul
     });
   }
 
-  if (s.clientAccepted !== undefined) {
+  if (s.intents) {
+    const { counters, rowsByIntent, ghostRows } = s.intents;
+    const audit = auditByIntent({
+      started: counters.started,
+      log: counters.log,
+      rowsByIntent,
+      ghostRows,
+      interrupted: counters.interrupted,
+    });
+    check(
+      "per-intent",
+      audit.findings.length === 0,
+      `${audit.counts.ok} ok, ${audit.counts.fail} fail, ${audit.counts.indeterminate} indeterminate, ${audit.counts.ghostRows} ghost row(s), ${audit.counts.duplicateRows} duplicate row(s)`,
+    );
+    for (const f of audit.findings) {
+      addFinding(result, { kind: f.kind, text: f.text, knownBugId: f.knownBugId });
+    }
+  } else if (s.clientAccepted !== undefined) {
     check(
       "client-matches-db",
       s.liveBookings === s.clientAccepted,
@@ -91,11 +113,21 @@ export async function readCalSnapshot(
   };
 }
 
-/** Reads, then evaluates. */
+/** Reads, then evaluates. Knee runs pass the intent counters: the audit then reconciles per intent (plan task 2 §6.4b). */
 export async function reconcileCal(
   pool: pg.Pool,
   cfg: Extract<AuditStageConfig, { product: "cal" }>,
   clientAccepted?: number,
+  intents?: IntentCounters,
 ): Promise<AuditResult> {
-  return evaluateCalAudit(await readCalSnapshot(pool, cfg, clientAccepted), cfg.prefixLike);
+  const snapshot = await readCalSnapshot(pool, cfg, clientAccepted);
+  if (intents) {
+    if (cfg.prefix === undefined)
+      throw new Error("TEST BUG: cal audit config has no prefix for the per-intent audit");
+    const rows = await selectRows<{ id: number; email: string }>(pool, CAL_INTENT_ROWS_SQL, [
+      cfg.prefixLike,
+    ]);
+    snapshot.intents = { counters: intents, ...calRowsByIntent(rows, cfg.prefix) };
+  }
+  return evaluateCalAudit(snapshot, cfg.prefixLike);
 }

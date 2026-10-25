@@ -80,7 +80,7 @@ export function buildRunMeta(input: BuildRunMetaInput): RunMeta {
     caseId: input.caseDef.id,
     runId: input.runId,
     profile: input.profileName,
-    label: "functional load, not capacity",
+    label: input.caseDef.label, // the case's own label: a knee run is "knee range, environment-bound" (P6-RULE-003)
     rate: input.profile.rate,
     durationSec: input.profile.durationSec,
     plannedIterations: planned,

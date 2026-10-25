@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { medianOf, pickMetric, runIdOf, selectPublishable, type LoadRunRecord } from "./medians.ts";
 
 export const SMOKE_CASES = {
@@ -158,4 +159,9 @@ export function parseSmokeBaseline(value: unknown): SmokeBaseline {
 
 export function smokeP95For(b: SmokeBaseline, caseId: SmokeCaseId): number {
   return b.cases[caseId].medianP95Ms;
+}
+
+/** The p95 reference of the Cal knee (plan task 2 §6.5): read from the shipped file; throws when it cannot be read or parsed. */
+export function readSmokeReference(file = "k6/thresholds/smoke-p95.json"): number {
+  return smokeP95For(parseSmokeBaseline(JSON.parse(readFileSync(file, "utf8"))), "P6-CAL-LOAD-001");
 }
