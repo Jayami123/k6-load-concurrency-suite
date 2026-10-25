@@ -261,7 +261,7 @@ describe("cal knee setup", () => {
     const out = await calSetupWith(ctx, deps, { knee: true });
     assert.equal(out.ok, true);
     const starts = ctx.config.slotStarts as string[];
-    assert.equal(starts.length, 2835);
+    assert.equal(starts.length, 3008);
     assert.deepEqual(starts, [...starts].sort());
     assert.equal(ctx.config.windowDays, 28);
     assert.equal(ctx.config.startRate, 2);
@@ -281,7 +281,7 @@ describe("cal knee setup", () => {
     const out = await calSetupWith(ctx, deps, { knee: true });
     assert.equal(out.ok, false);
     assert.equal(out.kind, "TEST BUG");
-    assert.match(out.reasons[0] ?? "", /TEST BUG: slot supply 10 < needed 2835/);
+    assert.match(out.reasons[0] ?? "", /TEST BUG: slot supply 10 < needed 3008/);
     assert.equal(ctx.config.slotStarts, undefined);
   });
 

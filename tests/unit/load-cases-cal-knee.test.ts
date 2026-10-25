@@ -24,8 +24,8 @@ describe("cal knee case", () => {
     assert.equal(runs[0]?.knee?.smokeP95Ms, 77.12);
   });
 
-  it("the default full plan needs at most 3,000 slots", () => {
-    assert.ok(slotsNeeded(kneeDefaultsFor("full")) <= 3000);
+  it("the default full plan needs 3,008 slots, with the ramp arrivals counted", () => {
+    assert.equal(slotsNeeded(kneeDefaultsFor("full")), 3008);
   });
 
   it("package.json has the script and the example config holds the keys the script reads", () => {

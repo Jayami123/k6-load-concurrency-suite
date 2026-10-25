@@ -30,7 +30,6 @@ const flat = /** @type {any} */ ({
   host: "pro",
   prefix: "p6-qa-00000000t000000z-00000000-p6-cal-load-005",
   windowDays: 28,
-  slotStarts: [],
   ...loadLoadConfig([]),
 });
 

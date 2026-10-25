@@ -5,13 +5,17 @@ import { pickSlotStarts, slotsNeeded, supplyWindowDays } from "../../src/load/kn
 const DEFAULT = { startRate: 2, stepRate: 2, holdSec: 30, rampSec: 2, maxSteps: 9 };
 
 describe("cal knee slot supply", () => {
-  it("slotsNeeded of the default plan is 2,835", () => {
-    // 30 x (2 + 4 + ... + 18) = 2,700; x 1.05 = 2,835
-    assert.equal(slotsNeeded(DEFAULT), 2835);
+  it("slotsNeeded of the default plan is 3,008: 2,700 hold and 164 ramp arrivals, x 1.05", () => {
+    // holds: 30 x (2 + 4 + ... + 18) = 2,700; ramps: 2 x 2 (the first, from startRate) + sum of 2 x (r - 1) for r = 4..18 = 160
+    assert.equal(slotsNeeded(DEFAULT), 3008);
   });
 
-  it("supplyWindowDays(2835) is 263", () => {
-    assert.equal(supplyWindowDays(2835), 263);
+  it("supplyWindowDays(3008) is 278", () => {
+    assert.equal(supplyWindowDays(3008), 278);
+  });
+
+  it("a ramp-free plan counts the holds only", () => {
+    assert.equal(slotsNeeded({ ...DEFAULT, rampSec: 0 }), Math.ceil(2700 * 1.05));
   });
 
   it("pickSlotStarts dedupes, sorts and cuts", () => {

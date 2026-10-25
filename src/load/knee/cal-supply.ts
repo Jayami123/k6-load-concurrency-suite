@@ -2,10 +2,18 @@
 // starts are picked. Pure.
 import type { KneePlanSpec } from "../types.ts";
 
-/** ceil(1.05 x sum of rate x holdSec over the steps): the slots the plan can book, with a 5 % margin. */
+/**
+ * ceil(1.05 x arrivals): the slots the plan can book, with a 5 % margin. Arrivals are the holds (rate x holdSec) and the ramps
+ * before them (the mean of the previous and the next rate x rampSec; the first ramp starts at startRate). Every iteration, ramp or
+ * hold, books one slot, so a late stop that reaches the last step must not run out.
+ */
 export function slotsNeeded(p: KneePlanSpec): number {
   let sum = 0;
-  for (let i = 0; i < p.maxSteps; i += 1) sum += (p.startRate + i * p.stepRate) * p.holdSec;
+  for (let i = 0; i < p.maxSteps; i += 1) {
+    const rate = p.startRate + i * p.stepRate;
+    const from = i === 0 ? p.startRate : rate - p.stepRate;
+    sum += rate * p.holdSec + ((from + rate) / 2) * p.rampSec;
+  }
   return Math.ceil(sum * 1.05);
 }
 
