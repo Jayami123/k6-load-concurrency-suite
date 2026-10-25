@@ -110,4 +110,4 @@ Sum of the old caps: 10 + 10 + 5 + 10 + 10 + 10 + 20 + 10 + 10 + 10 + 10 + 10 = 
 - **Q5 of Task 6 (accepted).** Decided (owner, 2026-10-25): (a) a list of workflow ids — one workflow, one release; the change moves out of Task 6 into this PR.
 - **Timing.** Decided (owner, 2026-10-25): right after Task 2 merges, before the first knee run set is released (the 90-day artefact retention of `knee.yml` and early release are Task 2 Q6).
 - **Review.** Decided (owner, 2026-10-25): owner review stop (shared workflow).
-- **Q1. Cap values.** Open (no owner answer recorded): recommended default — the caps of §5, derived from the Phase 3 release run and scaled for 12 runs. Options: (a) §5; (b) generous caps summing to 20 (for example the download at 6 minutes); (a) is preferred because a stop above 80 % is reported either way.
+- **Q1. Cap values.** Decided (owner, 2026-10-25): (a) the caps of §5, sum 16, margin 14. The download, token-scan and gitleaks estimates for 12 runs are UNPROBED; the first Phase 4a release measures them and a step above 80 % is a stop and report.
