@@ -3,27 +3,26 @@
 This is the plan a weaker model builds from. It changes nothing in the repo. Structure follows
 [docs/reference/p1-plan-example-medusa.md](../reference/p1-plan-example-medusa.md). Scope source: roadmap
 [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) "Task 6", Notes 4 to 6, D3, D12, D14, D16, D17. Inputs:
-[Task 1](2026-10-25-p6-phase4-task1-breakpoint-method.md) (method, streaming points reader, interrupted slack),
+[Task 1](2026-10-25-p6-phase4-task1-breakpoint-method.md) (method, streaming points reader, per-intent reconciliation),
 [Tasks 2, 3, 4](2026-10-25-p6-phase4-task2-cal-knee.md) (knee ranges and `knee.yml`),
-[Task 5](2026-10-25-p6-phase4-task5-steady-baselines.md) (knee bounds, steady rates, baseline band) and
-[Phase 3 Task 11](2026-10-25-p6-phase3-task11-closeout.md) (release filter D14, run selection). **Task 6 closes Phase 4a** with the interim release
-`p6-phase4a`.
+[Task 5](2026-10-25-p6-phase4-task5-steady-baselines.md) (knee bounds, steady rates, baseline band), PRE-3
+([2026-10-25-p6-phase4-pre3-evidence-workflow-ids.md](2026-10-25-p6-phase4-pre3-evidence-workflow-ids.md): the release check accepts `knee.yml` runs) and the release filter of PR #63 (`5db87d7`, D14) with the run
+selection of `src/load/medians.ts`. **Task 6 closes Phase 4a** with the interim release `p6-phase4a`.
 
-**Paths.** Every path is a path on `main` after the Phase 3 stack and Phase 4 Tasks 1 to 5 (and 11) have merged. Paths created by those tasks are
-marked "(Task N)".
+**Paths.** Every path is a path on `main` after PRE-3 and Phase 4 Tasks 1 to 5 have merged. Paths created by those tasks are marked "(Task N)". The Phase 3 stack (Task 10 is PR #62, `63c4d87`), the product LOAD
+telemetry (PR #64) and the smoke baseline (PR #65) are on main.
 
 ## 1. Header
 
 - **Task.** Phase 4 Task 6. Cases: `P6-CAL-LOAD-004` (P-, characterisation), `P6-MED-LOAD-003`, `P6-DOC-LOAD-004`, accepted extras `P6-DOC-LOAD-009`,
   `P6-MED-LOAD-010`, and `P6-CAL-LOAD-010` (**gate fails: moves to "Later", §3.7**).
 - **Plan branch.** `plan/2026-10-25-p6-phase4a-plans` (no PR, never deleted).
-- **Build branches (pattern), two parts:** `feat/<build date>-p6-spike-recovery` (6a: code, workflow jobs, release filter check) and
-  `docs/<build date>-p6-phase4a-release` (6b: release notes, README, after the spike runs exist).
-- **Base.** `origin/main` after Tasks 1 to 5 and 11.
+- **Build branches (pattern), three parts:** `feat/<build date>-p6-spike-recovery` (6a: code and workflow jobs), `chore/<build date>-p6-phase4a-release-notes` (6b: only `docs/releases/p6-phase4a.md`, its own PR with the commit
+  `chore(release): add the phase 4a evidence notes`, matching PR #66 and the standing rule), and `docs/<build date>-p6-phase4a-results` (6c: the README results, after the release exists, as PR #67 did for Phase 3).
+- **Base.** `origin/main` after PRE-3 and Tasks 1 to 5.
 - **Harness pin.** Unchanged. **Environment change.** None (the limiter profile is an environment variable on one step, §6.8).
-- **Unit tests.** B6 = count on `main` when the build starts. This plan adds **+37** in 6a and **+0** in 6b (§12); expected B6 + 37.
-- **Stop for owner review.** **Yes, twice (rule 10):** new jobs in `knee.yml`, and a change to the shared `evidence-release.yml` (it must accept the
-  `knee.yml` runs). No harness pin and no shared runner label change.
+- **Unit tests.** B6 = the count on `main` when the build starts. This plan adds **+36** in 6a and **+0** in 6b and 6c (§12); expected B6 + 36. (The two `evidence-release-ids` tests moved to PRE-3; one workflow-text test was added.)
+- **Stop for owner review.** Yes (rule 10): new jobs in `knee.yml` and the dispatch input value `spike`. This plan no longer edits the shared `evidence-release.yml`: PRE-3 does. No harness pin and no shared runner label change.
 
 ## 2. What it proves
 
@@ -103,15 +102,16 @@ process environment (`/proc/<pid>/environ`, the one variable) read `=false` and 
 - **The journey and the limiter.** The signing journey makes 4 `/api/trpc` calls (two `signFieldWithToken`, two `completeDocumentWithToken`) and 5 `/api/v2` calls per document, so the tRPC limit
   (100 per minute) binds at **0.42 documents per second** (25 per minute), far below the knee (3 to 4 per second on the VM). A "150 % of the knee" spike on the limiter profile would be refused from
   the first seconds of the _steady_ phase. The case therefore sizes its rates from the limiter that binds (steady 0.2, spike 0.6 documents per second: 48 and 144 tRPC calls per minute);
-  the capacity-type Documenso spike runs on the default profile (proposed extra `P6-DOC-LOAD-012`, evidence in §3.1).
+  the capacity-type Documenso spike runs on the default profile (proposed extra `P6-DOC-LOAD-016`, evidence in §3.1).
 - **Limiter-profile spike (probed, steady 0.2 -> spike 1.0, 52 documents)**: setup (sign-up, sign-in, API token) passed on the fresh database; v2 calls 100 % 200 (52 each); tRPC `signFieldWithToken` and
   `completeDocumentWithToken` 82 x 200 and 22 x 429 each; 41 of 52 documents completed, the 11 refused at the sign step stayed unsigned; windows 6 and 7 (60 to 80 s) held all 44 429s; window p95
   308 to 400 ms steady and 158 to 361 ms during and after the spike (refusals are fast); no 5xx, no timeout; back to baseline at once (the 1-minute window rolled). 0 missing stages for the 41 completed documents is the
   Task 4 rule (§6.5).
-- **Auth routes answer 500 for client errors (P6-OBS-DOC-001 and a new instance).** In the same probe: `authorize` with a bad CSRF token → HTTP **500** `{"code":"INVALID_REQUEST","message":"Invalid CSRF token"}` (known:
-  `P6-OBS-DOC-001`); `reset-password` with an unknown token → HTTP **500** `{"code":"NOT_FOUND","message":"NOT_FOUND"}`, 5 of 5 requests. **`PRODUCT BUG (SUSPECTED)`: a client error on an auth route
-  (unknown reset token) is a 500, the same mechanism as `P6-OBS-DOC-001`; evidence: 5 of 5 in one probe run, request shape in §6.6. Only the owner confirms the label.** The `-009` run counts these under
-  `P6-OBS-DOC-001` (extended list), never hides them, and never asserts a status for the requests before the first 429.
+- **Auth routes answer 500 for client errors (P6-OBS-DOC-001 and a second instance, P6-OBS-DOC-006).** In the same probe: `authorize` with a bad CSRF token → HTTP **500** `{"code":"INVALID_REQUEST","message":"Invalid CSRF token"}` (known:
+  `P6-OBS-DOC-001`); `reset-password` with an unknown token → HTTP **500** `{"code":"NOT_FOUND","message":"NOT_FOUND"}`, 5 of 5 requests. **`PRODUCT BUG (SUSPECTED)` under its own id `P6-OBS-DOC-006`**
+  (BACKLOG and the Phase 3 closeout already use it; `P6-OBS-DOC-004` is reserved by the Phase 3 Task 9 plan, Q2, for `-010`): a client error on an auth route (unknown reset token) is a 500, linked to the suspected root
+  cause of `P6-OBS-DOC-001` (an `AppError` without a `statusCode` falls back to 500); one upstream draft may cover both routes. Evidence: 5 of 5 in one probe run, request shape in §6.6. **Only the owner labels it, after
+  repeated runs.** The `-009` run counts the `authorize` 5xx under `P6-OBS-DOC-001` and the `reset-password` 5xx under `P6-OBS-DOC-006`, never hides them, and never asserts a status for the requests before the first 429.
 
 ### 3.5 Cal: unset limiter and `BotDetectionService` under a spike (probe item 4)
 
@@ -147,7 +147,7 @@ available unit still succeeds.
 **Cal holds.** The gate for `P6-CAL-LOAD-010` is "the Cal journey uses `reserveSlot`". It does **not**: `grep -rn reserveSlot k6 src` finds nothing; the journey calls `getSchedule` and `POST /api/book/event` only.
 `reserveSlotHandler` exists at `CAL_REF` (`packages/trpc/server/routers/viewer/slots/reserveSlot.handler.ts`): it upserts `SelectedSlots` (`userId`, `slotUtcStartDate`, `slotUtcEndDate`, `uid`, `releaseAt =
 now + MINUTES_TO_BOOK`, default 5 minutes); a hold is a row with `releaseAt` in the future and the slot is "held" until then or until the booking. **Gate result: fails. `P6-CAL-LOAD-010` moves to "Later" with
-this evidence** (roadmap D17). Proposed extra `P6-CAL-LOAD-014` would add `reserveSlot` to a Cal journey variant (the oracle: `SELECT … FROM "SelectedSlots" WHERE "releaseAt" > now()` scoped by event type and the
+this evidence** (roadmap D17). Proposed extra `P6-CAL-LOAD-018` would add `reserveSlot` to a Cal journey variant (the oracle: `SELECT … FROM "SelectedSlots" WHERE "releaseAt" > now()` scoped by event type and the
 prefix of the run's slots, plus a `getSchedule` that offers every released slot again).
 
 ### 3.8 What the probe could not confirm ("confirm in the first CI dispatch" or at build time)
@@ -157,27 +157,28 @@ prefix of the run's slots, plus a `getSchedule` that offers every released slot 
 3. Limiter state across reruns on the same database: auth limits last up to 7 days; a fresh CI database per job is clean, a local rerun needs the harness volume removed (`docker volume rm
 qa-harness-documenso_…` after `down`).
 4. Task 5's band for Cal and Medusa on the runner; Documenso has none.
-5. The `knee.yml` workflow id for the release check (known only after Task 2 merges: `gh api repos/Jayami123/k6-load-concurrency-suite/actions/workflows/knee.yml --jq .id`).
+5. The `knee.yml` workflow id for the release check: PRE-3 reads it after Task 2 merges (`curl -s https://api.github.com/repos/Jayami123/k6-load-concurrency-suite/actions/workflows/knee.yml | jq .id`); this plan only cites it.
 
 ## 4. Depends on earlier plans
 
-Task 1: `readPointsGzStream`, `KneePlanSpec` conventions, `LoadLabel`, `allowExits`, the interrupted slack (not needed: spikes end normally), `observeKneeResponses` pattern. Task 2: `knee.yml`, the Cal
-fixed-slot mode and slot supply (`slotsNeeded`, `pickSlotStarts`). Task 3: the Medusa case, `stockForKnee` (pattern). Task 4: the pipeline stage in knee mode (completed documents only). Task 5: `knee-bounds.json`,
-`steadyRateFor`, `baseline-band.json`, `openModelScenario({ timeUnitSec })`, `withSteadyProfile`. Task 11: `scripts/ci/filter-evidence.sh`, `runIdOf`, `selectPublishable`. On `main`: `k6/journeys/{cal-book,med-checkout,doc-sign}.js`,
-`src/load/reconcile/*`, `src/medusa/oracle.ts` (`RESERVATION_QTY_SQL`, `INVENTORY_LEVEL_SQL`, `readOversellSnapshot`), `src/documenso/run-case.ts`, `.github/workflows/evidence-release.yml`.
+Task 1: `readPointsGzStream`, `KneePlanSpec` conventions, `LoadLabel`, `allowExits`, `observeKneeResponses` pattern, the per-intent reconciliation (spikes end normally, so no interrupted iterations exist and the exact-count audits stay; the
+intent lines are used only for the Documenso refusal rule, §6.5). Task 2: `knee.yml`, the Cal fixed-slot mode and slot supply (`slotsNeeded`, `pickSlotStarts`). Task 3: the Medusa case, `stockForKnee` (pattern), the `load-medusa/` staging step.
+Task 4: the pipeline stage in knee mode (completed documents only; unfinished per intent). Task 5: `knee-bounds.json`, `steadyRateFor`, `baseline-band.json`, `openModelScenario({ timeUnitSec })`, `withSteadyProfile`, the `mode` input of
+`knee.yml`. PRE-3: `EVIDENCE_WORKFLOW_IDS` in `evidence-release.yml`. On `main`: `src/load/medians.ts` (`runIdOf`, `selectPublishable`), `k6/journeys/{cal-book,med-checkout,doc-sign}.js`,
+`src/load/reconcile/*`, `src/medusa/oracle.ts` (`RESERVATION_QTY_SQL`, `INVENTORY_LEVEL_SQL`, `readOversellSnapshot`), `src/documenso/run-case.ts`, `.github/workflows/evidence-release.yml` (line 140: the allowlist of kinds).
 
 ## 5. Build-time recheck
 
-| #   | Check                | Command                                                                                                                                                                                          | Expected                                                            |
-| --- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| 1   | Base                 | `git fetch origin main && git log --oneline origin/main \| grep -c "knee\|steady"`                                                                                                               | Tasks 1 to 5 merged                                                 |
-| 2   | Baseline             | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                              | exit 0; `# tests` = B6                                              |
-| 3   | The inputs exist     | `test -f k6/thresholds/knee-bounds.json k6/thresholds/baseline-band.json` and `parseKneeBounds` accepts Cal, Medusa and Documenso (Task 4's runs)                                                | the three products have a bound; otherwise stop and report          |
-| 4   | Cal gate             | `grep -rn "reserveSlot" k6 src \|\| echo none`                                                                                                                                                   | `none` (then `-010` stays in "Later")                               |
-| 5   | Limiter variable     | `DANGEROUS_BYPASS_RATE_LIMITS=false npm run up:documenso`; read `/proc/<pid>/environ` for that variable (name and value only)                                                                    | `false`                                                             |
-| 6   | 429 shapes           | the §3.4 loop for `trpc` (101 requests)                                                                                                                                                          | 100 non-429, then 429 body A, `Retry-After`, `X-RateLimit-*`        |
-| 7   | Release id check     | `jq -e --arg ids "376454455 999" '((.workflowDatabaseId\|tostring) as $w \| ($ids\|split(" ")\|index($w)) != null) and .headBranch == "main" and .conclusion == "success"'` on a sample run JSON | `true` for id 376454455, `false` for another id (probed 2026-10-25) |
-| 8   | Release filter (D14) | download one `knee-*` and one `spike-*` artefact of a `main` dispatch, run `scripts/ci/filter-evidence.sh`, list the files                                                                       | `csv`, `html`, `json`, `log`; no `json.gz`                          |
+| #   | Check                | Command                                                                                                                                                                                                                                                                                                                                          | Expected                                                        |
+| --- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| 1   | Base                 | `git fetch origin main && git log --oneline origin/main \| grep -c "knee\|steady"; grep -n EVIDENCE_WORKFLOW_IDS .github/workflows/evidence-release.yml`                                                                                                                                                                                         | Tasks 1 to 5 and PRE-3 merged                                   |
+| 2   | Baseline             | `export PATH="/usr/local/bin:$PATH"; npm run check`                                                                                                                                                                                                                                                                                              | exit 0; `# tests` = B6 (measure; write it into the PR)          |
+| 3   | The inputs exist     | `test -f k6/thresholds/knee-bounds.json k6/thresholds/baseline-band.json` and `parseKneeBounds` accepts Cal, Medusa and Documenso (Task 4's runs)                                                                                                                                                                                                | the three products have a bound; otherwise stop and report      |
+| 4   | Cal gate             | `grep -rn "reserveSlot" k6 src \|\| echo none`                                                                                                                                                                                                                                                                                                   | `none` (then `-010` stays in "Later")                           |
+| 5   | Limiter variable     | `DANGEROUS_BYPASS_RATE_LIMITS=false npm run up:documenso`; read `/proc/<pid>/environ` for that variable (name and value only)                                                                                                                                                                                                                    | `false`                                                         |
+| 6   | 429 shapes           | the §3.4 loop for `trpc` (101 requests)                                                                                                                                                                                                                                                                                                          | 100 non-429, then 429 body A, `Retry-After`, `X-RateLimit-*`    |
+| 7   | Release id check     | PRE-3 owns the workflow-id check; here only `grep -n 'EVIDENCE_WORKFLOW_IDS' .github/workflows/evidence-release.yml`                                                                                                                                                                                                                             | the variable exists and contains the `knee.yml` id (PRE-3 done) |
+| 8   | Release filter (D14) | `gh run download <knee run id> --dir /tmp/ev` for one `knee-*`, one `spike-*` and one `limiter-*` artefact of a `main` dispatch, then the allowlist command of `evidence-release.yml` line 140: `find /tmp/ev -type f \! \( -name '*.json' -o -name '*.log' -o -name '*.csv' -o -name '*.html' -o -name '*.txt' \) -delete`, then list the files | `csv`, `html`, `json`, `log`; no `json.gz`                      |
 
 ## 6. Design
 
@@ -197,11 +198,10 @@ src/load/gates/cal-hold.ts                   NEW      reserveSlotGate (P6-CAL-LO
 src/load/chart/k6-points.ts                  CHANGED  SecondBin + status counts (2xx, 4xx, 429, 5xx, 0) per second
 src/load/cases.ts                            CHANGED  + CAL_LOAD_004, MED_LOAD_003, DOC_LOAD_004, DOC_LOAD_009
 package.json                                 CHANGED  + load:cal-spike, load:medusa-spike, load:documenso-limiter, load:documenso-limiter-contract
-.github/workflows/knee.yml                   CHANGED  (Tasks 2 to 4 created it) + jobs cal-spike, medusa-spike, documenso-limiter
-.github/workflows/evidence-release.yml       CHANGED  accepts a list of workflow ids (shared workflow)
-docs/releases/p6-phase4a.md                  NEW      6b
-README.md                                    CHANGED  6b: "Phase 4a results"
-tests/unit/{k6-lib-spike,recovery,spike-contract,limiter-contract,med-abandon,cal-hold-gate,load-cases-spike,evidence-release-ids}.test.ts   NEW
+.github/workflows/knee.yml                   CHANGED  (Tasks 2 to 5 created it) + jobs cal-spike, medusa-spike, documenso-limiter; mode input gets the value spike
+docs/releases/p6-phase4a.md                  NEW      6b (its own PR)
+README.md                                    CHANGED  6c: "Phase 4a results" (after the release exists)
+tests/unit/{k6-lib-spike,recovery,spike-contract,limiter-contract,med-abandon,cal-hold-gate,load-cases-spike}.test.ts   NEW
 ```
 
 ### 6.2 The spike scenario (`k6/lib/pure/spike.js`, NEW; `k6/lib/spike.js`, NEW)
@@ -305,16 +305,16 @@ export function isStorm(w: Window): boolean;
 
 `evaluateSpike(input)` returns the report and findings; it is pure and per product:
 
-| Check                              | Cal (characterisation)                                                         | Medusa (characterisation)             | Documenso (limiter profile)                                                                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| no 5xx storm (any window)          | PRODUCT BUG (SUSPECTED) if violated                                            | same                                  | same                                                                                                                                              |
-| every non-2xx is a 4xx with a body | holds trivially (0 refusals); counted                                          | same                                  | every 429 has a body (A or B) and the headers; other non-2xx are findings                                                                         |
-| no transport-error storm           | window rule                                                                    | window rule                           | window rule (one reset in 3,196 is under it)                                                                                                      |
-| refusals exist                     | not required                                                                   | not required                          | **at least 10 429s** during the spike, else `INVALID no_refusals` (the spike did not exceed the limiter: a test that cannot fail is not accepted) |
-| 429 only on covered routes         | n/a                                                                            | n/a                                   | 429 on `/api/trpc/*` only (v2 calls never exceed 1000 per minute); another route with 429 is reported                                             |
-| recovery                           | seconds or "not reached in N s"                                                | same                                  | seconds (429 stops and p95 back inside the reference)                                                                                             |
-| dropped iterations                 | 0 else INVALID                                                                 | 0 else INVALID                        | 0 else INVALID                                                                                                                                    |
-| post-spike audit                   | Cal audit (no overlapping accepted pairs, client = database exactly: no abort) | Medusa audit and conservation (below) | Documenso audit and pipeline on completed documents (Task 4 §6.4); unfinished = refused documents, equal to the documents with a 429              |
+| Check                              | Cal (characterisation)                                                         | Medusa (characterisation)             | Documenso (limiter profile)                                                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| no 5xx storm (any window)          | PRODUCT BUG (SUSPECTED) if violated                                            | same                                  | same                                                                                                                                                           |
+| every non-2xx is a 4xx with a body | holds trivially (0 refusals); counted                                          | same                                  | every 429 has a body (A or B) and the headers; other non-2xx are findings                                                                                      |
+| no transport-error storm           | window rule                                                                    | window rule                           | window rule (one reset in 3,196 is under it)                                                                                                                   |
+| refusals exist                     | not required                                                                   | not required                          | **at least 10 429s** during the spike, else `INVALID no_refusals` (the spike did not exceed the limiter: a test that cannot fail is not accepted)              |
+| 429 only on covered routes         | n/a                                                                            | n/a                                   | 429 on `/api/trpc/*` only (v2 calls never exceed 1000 per minute); another route with 429 is reported                                                          |
+| recovery                           | seconds or "not reached in N s"                                                | same                                  | seconds (429 stops and p95 back inside the reference)                                                                                                          |
+| dropped iterations                 | 0 else INVALID                                                                 | 0 else INVALID                        | 0 else INVALID                                                                                                                                                 |
+| post-spike audit                   | Cal audit (no overlapping accepted pairs, client = database exactly: no abort) | Medusa audit and conservation (below) | Documenso audit and pipeline on completed documents (Task 4 §6.4); per intent, an unfinished document may only belong to a `fail` intent that saw a 429 (§6.5) |
 
 The report label is `"characterisation"` for Cal (and Medusa), `"limiter contract"` for Documenso; both are printed in the job summary next to the recovery time. Verdict mapping: a violated check is `PRODUCT BUG
 (SUSPECTED)` (never a final label), `INVALID` for generator reasons, `TEST BUG` for plan faults. `spikeStage` (reconcile slot) reads the points file with `readPointsGzStream`, builds windows, runs
@@ -335,13 +335,14 @@ lowerBound` (150 %), rounded to 0.1. Stages `setup: calSetup({ slots })` (supply
 ### 6.5 Documenso (`P6-DOC-LOAD-004`, `P6-DOC-LOAD-009`) and the limiter profile
 
 `DOC_LOAD_004`: rates from the **limiter** that binds, not from the knee (§3.4): `steadyRate = 0.2`, `spikeRate = 0.6` documents per second (constants with the arithmetic in the code comment: 100 tRPC per minute / 4 per document = 25 per minute, 0.42 per second; 50 % ≈ 0.2, 150 % ≈ 0.6), steady 60 s, spike 30 s, watch 120 s. `knownBugs: ["P6-OBS-DOC-001"]`
-extends to the auth routes the case may touch (it touches none; only `-009` does). `reconcile: composeStages([spikeStage, reconcileStage, pipelineStage])` in knee mode (Task 4): completed documents only; the unfinished ones must equal the documents that had
-a 429 (`p6_resp_429` per iteration, counted by the script). **Setup runs inside the limiter profile**: `documensoSetup` signs up, signs in and mints the token with the limiter on; the first run on a fresh database uses signup 1 of 3, login 1 of 10, a few tRPC calls: verified by the probe. Two reruns
+covers the auth routes the case may touch (it touches none; only `-009` does). `reconcile: composeStages([spikeStage, reconcileStage, pipelineStage])` in knee mode (Task 4): completed documents only. **Unfinished documents are judged per intent (Task 4 §6.4, Task 1 §6.8):** a refusal is by design here, so
+the case sets the option `failMayLeaveUnfinished`: an unfinished document may belong only to a `fail` intent whose iteration saw a 429, and the number of such intents equals the number of iterations with a 429. The script marks those iterations with a second log line `{"intent":n,"limited":true}`
+(`parseIntentLog` of Task 1 ignores lines without `outcome`; `src/load/spike/limited.ts` parses these). An unfinished document of an `ok` intent, of a `fail` intent without a 429, or of no started intent is a `PRODUCT BUG (SUSPECTED)` line. **Setup runs inside the limiter profile**: `documensoSetup` signs up, signs in and mints the token with the limiter on; the first run on a fresh database uses signup 1 of 3, login 1 of 10, a few tRPC calls: verified by the probe. Two reruns
 within three hours on the same database exhaust `auth.signup` (3 per 3 h): the CI job has a fresh database; the local note is in §3.8.
 
 `DOC_LOAD_009` (`src/load/spike/limiter-contract.ts`, NEW; a runner case with no k6 process): table `ROUTES` of the probed routes of §3.4 (`id`, method, path, body factory, `max`, `family` A or B, `preLimitStatuses` "not asserted"); `judgeRoute(observations, route)` (pure): the
 first `max` responses are not 429, response `max + 1` is 429 with status 429, `content-type: application/json`, the body of its family (A exactly `{"error":"Too many requests, please try again later."}`; B exactly `{"code":"UNKNOWN_ERROR","message":"","statusCode":429}`), `Retry-After` an integer >= 1,
-`X-RateLimit-Limit` = `max`, `X-RateLimit-Remaining` = `0`, `X-RateLimit-Reset` an epoch second in the future. Pre-limit statuses are **recorded, not asserted**; a 5xx among them is counted (`P6-OBS-DOC-001`, extended to `reset-password` with an unknown token as a `PRODUCT BUG (SUSPECTED)` instance, §3.4) and
+`X-RateLimit-Limit` = `max`, `X-RateLimit-Remaining` = `0`, `X-RateLimit-Reset` an epoch second in the future. Pre-limit statuses are **recorded, not asserted**; a 5xx among them is counted (`authorize` → `P6-OBS-DOC-001`, `reset-password` with an unknown token → `P6-OBS-DOC-006`, each a `PRODUCT BUG (SUSPECTED)` instance, §3.4) and
 never fails the case. Requests per route: 101 (tRPC), 1,001 (v1), 1,001 (v2), 21, 4, 11, 4, 4, 6, 6 = about 2,250, sequential, about 40 s on the VM. The routes of §3.4's "UNPROBED" row are listed in the report as **not asserted, with the reason**, never claimed. The stage
 returns `TEST BUG` if fewer than the expected requests were answered.
 
@@ -353,54 +354,72 @@ probe: `GET /api/trpc/p6.probe`; v2: `GET /api/v2/envelope/p6probe`; v1: `GET /a
 ### 6.7 `P6-CAL-LOAD-010` (gated; in "Later")
 
 `src/load/gates/cal-hold.ts` (NEW): `reserveSlotGate(files: Record<string, string>): { passes: boolean; evidence: string }`, true only if a file under `k6/journeys` or `k6/cases` contains `reserveSlot`. A unit test pins the current result (no file → `passes: false`, evidence
-"the Cal journey calls getSchedule and POST /api/book/event only"). README "Later" lists `P6-CAL-LOAD-010` with that evidence and the proposed extra `P6-CAL-LOAD-014`.
+"the Cal journey calls getSchedule and POST /api/book/event only"). README "Later" lists `P6-CAL-LOAD-010` with that evidence and the proposed extra `P6-CAL-LOAD-018`.
 
 ### 6.8 CI: jobs in `knee.yml` and the limiter profile as its own start
 
-Add to `.github/workflows/knee.yml`: `cal-spike` (as `cal-knee`, step `npm run load:cal-spike`, timeout 90), `medusa-spike` (as `medusa-knee`, step `npm run load:medusa-spike`, timeout 60) and `documenso-limiter` (timeout 60). The last differs from every other Documenso job:
+Add to `.github/workflows/knee.yml` (created by Task 2, extended by Tasks 3 to 5) the value `spike` to the dispatch input `mode` (`options: [knee, steady, spike]`, Task 5 §6.5) and three jobs with
+`if: ${{ inputs.mode == 'spike' }}`: `cal-spike`, `medusa-spike` and `documenso-limiter`. Each uses the job env, the ref guard (`Stop unless dispatched from main`, Task 2 §6.7 (3)) and the setup steps of its product's knee job
+(Task 2 §6.7 for Cal, Task 3 §6.6 for Medusa, Task 4 §6.7 for Documenso), copied with the same caps; `retention-days: 90`; concurrency stays the workflow's `knee-dispatch-${{ github.run_id }}`.
+
+- `cal-spike` (timeout **90**): as `cal-knee` with the step `Spike P6-CAL-LOAD-004` (`npm run load:cal-spike -- --profile full`, exit 3 is a warning) and the artefact `spike-cal`.
+- `medusa-spike` (timeout **60**): as `medusa-knee` with the step `Spike P6-MED-LOAD-003 and -010` (`npm run load:medusa-spike -- --profile full`), the staging step (`cp -a results/load/. stage/load-medusa/`) and the artefact
+  `spike-medusa` from `p6/stage/`. The release scan lets the publishable key through only under `load-medusa/P6-MED-LOAD-nnn/<attempt>/k6-config.json`; the cases `P6-MED-LOAD-003` and `-010` have that shape (Task 3 §6.6 has the check).
+- `documenso-limiter` (timeout **60**): the job env of `documenso-knee` **without** the key `DANGEROUS_BYPASS_RATE_LIMITS` (the limiter job must not carry the `"true"` of `documenso-smoke`), the guard, the first 12 setup steps and then:
 
 ```yaml
 - name: Start Documenso on the production-like limiter profile (D12; harness up)
-  id: doc_up
-  timeout-minutes: 10
+  id: documenso_up
+  if: ${{ steps.documenso_pull.outcome == 'success' }}
+  timeout-minutes: 5
   working-directory: ${{ env.P6_WORKING_DIRECTORY }}
   env:
     # A configuration profile, not a workaround: the harness keeps a pre-set value (scripts/harness.mjs uses ||=).
     DANGEROUS_BYPASS_RATE_LIMITS: "false"
   run: |
     set -euo pipefail
+    SECONDS=0
     npm run up:documenso
+    echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
 - name: Limiter contract P6-DOC-LOAD-009
+  if: ${{ steps.documenso_up.outcome == 'success' }}
   timeout-minutes: 8
+  working-directory: ${{ env.P6_WORKING_DIRECTORY }}
   run: npm run load:documenso-limiter-contract
 - name: Spike P6-DOC-LOAD-004 on the limiter profile
+  if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
   timeout-minutes: 12
-  run: npm run load:documenso-limiter # exit 3 (INVALID) is a warning, as in the knee jobs
-- name: Stop Documenso (harness down)
-  if: ${{ always() }}
-  timeout-minutes: 5
-  run: npm run down:documenso
+  working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+  run: |
+    set -euo pipefail
+    status=0
+    npm run load:documenso-limiter || status=$?
+    if [ "$status" -eq 3 ]; then echo "::warning::spike run INVALID (see the job summary)"; status=0; fi
+    exit "$status"
+
+# then: Job summary (spike table), Token scan of the spike results (id token_scan), actions/upload-artifact (name limiter-documenso, path p6/results/load/,
+# retention-days: 90), Stop Documenso (harness down, if: always(), timeout-minutes: 1)
 ```
 
-The `env:` block is on the start step only, so no other Documenso step or job sees it. A unit test greps `knee.yml` and `perf.yml` and asserts `DANGEROUS_BYPASS_RATE_LIMITS: "false"` appears once, in job `documenso-limiter`.
+The `env:` block is on the start step only, so no other Documenso step or job sees it. A unit test (`load-cases-spike`, the fifth) reads `knee.yml` and `perf.yml` as text and asserts that the line
+`DANGEROUS_BYPASS_RATE_LIMITS: "false"` appears exactly once across both, inside the `documenso-limiter` job, and that the key does not appear at that job's level.
 
-### 6.9 The evidence release accepts the `knee.yml` runs (shared workflow; owner review)
+**Artefact names and kinds.** `spike-cal`, `spike-medusa`, `limiter-documenso` hold `verdict.json`, `run-meta.json`, `k6-main-summary.json`, `k6-main.log`, `telemetry-main.{json,csv}`, `chart-main.html`, `spike-report-main.{json,md}`,
+`audit.json` (and `pipeline-lag.json` for Documenso): all among the kinds the release allowlist keeps (`json log csv html txt`, `evidence-release.yml` line 140); `k6-main.json.gz` stays in the Actions artefact only (`.gz` is not an allowed
+kind; D14 and Task 1 Q2). The `-009` contract run (no k6 process) writes `limiter-contract.json` and `.md`, also allowed kinds.
 
-`.github/workflows/evidence-release.yml`: replace `PERF_WORKFLOW_ID: "376454455"` by `EVIDENCE_WORKFLOW_IDS: "376454455 <knee.yml id>"` (look the id up with the `gh api … workflows/knee.yml --jq .id` command of §3.8) and the check in "Check each run, then download its artefacts" by:
+### 6.9 The evidence release (moved to PRE-3; cited here)
 
-```bash
-jq -e --arg ids "$EVIDENCE_WORKFLOW_IDS" \
-  '((.workflowDatabaseId|tostring) as $w | ($ids|split(" ")|index($w)) != null) and .headBranch == "main" and .conclusion == "success"' \
-  "$RUNNER_TEMP/run.json" > /dev/null \
-  || { echo "::error::run $id is not a successful perf.yml or knee.yml run on main"; exit 1; }
-```
-
-Probed with sample JSON (§5 check 7). Everything else in the workflow is untouched (the notes check, the tag rule `^p6-[a-z0-9-]+$` which allows `p6-phase4a`, the token scan, gitleaks, the zip step). The run ids of `perf.yml` runs (steady baselines) and `knee.yml` runs (knees, spikes) both go into `docs/releases/p6-phase4a.md`. The unit test (`evidence-release-ids`, 2) asserts the variable name and that no single-id comparison remains. **D14 verification** (check 8 above): the zips of the release contain `csv` and `html` of the knee and spike runs; the points files stay out (Task 11 Q2).
+The workflow-id list in `evidence-release.yml` (`EVIDENCE_WORKFLOW_IDS`, the `jq` in-list check, the run_ids description, its tests and a dry run on a sample JSON) is **PRE-3**
+([2026-10-25-p6-phase4-pre3-evidence-workflow-ids.md](2026-10-25-p6-phase4-pre3-evidence-workflow-ids.md)), merged right after Task 2, so the knee run sets can be released as soon as they exist. This task changes nothing in that workflow. The run ids of
+`knee.yml` runs (knees, steady baselines, spikes) go into `docs/releases/p6-phase4a.md` as plain ids in backticks, never as `actions/runs/` links in the excluded-runs list: the notes check requires an exact set match between the
+`actions/runs/<id>` links in the notes and the dispatch `run_ids`, so an excluded run must not be written as a link. **D14 verification** (§5 check 8): the zips of the release contain `csv` and `html` files of the knee, steady and spike runs; the
+points files stay out (Task 1 Q2).
 
 ## 7. Oracles and assertions
 
-Every case has a contract and a post-spike audit (`P6-X-LOAD-005`): Cal (no overlapping accepted pairs, accepted-only, client = database), Medusa (orders <= stock, reservations = live orders, available >= 0, one payment per order, probe purchase), Documenso (one seal per completed document, no
-stuck jobs, drained, unfinished = refused). Contract: §6.3. The Documenso `-009` oracle is the table of §6.5. Anything surprising is labelled with evidence: **PRODUCT BUG (SUSPECTED): `reset-password` with an unknown token answers HTTP 500 (§3.4)**; no expected-failure marker is planned for it (repeated-run evidence needed first: rule 13).
+Every case has a contract and a post-spike audit (`P6-X-LOAD-005`): Cal (no overlapping accepted pairs, accepted-only, client = database exactly: the run ends normally), Medusa (orders <= stock, reservations = live orders, available >= 0, one payment per order, probe purchase), Documenso (one seal per completed document, no
+stuck jobs, drained; unfinished documents only for `fail` intents that saw a 429, per intent). Contract: §6.3. The Documenso `-009` oracle is the table of §6.5. Anything surprising is labelled with evidence: **`PRODUCT BUG (SUSPECTED)`, own id `P6-OBS-DOC-006`: `reset-password` with an unknown token answers HTTP 500 (§3.4)**; no expected-failure marker is planned for it (repeated-run evidence needed first: rule 13).
 A 5xx storm, an audit violation, a probe purchase refused while stock is available, a 429 on a non-covered route or a 429 without its body or headers is `PRODUCT BUG (SUSPECTED)`. Plan faults (supply, stock, config, window rules), INVALID reasons and recovery not reached are not product labels.
 
 ## 8. Data isolation, cleanup, leak check
@@ -410,14 +429,96 @@ Prefix per case (`caseDataPrefix`); Cal bookings, Medusa orders/product/customer
 
 ## 9. CI, token scan, budget
 
-| Job (new, in `knee.yml`) | Timeout | Estimate (min)                                                                  | Worst at caps (min) | Margin | Notes                                                                        |
-| ------------------------ | ------- | ------------------------------------------------------------------------------- | ------------------- | ------ | ---------------------------------------------------------------------------- |
-| `cal-spike`              | 90      | 3.1 setup + 4.7 run + 1.2 cleanup + 1 post = **10**                             | 62                  | 28     | run: 60 + 2 + 30 + 2 + 120 = 214 s plus drain; 1,040 bookings cancel in 73 s |
-| `medusa-spike`           | 60      | 1.1 + 5.5 (60+34+240 s plus orders cleanup 0.5 min) + 1 = **8**                 | 40                  | 20     | recovery watch 240 s                                                         |
-| `documenso-limiter`      | 60      | 1.8 setup + 0.7 contract (2,250 requests) + 3.7 spike + 0.5 cleanup + 1 = **8** | 38                  | 22     | `-009` step cap 8, spike step cap 12                                         |
+Three new dispatch-only jobs in `knee.yml` (`mode: spike`); no existing job changes and no existing timeout is raised. Durations of the copied setup steps are the maxima quoted in Task 2 §9 (55 `cal-smoke` runs), Task 3 §9
+(17 `medusa-load` runs) and Task 4 §9 (52 `documenso-smoke` runs).
 
-Per-step caps and the 80 % stop rule: spike step 15 (stop 12) for Cal and Medusa; `-009` 8 (stop 6.4, estimate 0.7); Documenso spike 12 (stop 9.6, estimate 3.7). If a first dispatch shows a step above its stop rule, the fix is a shorter hold or watch, never a higher timeout.
-`evidence-release.yml` (job timeout 30): download of about 12 runs (3 per case family) of 2 to 5 MB each, filter and scans: estimate 3 minutes. No existing job changes; no existing timeout is raised. Runner minutes per dispatch of the whole workflow: about 26; three: about 78.
+**`cal-spike`** (timeout **90**):
+
+| step name (as in YAML)                                            | timeout-minutes | estimate (source)                                                                         | 80 % stop | runs on this event?                       |
+| ----------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------- | --------- | ----------------------------------------- |
+| Stop unless dispatched from main                                  | 1               | UNPROBED (a shell test; expect < 1 s)                                                     | 48 s      | workflow_dispatch                         |
+| `actions/checkout@3d3c42e5…` (path `p6`)                          | 1               | 2 s (max of 55 `cal-smoke` runs, PRE-2 §3.2)                                              | 48 s      | workflow_dispatch                         |
+| Checkout Cal fork                                                 | 2               | 10 s (same)                                                                               | 96 s      | workflow_dispatch                         |
+| Verify Cal fork HEAD                                              | 1               | 1 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Verify CAL_REF matches bootstrap.sh                               | 1               | 1 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| `actions/setup-node@949feb24…`                                    | 1               | 5 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Install P6 dependencies                                           | 1               | 9 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Install k6 (pinned in .k6-version, checksum-verified)             | 2               | 2 s (same)                                                                                | 96 s      | workflow_dispatch                         |
+| Enable corepack                                                   | 1               | 2 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Restore Cal Yarn cache                                            | 1               | 14 s (same)                                                                               | 48 s      | workflow_dispatch                         |
+| Restore Cal node_modules cache                                    | 2               | 64 s (same)                                                                               | 96 s      | workflow_dispatch                         |
+| Install Cal dependencies                                          | 3               | 115 s (same)                                                                              | 144 s     | workflow_dispatch                         |
+| Generate Cal Prisma client                                        | 1               | 8 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Prepare Cal product .env and harness roots                        | 1               | 0 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Restore Cal build cache                                           | 1               | 6 s (same)                                                                                | 48 s      | workflow_dispatch                         |
+| Pull Cal images (3 tries, 15 s then 30 s)                         | 3               | 16 s (same)                                                                               | 144 s     | workflow_dispatch                         |
+| Start Cal (harness up)                                            | 6               | 255 s (same; the dispatch runs: 53 to 72 s)                                               | 288 s     | workflow_dispatch                         |
+| Spike P6-CAL-LOAD-004 (spike characterisation, environment-bound) | 15              | UNPROBED on the runner: VM 214 s run + drain, 1,040 bookings cancel in 73 s (about 6 min) | 12 min    | workflow_dispatch (if `cal_up` succeeded) |
+| Job summary (spike table)                                         | 2               | 1 s (`cal-smoke` summary step, Task 2 §9)                                                 | 96 s      | workflow_dispatch                         |
+| Token scan of the spike results                                   | 2               | 1 s (`cal-smoke` token scan, same runs)                                                   | 96 s      | workflow_dispatch                         |
+| `actions/upload-artifact@cf430e03…` (`spike-cal`)                 | 3               | 2 s (same runs, upload steps)                                                             | 144 s     | workflow_dispatch                         |
+| Stop Cal (harness down)                                           | 1               | 2 s (same runs)                                                                           | 48 s      | workflow_dispatch                         |
+
+Sum of the step caps: 1 + 1 + 2 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 2 + 3 + 1 + 1 + 1 + 3 + 6 + 15 + 2 + 2 + 3 + 1 = **52 min**. Job timeout **90**. 90 − 52 = **38 ≥ 10**.
+
+**`medusa-spike`** (timeout **60**):
+
+| step name (as in YAML)                                                     | timeout-minutes | estimate (source)                                                                     | 80 % stop | runs on this event?                          |
+| -------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------- | --------- | -------------------------------------------- |
+| Stop unless dispatched from main                                           | 1               | UNPROBED (a shell test; expect < 1 s)                                                 | 48 s      | workflow_dispatch                            |
+| `actions/checkout@3d3c42e5…` (path `p6`)                                   | 1               | 2 s (max of 17 `medusa-load` runs, Task 3 §9)                                         | 48 s      | workflow_dispatch                            |
+| Checkout Medusa fork                                                       | 1               | 1 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Verify Medusa fork HEAD                                                    | 1               | 0 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Stub harness product roots                                                 | 1               | 1 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| `actions/setup-node@949feb24…`                                             | 1               | 4 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Install P6 dependencies                                                    | 1               | 8 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Install k6 (pinned in .k6-version, checksum-verified)                      | 2               | 1 s (same)                                                                            | 96 s      | workflow_dispatch                            |
+| Enable pnpm via corepack                                                   | 1               | 2 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Restore pnpm store cache                                                   | 1               | 8 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Install Medusa dependencies                                                | 1               | 7 s (same; 13 s max over 64 `medusa-smoke` runs)                                      | 48 s      | workflow_dispatch                            |
+| Restore Medusa build cache                                                 | 1               | 2 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Generate the CI admin password                                             | 1               | 1 s (same)                                                                            | 48 s      | workflow_dispatch                            |
+| Pull Medusa images (3 tries, 15 s then 30 s)                               | 3               | 14 s (same)                                                                           | 144 s     | workflow_dispatch                            |
+| Start Medusa (harness up)                                                  | 3               | 31 s (same; 68 s max over 64 `medusa-smoke` runs)                                     | 144 s     | workflow_dispatch                            |
+| Spike P6-MED-LOAD-003 and -010 (spike characterisation, environment-bound) | 15              | UNPROBED on the runner: VM about 5.5 min (60 + 34 + 240 s plus order cleanup 0.5 min) | 12 min    | workflow_dispatch (if `medusa_up` succeeded) |
+| Job summary (spike table)                                                  | 2               | 1 s (`medusa-load` summary step, Task 3 §9)                                           | 96 s      | workflow_dispatch                            |
+| Token scan of the spike results                                            | 2               | 0 s (`medusa-load` token scan, same runs)                                             | 96 s      | workflow_dispatch                            |
+| Stage the results under load-medusa/                                       | 1               | UNPROBED (a `cp`; expect < 5 s)                                                       | 48 s      | workflow_dispatch                            |
+| `actions/upload-artifact@cf430e03…` (`spike-medusa`)                       | 3               | 2 s (same runs, upload steps)                                                         | 144 s     | workflow_dispatch                            |
+| Stop Medusa (harness down)                                                 | 1               | 1 s (same runs)                                                                       | 48 s      | workflow_dispatch                            |
+
+Sum of the step caps: 1 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 3 + 3 + 15 + 2 + 2 + 1 + 3 + 1 = **44 min**. Job timeout **60**. 60 − 44 = **16 ≥ 10**.
+
+**`documenso-limiter`** (timeout **60**; the 12 setup steps of `documenso-knee` without its own start, then the limiter start):
+
+| step name (as in YAML)                                                   | timeout-minutes | estimate (source)                                                                    | 80 % stop | runs on this event?                             |
+| ------------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------ | --------- | ----------------------------------------------- |
+| Stop unless dispatched from main                                         | 1               | UNPROBED (a shell test; expect < 1 s)                                                | 48 s      | workflow_dispatch                               |
+| `actions/checkout@3d3c42e5…` (path `p6`)                                 | 1               | 2 s (max of 52 `documenso-smoke` runs, Task 4 §9)                                    | 48 s      | workflow_dispatch                               |
+| Checkout Documenso fork                                                  | 1               | 5 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Verify Documenso fork HEAD                                               | 1               | 1 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Verify DOCUMENSO_REF matches bootstrap.sh                                | 1               | 1 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| `actions/setup-node@949feb24…`                                           | 1               | 15 s (same)                                                                          | 48 s      | workflow_dispatch                               |
+| Install P6 dependencies                                                  | 1               | 9 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Install k6 (pinned in .k6-version, checksum-verified)                    | 2               | 2 s (same)                                                                           | 96 s      | workflow_dispatch                               |
+| Install Documenso dependencies                                           | 2               | 57 s (same)                                                                          | 96 s      | workflow_dispatch                               |
+| Prepare harness roots                                                    | 1               | 1 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Map the webhook host                                                     | 1               | 1 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Restore Documenso build cache                                            | 1               | 5 s (same)                                                                           | 48 s      | workflow_dispatch                               |
+| Pull Documenso images (3 tries, 15 s then 30 s)                          | 3               | 19 s (same)                                                                          | 144 s     | workflow_dispatch                               |
+| Start Documenso on the production-like limiter profile (D12; harness up) | 5               | 224 s (max of 52 `documenso-smoke` runs for the same start; the dispatch runs: 41 s) | 240 s     | workflow_dispatch                               |
+| Limiter contract P6-DOC-LOAD-009                                         | 8               | UNPROBED on the runner: VM 0.7 min (2,250 sequential requests)                       | 6.4 min   | workflow_dispatch (if `documenso_up` succeeded) |
+| Spike P6-DOC-LOAD-004 on the limiter profile                             | 12              | UNPROBED on the runner: VM 3.7 min                                                   | 9.6 min   | workflow_dispatch (if `documenso_up` succeeded) |
+| Job summary (spike table)                                                | 2               | 1 s (`documenso-smoke` summary step, Task 4 §9)                                      | 96 s      | workflow_dispatch                               |
+| Token scan of the spike results                                          | 2               | 0 s (`documenso-smoke` token scan, same runs)                                        | 96 s      | workflow_dispatch                               |
+| `actions/upload-artifact@cf430e03…` (`limiter-documenso`)                | 3               | 6 s (same runs, upload steps)                                                        | 144 s     | workflow_dispatch                               |
+| Stop Documenso (harness down)                                            | 1               | 2 s (same runs)                                                                      | 48 s      | workflow_dispatch                               |
+
+Sum of the step caps: 1 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 2 + 1 + 1 + 1 + 3 + 5 + 8 + 12 + 2 + 2 + 3 + 1 = **50 min**. Job timeout **60**. 60 − 50 = **10 ≥ 10**.
+
+Stop rule: any step above 80 % of its cap is a stop and report (spike step 12 minutes for Cal and Medusa, `-009` 6.4 minutes, Documenso spike 9.6 minutes); the fix is a shorter hold or watch, never a higher cap or timeout. No cache-save allowance (the
+jobs only restore). **Cold path:** a build-cache miss trips the `Start` caps of Cal (6 min), Medusa (3 min) or Documenso (5 min); that is a visible failure, not a silent one, and the owner re-runs after a `perf.yml` push has warmed the cache. The release job
+is `evidence-release.yml` (job timeout 30; PRE-3 brings its caps to a sum of 20 or less). Runner minutes per spike dispatch: about 26; three: about 78.
 
 ## 10. Expected output
 
@@ -451,86 +552,101 @@ Run from the repo root with `export PATH="/usr/local/bin:$PATH"`. Counts relativ
 | 0    | `docs(plans): bring the phase 4 task 6 plan onto the build branch`      | `docs/plans/2026-10-25-p6-phase4-task6-spike-recovery.md`                                                                                                                                             | exit 0, B6                                                                                                    |
 | 1    | `feat(k6): add the spike plan, sizing and response classes`             | `k6/lib/pure/spike.js tests/unit/k6-lib-spike.test.ts`                                                                                                                                                | exit 0, **B6 + 5**                                                                                            |
 | 2    | `feat(load): measure recovery and storms from windows`                  | `src/load/recovery.ts src/load/chart/k6-points.ts tests/unit/recovery.test.ts`                                                                                                                        | exit 0, **B6 + 12**                                                                                           |
-| 3    | `feat(load): add the spike contract and its stage`                      | `src/load/spike/contract.ts src/load/spike/stage.ts tests/unit/spike-contract.test.ts`                                                                                                                | exit 0, **B6 + 18**                                                                                           |
+| 3    | `feat(load): add the spike contract and its stage`                      | `src/load/spike/contract.ts src/load/spike/stage.ts src/load/spike/limited.ts tests/unit/spike-contract.test.ts`                                                                                      | exit 0, **B6 + 18**                                                                                           |
 | 4    | `feat(k6): add the k6 spike library and the three spike scripts`        | `k6/lib/spike.js k6/cases/cal-load-004.js k6/cases/cal-load-004.example.json k6/cases/med-load-003.js k6/cases/med-load-003.example.json k6/cases/doc-load-004.js k6/cases/doc-load-004.example.json` | exit 0, B6 + 18; `k6 inspect` ok                                                                              |
 | 5    | `feat(load): add the medusa abandoned-cart check`                       | `k6/journeys/med-checkout.js src/load/spike/med-abandon.ts tests/unit/med-abandon.test.ts`                                                                                                            | exit 0, **B6 + 22**                                                                                           |
 | 6    | `feat(load): add the documenso limiter contract`                        | `src/load/spike/limiter-contract.ts tests/unit/limiter-contract.test.ts`                                                                                                                              | exit 0, **B6 + 29**                                                                                           |
 | 7    | `feat(load): record the failed gate of the cal slot-hold case`          | `src/load/gates/cal-hold.ts tests/unit/cal-hold-gate.test.ts`                                                                                                                                         | exit 0, **B6 + 31**                                                                                           |
-| 8    | `feat(load): add the spike and limiter cases`                           | `src/load/cases.ts package.json tests/unit/load-cases-spike.test.ts`                                                                                                                                  | exit 0, **B6 + 35**; the three `npm run load:*-spike -- --profile pr` runs exit 0 or 3 against started stacks |
-| 9    | `ci(knee): add the spike jobs and the limiter job to the knee workflow` | `.github/workflows/knee.yml`                                                                                                                                                                          | exit 0 (actionlint silent), B6 + 35                                                                           |
-| 10   | `ci(evidence): accept the runs of the knee workflow in the release`     | `.github/workflows/evidence-release.yml tests/unit/evidence-release-ids.test.ts`                                                                                                                      | exit 0, **B6 + 37**                                                                                           |
+| 8    | `feat(load): add the spike and limiter cases`                           | `src/load/cases.ts package.json tests/unit/load-cases-spike.test.ts`                                                                                                                                  | exit 0, **B6 + 36**; the three `npm run load:*-spike -- --profile pr` runs exit 0 or 3 against started stacks |
+| 9    | `ci(knee): add the spike jobs and the limiter job to the knee workflow` | `.github/workflows/knee.yml`                                                                                                                                                                          | exit 0 (actionlint silent), B6 + 36                                                                           |
 
-**Part 6b** (`git switch -c docs/<build date>-p6-phase4a-release origin/main` after three VALID runs of every case)
+**Part 6b** (its own PR, `git switch -c chore/<build date>-p6-phase4a-release-notes origin/main`, after three VALID runs of every case; matches PR #66 and the standing rule that release notes are their own `chore(release)` PR)
 
-| Step | Commit subject                                 | `git add` paths               | Expected                |
-| ---- | ---------------------------------------------- | ----------------------------- | ----------------------- |
-| 11   | `docs: add the phase 4a release notes`         | `docs/releases/p6-phase4a.md` | exit 0, B6 + 37         |
-| 12   | `docs: add the phase 4a results to the readme` | `README.md`                   | exit 0 (`readme-rules`) |
+| Step | Commit subject                                    | `git add` paths               | Expected        |
+| ---- | ------------------------------------------------- | ----------------------------- | --------------- |
+| 10   | `chore(release): add the phase 4a evidence notes` | `docs/releases/p6-phase4a.md` | exit 0, B6 + 36 |
 
-After 12 and the owner's merge, the owner dispatches `evidence-release.yml` from `main` with `tag=p6-phase4a`, `target_sha` = the 6b merge commit and `run_ids` = the run ids in the notes (knee runs of Tasks 2 to 4, steady runs of Task 5, spike runs of this task); the report records
-`gh release view p6-phase4a`.
+After the owner merges 6b, the owner dispatches `evidence-release.yml` from `main` with `tag=p6-phase4a`, `target_sha` = **the merge commit of the 6b PR** and `run_ids` = the run ids in the notes (knee runs of Tasks 2 to 4, steady runs of Task 5, spike runs of this task, all
+`knee.yml` runs, each a `main` dispatch with conclusion success; excluded runs are listed in the notes as plain ids in backticks, never as `actions/runs/` links, because the notes check needs an exact set match); the report records `gh release view p6-phase4a`.
 
-New unit tests by name (37): `k6-lib-spike` (5: plan stages and marks; bad input rejected; `phaseAt` boundaries; `spikeVus` sizing of the default plans (354/461, 59/77, 24/32); response classes incl. 429 and status 0); `recovery` (7: windows of 10 s with the 40-request floor; upper bound from pre-spike
-windows and a band; recovery with two consecutive windows; a single dip is not recovery; never recovered → undefined; storm needs 5 and 1 %; a window with 5xx under 1 % is not a storm); `spike-contract` (6: clean characterisation; 5xx storm; refusal without body; Documenso needs ≥ 10 429s else `no_refusals`; 429 on a non-covered route; dropped iterations make INVALID);
-`med-abandon` (4: abandon every fourth; reservations equal orders; a reservation for an abandoned cart is a PRODUCT BUG line; a refused probe purchase with stock available is a PRODUCT BUG line); `limiter-contract` (7: route table lists the 10 probed routes with their max; family A and B bodies; header checks; the 429 index; pre-limit 5xx recorded under `P6-OBS-DOC-001` not failing;
-unprobed routes listed with reasons; too few answers is a TEST BUG); `cal-hold-gate` (2: no file mentions `reserveSlot` → fails with evidence; a file that does → passes); `load-cases-spike` (4: four cases registered with labels and `allowExits`; the Cal and Medusa rates derive from the bounds; the Documenso rates are the limiter constants; the `package.json` scripts exist);
-`evidence-release-ids` (2). Count 5 + 7 + 6 + 4 + 7 + 2 + 4 + 2 = **37**; steps 1 → +5, 2 → +7, 3 → +6, 5 → +4, 6 → +7, 7 → +2, 8 → +4, 10 → +2.
+**Part 6c** (`git switch -c docs/<build date>-p6-phase4a-results origin/main` after the release exists)
+
+| Step | Commit subject                                 | `git add` paths | Expected                         |
+| ---- | ---------------------------------------------- | --------------- | -------------------------------- |
+| 11   | `docs: add the phase 4a results to the readme` | `README.md`     | exit 0 (`readme-rules`), B6 + 36 |
+
+New unit tests by name (36): `k6-lib-spike` (5: plan stages and marks; bad input rejected; `phaseAt` boundaries; `spikeVus` sizing of the default plans (354/461, 59/77, 24/32); response classes incl. 429 and status 0); `recovery` (7: windows of 10 s with the 40-request floor; upper bound from pre-spike
+windows and a band; recovery with two consecutive windows; a single dip is not recovery; never recovered → undefined; storm needs 5 and 1 %; a window with 5xx under 1 % is not a storm); `spike-contract` (6: clean characterisation; 5xx storm; refusal without body; Documenso needs ≥ 10 429s else `no_refusals`; 429 on a non-covered route; dropped iterations make INVALID;
+the Documenso unfinished-document rule per intent: an unfinished document of a `fail` intent with a 429 passes, one of an `ok` intent, of a `fail` intent without a 429 or of no intent is a finding, counted in the same test);
+`med-abandon` (4: abandon every fourth; reservations equal orders; a reservation for an abandoned cart is a PRODUCT BUG line; a refused probe purchase with stock available is a PRODUCT BUG line); `limiter-contract` (7: route table lists the 10 probed routes with their max; family A and B bodies; header checks; the 429 index; pre-limit 5xx recorded under their ids
+(`authorize` → `P6-OBS-DOC-001`, `reset-password` → `P6-OBS-DOC-006`) not failing; unprobed routes listed with reasons; too few answers is a TEST BUG); `cal-hold-gate` (2: no file mentions `reserveSlot` → fails with evidence; a file that does → passes); `load-cases-spike` (5: four cases registered with labels and `allowExits`; the Cal and Medusa
+rates derive from the bounds; the Documenso rates are the limiter constants; the `package.json` scripts exist; `DANGEROUS_BYPASS_RATE_LIMITS: "false"` appears exactly once across `knee.yml` and `perf.yml`, inside the `documenso-limiter` job). Count 5 + 7 + 6 + 4 + 7 + 2 + 5 = **36**; steps 1 → +5, 2 → +7, 3 → +6, 5 → +4, 6 → +7, 7 → +2, 8 → +5. The two
+`evidence-release-ids` tests of the first draft are PRE-3's. The workflow file has no other unit test (`actionlint` is part of `npm run check`); its cap tables of §9 are checked by hand with the script of PRE-2 §4.
 
 Each part: push, `gh pr create` (rule 3), CI once (rule 15). Merge only when the owner says "merge", one at a time (workflow edits).
 
 ## 13. Risks, proposed extras, open decisions
 
-| ID  | Risk                                                               | Mitigation                                                         |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| R1  | Generator saturation at 150 %                                      | VU pool sized for every arrival (§3.2); drops make the run INVALID |
-| R2  | The limiter profile leaks into other Documenso steps               | env on one step; test asserts it appears once                      |
-| R3  | Recovery never reached inside the watch period                     | recorded as "not reached in N s", VALID                            |
-| R4  | A rerun on the same Documenso database finds auth limits exhausted | fresh CI database; local note                                      |
-| R5  | `evidence-release.yml` change breaks the release                   | probed jq; unit test; dry-run on a sample JSON; owner review       |
-| R6  | Spike windows are noisy                                            | 40-request floor, two consecutive windows, ≥ 3 runs                |
+| ID  | Risk                                                               | Mitigation                                                                     |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| R1  | Generator saturation at 150 %                                      | VU pool sized for every arrival (§3.2); drops make the run INVALID             |
+| R2  | The limiter profile leaks into other Documenso steps               | env on one step; test asserts it appears once                                  |
+| R3  | Recovery never reached inside the watch period                     | recorded as "not reached in N s", VALID                                        |
+| R4  | A rerun on the same Documenso database finds auth limits exhausted | fresh CI database; local note                                                  |
+| R5  | The release check does not accept `knee.yml` runs                  | PRE-3 (merged before the first release); the dry run of PRE-3 on a sample JSON |
+| R6  | Spike windows are noisy                                            | 40-request floor, two consecutive windows, ≥ 3 runs                            |
 
 **Contradictions with the roadmap.**
 
-| #   | Roadmap says                                                             | Probe shows                                                                  | Effect                                                                 |
-| --- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| C1  | "every refusal is a 4xx with a body" for Cal, Medusa                     | no refusals at all; the products queue (11 to 20 s latency)                  | characterisation; the check holds vacuously                            |
-| C2  | Documenso steady 50 % / spike 150 % "of the knee" on the D12 profile     | the tRPC limiter binds at 0.42 documents per second, an order below the knee | rates from the limiter; the capacity spike is extra `P6-DOC-LOAD-012`  |
-| C3  | "Any 500 on the sign-in route links to `P6-OBS-DOC-001`"                 | `reset-password` with an unknown token is also a 500                         | the link covers auth routes; new instance is `PRODUCT BUG (SUSPECTED)` |
-| C4  | `P6-CAL-LOAD-010` "gated on `reserveSlot`"                               | the journey never calls it                                                   | gate fails; "Later" (§3.7)                                             |
-| C5  | CI: `workflow_dispatch` plus weekly Saturday in `perf.yml`/knee workflow | the release accepts one workflow id                                          | §6.9                                                                   |
-| C6  | "recovery = first window back inside the baseline band"                  | Documenso has no Task 5 baseline                                             | the run's own pre-spike windows are part of the reference (§3.6)       |
+| #   | Roadmap says                                                             | Probe shows                                                                  | Effect                                                                                                                 |
+| --- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| C1  | "every refusal is a 4xx with a body" for Cal, Medusa                     | no refusals at all; the products queue (11 to 20 s latency)                  | characterisation; the check holds vacuously                                                                            |
+| C2  | Documenso steady 50 % / spike 150 % "of the knee" on the D12 profile     | the tRPC limiter binds at 0.42 documents per second, an order below the knee | rates from the limiter; the capacity spike is extra `P6-DOC-LOAD-016`                                                  |
+| C3  | "Any 500 on the sign-in route links to `P6-OBS-DOC-001`"                 | `reset-password` with an unknown token is also a 500                         | `authorize` links to `-001`; `reset-password` has its own suspected id `P6-OBS-DOC-006`, linked to the same root cause |
+| C4  | `P6-CAL-LOAD-010` "gated on `reserveSlot`"                               | the journey never calls it                                                   | gate fails; "Later" (§3.7)                                                                                             |
+| C5  | CI: `workflow_dispatch` plus weekly Saturday in `perf.yml`/knee workflow | the release accepts one workflow id                                          | PRE-3 (workflow ids); dispatch only, the Saturday cron is a later PR (index G8)                                        |
+| C6  | "recovery = first window back inside the baseline band"                  | Documenso has no Task 5 baseline                                             | the run's own pre-spike windows are part of the reference (§3.6)                                                       |
 
-**Proposed extras (out of scope until accepted; new IDs).**
+**Proposed extras (out of scope until accepted; new IDs).** (The ids take the next free numbers across all plans: `P6-DOC-LOAD-010` is proposed by Phase 3 Task 9, `P6-CAL-LOAD-011` and `-012` by Phase 3 Tasks 7 and 10, `P6-MED-LOAD-011` by Phase 3 Tasks 8 and 10.)
 
-- `P6-DOC-LOAD-012`: the Documenso spike at 150 % of the knee on the default profile (limiter bypassed): seal lag and recovery under overload (VM: seal lag p95 9.6 s, recovery 66 s, one transport reset).
-- `P6-CAL-LOAD-014`: the Cal journey variant with `reserveSlot` and the post-spike `SelectedSlots` release check (the gate evidence of §3.7).
-- `P6-DOC-LOAD-013`: assert the tRPC-inline limiters (`request-2fa-email`, `link-org-account`, `sync-subscription`) once a session and billing state exist in the harness.
-- `P6-MED-LOAD-013`: the Medusa spike on the Redis-lock mode (`MEDUSA_REDIS=1`, `MEDUSA_LOCK=redis`).
+- `P6-DOC-LOAD-016`: the Documenso spike at 150 % of the knee on the default profile (limiter bypassed): seal lag and recovery under overload (VM: seal lag p95 9.6 s, recovery 66 s, one transport reset).
+- `P6-CAL-LOAD-018`: the Cal journey variant with `reserveSlot` and the post-spike `SelectedSlots` release check (the gate evidence of §3.7).
+- `P6-DOC-LOAD-017`: assert the tRPC-inline limiters (`request-2fa-email`, `link-org-account`, `sync-subscription`) once a session and billing state exist in the harness.
+- `P6-MED-LOAD-016`: the Medusa spike on the Redis-lock mode (`MEDUSA_REDIS=1`, `MEDUSA_LOCK=redis`).
 
-**Open decisions** (option, evidence, recommended default).
+**Decisions (owner, 2026-10-25).**
 
-- **Q1. Workflow name.** `knee.yml` now hosts knees, spikes and the limiter job. (a) keep the name (fewer moves, recommended); (b) rename to `limits.yml` in Task 2 before anything is built. **Default: (a).**
-- **Q2. Documenso `-004` rates.** (a) the limiter-bound rates 0.2 and 0.6 (recommended; §3.4); (b) the roadmap's 50 % and 150 % of the knee (the steady phase would already be refused). **Default: (a).**
-- **Q3. Reference for recovery.** (a) the run's own pre-spike windows plus the Task 5 band when it exists (recommended); (b) the Task 5 band only (Documenso would have none). **Default: (a).**
-- **Q4. The new suspected bug.** `reset-password` unknown token → 500. (a) record it as `PRODUCT BUG (SUSPECTED)` under an extended `P6-OBS-DOC-001` and ask the owner for the label after three runs (recommended); (b) a new ID. **Default: (a); the owner decides the label.**
-- **Q5. `evidence-release.yml` change.** (a) accept a list of workflow ids (recommended; one workflow, one release); (b) dispatch the release twice, once per workflow. Evidence: the workflow checks one id and one tag; a second release would need a second tag. **Default: (a).**
-- **Q6. Phase 4a closeout document.** (a) none now; Task 14 covers both releases (roadmap; recommended); (b) a short 4a closeout from the template. **Default: (a).**
-- **Q7. Spike length.** (a) 30 s at 150 % (recommended; VM: backlog drained in 12 to 76 s); (b) 60 s (a longer backlog, longer recovery watch). **Default: (a).**
+- **Q1. Workflow name.** Decided (owner, 2026-10-25): (a) keep `knee.yml` — fewer moves; it hosts knees, steady baselines, spikes and the limiter job.
+  Options considered: (a) keep the name; (b) rename to `limits.yml` in Task 2 before anything is built.
+- **Q2. Documenso `-004` rates.** Decided (owner, 2026-10-25): (a) the limiter-bound rates 0.2 and 0.6 (§3.4); UNPROBED — confirm in first CI dispatch: the Documenso limiter refusal rate at 0.2 and 0.6 on the runner
+  (at least 10 429s during the spike, else `INVALID no_refusals`).
+  Options considered: (a) the limiter-bound rates 0.2 and 0.6; (b) the roadmap's 50 % and 150 % of the knee (the steady phase would already be refused).
+- **Q3. Reference for recovery.** Decided (owner, 2026-10-25): (a) the run's own pre-spike windows plus the Task 5 band when it exists.
+  Options considered: (a) own windows plus the band; (b) the Task 5 band only (Documenso would have none).
+- **Q4. The new suspected bug.** Decided (owner, 2026-10-25): (b) its own id `P6-OBS-DOC-006`, linked to `P6-OBS-DOC-001`'s suspected root cause (an `AppError` without a `statusCode` falls back to 500); one upstream draft may
+  cover both routes; the owner labels it after repeated runs — one finding, one id; the id is already used on main (BACKLOG, the Phase 3 closeout) and `P6-OBS-DOC-004` is reserved by the Phase 3 Task 9 plan (Q2) for `-010`.
+  Options considered: (a) extend `P6-OBS-DOC-001` (the old default); (b) its own id. `reset-password` unknown token → 500.
+- **Q5. `evidence-release.yml` change.** Decided (owner, 2026-10-25): (a) accept a list of workflow ids — one workflow, one release; the change moves out of this task into PRE-3, which this task cites.
+  Options considered: (a) a list of workflow ids; (b) dispatch the release twice, once per workflow. Evidence: the workflow checks one id and one tag; a second release would need a second tag.
+- **Q6. Phase 4a closeout document.** Decided (owner, 2026-10-25): (a) none now; Task 14 covers both releases (roadmap).
+  Options considered: (a) none; (b) a short 4a closeout from the template.
+- **Q7. Spike length.** Decided (owner, 2026-10-25): (a) 30 s at 150 % — VM: backlog drained in 12 to 76 s.
+  Options considered: (a) 30 s; (b) 60 s (a longer backlog, longer recovery watch).
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] `npm run check` exit 0 with **B6 + 37** unit tests; `k6 inspect` lists the three spike scripts.
-- [ ] 3 VALID runs per case (`P6-CAL-LOAD-004`, `P6-MED-LOAD-003` with `-010` inside, `P6-DOC-LOAD-004`, `P6-DOC-LOAD-009`) from `knee.yml` dispatches on `main`, each with the contract result, the recovery time (or "not reached in N s"), telemetry, a clean audit or a recorded product bug / characterisation; Cal labelled
+- [ ] `npm run check` exit 0 with **B6 + 36** unit tests; `k6 inspect` lists the three spike scripts.
+- [ ] 3 VALID runs per case (`P6-CAL-LOAD-004`, `P6-MED-LOAD-003` with `-010` inside, `P6-DOC-LOAD-004`, `P6-DOC-LOAD-009`) from `knee.yml` dispatches (`mode: spike`) on `main`, each with the contract result, the recovery time (or "not reached in N s"), telemetry, a clean audit or a recorded product bug / characterisation; Cal labelled
       characterisation; `P6-MED-LOAD-010` landed; `P6-CAL-LOAD-010` in "Later" with the gate evidence.
-- [ ] `evidence-release.yml` accepts the `knee.yml` runs; the interim release `p6-phase4a` exists with `docs/releases/p6-phase4a.md`; `unzip -l` of one release zip shows `csv` and `html` files (the D14 filter verified; no `json.gz`).
-- [ ] README "Phase 4a results": knee ranges (Tasks 2 to 4), steady bands (Task 5), spike characterisations and the limiter contract, with run ids, environment labels and INVALID runs listed; the word "capacity" appears only as "not capacity".
+- [ ] The release notes PR (6b, `chore(release): add the phase 4a evidence notes`) is merged; the interim release `p6-phase4a` exists (`gh release view p6-phase4a`) with `docs/releases/p6-phase4a.md`, built from the merge commit of that PR; `unzip -l` of one release zip shows `csv` and `html` files (the D14 filter verified; no `json.gz`).
+- [ ] README "Phase 4a results" (6c): knee ranges (Tasks 2 to 4), steady bands (Task 5), spike characterisations and the limiter contract, with run ids, environment labels and INVALID runs listed; the word "capacity" appears only as "not capacity".
 - [ ] Phase 4a exit: knee ranges for three products from ≥ 3 VALID runs, baselines and spikes evidenced, release published.
 
 ## 15. Rule 20 self-check
 
 - (a) Roadmap "Done when": ≥ 3 VALID runs per case with contract, recovery, clean audit; Cal characterisation; `-009` and `-010` land; `P6-CAL-LOAD-010` lands or "Later" with gate evidence; widened filter verified; `p6-phase4a` published; `npm run check` green: §14. Gap: runner values (§3.8).
-- (b) Existing names grepped on the Task 10 head (all present): `k6/journeys/{cal-book,med-checkout,doc-sign}.js`, `src/load/chart/k6-points.ts` (`SecondBin`, `aggregatePoints`), `src/load/reconcile/*`, `src/load/med-conservation.ts` (`conservationStage`), `src/medusa/oracle.ts` (`RESERVATION_QTY_SQL`,
-  `INVENTORY_LEVEL_SQL`, `readOversellSnapshot`), `src/medusa/store.ts` (`prepareReadyCart`, `completeCart`), `src/documenso/run-case.ts`, `scripts/harness.mjs` (`||=`), `.github/workflows/evidence-release.yml` (`PERF_WORKFLOW_ID`). NEW with skeletons: §6.1. From Tasks 1 to 5, 11: §4.
-- (c) CI time: §9, margins 20 to 28 minutes; no existing timeout raised; the release job estimate 3 of 30 minutes.
+- (b) Existing names grepped on `main` at `2db9726`: `k6/journeys/{cal-book,med-checkout,doc-sign}.js`, `src/load/chart/k6-points.ts` (`SecondBin`, `aggregatePoints`), `src/load/reconcile/*`, `src/load/med-conservation.ts` (`conservationStage`), `src/medusa/oracle.ts` (`RESERVATION_QTY_SQL`,
+  `INVENTORY_LEVEL_SQL`, `readOversellSnapshot`), `src/medusa/store.ts` (`prepareReadyCart`, `completeCart`), `src/documenso/run-case.ts`, `scripts/harness.mjs` (`||=`), `.github/workflows/evidence-release.yml` (read only here), `src/load/medians.ts`. NEW with skeletons: §6.1. From Tasks 1 to 5 and PRE-3: §4.
+- (c) CI time: §9 (exact tables: 52, 44 and 50 minutes of caps in 90-, 60- and 60-minute jobs); no existing timeout raised; the release job is PRE-3's.
 - (d) Skeletons §6; steps with `git add` paths, subjects and expected output §12.
-- (e) No owner answer is recorded as given; Q1 to Q7 are open with defaults.
+- (e) Every owner answer is recorded in "Decisions (owner, 2026-10-25)" (§13); Q4 is the override and Q5 moved to PRE-3.
