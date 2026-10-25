@@ -76,7 +76,11 @@ export async function openSources(
 ): Promise<ProductSources> {
   if (product === "stub") return { product };
   const sources: ProductSources = { product };
-  sources.pool = createReadOnlyPool(DATABASE_URL[product](env), { max: 1 });
+  sources.pool = createReadOnlyPool(DATABASE_URL[product](env), {
+    max: 1,
+    connectionTimeoutMs: 5000,
+    queryTimeoutMs: 5000,
+  });
   const found = await orUndefined(() => discoverContainer(product));
   const fs = found ? await orUndefined(statfsType) : undefined;
   if (found && fs) sources.container = { id: found.id, kind: detectCgroup(fs) };

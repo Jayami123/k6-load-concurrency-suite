@@ -22,6 +22,17 @@ describe("k6 lib refusal classifier", () => {
     );
   });
 
+  it("the medusa confirm-inventory refusal at complete is clean", () => {
+    assert.equal(
+      classifyRefusal(400, "not_allowed", "Some variant does not have the required inventory"),
+      "clean",
+    );
+  });
+
+  it("a 400 not_allowed that only mentions inventory is not a clean refusal", () => {
+    assert.equal(classifyRefusal(400, "not_allowed", "Inventory location missing"), "other");
+  });
+
   it("a sold-out refusal at complete is clean", () => {
     assert.equal(
       classifyRefusal(400, "not_allowed", "Insufficient inventory for variant variant_1"),

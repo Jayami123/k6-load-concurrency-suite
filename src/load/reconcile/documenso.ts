@@ -81,6 +81,8 @@ export function evaluateDocumensoAudit(
   const completed = s.envelopes.filter((e) => e.status === "COMPLETED");
   for (const e of completed) {
     if (e.sealJobs === 0) bug("completed envelope never sealed");
+    if (e.completedAudit !== 1)
+      bug(`completed envelope with ${e.completedAudit} completion audit row(s), expected 1`);
     if (e.sealJobs > 1) {
       // A case that declares P6-OBS-DOC-005 (the retry storm) counts its duplicate seal under that ID, not as unexpected.
       const declared = declaredBugs.includes("P6-OBS-DOC-005");

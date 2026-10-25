@@ -11,7 +11,7 @@ Title: feat(load): add the medusa load conservation case (P6-MED-LOAD-002)
 Adds the Medusa conservation check for the load case `P6-MED-LOAD-002` (plan task 8, docs/plans/2026-10-24-p6-phase3-task8-med-load-conservation.md):
 
 - `judgeConservation` (pure) in `src/load/med-conservation.ts`: iterations accounted for, stock exhausted, orders at most stock,
-  reservations matching orders, client counts matching the database (F-M2 is a known bug, counted and not failed), clean refusals only,
+  reservations matching orders, database order count not below the client count (excess is counted as F-M2 and does not fail), clean refusals only,
   no drops.
 - `conservationStage` reads the k6 counters from the summary (`metrics.<name>.count`) and the database through the read-only pool.
 - The case registry entry `MED_LOAD_002` uses the stock of half the planned orders, so the run exhausts stock on purpose.
