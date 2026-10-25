@@ -17,7 +17,7 @@ timeout; a measured step above 80 % of its cap is a stop and report, never a sil
 
 Step durations come from the public jobs API (`https://api.github.com/repos/Jayami123/k6-load-concurrency-suite/actions/runs/<run id>/jobs`, no authentication) for every successful `cal-smoke` job found on 2026-10-25: **55 runs** (46 push to `main`, 6 pull
 request, 3 dispatch). The three dispatch runs are the release evidence runs 40177412186, 40178773022 and 40180625279 (all `0b07594`); the pull-request runs are 40187032703, 40185238775, 40183751868, 40182880630, 40182255468 and 40176602623;
-the push runs are the 46 successful `perf.yml` pushes to `main` listed by `.../actions/workflows/376454455/runs?event=push&branch=main`. Cache-save steps ran in 4 push runs (cache misses).
+the push runs are the 46 successful `perf.yml` pushes to `main` listed by `.../actions/workflows/376454455/runs?event=push&branch=main`. Cache-save steps ran in 2 push runs (4 save steps): run 39429276298 (head 98b1c82, all three saves: a full miss; `Start Cal` 172 s, `Install Cal dependencies` 115 s) and run 40128580022 (head 2cb2544, only `Save Cal build cache`: a build-cache miss; `Start Cal` 255 s). No other of the 46 successful push runs ran a save step (re-checked with the jobs API on 2026-10-25).
 
 Before the change (script of §4, `python3 stepcaps.py .github/workflows/perf.yml --paths cal-smoke`), the sum of the step caps per path against the job timeout 60:
 
@@ -59,7 +59,7 @@ Rule: **cap (minutes) >= 1.25 x the maximum measured duration**, rounded up to w
 | 24, 26, 27 | `actions/upload-artifact` (three steps)                                  | none          | 2 / 2 / 2                      | 1 each               | 48 s         |
 | 25         | Job summary (Playwright results, race table)                             | none          | 0 / 1 / 1                      | 1                    | 48 s         |
 | 28         | Stop Cal (harness down)                                                  | none          | 0 / 1 / 2                      | 1                    | 48 s         |
-| 29-31      | Save Cal Yarn cache, node_modules cache, build cache (push to main only) | 5 each        | 0 / 0 / 4, 10, 5 (4 push runs) | 1 each               | 48 s         |
+| 29-31      | Save Cal Yarn cache, node_modules cache, build cache (push to main only) | 5 each        | 0 / 0 / 4, 10, 5 (2 push runs) | 1 each               | 48 s         |
 
 Every cap is lowered or newly set; none is raised (`Install k6` and `Token scan` keep their 2). Every step keeps its `if:` condition; only `timeout-minutes` lines are added or changed.
 
@@ -71,9 +71,7 @@ Every cap is lowered or newly set; none is raised (`Install k6` and `Token scan`
 | push to main (with the three cache saves) | 50          | 0              | 60          | 10     |
 | workflow_dispatch / schedule              | 47          | 0              | 60          | 13     |
 
-All three are at most 50, so the fallback (a new `cal-load` job) is **not needed**. The push path is exactly 50: the margin is 10, the minimum the rule allows. `Start Cal` at 6 minutes is the largest cap and is also the one that matters on a cold build cache: on the Claude Code VM
-a cold `up:cal` took about 14 minutes, and on the runner a cache miss makes that step trip its 6-minute cap. That is a visible failure and not a silent one; the caches are written by `perf.yml` pushes to `main`, so the first push after a `CAL_REF` bump may need
-the owner's re-run (§8 R1). The 255 s maximum (about 4.3 minutes) in the 46 push runs is already 89 % of 288 s: **if a future measured start is above 288 s, that is a stop and report, never a silent cap raise.**
+All three are at most 50, so the fallback (a new `cal-load` job) is **not needed**. The push path is exactly 50: the margin is 10, the minimum the rule allows. `Start Cal` at 6 minutes is the largest cap. On the runner the two observed cache misses started Cal in 172 s and 255 s, inside the 6-minute cap and under its 288 s stop; the 255 s maximum IS the build-cache miss. The 14-minute cold `up:cal` is a Claude Code VM figure, not a runner figure. A start above 288 s (for example after a `CAL_REF` bump that misses all caches on a slower runner) is a stop and report, never a silent cap raise.
 
 ## 4. Steps and the reproduction script
 
@@ -164,11 +162,11 @@ The table of §3 is the exact cap table of the changed job (`cal-smoke`, timeout
 
 ## 8. Risks
 
-| ID  | Risk                                                                                                                                         | Mitigation                                                                                                                        |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | A cache miss (a `CAL_REF` bump, a cache eviction) makes `Install Cal dependencies`, `Restore ... cache` or `Start Cal` exceed the tight caps | the failure is visible; the owner re-runs after a `main` push has written the caches; no cap is raised silently. Open decision Q1 |
-| R2  | The push path margin is exactly 10                                                                                                           | it satisfies the rule; any future step added to the job must lower another cap or move to a job of its own                        |
-| R3  | Run-to-run spread makes a step cross 80 % of its cap                                                                                         | the PR's run is read once; a crossing is a stop and report                                                                        |
+| ID  | Risk                                                                                                                          | Mitigation                                                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | A cache miss (a `CAL_REF` bump, a cache eviction) makes `Install Cal dependencies`, `Restore ... cache` or `Start Cal` slower | the two observed runner misses fit the caps (`Start Cal` 172 s and 255 s against a 288 s stop; run 39429276298 also `Install Cal dependencies` 115 s); a start above 288 s is a stop and report, never a silent raise. Decided Q1 |
+| R2  | The push path margin is exactly 10                                                                                            | it satisfies the rule; any future step added to the job must lower another cap or move to a job of its own                                                                                                                        |
+| R3  | Run-to-run spread makes a step cross 80 % of its cap                                                                          | the PR's run is read once; a crossing is a stop and report                                                                                                                                                                        |
 
 ## 9. Decisions (owner, 2026-10-25)
 
@@ -176,5 +174,5 @@ The table of §3 is the exact cap table of the changed job (`cal-smoke`, timeout
   50 cannot be reached. Never raise 60.
 - **Order.** Decided (owner, 2026-10-25): before Task 2; independent of Task 5.
 - **Scope.** Decided (owner, 2026-10-25): `cal-smoke` only; the other jobs are a finding table (§5).
-- **Q1. Cold-cache behaviour.** Open (no owner answer recorded): recommended default — tight warm-path caps, a cold build fails visibly and is re-run (R1). Options: (a) tight caps (this plan); (b) a separate warm-up job that builds the caches with its own generous caps
+- **Q1. Cold-cache behaviour.** Decided (owner, 2026-10-25): (a) tight warm-path caps; the observed runner cache misses fit the caps, a cold start above the stop is a visible failure and a stop and report, never a silent raise. A separate warm-up job (b) only if a measured cold start exceeds 288 s.
   (more CI, more files); (c) keep `Start Cal` at 30 minutes and take the minutes from the race and LOAD steps (not possible: the push path would be 74).
