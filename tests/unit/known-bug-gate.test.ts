@@ -66,3 +66,35 @@ describe("known bug gate", () => {
     assert.match(r.reasons[0] ?? "", /audit.json is missing/);
   });
 });
+
+describe("known bug gate: fail-closed branches", () => {
+  it("a missing hard check fails as TEST BUG, even when the known bug is observed", () => {
+    const checks = duplicateRun().filter((c) => c.name !== "no-5xx");
+    const r = judgeKnownBugGate({ declared: ["P6-OBS-DOC-005"], checks, hasAudit: true });
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons[0] ?? "", /"no-5xx" is missing/);
+  });
+
+  it("a failed storm check fails as TEST BUG: no storm, nothing is proven", () => {
+    const r = judgeKnownBugGate({
+      declared: ["P6-OBS-DOC-005"],
+      checks: duplicateRun({ storm: false }),
+      hasAudit: true,
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons[0] ?? "", /^no storm/);
+  });
+
+  it("an unknown declared bug fails as TEST BUG", () => {
+    const r = judgeKnownBugGate({
+      declared: ["P6-OBS-XXX"],
+      checks: duplicateRun(),
+      hasAudit: true,
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, "TEST BUG");
+    assert.match(r.reasons[0] ?? "", /unknown declared bug P6-OBS-XXX/);
+  });
+});
