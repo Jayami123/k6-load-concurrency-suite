@@ -18,7 +18,7 @@ This is the plan a weaker model builds from. It changes nothing in the repo. Str
 - **Base.** `origin/main` after PRE-1 (the `P6-MED-LOAD-006` storm fix; `docs/plans/2026-10-25-p6-phase4-pre1-med-load-006-storm-fix.md`); PRE-2 is independent of this task (it only touches `cal-smoke`). `2db9726` today.
 - **Harness pin.** Unchanged (`v0.2.15`). **Environment change.** None. The cgroup question of §3.8 is a finding, not a change.
 - **Unit tests.** B1 = the count on `main` when the build starts, measured at build time (**865** at `2db9726` today: Node 24, `node --test tests/unit/*.test.ts`, 178 suites, all pass;
-  PRE-1 and PRE-2 add their own deltas first). This plan adds **+68** (§12); expected B1 + 68.
+  PRE-1 and PRE-2 add their own deltas first). This plan adds **+69** (§12); expected B1 + 69.
 - **Stop for owner review.** Yes (rule 10): a new CI job in `perf.yml`; the label type and `K6RunSpec` get additive fields. No harness
   pin and no shared runner change.
 
@@ -361,14 +361,15 @@ export function classifyResponse(product, status, message) {
 }
 
 /**
- * The outcome line of §6.8: `{"intent":n,"outcome":"ok"|"fail"}`, plus `"net":true` on a fail whose iteration saw a response with status 0.
+ * The outcome line of §6.8: `{"intent":n,"outcome":"ok"|"fail"}`, plus `"net":true` on a fail whose iteration saw a response with status 0, plus `"ghost":true` on a fail whose iteration saw a response that `classifyRefusal` classifies as `ghost`.
  * @param {number} intent exec.scenario.iterationInTest
  * @param {boolean} committed the journey's commit counter was added to (opts.onCommit ran)
  * @param {boolean} sawNetworkError
+ * @param {boolean} sawGhost
  * @returns {string}
  */
-export function intentLine(intent, committed, sawNetworkError) {
-  /* JSON.stringify of the object; `net` only when !committed && sawNetworkError */
+export function intentLine(intent, committed, sawNetworkError, sawGhost) {
+  /* JSON.stringify of the object; `net` only when !committed && sawNetworkError; `ghost` only when !committed && sawGhost */
 }
 ```
 
@@ -400,6 +401,7 @@ export function kneeOptions(cfg) {
 }
 
 /** call first in every iteration: tags the VU with the step ("ramp" outside a hold), counts the iteration start, returns the intent number. */
+let sawGhost = false; // per VU: a response classified `ghost` (the F-M2 400) during the current iteration
 let sawNetworkError = false; // per VU: a response with status 0 (timeout, reset) during the current iteration
 export function beginKneeIteration(plan) {
   const idx = stepAt(plan, Date.now() - exec.scenario.startTime);
@@ -407,18 +409,20 @@ export function beginKneeIteration(plan) {
   exec.vu.tags.step = tag;
   started.add(1, { step: tag });
   sawNetworkError = false;
+  sawGhost = false;
   return exec.scenario.iterationInTest;
 }
 
 /** call last in every iteration (§6.8): one outcome line per finished iteration. `committed` = the journey's own commit counter was added to. */
 export function endKneeIteration(intent, committed) {
-  console.log(intentLine(intent, committed, sawNetworkError));
+  console.log(intentLine(intent, committed, sawNetworkError, sawGhost));
 }
 
 /** once in the init context: every response made through request() is classified for this product. */
 export function observeKneeResponses(product) {
   observeResponses((res) => {
     if (res.status === 0) sawNetworkError = true;
+    if (isGhostRefusal(res)) sawGhost = true; // isGhostRefusal(res) = classifyRefusal(res.status, <body type>, jsonMessage(res)) === "ghost" (k6/lib/pure/refusal.js)
     const cls = classifyResponse(product, res.status, jsonMessage(res));
     nonconflict.add(cls === "error");
     if (cls === "conflict") conflicts.add(1);
@@ -809,6 +813,7 @@ iterations`), so `interrupted = p6_step_started total − iterations`.
 {"intent":3,"outcome":"ok"}                      committed: the client counted the commit
 {"intent":4,"outcome":"fail"}                    finished without the commit and the client got HTTP answers
 {"intent":5,"outcome":"fail","net":true}         finished without the commit and a response had status 0 (timeout or reset): the commit is unknown
+{"intent":6,"outcome":"fail","ghost":true}       finished without the commit and a response was the F-M2 400 (`classifyRefusal` = `ghost`, `k6/lib/pure/refusal.js` line 13: `Updating Status from "…" to "…" is not allowed`)
 ```
 
 k6 writes it to stderr, which `runK6` captures in `k6-<label>.log` (`src/load/k6-process.ts`, `stdio: ["ignore", out, out]`), as
@@ -819,7 +824,7 @@ k6 writes it to stderr, which `runK6` captures in `k6-<label>.log` (`src/load/k6
 ```ts
 export type IntentOutcome = "ok" | "fail";
 export interface IntentLog {
-  outcomes: Map<number, { outcome: IntentOutcome; net: boolean }>;
+  outcomes: Map<number, { outcome: IntentOutcome; net: boolean; ghost: boolean }>;
   duplicateLines: number[]; // an intent that has two lines: TEST BUG
   beyondStarted: number[]; // an intent >= started: TEST BUG
 }
@@ -847,7 +852,7 @@ export function auditByIntent(input: {
   rowsByIntent: Map<number, number>;
   ghostRows: number;
   interrupted: number;
-  /** Set by a product whose known bug is exactly rule 4 (Medusa F-M2): a `fail` intent with 1 row is then counted under this id, not a violation. */
+  /** Set by a product whose known bug has a signature on the outcome line (Medusa F-M2, `ghost: true`): a `fail` intent with 1 row AND `ghost: true` is then counted under this id, not a violation. */
   failWithRowKnownBugId?: string;
 }): IntentAudit;
 ```
@@ -857,7 +862,7 @@ export function auditByIntent(input: {
 1. A database row that maps to no started intent is a **ghost write**: `PRODUCT BUG (SUSPECTED)`.
 2. An intent with more than one row is a **duplicate write**: `PRODUCT BUG (SUSPECTED)` (the count slack of the first draft would have hidden up to `interrupted` of them).
 3. An `ok` intent must have exactly 1 row; with 0 rows the client was told success for work that is not there: `PRODUCT BUG (SUSPECTED)`.
-4. A `fail` intent (without `net`) must have 0 rows: with 1 row the client was told failure for committed work: `PRODUCT BUG (SUSPECTED)`, unless the product passes `failWithRowKnownBugId` (Medusa: `F-M2`, a checkout that answers 400 and leaves an order), in which case each such intent is counted once under that id and is not a violation. Duplicates and ghost rows are never counted under a known bug.
+4. A `fail` intent (without `net`) must have 0 rows: with 1 row the client was told failure for committed work: `PRODUCT BUG (SUSPECTED)`, unless the product passes `failWithRowKnownBugId` (Medusa: `F-M2`) **and the intent's line carries `ghost: true`** (the iteration saw the F-M2 400 that `classifyRefusal` calls `ghost`), in which case that intent with exactly one row is counted once under that id and is not a violation. A `fail` intent with one row and no `ghost` flag (a 5xx, another 4xx) stays `PRODUCT BUG (SUSPECTED)`. Duplicates and ghost rows are never counted under a known bug.
 5. Only an indeterminate intent (no line, or `fail` with `net: true`) may have 0 or 1 row. The intents with no line must number at most `interrupted`; more is a `TEST BUG` (a
    journey that finishes without a line, or a lost log).
 
@@ -954,15 +959,15 @@ Counts are relative to B1 (§5 check 2).
 | 3    | `feat(load): add the stop rule and the first saturated resource rule`                  | `src/load/knee/stop-rule.ts src/load/knee/first-saturated.ts tests/unit/knee-stop-rule.test.ts tests/unit/knee-first-saturated.test.ts`                                                                                                                                                                                                                                                                                                 | exit 0, **B1 + 27**                                                      |
 | 4    | `feat(load): add the knee report, its validity and the published form`                 | `src/load/knee/knee-report.ts src/load/published.ts tests/unit/knee-report.test.ts tests/unit/knee-validity.test.ts tests/unit/load-published.test.ts`                                                                                                                                                                                                                                                                                  | exit 0, **B1 + 39**                                                      |
 | 5    | `feat(load): parse and bound the knee plan inputs`                                     | `src/load/knee/plan-input.ts tests/unit/knee-plan-input.test.ts`                                                                                                                                                                                                                                                                                                                                                                        | exit 0, **B1 + 43**                                                      |
-| 6    | `feat(load): reconcile the audits per intent after a stop`                             | `src/load/knee/intents.ts src/load/reconcile/index.ts src/load/reconcile/cal.ts src/load/reconcile/medusa.ts src/load/reconcile/types.ts tests/unit/knee-intents.test.ts tests/unit/reconcile-intents.test.ts`                                                                                                                                                                                                                          | exit 0, **B1 + 52**; the existing reconcile tests unchanged              |
-| 7    | `feat(load): sample the host cpu and the database connection limit`                    | `src/load/telemetry/host-stats.ts src/load/telemetry/sampler.ts tests/unit/telemetry-host.test.ts`                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 55**; the existing sampler tests unchanged                |
-| 8    | `feat(load): add a cpu-burn mode to the stub`                                          | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 57**                                                      |
-| 9    | `feat(k6): add the knee library, the commit hooks and the breakpoint self-test script` | `k6/lib/knee.js k6/lib/http.js k6/journeys/cal-book.js k6/journeys/med-checkout.js k6/journeys/doc-sign.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json tests/unit/knee-journey-hooks.test.ts`                                                                                                                                                                                                               | exit 0, **B1 + 58**; `k6 inspect: N script(s) ok.` (N + 2)               |
-| 10   | `feat(load): add the knee stage, the streaming points reader and the self-test`        | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 68**; `npm run load:knee-selftest -- --profile pr` exit 0 |
-| 11   | `ci(perf): run the knee self-test in its own job`                                      | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 68                                      |
-| 12   | `docs: explain how to read a knee`                                                     | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 68                                   |
+| 6    | `feat(load): reconcile the audits per intent after a stop`                             | `src/load/knee/intents.ts src/load/reconcile/index.ts src/load/reconcile/cal.ts src/load/reconcile/medusa.ts src/load/reconcile/types.ts tests/unit/knee-intents.test.ts tests/unit/reconcile-intents.test.ts`                                                                                                                                                                                                                          | exit 0, **B1 + 53**; the existing reconcile tests unchanged              |
+| 7    | `feat(load): sample the host cpu and the database connection limit`                    | `src/load/telemetry/host-stats.ts src/load/telemetry/sampler.ts tests/unit/telemetry-host.test.ts`                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 56**; the existing sampler tests unchanged                |
+| 8    | `feat(load): add a cpu-burn mode to the stub`                                          | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 58**                                                      |
+| 9    | `feat(k6): add the knee library, the commit hooks and the breakpoint self-test script` | `k6/lib/knee.js k6/lib/http.js k6/journeys/cal-book.js k6/journeys/med-checkout.js k6/journeys/doc-sign.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json tests/unit/knee-journey-hooks.test.ts`                                                                                                                                                                                                               | exit 0, **B1 + 59**; `k6 inspect: N script(s) ok.` (N + 2)               |
+| 10   | `feat(load): add the knee stage, the streaming points reader and the self-test`        | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 69**; `npm run load:knee-selftest -- --profile pr` exit 0 |
+| 11   | `ci(perf): run the knee self-test in its own job`                                      | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 69                                      |
+| 12   | `docs: explain how to read a knee`                                                     | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 69                                   |
 
-New unit tests by name (68): `k6-lib-knee` (9: plan shape with `timeUnit "10s"` targets, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
+New unit tests by name (69): `k6-lib-knee` (9: plan shape with `timeUnit "10s"` targets, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
 minimum and cap; `stopRuleThresholds` keys, `p(95)<X`, `rate<=0.01`, `abortOnFail`, empty submetric lists; `classifyResponse` Cal; Medusa; Documenso with a 429; `standardOptions` still
 throws on `http_req_duration`; **`intentLine` output parses back with the regex of `parseIntentLog`**); `knee-step-stats` (4: full summary; Rate `passes` is the error count; missing step is not
 reached and counts 0; planned = rate x hold); `knee-stop-rule` (6: p95 equal to the limit trips; just below does not; error rate exactly 1 % does not, 1.01 % does; under `minRequests` is ignored;
@@ -973,13 +978,13 @@ stop step's drops are ignored; markdown table, including the `no knee up to step
 (2: knee string has range, rule, resource, environment; refuses a non-KNEE and a non-publishable meta); `knee-plan-input` (4: defaults for empty strings; one-decimal rates; bounds and the
 5,000-iteration cap name the field; non-numeric input is rejected); **`knee-intents` (3: `parseIntentLog` reads k6 console lines with escaped quotes and ignores every other line; a repeated
 intent line and a line with an intent at or above `started` are reported as TEST BUG findings; a `fail` line with `net: true` is classified indeterminate, a plain `fail` is not)**;
-**`reconcile-intents` (6, §6.8: a duplicate that the old count slack would have hidden is a finding; a ghost row (an intent never started, or a label that maps to no intent) is a finding; an
-indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding, and is counted under the known-bug id instead when `failWithRowKnownBugId` is set; more indeterminate intents than `interrupted` is a TEST BUG)**;
+**`reconcile-intents` (7, §6.8: a duplicate that the old count slack would have hidden is a finding; a ghost row (an intent never started, or a label that maps to no intent) is a finding; an
+indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding, and is counted under the known-bug id instead only when `failWithRowKnownBugId` is set and its line has `ghost: true`; a `fail` intent with 1 row and no ghost flag is a finding even when `failWithRowKnownBugId` is set (the new seventh test); more indeterminate intents than `interrupted` is a TEST BUG)**;
 **`knee-journey-hooks` (1: in each of the three journey files every line that adds to the commit counter (`.add(1)` on it, or `end(ordersCounter)`) is followed by an `opts.onCommit` call inside the same block, and the Phase 3 cases
 never pass `onCommit`)**; `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
 writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value is not kept); `load-cases-knee` (2: the case and its three runs;
 `package.json` has the script); `k6-points-stream` (2: equals the sync reader on a fixture; handles a file larger than one chunk); `render-chart` (+1: step bands); `load-table` (+1: knee block).
-Count: 9 + 4 + 6 + 8 + 7 + 3 + 2 + 4 + 3 + 6 + 1 + 3 + 2 + 4 + 2 + 2 + 1 + 1 = **68** (steps: 1 → +9, 2 → +4, 3 → +14, 4 → +12, 5 → +4, 6 → +9, 7 → +3, 8 → +2, 9 → +1, 10 → +10). The
+Count: 9 + 4 + 6 + 8 + 7 + 3 + 2 + 4 + 3 + 7 + 1 + 3 + 2 + 4 + 2 + 2 + 1 + 1 = **69** (steps: 1 → +9, 2 → +4, 3 → +14, 4 → +12, 5 → +4, 6 → +10, 7 → +3, 8 → +2, 9 → +1, 10 → +10). The
 first draft had 61 with four slack tests; the per-intent contract replaces them with six, adds the log parser (3), the `intentLine` round trip (1) and the hooks guard (1).
 
 After step 12: `git push -u origin feat/<build date>-p6-breakpoint-method`, `gh pr create` (rule 3), read CI once (rule 15): `load-knee-selftest`
@@ -1043,7 +1048,7 @@ file on main and collide with Phase 3 Tasks 4 and 5; that file is not edited her
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] `npm run check` exit 0 with **B1 + 68** unit tests; the new tests cover the stop rule, the report, the first-saturated rule and the per-intent audit from fixtures.
+- [ ] `npm run check` exit 0 with **B1 + 69** unit tests; the new tests cover the stop rule, the report, the first-saturated rule and the per-intent audit from fixtures.
 - [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM, `knee-report-knee.md` says "between step 1 (140/s) and step 2 (220/s)"
       (values from the plan constants), first saturated `app_cpu`; `undersized` and `norule` are INVALID with their codes.
 - [ ] The job `load-knee-selftest` is green on the PR and once on `main` after the merge; the artefact holds the reports and the chart.
