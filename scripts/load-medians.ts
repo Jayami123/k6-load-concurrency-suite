@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   pickMetric,
   runIdOf,
+  selectPublishable,
   summarizeMedian,
   type LoadRunRecord,
   type MedianMetric,
@@ -34,12 +35,9 @@ const runs: LoadRunRecord[] = folders.map((folder) => ({
   meta: validateRunMeta(JSON.parse(readFileSync(path.join(folder, "run-meta.json"), "utf8"))),
 }));
 const s = summarizeMedian(runs, (r) => pickMetric(metric, r));
-const runIds = runs
-  .filter(
-    (r) =>
-      !s.excluded.some((e) => e.runId === (r.verdict.runId ?? r.meta.runId)) &&
-      pickMetric(metric, r) !== undefined,
-  )
+// The runs that entered the median, taken by record, so two folders with one run id are not confused.
+const runIds = selectPublishable(runs)
+  .used.filter((r) => pickMetric(metric, r) !== undefined)
   .map((r) => runIdOf(r.meta))
   .filter((id): id is string => id !== undefined)
   .sort((a, b) => Number(a) - Number(b));
