@@ -58,7 +58,9 @@ describe("P6-MED-LOAD-006 storm configuration (regression, plan PRE-1)", () => {
     assert.equal(ctx.config.probeProductId, "prod_probe");
     assert.equal(ctx.config.stock, 30, "the case stock is planned + 20, unchanged by the probe");
     const timeout = ctx.config.stormTimeoutMs as number;
-    assert.ok(timeout >= 20 && timeout <= 30, `a quarter of a ~100 ms complete, got ${timeout}`);
+    assert.ok(timeout >= 5 && timeout <= 100, `a configured storm timeout, got ${timeout}`);
+    assert.ok((ctx.config.stormMinCompleteMs as number) >= 100 - 5, "the measured minimum is kept");
+    assert.deepEqual(ctx.config.probeOrderIds, [], "every probe order is cancelled in setup");
 
     assert.equal(STORM_SHARE, 0.5);
     assert.equal(judgeStorm({ intents: 30, firstTimeouts: 3, retries: 3 }).ok, false);

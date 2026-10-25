@@ -55,12 +55,12 @@ function orderIdOf(body: string): string | undefined {
 }
 
 /**
- * The storm timeout of P6-MED-LOAD-006 (plan PRE-1, option 1): completes `carts` throwaway carts one at a time on a probe
- * variant of their own and returns the timeout for the fastest complete. The probe orders get an email outside the case
+ * The storm probe of P6-MED-LOAD-006 (plan PRE-1, option 1): completes `carts` throwaway carts one at a time on a probe
+ * variant of their own and returns the fastest complete in ms; the setup turns it into the storm timeout. The probe orders get an email outside the case
  * prefix and are cancelled and archived here, so the case variant and the retry audit never count them; the probe product
  * is deleted by the cleanup.
  */
-async function measureStormTimeout(
+async function measureStormMinComplete(
   ctx: LoadContext,
   deps: MedusaDeps,
   token: string,
@@ -82,6 +82,9 @@ async function measureStormTimeout(
   const prepare = deps.prepareCart ?? prepareReadyCart;
   const complete = deps.complete ?? completeCart;
   const times: number[] = [];
+  // Order ids not yet cancelled: a failed cancel leaves its id here, and the cleanup sweeps it by id.
+  const pending: string[] = [];
+  ctx.config.probeOrderIds = pending;
   for (let i = 0; i < carts; i++) {
     const cart = await prepare({
       publishableKey: catalog.publishableKey,
@@ -96,9 +99,11 @@ async function measureStormTimeout(
     times.push(performance.now() - started);
     const orderId = res.status === 200 ? orderIdOf(res.body) : undefined;
     if (!orderId) throw new Error(`TEST BUG: storm probe complete HTTP ${res.status}`);
+    pending.push(orderId);
     await deps.cancelAndArchive(token, orderId);
+    pending.splice(pending.indexOf(orderId), 1);
   }
-  return stormTimeoutFor(Math.min(...times));
+  return Math.min(...times);
 }
 
 /**
@@ -154,7 +159,7 @@ export async function medusaSetupWith(
       stock: s,
     };
     if (stormProbeCarts !== undefined) {
-      ctx.config.stormTimeoutMs = await measureStormTimeout(
+      const minCompleteMs = await measureStormMinComplete(
         ctx,
         deps,
         token,
@@ -162,6 +167,8 @@ export async function medusaSetupWith(
         dataPrefix,
         stormProbeCarts,
       );
+      ctx.config.stormMinCompleteMs = minCompleteMs;
+      ctx.config.stormTimeoutMs = stormTimeoutFor(minCompleteMs);
     }
     return { ok: true, reasons: [] };
   } catch (err) {
@@ -201,6 +208,14 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
       await deps.deleteCustomersByPrefix(token, dataPrefix);
     } catch (err) {
       reasons.push(`TEST BUG: cleanup customers failed: ${message(err)}`);
+    }
+    const probeOrderIds = (ctx.config.probeOrderIds as string[] | undefined) ?? [];
+    for (const orderId of probeOrderIds) {
+      try {
+        await deps.cancelAndArchive(token, orderId);
+      } catch (err) {
+        reasons.push(`TEST BUG: cleanup probe order ${orderId} failed: ${message(err)}`);
+      }
     }
     const probeProductId = ctx.config.probeProductId;
     if (typeof probeProductId === "string") {
