@@ -680,9 +680,18 @@ npm run load:validity-selftest              # P6-X-LOAD-004, about 1 min
 npm run load:telemetry-selftest             # P6-X-LOAD-002, about 1.5 min
 npm run load:overhead-selftest              # P6-X-LOAD-006, about 3 min
 npm run load:medusa-conservation -- --profile pr   # P6-MED-LOAD-002, inventory conservation (stock runs out), about 1.5 min, needs the Medusa stack up
+npm run load:documenso-pipeline -- --profile pr   # P6-DOC-LOAD-002, pipeline lag: every stage once, within 30 s, needs the Documenso stack up
+npm run load:documenso-webhook-retry -- --profile pr   # P6-DOC-LOAD-008, the receiver answers 500 once per event; Documenso must retry
 node scripts/load/run-load.ts --case P6-X-LOAD-001 --profile full --out results/load
 node src/load/stub-server.ts 18080 25 1500 10000   # a stub by hand: port, serviceMs, stallMs, periodMs
 ```
+
+**How the Documenso pipeline check matches emails (P6-DOC-LOAD-002).** Each completed document must produce one completion email per
+recipient. The signing request carries the header `X-Documenso-Envelope-Id`, but the completion email has no envelope header. Its link
+is `/sign/<token>/complete`, and the token is the recipient's own (`Recipient.token`). The stage reads each recipient mailbox in
+Inbucket, takes the token from the completion link, and joins it through `Recipient.token` to the envelope. Only messages whose token
+belongs to a run recipient count. A missing or duplicated completion email is a PRODUCT BUG. The evidence of the join is in
+`docs/handoff/2026-10-24-documenso-email-fields.md`. Tokens are used in memory only and never written.
 
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).
