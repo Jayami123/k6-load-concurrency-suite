@@ -105,8 +105,8 @@ budget, §9).
 No refusal and no 5xx occurred (stock was ample): `p6_nonconflict_error` would have been 0; the Medusa log held 6 lines matching
 `error` and 0 lines with a 5xx status. The classifier of Task 1 still treats an inventory 400 (`not_allowed`, "Not enough stock" /
 "insufficient inventory") as a conflict and anything else as an error. A ghost `Updating Status from … is not allowed` 400 (the F-M2
-signature: the client saw a failure, an order exists) is an error here, and the per-intent audit (Task 1 §6.8) counts it under `F-M2` by intent: one occurrence per `fail` intent that
-has exactly one order.
+signature: the client saw a failure, an order exists) is an error here; the iteration's outcome line carries `ghost: true` (Task 1 §6.8), and the per-intent audit counts it under `F-M2` by intent: one occurrence per `fail` intent whose line has `ghost: true` and that
+has exactly one order. Any other `fail` intent with an order is `PRODUCT BUG (SUSPECTED)`.
 
 ### 3.5 What the probe could not confirm ("confirm in the first CI dispatch" or at build time)
 
@@ -265,7 +265,7 @@ into `ctx.config.smokeP95Ms`; an unreadable or invalid file is `ENV: smoke p95 r
 dispatch inputs through `kneePlanFromInputs` with the defaults `{ startRate: 0.5, stepRate: 0.5, holdSec: 30, rampSec: 2, maxSteps: 8 }` on `full` and
 `{ 0.5, 0.5, 10, 2, 3 }` on `pr`. `reconcileStage` is the Medusa audit in per-intent mode (§6.4b, Task 1 §6.8): `orders-le-stock`, reservations consistent
 (`RESERVATION_QTY_SQL` / `INVENTORY_LEVEL_SQL` through `readOversellSnapshot`), `available >= 0`, one payment per order, balances stay as today; `no-ghost-orders` is replaced by the five
-per-intent rules with `failWithRowKnownBugId: "F-M2"`. `package.json`: `"load:medusa-knee": "node scripts/load/run-load.ts --case P6-MED-LOAD-004"`; `CASES` gets the entry.
+per-intent rules with `failWithRowKnownBugId: "F-M2"` (applied only to `fail` intents whose line has `ghost: true`). `package.json`: `"load:medusa-knee": "node scripts/load/run-load.ts --case P6-MED-LOAD-004"`; `CASES` gets the entry.
 
 ### 6.4b Rows by intent (`src/load/knee/med-intents.ts`, NEW)
 
@@ -280,8 +280,8 @@ export function medRowsByIntent(
 ): { rowsByIntent: Map<number, number>; ghostRows: number };
 ```
 
-How `F-M2` reads by intent: a `fail` intent (the client saw a 400 or another failure) with exactly **one** order is one occurrence of the known bug `F-M2` (counted under its id, not a
-violation, as the existing audit does). More than one order for one intent (a duplicate) and an order that belongs to no started intent (a ghost write) are `PRODUCT BUG (SUSPECTED)` and
+How `F-M2` reads by intent: a `fail` intent whose line carries `ghost: true` (the F-M2 400) with exactly **one** order is one occurrence of the known bug `F-M2` (counted under its id, not a
+violation, as the existing audit does); any other `fail` intent with an order (a 5xx, another 4xx) is `PRODUCT BUG (SUSPECTED)`. More than one order for one intent (a duplicate) and an order that belongs to no started intent (a ghost write) are `PRODUCT BUG (SUSPECTED)` and
 are never counted under `F-M2`.
 
 ### 6.5 The p95 reference
@@ -514,13 +514,13 @@ pull requests. Every action is pinned by SHA exactly as in `perf.yml`. The knee 
 
 (1) The **post-load audit** (Phase 3 Task 6, per intent after a stop: Task 1 §6.8): orders <= stock S, reservation rows consistent with live orders and
 `inventory_level.reserved_quantity` (`readOversellSnapshot`), `available >= 0`, one payment per order, money balances; and by intent: every order maps to a started intent, no intent has two
-orders, an `ok` intent has exactly one, a `fail` intent has none or is counted under `F-M2`, only indeterminate intents 0 or 1 (at most `interrupted` of them). (2) The **leak check** after the
+orders, an `ok` intent has exactly one, a `fail` intent has none, or has one order and `ghost: true` and is counted under `F-M2`, only indeterminate intents 0 or 1 (at most `interrupted` of them). (2) The **leak check** after the
 cleanup sweep (`leakCheck`). (3) The **knee contract**: a KNEE report with a range between two steps and the D2 stop reason, or NO_KNEE/INVALID with its reason. (4) **Supply**: `S >= planned` is
 asserted before load; a 400 `not_allowed` stock refusal is a TEST BUG (S too small) and is counted as a conflict, not an error.
 
 **PRODUCT BUG vs TEST BUG.** Oversell (`orders > S`), an order without payment, a reservation that disagrees with live orders, a 5xx before the rule trips, a duplicate order for one intent, a ghost
 order (no started intent) or an `ok` intent without an order would be `PRODUCT BUG (SUSPECTED)` with the run link, labelled only by the owner after repeated full-count runs (rule 13). A `fail`
-intent with one order is the known `F-M2`, counted by intent. Stock too small, a plan that ends without a stop, a stale config, or more indeterminate intents than `interrupted` are TEST BUG or
+intent with `ghost: true` and one order is the known `F-M2`, counted by intent; any other `fail` intent with an order is a suspected product bug. Stock too small, a plan that ends without a stop, a stale config, or more indeterminate intents than `interrupted` are TEST BUG or
 INVALID. **No `PRODUCT BUG (SUSPECTED)` was found by this probe** (0 5xx, orders = completed iterations, reservations released on cleanup). No expected-failure marker, no skip.
 
 ## 8. Data isolation, cleanup, leak check
