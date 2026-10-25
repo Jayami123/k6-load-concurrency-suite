@@ -16,7 +16,7 @@ export const SYSTEM_TAGS = [
 ];
 
 /**
- * @param {{ rate: number, durationSec: number, maxLatencyMs?: number, exec?: string, startTimeSec?: number, tags?: Record<string, string>, preAllocated?: number, maxVus?: number }} o
+ * @param {{ rate: number, durationSec: number, maxLatencyMs?: number, exec?: string, startTimeSec?: number, tags?: Record<string, string>, preAllocated?: number, maxVus?: number, timeUnitSec?: number }} o
  * @returns {Record<string, unknown>}
  */
 export function openModelScenario({
@@ -28,12 +28,14 @@ export function openModelScenario({
   tags,
   preAllocated,
   maxVus,
+  timeUnitSec = 1,
 }) {
+  // k6 takes whole numbers per time unit: a fractional rate (0.5 per second) is written over a longer unit (5 per 10 s).
   const pre = preAllocated ?? preAllocatedVUs({ rate, maxLatencyMs: maxLatencyMs ?? 1000 });
   return {
     executor: "constant-arrival-rate",
-    rate,
-    timeUnit: "1s",
+    rate: Math.round(rate * timeUnitSec),
+    timeUnit: `${timeUnitSec}s`,
     duration: `${durationSec}s`,
     preAllocatedVUs: pre,
     maxVUs: maxVus ?? maxVUs(pre),
