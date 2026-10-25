@@ -13,7 +13,13 @@ function run(
   caseId: SmokeCaseId,
   runId: string,
   p95Ms: number,
-  over: { outcome?: string; validity?: string; event?: string; profile?: string } = {},
+  over: {
+    outcome?: string;
+    validity?: string;
+    event?: string;
+    profile?: string;
+    imageVersion?: string;
+  } = {},
 ): LoadRunRecord {
   return {
     verdict: {
@@ -35,7 +41,7 @@ function run(
         ref: "main",
         runUrl: `https://github.com/o/r/actions/runs/${runId}`,
         runnerImage: "ubuntu24",
-        imageVersion: "20261023.334.3",
+        imageVersion: over.imageVersion ?? "20261023.334.3",
         nproc: 4,
       },
       software: { products: { cal: "x" } },
@@ -150,5 +156,33 @@ describe("smoke baseline", () => {
       () => buildSmokeBaseline(input({ "P6-CAL-LOAD-001": dup })),
       /duplicate GitHub Actions run id\(s\): 1001/,
     );
+  });
+
+  it("mixed runner environments are recorded per run id and noted", () => {
+    const runs = [
+      run("P6-CAL-LOAD-001", "1001", 100, { imageVersion: "A" }),
+      run("P6-CAL-LOAD-001", "1002", 200),
+      run("P6-CAL-LOAD-001", "1003", 300),
+    ];
+    const c = buildSmokeBaseline(input({ "P6-CAL-LOAD-001": runs })).cases["P6-CAL-LOAD-001"];
+    assert.equal(c.environment, "mixed");
+    assert.deepEqual(c.environments, {
+      "1001": "ubuntu24 A, 4 vCPU",
+      "1002": "ubuntu24 20261023.334.3, 4 vCPU",
+      "1003": "ubuntu24 20261023.334.3, 4 vCPU",
+    });
+    assert.equal(c.notes.length, 3);
+    assert.match(c.notes[0] ?? "", /^run 1001: ubuntu24 A, 4 vCPU$/);
+    assert.doesNotThrow(() =>
+      parseSmokeBaseline(
+        JSON.parse(JSON.stringify(buildSmokeBaseline(input({ "P6-CAL-LOAD-001": runs })))),
+      ),
+    );
+  });
+
+  it("parseSmokeBaseline rejects run ids that are not strictly ascending", () => {
+    const b = JSON.parse(JSON.stringify(buildSmokeBaseline(input()))) as SmokeBaseline;
+    b.cases["P6-CAL-LOAD-001"].runIds = ["1003", "1002", "1001"];
+    assert.throws(() => parseSmokeBaseline(b), /not strictly ascending/);
   });
 });

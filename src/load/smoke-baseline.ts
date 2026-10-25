@@ -15,7 +15,9 @@ export interface SmokeCaseBaseline {
   medianP95Ms: number;
   n: number;
   runIds: string[]; // GitHub Actions run ids, ascending, unique
-  environment: string; // "ubuntu24 20261023.334.3, 4 vCPU" (the first run's; runs on other images are listed in notes)
+  environment: string; // "ubuntu24 20261023.334.3, 4 vCPU" when every run agrees; "mixed" when they do not
+  environments: Record<string, string>; // run id -> runner environment, for every contributing run
+  notes: string[]; // empty when the environments agree; otherwise one line per run id with its environment
 }
 export interface SmokeBaseline {
   schema: 1;
@@ -49,9 +51,15 @@ export function selectSmokeRuns(
   return { used, excluded: [...excluded, ...notPublishable] };
 }
 
+/** The runner environment of one run, as the baseline states it. */
+function environmentOf(run: LoadRunRecord): string {
+  const e = run.meta.environment;
+  return `${e.runnerImage} ${e.imageVersion}, ${e.nproc} vCPU`;
+}
+
 /**
  * Per case: keep runs that selectSmokeRuns accepts and take the median of verdict.k6[0].p95Ms. Throws with the case id and the reasons
- * when fewer than three remain.
+ * when fewer than three remain, or when two runs share a run id.
  */
 export function buildSmokeBaseline(input: {
   release: string;
@@ -81,6 +89,10 @@ export function buildSmokeBaseline(input: {
     if (duplicates.length > 0)
       throw new Error(`${caseId}: duplicate GitHub Actions run id(s): ${duplicates.join(", ")}`);
     const first = scored[0]!.r;
+    const environments = Object.fromEntries(
+      scored.map((s) => [runIdOf(s.r.meta)!, environmentOf(s.r)]),
+    );
+    const distinct = [...new Set(Object.values(environments))];
     cases[caseId] = {
       product: SMOKE_CASES[caseId],
       profile: "full",
@@ -89,7 +101,12 @@ export function buildSmokeBaseline(input: {
       medianP95Ms: medianOf(scored.map((s) => s.p95)),
       n: ids.length,
       runIds: [...new Set(ids)].sort((a, b) => Number(a) - Number(b)),
-      environment: `${first.meta.environment.runnerImage} ${first.meta.environment.imageVersion}, ${first.meta.environment.nproc} vCPU`,
+      environment: distinct.length === 1 ? distinct[0]! : "mixed",
+      environments,
+      notes:
+        distinct.length === 1
+          ? []
+          : Object.keys(environments).map((id) => `run ${id}: ${environments[id]}`),
     };
   }
   return {
@@ -101,7 +118,10 @@ export function buildSmokeBaseline(input: {
   };
 }
 
-/** Validates a parsed file: schema 1, three known cases, n = runIds.length and ≥ 3, unique digit-only run ids, medianP95Ms > 0. */
+/**
+ * Validates a parsed file: schema 1, three known cases, n = runIds.length and ≥ 3, unique digit-only run ids in strictly ascending
+ * order, medianP95Ms a finite number > 0, and one environment per run id.
+ */
 export function parseSmokeBaseline(value: unknown): SmokeBaseline {
   const b = value as SmokeBaseline;
   if (!b || b.schema !== 1) throw new Error("smoke baseline: schema must be 1");
@@ -114,8 +134,24 @@ export function parseSmokeBaseline(value: unknown): SmokeBaseline {
       throw new Error(`smoke baseline: ${caseId} has n ${c.n} for ${c.runIds.length} run ids`);
     if (new Set(c.runIds).size !== c.runIds.length || !c.runIds.every((id) => /^\d+$/.test(id)))
       throw new Error(`smoke baseline: ${caseId} has duplicate or non-numeric run ids`);
+    for (let i = 1; i < c.runIds.length; i++)
+      if (Number(c.runIds[i]) <= Number(c.runIds[i - 1]))
+        throw new Error(`smoke baseline: ${caseId} run ids are not strictly ascending`);
     if (typeof c.medianP95Ms !== "number" || !Number.isFinite(c.medianP95Ms) || c.medianP95Ms <= 0)
       throw new Error(`smoke baseline: ${caseId} medianP95Ms must be a finite number > 0`);
+    const envs = c.environments ?? {};
+    if (
+      Object.keys(envs).length !== c.runIds.length ||
+      !c.runIds.every((id) => typeof envs[id] === "string")
+    )
+      throw new Error(`smoke baseline: ${caseId} needs one environment per run id`);
+    const distinct = [...new Set(Object.values(envs))];
+    if (distinct.length === 1 && c.environment !== distinct[0])
+      throw new Error(`smoke baseline: ${caseId} environment does not match its runs`);
+    if (distinct.length > 1 && (c.environment !== "mixed" || c.notes.length !== c.runIds.length))
+      throw new Error(
+        `smoke baseline: ${caseId} mixed environments need "mixed" and one note per run`,
+      );
   }
   return b;
 }
