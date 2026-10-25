@@ -25,6 +25,19 @@ describe("render chart", () => {
     assert.equal((html.match(/<section>/g) ?? []).length, 8);
   });
 
+  it("knee runs draw one labelled band per step behind every chart", () => {
+    const f = fixture(10);
+    const steps = [0, 1, 2].map((index) => ({
+      index,
+      rate: 1 + index,
+      fromMs: f.bins[index * 3]!.t,
+      toMs: f.bins[index * 3 + 2]!.t,
+    }));
+    const html = renderChartHtml({ ...f, steps });
+    assert.equal((html.match(/class="band"/g) ?? []).length, 3 * 7, "seven charts have data");
+    assert.match(html, /step 1 · 2\/s/);
+  });
+
   it("a panel without data says so", () => {
     const html = renderChartHtml({ ...fixture(5), samples: [] });
     assert.match(html, /no data for this panel/);

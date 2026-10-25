@@ -14,6 +14,8 @@ export interface ChartInput {
   bins: SecondBin[];
   samples: ChartSample[];
   gaps: Array<{ fromMs: number; toMs: number }>;
+  /** Knee runs (plan task 1 §6.6): one labelled band per held step, drawn behind every chart. */
+  steps?: Array<{ index: number; rate: number; fromMs: number; toMs: number }>;
 }
 
 const W = 720;
@@ -112,6 +114,17 @@ export function renderChartHtml(input: ChartInput): string {
       `${input.gaps.length} gap(s) longer than 2 intervals.`,
     ),
   ].join("\n");
+  const span = Math.max(end - base, 1);
+  const bandMarkup = (input.steps ?? [])
+    .map((st) => {
+      const x = Math.max(0, ((st.fromMs - base) / span) * W);
+      const w = Math.max(0, Math.min(W, ((st.toMs - base) / span) * W) - x);
+      return `<rect class="band" x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${H}" fill="#718096" fill-opacity="0.12"/><text class="band-label" x="${(x + 3).toFixed(1)}" y="12" font-size="10" fill="#4a5568">step ${st.index} · ${st.rate}/s</text>`;
+    })
+    .join("");
+  const banded = bandMarkup
+    ? panels.replace(/<svg viewBox="0 0 720 120"[^>]*>/g, (m) => m + bandMarkup)
+    : panels;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${input.title}</title>
@@ -126,7 +139,7 @@ svg { background: transparent; border-bottom: 1px solid var(--muted); } .absent,
 <body>
 <h1 style="font-size:18px">${input.title}</h1>
 <p class="note">functional load, not capacity. Samples are outside the generator; times are epoch ms of k6's own clock.</p>
-${panels}
+${banded}
 </body></html>
 `;
 }

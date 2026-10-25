@@ -1,5 +1,6 @@
-import { gunzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
+import { gunzipSync, createGunzip } from "node:zlib";
+import { createReadStream, readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 
 export interface SecondBin {
   t: number; // epoch ms of the second
@@ -42,4 +43,18 @@ export function aggregatePoints(lines: Iterable<string>): SecondBin[] {
 export function readPointsGz(path: string): SecondBin[] {
   const text = gunzipSync(readFileSync(path)).toString("utf8");
   return aggregatePoints(text.split("\n"));
+}
+
+/**
+ * Same bins as readPointsGz, read line by line (plan task 1 §6.6): memory stays at the per-second bins plus the two metric lines
+ * per request, however large the file is. Used for the knee runs, whose points files can be tens of MB.
+ */
+export async function readPointsGzStream(path: string): Promise<SecondBin[]> {
+  const lines = createInterface({
+    input: createReadStream(path).pipe(createGunzip()),
+    crlfDelay: Infinity,
+  });
+  const collected: string[] = []; // only the http_req lines are kept; aggregatePoints filters the rest
+  for await (const line of lines) if (line.includes('"http_req')) collected.push(line);
+  return aggregatePoints(collected);
 }

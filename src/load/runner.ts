@@ -67,10 +67,12 @@ export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: 
       reasons.push(`${name}: ${r.kind}${r.reasons.length > 0 ? ` - ${r.reasons.join("; ")}` : ""}`);
     }
   }
-  const expected = new Map(ctx.caseDef.runs(ctx).map((s) => [s.label, s.expectExit ?? 0]));
+  const specs = new Map(ctx.caseDef.runs(ctx).map((s) => [s.label, s]));
   for (const k of ctx.k6) {
-    const want = expected.get(k.label) ?? 0;
-    if (k.exitCode !== want) reasons.push(`k6 ${k.label} exited ${k.exitCode}, expected ${want}`);
+    const spec = specs.get(k.label);
+    const allowed = spec?.allowExits ?? [spec?.expectExit ?? 0];
+    if (!allowed.includes(k.exitCode))
+      reasons.push(`k6 ${k.label} exited ${k.exitCode}, expected ${allowed.join(" or ")}`);
   }
   if (reasons.length > 0) return { outcome: "FAIL", reasons };
   if (ctx.invalid.length > 0) return { outcome: "INVALID", reasons: [...ctx.invalid] };

@@ -13,7 +13,8 @@ import {
 import { request } from "../lib/http.js";
 import { buildKneePlan } from "../lib/pure/knee.js";
 
-const cfg = {
+// The run's plan comes in the `knee` block of its config (cases.ts); the flat keys below are the standalone defaults.
+const flat = /** @type {any} */ ({
   port: 18080,
   startRate: 60,
   stepRate: 80,
@@ -25,21 +26,25 @@ const cfg = {
   max: 80,
   delayAbortEvalSec: 4,
   ...loadLoadConfig([]),
+});
+const knee = flat.knee ?? {
+  startRate: flat.startRate,
+  stepRate: flat.stepRate,
+  holdSec: flat.holdSec,
+  rampSec: flat.rampSec,
+  maxSteps: flat.maxSteps,
+  smokeP95Ms: flat.smokeP95Ms,
+  maxVUs: flat.max,
+  port: flat.port,
 };
-const knee = {
-  startRate: cfg.startRate,
-  stepRate: cfg.stepRate,
-  holdSec: cfg.holdSec,
-  rampSec: cfg.rampSec,
-  maxSteps: cfg.maxSteps,
-};
+const port = knee.port ?? flat.port;
 const plan = buildKneePlan(knee);
 export const options = kneeOptions({
   knee,
-  smokeP95Ms: cfg.smokeP95Ms,
-  maxVUs: cfg.max,
+  smokeP95Ms: knee.smokeP95Ms,
+  maxVUs: knee.maxVUs,
   iterationMs: 5,
-  delayAbortEvalSec: cfg.delayAbortEvalSec,
+  delayAbortEvalSec: flat.delayAbortEvalSec,
   tags: { case: "P6-X-LOAD-021" },
 });
 export const { setup, teardown } = kneeHooks(__ENV.MARKER_URL);
@@ -47,7 +52,7 @@ observeKneeResponses("stub");
 
 export default function () {
   const intent = beginKneeIteration(plan);
-  const res = request("GET", `http://127.0.0.1:${cfg.port}/work`, "GET /work");
+  const res = request("GET", `http://127.0.0.1:${port}/work`, "GET /work");
   check(res, { "status 200": (r) => r.status === 200 });
   endKneeIteration(intent, res.status === 200); // the stub has no database: "committed" = the answer was 200
 }

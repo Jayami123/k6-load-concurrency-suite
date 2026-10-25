@@ -49,6 +49,8 @@ export interface K6RunSpec {
   knee?: KneePlanSpec & {
     smokeP95Ms: number;
     maxVUs: number;
+    /** The stub port the run's requests go to (the self-test only). */
+    port?: number;
     expect?: { lowerRate: number; upperRate: number; firstSaturated?: string };
   };
 }

@@ -48,7 +48,6 @@ export function kneeOptions(cfg) {
         preAllocatedVUs: pre,
         maxVUs: cfg.maxVUs,
         stages: plan.stages,
-        exec: "journey",
       },
     },
     thresholds: stopRuleThresholds(plan, {

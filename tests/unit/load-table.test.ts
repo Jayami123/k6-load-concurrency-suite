@@ -25,4 +25,40 @@ describe("LOAD table", () => {
     assert.doesNotMatch(text, /999/);
     assert.match(text, /functional load, not capacity/);
   });
+
+  it("a knee run gets a knee block with its range and first saturated resource", () => {
+    const text = formatLoadTable([
+      {
+        path: "results/load/P6-X-LOAD-021/r/verdict.json",
+        verdict: {
+          caseId: "P6-X-LOAD-021",
+          profile: "pr",
+          outcome: "PASS",
+          validity: { verdict: "VALID", reasons: [] },
+          k6: [{ requests: 900, dropped: 0, vusMax: 40 }],
+          stages: {
+            reconcile: {
+              data: {
+                knee: [
+                  {
+                    caseId: "P6-X-LOAD-021",
+                    verdict: "KNEE",
+                    lowerRate: 140,
+                    upperRate: 220,
+                    firstSaturated: "app_cpu",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]);
+    assert.match(text, /## Knee runs/);
+    assert.match(
+      text,
+      /\| P6-X-LOAD-021 \| KNEE \| between 140 and 220 iterations\/s \| app_cpu \|/,
+    );
+    assert.match(text, /environment-bound, not capacity/);
+  });
 });
