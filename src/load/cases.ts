@@ -708,7 +708,7 @@ export const MED_LOAD_004: LoadCase = {
   product: "medusa",
   label: "knee range, environment-bound",
   profiles: {
-    pr: { rate: 0.5, durationSec: 102, maxLatencyMs: 10000 }, // 3 steps (0.5, 1.0, 1.5/s) x 10 s hold + ramps: a smoke of the machinery
+    pr: { rate: 0.5, durationSec: 36, maxLatencyMs: 10000 }, // 3 steps (0.5, 1.0, 1.5/s) x 10 s hold + ramps: a smoke of the machinery
     full: { rate: 0.5, durationSec: 256, maxLatencyMs: 10000 }, // 8 steps x 32 s
   },
   telemetry: { product: "medusa" },

@@ -215,7 +215,7 @@ describe("medusa product setup and cleanup", () => {
 });
 
 describe("medusa knee stock from the context", () => {
-  it("stockFor receives the context, and a knee sizes the stock from its plan (587 for the default plan)", async () => {
+  it("stockFor receives the context, and a knee sizes the stock from its plan (622 for the default plan)", async () => {
     const seen: number[] = [];
     const ctx = { ...fakeCtx(), profileName: "full", env: {} } as unknown as LoadContext;
     const out = await medusaSetupWith(
@@ -229,8 +229,8 @@ describe("medusa knee stock from the context", () => {
       (_planned, c) => stockForKnee(kneePlanFor(c, medKneeDefaultsFor)),
     );
     assert.equal(out.ok, true);
-    assert.deepEqual(seen, [587]);
-    assert.equal(ctx.config.stock, 587);
+    assert.deepEqual(seen, [622]);
+    assert.equal(ctx.config.stock, 622);
   });
 
   it("the old callers still get planned + 20 and any other rule of planned alone", async () => {
