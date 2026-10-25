@@ -660,28 +660,28 @@ notes. The `p6-phase3` release is dispatched after this PR merges, so the links 
 
 ### Cal
 
-| Case              | Runs (median of) | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
-| ----------------- | ---------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `P6-CAL-LOAD-001` | 3 VALID dispatch | 124               | 0                  | 77.12                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-CAL-LOAD-007` | 3 VALID dispatch | 152               | 0                  | 66.97                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-CAL-LOAD-009` | 3 VALID dispatch | 157               | 0                  | 120.30               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-CAL-LOAD-001` | 3 selected VALID attempts | 124               | 0                  | 77.12                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-CAL-LOAD-007` | 3 selected VALID attempts | 152               | 0                  | 66.97                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-CAL-LOAD-009` | 3 selected VALID attempts | 157               | 0                  | 120.30               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
 
 ### Medusa
 
-| Case              | Runs (median of) | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
-| ----------------- | ---------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `P6-MED-LOAD-001` | 3 VALID dispatch | 272               | 0                  | 171.60               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-MED-LOAD-002` | 3 VALID dispatch | 185               | 0                  | 165.09               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-MED-LOAD-006` | 3 VALID dispatch | 343               | 0                  | 217.80               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-MED-LOAD-001` | 3 selected VALID attempts | 272               | 0                  | 171.60               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-MED-LOAD-002` | 3 selected VALID attempts | 185               | 0                  | 165.09               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-MED-LOAD-006` | 3 selected VALID attempts | 343               | 0                  | 217.80               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
 
 ### Documenso
 
-| Case              | Runs (median of) | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
-| ----------------- | ---------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `P6-DOC-LOAD-001` | 3 VALID dispatch | 281               | 0                  | 233.13               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-DOC-LOAD-002` | 3 VALID dispatch | 281               | 0                  | 230.11               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-DOC-LOAD-007` | 3 VALID dispatch | 467               | 0                  | 88.25                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
-| `P6-DOC-LOAD-008` | 3 VALID dispatch | 281               | 0                  | 232.38               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| Case              | Runs (median of)          | Requests (median) | Dropped iterations | http p95 ms (median) | Label                         | run-meta                                                                                                                   |
+| ----------------- | ------------------------- | ----------------- | ------------------ | -------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `P6-DOC-LOAD-001` | 3 selected VALID attempts | 281               | 0                  | 233.13               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-002` | 3 selected VALID attempts | 281               | 0                  | 230.11               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-007` | 3 selected VALID attempts | 467               | 0                  | 88.25                | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
+| `P6-DOC-LOAD-008` | 3 selected VALID attempts | 281               | 0                  | 232.38               | functional load, not capacity | [run-meta](https://github.com/Jayami123/k6-load-concurrency-suite/releases/download/p6-phase3/p6-40177412186-evidence.zip) |
 
 Footnotes to the Medusa rows: in run 40178773022, `P6-MED-LOAD-001`, `P6-MED-LOAD-002` and `P6-MED-LOAD-006` each ran twice.
 The first attempts of `-001` and `-002` PASSED and are used. The first attempt of `-006` FAILED with a TEST BUG (the retry
