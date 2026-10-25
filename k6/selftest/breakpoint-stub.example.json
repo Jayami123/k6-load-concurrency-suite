@@ -1,0 +1,12 @@
+{
+  "port": 18080,
+  "startRate": 60,
+  "stepRate": 80,
+  "holdSec": 10,
+  "rampSec": 2,
+  "maxSteps": 5,
+  "smokeP95Ms": 6,
+  "pre": 40,
+  "max": 80,
+  "delayAbortEvalSec": 4
+}

@@ -15,7 +15,7 @@ const signedOrAlready = (/** @type {{ status: number, body: unknown }} */ r) =>
 /**
  * @param {{ baseUrl: string, prefix: string }} cfg
  * @param {string | ArrayBuffer} pdf the fixture, opened once per VU by the case script
- * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }> }} [opts]
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): each recipient's completeDocumentWithToken is sent through the plan.
  */
 export function runDocSign(cfg, pdf, opts = {}) {
@@ -182,7 +182,10 @@ export function runDocSign(cfg, pdf, opts = {}) {
               "POST completeDocumentWithToken",
             ).status === 200 && ok;
         });
-        if (ok) completedCounter.add(1);
+        if (ok) {
+          completedCounter.add(1);
+          opts.onCommit?.();
+        }
         if (ok && opts.retryPlan) retryCounters.intentsOk.add(1);
         return { ok };
       },
