@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "metric": "knee range lower bound",
+  "unit": "iterations per second",
+  "release": "p6-phase4a",
+  "products": {
+    "cal": {
+      "caseId": "P6-CAL-LOAD-005",
+      "profile": "full",
+      "lowerBoundRate": 8,
+      "medianLowerRate": 8,
+      "upperBoundRate": 14,
+      "n": 3,
+      "runIds": ["40234172872", "40235802167", "40237156783"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40234172872": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40235802167": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40237156783": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
+    },
+    "medusa": {
+      "caseId": "P6-MED-LOAD-004",
+      "profile": "full",
+      "lowerBoundRate": 1.5,
+      "medianLowerRate": 1.5,
+      "upperBoundRate": 2.5,
+      "n": 3,
+      "runIds": ["40234172872", "40235802167", "40237156783"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40234172872": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40235802167": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40237156783": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
+    }
+  }
+}
