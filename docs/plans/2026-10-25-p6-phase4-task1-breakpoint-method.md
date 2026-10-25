@@ -802,7 +802,7 @@ ones**. The summary export has **no** `iterations_interrupted` metric (its metri
 iterations`), so `interrupted = p6_step_started total − iterations`.
 
 **Client side.** Each knee script runs its journey with `opts.onCommit`, a new optional member called at the exact lines where the journey adds to its commit counter (`acceptedCounter`,
-`cal-book.js:83` and `:90`; `ordersCounter`, `med-checkout.js:195` and `:227`; `completedCounter`, `doc-sign.js:185`); no Phase 3 case passes it. After the journey the script calls
+`cal-book.js:83` and `:90`; `ordersCounter`, `med-checkout.js:195`, `:209` (`end(ordersCounter)`) and `:227`; `completedCounter`, `doc-sign.js:185`); no Phase 3 case passes it. After the journey the script calls
 `endKneeIteration(intent, committed)`, which writes one line with `console.log`:
 
 ```text
@@ -973,7 +973,7 @@ stop step's drops are ignored; markdown table, including the `no knee up to step
 intent line and a line with an intent at or above `started` are reported as TEST BUG findings; a `fail` line with `net: true` is classified indeterminate, a plain `fail` is not)**;
 **`reconcile-intents` (6, §6.8: a duplicate that the old count slack would have hidden is a finding; a ghost row (an intent never started, or a label that maps to no intent) is a finding; an
 indeterminate intent with 0 rows or 1 row passes; an `ok` intent with 0 rows is a finding; a `fail` intent with 1 row is a finding; more indeterminate intents than `interrupted` is a TEST BUG)**;
-**`knee-journey-hooks` (1: in each of the three journey files every line that adds to the commit counter is followed by an `opts.onCommit` call inside the same block, and the Phase 3 cases
+**`knee-journey-hooks` (1: in each of the three journey files every line that adds to the commit counter (`.add(1)` on it, or `end(ordersCounter)`) is followed by an `opts.onCommit` call inside the same block, and the Phase 3 cases
 never pass `onCommit`)**; `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
 writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value is not kept); `load-cases-knee` (2: the case and its three runs;
 `package.json` has the script); `k6-points-stream` (2: equals the sync reader on a fixture; handles a file larger than one chunk); `render-chart` (+1: step bands); `load-table` (+1: knee block).
