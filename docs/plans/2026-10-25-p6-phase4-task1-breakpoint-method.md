@@ -1101,7 +1101,7 @@ file on main and collide with Phase 3 Tasks 4 and 5; that file is not edited her
 - [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM and on the CI runner. The assertions are machine-independent (owner
       decision, PR #73): a knee is found on the p95 stop rule (not error or `no_knee`); the stop step is the first step over the p95 limit
       with the step before it under; the range is last clean rate to stop rate, consistent with the step schedule; the first saturated
-      resource is `app_cpu`; the stop step has at least 2 post-trim telemetry samples; `undersized` shows `dropped_iterations`; `norule` shows
+      resource is `app_cpu`; `undersized` shows `dropped_iterations`; `norule` shows
       `no_knee`. The measured ranges are reference values only (section 9A), never assertions.
 - [ ] The job `load-knee-selftest` is green on the PR and once on `main` after the merge; the artefact holds the reports and the chart.
 - [ ] `k6 run k6/selftest/breakpoint-stub.js` works standalone (D6) with the example config; exit 99 and the threshold line.

@@ -94,6 +94,12 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
         code: r.code,
         detail: r.detail,
       }));
+      const stopWindow = stop.stopStep === null ? undefined : windows[stop.stopStep];
+      const stopPostTrimSamples = stopWindow
+        ? (telemetry.samples ?? []).filter(
+            (x) => x.t >= stopWindow.fromMs + 2000 && x.t <= stopWindow.toMs - 2000,
+          ).length
+        : undefined;
       const report = buildKneeReport({
         caseId: ctx.caseDef.id,
         runId: ctx.runId,
@@ -104,6 +110,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
         meta,
         conflicts: summaryCounter(summary, "p6_conflict_responses") ?? 0,
         generatorInvalid,
+        stopPostTrimSamples,
       });
 
       // Validity: a VALID run carries its reasons into ctx.invalid; an INVALID run must show its expected codes.
@@ -115,8 +122,9 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
           if (!codes.includes(code as never)) fail("TEST BUG", `${label} did not show ${code}`);
         }
       } else {
-        for (const f of report.invalid)
-          if (f.code !== "knee_below_start") ctx.invalid.push(`${label}: ${f.code}: ${f.detail}`);
+        // Only the knee's own reasons: the generator reasons are already in ctx.invalid from validityStage.
+        for (const f of kneeInvalidReasons(stats, stop))
+          ctx.invalid.push(`${label}: ${f.code}: ${f.detail}`);
       }
 
       // The self-test's expectation (plan §6.4, owner decision on PR #73): machine-independent assertions only. No fixed rate range.

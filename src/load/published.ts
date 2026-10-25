@@ -32,5 +32,6 @@ export function formatPublishedKnee(report: KneeReport, meta: RunMeta, metaLink:
   if (!check.ok) throw new Error(`not publishable: ${check.reasons.join("; ")}`);
   const env = meta.environment;
   const resource = report.firstSaturated?.resource ?? "none_observed";
-  return `${report.range.lowerRate} to ${report.range.upperRate} iterations/s (knee range, environment-bound; stop rule: ${report.stop.reasons.join(", ")}; first saturated: ${resource}; environment: ${env.runnerImage} ${env.imageVersion}, ${env.nproc} vCPU; run-meta: ${metaLink})`;
+  const limitation = report.limitation ? `; limitation: ${report.limitation}` : "";
+  return `${report.range.lowerRate} to ${report.range.upperRate} iterations/s (knee range, environment-bound; stop rule: ${report.stop.reasons.join(", ")}; first saturated: ${resource}${limitation}; environment: ${env.runnerImage} ${env.imageVersion}, ${env.nproc} vCPU; run-meta: ${metaLink})`;
 }

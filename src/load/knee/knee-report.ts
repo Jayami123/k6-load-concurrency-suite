@@ -24,6 +24,9 @@ export interface KneeReport {
     lowSampleStop?: boolean;
   };
   firstSaturated?: { resource: string; step: number | null };
+  /** The known limitation the report must state (plan §9A): the first saturated resource comes from steps before the stop, or the
+   *  stop step has no post-trim sample. Absent when neither holds. */
+  limitation?: string;
   stopRule: { smokeP95Ms: number; p95Factor: number; errorRate: number; minRequests: number };
   steps: StepStat[];
   conflicts: number;
@@ -80,6 +83,22 @@ export function kneeValidityInput(input: ValidityInput): ValidityInput {
   return { ...input, summary: { ...input.summary, dropped: 0, peakVus: 0 } };
 }
 
+/** The fast-stop disclosure of plan §9A, or undefined. */
+export function limitationOf(
+  saturatedStep: number | null,
+  stopStep: number | null,
+  stopPostTrimSamples: number | undefined,
+): string | undefined {
+  const parts: string[] = [];
+  if (stopStep !== null && saturatedStep !== null && saturatedStep < stopStep)
+    parts.push(
+      `the first saturated resource is taken from step ${saturatedStep}, before the stop at step ${stopStep}`,
+    );
+  if (stopStep !== null && stopPostTrimSamples === 0)
+    parts.push("the stop step has no telemetry sample after the 2 s edge trim (fast stop)");
+  return parts.length > 0 ? parts.join("; ") : undefined;
+}
+
 /** Builds the report. A stop at step 0 is a plan error (`knee_below_start`, a TEST BUG finding), not a range. */
 export function buildKneeReport(input: {
   caseId: string;
@@ -92,6 +111,8 @@ export function buildKneeReport(input: {
   conflicts: number;
   /** The generator-limited reasons of validityStage (k6 cpu, runner cpu and memory, telemetry, clock). Any one makes the run INVALID. */
   generatorInvalid?: Array<{ code: string; detail: string }>;
+  /** Post-trim telemetry samples inside the stop step (0 on a fast stop). */
+  stopPostTrimSamples?: number;
 }): KneeReport {
   const { stop, steps } = input;
   const invalid: Array<{ code: string; detail: string }> = [
@@ -141,6 +162,7 @@ export function buildKneeReport(input: {
             lowSampleStop: stop.lowSampleStop,
           },
     firstSaturated: { resource: input.saturated.resource, step: input.saturated.step },
+    limitation: limitationOf(input.saturated.step, stop.stopStep, input.stopPostTrimSamples),
     stopRule: {
       smokeP95Ms: input.rule.smokeP95Ms,
       p95Factor: input.rule.p95Factor,
@@ -164,6 +186,7 @@ export function buildKneeReport(input: {
 export function formatKneeTable(r: KneeReport): string {
   const lines: string[] = [];
   lines.push(`### Knee report ${r.caseId} (${r.runId}): ${r.verdict}`);
+  if (r.limitation) lines.push(`Limitation: ${r.limitation}.`);
   if (r.range) {
     const reasons = r.stop ? r.stop.reasons.join(", ") : "none";
     lines.push(
