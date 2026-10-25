@@ -46,5 +46,9 @@ export const options = standardOptions({
 });
 
 export function journey() {
+  // The link case needs one link per intent. Without them a run would book unlinked and pass as a plain storm: fail instead.
+  const links = /** @type {{ links?: unknown }} */ (cfg).links;
+  if (!Array.isArray(links))
+    throw new Error("TEST BUG: links are not set in the config (P6-CAL-LOAD-009 needs them)");
   runCalBook(cfg, { retryPlan: RETRY });
 }

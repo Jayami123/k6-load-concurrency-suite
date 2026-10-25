@@ -183,6 +183,8 @@ export function runMedCheckout(cfg, opts = {}) {
             "POST /store/carts/:id/complete",
             undefined,
             { headers: H, timeout: "30s" },
+            // an order is an answer with type "order"; a 200 with another type is not done
+            (r) => r.status === 200 && safeJson(r, "type") === "order",
           );
           // every 200 of this intent carries the same type and order id (an order created once, answered the same way)
           const first = out.answers[0];

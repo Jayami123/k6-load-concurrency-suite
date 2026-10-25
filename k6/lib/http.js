@@ -87,7 +87,12 @@ export function retried(
       sendStep(step, method, url, name, body, params).map((r) => {
         const done = isDone(r);
         if (done) answers.push(r);
-        const res = { status: done ? 200 : r.status, message: safeJson(r, "message") };
+        // a 2xx that is not done is classed other (300), so runAttempts does not stop on it as an ok answer
+        const twoxx = r.status >= 200 && r.status <= 299;
+        const res = {
+          status: done ? 200 : twoxx ? 300 : r.status,
+          message: safeJson(r, "message"),
+        };
         countAttempt(res, n);
         return res;
       }),
