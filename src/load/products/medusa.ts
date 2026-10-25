@@ -151,6 +151,7 @@ export async function medusaSetupWith(
       rate,
       durationSec,
       maxLatencyMs,
+      ...(ctx.profile.timeUnitSec !== undefined ? { timeUnitSec: ctx.profile.timeUnitSec } : {}),
       productId: stocked.productId,
       inventoryItemId: stocked.inventoryItemId,
       stock: s,

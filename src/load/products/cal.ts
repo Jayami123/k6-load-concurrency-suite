@@ -51,6 +51,8 @@ export interface CalSetupOptions {
   privateLinks?: boolean;
   /** Load case -005: the knee's slot supply, the plan fields and the smoke reference (plan task 2 §6.4). */
   knee?: boolean;
+  /** The steady case's slot supply: `count` free slots for the whole run, one per iteration (plan task 5 §6.3). */
+  slots?: { count: number };
 }
 
 const defaultLinks: CalLinkDeps = {
@@ -148,6 +150,24 @@ async function setupKneeSupply(
   Object.assign(ctx.config, plan, { windowDays: 28, smokeP95Ms });
 }
 
+/** The steady case's supply: `count` slots from the free slots of the supply window, the same reads as the knee's (plan task 2 §6.4). */
+async function setupSteadySupply(
+  ctx: LoadContext,
+  deps: CalDeps,
+  eventTypeId: number,
+  count: number,
+): Promise<void> {
+  const from = Math.floor(Date.now() / DAY_MS) * DAY_MS + 2 * DAY_MS;
+  const to = from + supplyWindowDays(count) * DAY_MS;
+  const offered = await (deps.freeSlots ?? getFreeSlots)(
+    new Date(from).toISOString(),
+    new Date(to).toISOString(),
+    eventTypeId,
+  );
+  ctx.config.slotStarts = pickSlotStarts(offered, count);
+  ctx.config.windowDays = 28;
+}
+
 /** Resolves the host and event type from the database and writes the case config. Never writes a secret. */
 export async function calSetupWith(
   ctx: LoadContext,
@@ -172,6 +192,7 @@ export async function calSetupWith(
       rate,
       durationSec,
       maxLatencyMs,
+      ...(ctx.profile.timeUnitSec !== undefined ? { timeUnitSec: ctx.profile.timeUnitSec } : {}),
     };
     ctx.config.audit = {
       product: "cal",
@@ -182,6 +203,9 @@ export async function calSetupWith(
     };
     if (opts.knee === true) {
       await setupKneeSupply(ctx, deps, eventTypeId);
+    }
+    if (opts.slots !== undefined) {
+      await setupSteadySupply(ctx, deps, eventTypeId, opts.slots.count);
     }
     if (opts.privateLinks === true) {
       await setupPrivateLinks(ctx, pool, deps.links ?? defaultLinks, {
