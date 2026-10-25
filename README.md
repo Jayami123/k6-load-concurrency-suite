@@ -784,6 +784,42 @@ redacted 400 (`P6-OBS-CAL-001`) and a 409 are counted, not failures. The retry a
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).
 
+## How to read a knee
+
+A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
+before each hold, and k6 stops the run as soon as a step trips the stop rule: the non-conflict error rate above 1 % or the step's
+p95 at or above 10 times the journey-smoke p95 (D2). The rates are iterations per second with one decimal.
+
+The verdict is one of three words:
+
+- **KNEE**: a stop step exists and nothing invalidated the run. The knee is **between step s and step s+1**, where s is the last clean
+  step, and the report prints both rates (for example "between 171 and 191 iterations/s").
+- **NO_KNEE**: the plan ended without a stop. The knee is above the last step; the report prints that step as a lower bound
+  ("no knee up to step N (rate R)"), and the run is INVALID for the knee (`no_knee`).
+- **INVALID**: a clean step fell short of its plan by more than max(2, 3 %) of the planned iterations (`dropped_iterations`), the
+  generator was the limit, or the run was not measured as planned. A stop at step 0 is a plan error (the start rate is too high), not a range.
+
+The **first saturated resource** names the limit that the telemetry shows first, by a fixed rule (`src/load/knee/first-saturated.ts`):
+the application process group's CPU (judged per step against the run's peak, and at least 0.9 cores), the host CPU, database waiting
+sessions and connections, database CPU, application file descriptors, or a probe that slows ten-fold. A resource that the telemetry
+cannot read is listed as absent and is never named. `none_observed` means no listed resource saturated; it is not a claim about the
+product.
+
+The stop rule is **not a gate**. It finds the range; it never passes or fails a product. A knee range is a property of the run's
+environment (`label: knee range, environment-bound`). The published form states the range, the stop rule that tripped, the first
+saturated resource, and the environment, with the run's `run-meta.json` link; it is only written for a KNEE on `main` in GitHub Actions.
+The words "not capacity" apply to every LOAD run, and a knee range is also not capacity.
+
+Commands (not in CI for the product knees yet):
+
+```bash
+npm run load:knee-selftest -- --profile pr   # P6-X-LOAD-021, stub only, about 3 min; checks the range and the first saturated resource
+```
+
+The self-test runs three k6 processes against two stubs (a 5 ms CPU-bound stub and a delay stub): the knee, an under-sized
+generator (INVALID with `dropped_iterations`) and a plan without a stop (INVALID with `no_knee`). Its expected range is the measured
+one in `src/load/cases.ts` (`expect`), with the reasoning in the Task 1 plan, section 9A.
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),
