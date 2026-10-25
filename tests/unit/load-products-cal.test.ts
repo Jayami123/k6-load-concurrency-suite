@@ -205,3 +205,34 @@ describe("cal private-link setup refuses saved links with an expiry", () => {
     assert.deepEqual(set, []);
   });
 });
+
+describe("cal cleanup restores the prior links even when the pool cannot open", () => {
+  it("openPool throws, the cleanup reports it, and the prior links are still restored", async () => {
+    const ctx = fakeCtx();
+    ctx.handles.calPriorLinks = [
+      { link: "prior-a", maxUsageCount: 3, usageCount: 1, expiresAt: null },
+    ];
+    ctx.secrets.CAL_HOST_COOKIE = "session=cookie-value-xyz";
+    ctx.config.baseUrl = "http://127.0.0.1:3000";
+    ctx.config.eventTypeId = 7;
+    const restored: PrivateLinkInput[][] = [];
+    const out = await calCleanupWith(ctx, {
+      openPool: () => {
+        throw new Error("pool refused");
+      },
+      cancel: async () => {},
+      links: {
+        password: () => "unused",
+        login: async () => "unused",
+        readLinks: async () => [],
+        setLinks: async (_base, _cookie, _event, links) => {
+          restored.push(links);
+        },
+      },
+    });
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.match(out.reasons[0] ?? "", /cal cleanup failed: pool refused/);
+    assert.deepEqual(restored, [[{ link: "prior-a", maxUsageCount: 3, usageCount: 1 }]]);
+  });
+});

@@ -160,8 +160,10 @@ export async function calSetupWith(
  */
 export async function calCleanupWith(ctx: LoadContext, deps: CalDeps): Promise<StageResult> {
   const reasons: string[] = [];
-  const pool = deps.openPool();
+  // The pool opens inside the try: a failure here must not skip the prior-link restore below.
+  let pool: pg.Pool | undefined;
   try {
+    pool = deps.openPool();
     const prefixLike = likeLiteralPrefix(caseDataPrefix(ctx.runPrefix, ctx.caseDef.id));
     const rows = await caseLiveBookings(pool, prefixLike);
     for (const row of rows) {
