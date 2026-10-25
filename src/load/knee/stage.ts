@@ -6,6 +6,7 @@ import { findHits } from "../../../scripts/evidence-token-scan.mjs";
 import { summaryCounter } from "../reconcile/index.ts";
 import type { LoadContext, RunMeta, Stage, StageResult } from "../types.ts";
 import { firstSaturated, type RuleSample, type Window } from "./first-saturated.ts";
+import { formatSealLag, type KneeSealLag } from "./lag-by-step.ts";
 import { buildKneeReport, formatKneeTable, kneeInvalidReasons } from "./knee-report.ts";
 import { stepStatsFromSummary } from "./step-stats.ts";
 import { evaluateStopRule, STOP_DEFAULTS, type StopRule } from "./stop-rule.ts";
@@ -30,6 +31,24 @@ export interface KneeSummary {
 }
 
 /** The knee stage. Writes knee-report-<label>.json and .md; a token-like value in them removes both and is a TEST BUG. */
+/** The hold windows of a knee run, in absolute epoch ms from `p6_knee_t0_ms` (empty when the origin is not in the summary). */
+export function kneeWindows(
+  summary: Record<string, unknown>,
+  plan: { maxSteps: number; rampSec: number; holdSec: number },
+): Window[] {
+  const t0 = Number(
+    (summary.metrics as Record<string, { value?: number }> | undefined)?.p6_knee_t0_ms?.value,
+  );
+  const windows: Window[] = [];
+  if (Number.isFinite(t0)) {
+    for (let index = 0; index < plan.maxSteps; index++) {
+      const from = index * (plan.rampSec + plan.holdSec) + plan.rampSec;
+      windows.push({ index, fromMs: t0 + from * 1000, toMs: t0 + (from + plan.holdSec) * 1000 });
+    }
+  }
+  return windows;
+}
+
 export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> => {
   const specs = ctx.caseDef.runs(ctx).filter((s) => s.knee);
   if (specs.length === 0) return { ok: true, reasons: [] };
@@ -61,20 +80,7 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
       if (run.exitCode === 0 && stop.stopStep !== null)
         fail("TEST BUG", `${label}: a stop step ${stop.stopStep} without a k6 stop (exit 0)`);
 
-      const t0 = Number(
-        (summary.metrics as Record<string, { value?: number }> | undefined)?.p6_knee_t0_ms?.value,
-      );
-      const windows: Window[] = [];
-      if (Number.isFinite(t0)) {
-        for (let index = 0; index < plan.maxSteps; index++) {
-          const from = index * (plan.rampSec + plan.holdSec) + plan.rampSec;
-          windows.push({
-            index,
-            fromMs: t0 + from * 1000,
-            toMs: t0 + (from + plan.holdSec) * 1000,
-          });
-        }
-      }
+      const windows: Window[] = kneeWindows(summary, plan);
       const telemetryPath = path.join(ctx.outDir, `telemetry-${label}.json`);
       const telemetry: TelemetryFile = existsSync(telemetryPath)
         ? (JSON.parse(readFileSync(telemetryPath, "utf8")) as TelemetryFile)
@@ -171,8 +177,13 @@ export const kneeStage: Stage = async (ctx: LoadContext): Promise<StageResult> =
         if (problems.length > 0) fail("TEST BUG", `${label}: ${problems.join("; ")}`);
       }
 
-      const json = `${JSON.stringify(report, null, 2)}\n`;
-      const md = `${formatKneeTable(report)}\n`;
+      // The seal lag per step (Documenso, plan task 4 §6.4): written by the pipeline stage when the case has one.
+      const lagFile = path.join(ctx.outDir, "pipeline-lag.json");
+      const sealLag = existsSync(lagFile)
+        ? (JSON.parse(readFileSync(lagFile, "utf8")).knee as KneeSealLag | undefined)
+        : undefined;
+      const json = `${JSON.stringify(sealLag ? { ...report, sealLag } : report, null, 2)}\n`;
+      const md = `${formatKneeTable(report)}${sealLag ? formatSealLag(sealLag, stop.stopStep) : ""}\n`;
       const jsonPath = path.join(ctx.outDir, `knee-report-${label}.json`);
       const mdPath = path.join(ctx.outDir, `knee-report-${label}.md`);
       if (findHits(json).length > 0 || findHits(md).length > 0) {

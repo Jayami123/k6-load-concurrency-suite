@@ -1,0 +1,14 @@
+{
+  "startRate": 1,
+  "stepRate": 1,
+  "holdSec": 30,
+  "rampSec": 2,
+  "maxSteps": 8,
+  "smokeP95Ms": 233.131137,
+  "pre": 80,
+  "max": 200,
+  "delayAbortEvalSec": 8,
+  "baseUrl": "http://127.0.0.1:3001",
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-doc-load-005",
+  "pdfPath": "/path/to/documenso/assets/example.pdf"
+}

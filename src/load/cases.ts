@@ -11,7 +11,7 @@ import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
-import { kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
+import { docKneeDefaultsFor, kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
 import { stockForKnee } from "./knee/med-stock.ts";
 import { readSmokeReference } from "./smoke-baseline.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
@@ -732,6 +732,56 @@ export const MED_LOAD_004: LoadCase = {
   },
 };
 
+/** The Documenso knee's setup: the p95 reference of P6-DOC-LOAD-001 first, then the product (plan task 4 §6.5). */
+const docKneeProductSetup = makeDocumensoSetup({ webhookMode: "ok" });
+const docKneeSetup: Stage = async (ctx) => {
+  let smokeP95Ms: number;
+  try {
+    smokeP95Ms = readSmokeReference("P6-DOC-LOAD-001");
+  } catch {
+    return { ok: false, kind: "ENV", reasons: ["ENV: smoke p95 reference unreadable"] };
+  }
+  const setup = await docKneeProductSetup(ctx);
+  if (setup.ok) ctx.config.smokeP95Ms = smokeP95Ms;
+  return setup;
+};
+
+/**
+ * P6-DOC-LOAD-005: the Documenso signing knee (plan task 4 §6.5). The knee's seal lag is judged on the completed documents, and the
+ * unfinished documents per intent. The stage order matters: the pipeline writes the lag table that the knee report carries.
+ */
+export const DOC_LOAD_005: LoadCase = {
+  id: "P6-DOC-LOAD-005",
+  title: "Documenso signing journey knee with seal lag per step",
+  product: "documenso",
+  label: "knee range, environment-bound",
+  profiles: {
+    // rate = start rate; durationSec = the plan's own schedule: pr 3 steps x (12 s hold + 2 s ramp), full 8 steps x 32 s
+    pr: { rate: 1, durationSec: 42, maxLatencyMs: 8000 },
+    full: { rate: 1, durationSec: 256, maxLatencyMs: 8000 },
+  },
+  telemetry: { product: "documenso" },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-005.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+      allowExits: [0, 99],
+      knee: {
+        ...kneePlanFor(ctx, docKneeDefaultsFor),
+        smokeP95Ms: ctx.config.smokeP95Ms as number,
+        maxVUs: 200,
+      },
+    },
+  ],
+  stages: {
+    setup: docKneeSetup,
+    reconcile: composeStages([reconcileStage, pipelineStage, kneeStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 /** P6-MED-LOAD-006: the complete request retried after a 100 ms timeout; one order, one payment, stock once (plan task 10 §6.6). */
 export const MED_LOAD_006: LoadCase = {
   id: "P6-MED-LOAD-006",
@@ -952,6 +1002,7 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
+  [DOC_LOAD_005.id]: DOC_LOAD_005,
   [MED_LOAD_004.id]: MED_LOAD_004,
   [MED_LOAD_006.id]: MED_LOAD_006,
   [DOC_LOAD_007.id]: DOC_LOAD_007,
