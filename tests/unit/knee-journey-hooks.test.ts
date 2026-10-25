@@ -12,7 +12,7 @@ const COMMIT = /(acceptedCounter|ordersCounter|completedCounter)\.add\(1\)|end\(
 const HOOK = "opts.onCommit?.()";
 
 describe("knee journey commit hooks", () => {
-  it("every commit line is followed by the onCommit hook; no Phase 3 case passes it", () => {
+  it("every commit line is followed by the onCommit hook; only knee cases pass it", () => {
     let commits = 0;
     for (const file of JOURNEYS) {
       const lines = readFileSync(file, "utf8").split("\n");
@@ -27,11 +27,9 @@ describe("knee journey commit hooks", () => {
 
     for (const file of readdirSync("k6/cases")) {
       if (!file.endsWith(".js")) continue;
-      assert.equal(
-        readFileSync(path.join("k6/cases", file), "utf8").includes("onCommit"),
-        false,
-        file,
-      );
+      const text = readFileSync(path.join("k6/cases", file), "utf8");
+      if (text.includes("onCommit"))
+        assert.ok(text.includes("kneeHooks"), `${file} passes onCommit outside a knee`);
     }
   });
 });

@@ -3,6 +3,7 @@ import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { attendeeEmail } from "../lib/pure/prefix.js";
+import { slotFor, scheduleWindow } from "../lib/pure/cal-slots.js";
 import { request, retried, retryCounters } from "../lib/http.js";
 export const acceptedCounter = new Counter("p6_bookings_accepted");
 const DAY = 86400000;
@@ -10,7 +11,8 @@ const DAY = 86400000;
 /**
  * cfg.links (case -009): one private link per intent; the booking of intent n carries links[n]. opts.retryPlan (retry cases):
  * the booking request is sent through the plan (plan task 10 §6.2); without it the journey is unchanged.
- * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[] }} cfg
+ * cfg.slotStarts (knee, plan task 2 §6.2): iteration n books slotStarts[n], and its getSchedule covers a 28-day window from that day.
+ * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[], slotStarts?: string[] }} cfg
  * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  */
 export function runCalBook(cfg, opts = {}) {
@@ -29,10 +31,32 @@ export function runCalBook(cfg, opts = {}) {
       orgSlug: null,
     },
   };
+  // Fixed slot (knee): the target is ours alone, so the list need not shift under concurrency. The target must be offered; otherwise
+  // the setup list is stale (TEST BUG).
+  const fixedSchedule = () => {
+    const target = slotFor(cfg.slotStarts ?? [], n);
+    if (target === undefined) return { ok: false }; // supply exhausted: TEST BUG
+    const w = scheduleWindow(target, 28);
+    const fixed = { json: { ...input.json, startTime: w.startTime, endTime: w.endTime } };
+    const r = request(
+      "GET",
+      `${cfg.baseUrl}/api/trpc/slots/getSchedule?input=${encodeURIComponent(JSON.stringify(fixed))}`,
+      "GET getSchedule",
+    );
+    if (r.status !== 200) return { ok: false };
+    const offered = Object.values(
+      /** @type {Record<string, Array<{ time: string }>>} */ (r.json("result.data.json.slots")),
+    ).flat();
+    return {
+      ok: offered.some((s) => Date.parse(s.time) === Date.parse(target)),
+      data: { start: target },
+    };
+  };
   const steps = [
     {
       name: "getSchedule",
       run: () => {
+        if (cfg.slotStarts !== undefined) return fixedSchedule();
         const r = request(
           "GET",
           `${cfg.baseUrl}/api/trpc/slots/getSchedule?input=${encodeURIComponent(JSON.stringify(input))}`,
