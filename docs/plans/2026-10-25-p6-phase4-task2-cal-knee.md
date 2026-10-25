@@ -419,10 +419,30 @@ name: knee
 on:
   workflow_dispatch:
     inputs:
-      start_rate: { description: "Start rate (iterations per second)", default: "2", type: string }
-      step_rate: { description: "Rate added per step", default: "2", type: string }
-      hold_sec: { description: "Hold per step (seconds)", default: "30", type: string }
-      max_steps: { description: "Maximum steps", default: "9", type: string }
+      start_rate:
+        {
+          description: "Start rate (iterations per second); empty = the job's own default plan",
+          default: "",
+          type: string,
+        }
+      step_rate:
+        {
+          description: "Rate added per step; empty = the job's own default plan",
+          default: "",
+          type: string,
+        }
+      hold_sec:
+        {
+          description: "Hold per step (seconds); empty = the job's own default plan",
+          default: "",
+          type: string,
+        }
+      max_steps:
+        {
+          description: "Maximum steps; empty = the job's own default plan",
+          default: "",
+          type: string,
+        }
 
 permissions:
   contents: read
@@ -650,6 +670,8 @@ jobs:
           set -euo pipefail
           npm run down:cal || true
 ```
+
+**Inputs.** All four are empty by default: each job's case supplies its own default plan (Cal 2 / 2 / 30 s / 9 steps here; Task 3 and Task 4 add their own), and `kneePlanFromInputs` falls back to the case default for an empty string. A non-empty input applies to every job of that dispatch; a dispatch runs every job of the workflow.
 
 **(4) Concurrency and retention.** `knee-dispatch-${{ github.run_id }}` gives each dispatch its own group with `cancel-in-progress: false` (G8); uploads use `retention-days: 90`, the
 GitHub maximum for public repos, instead of the 14 days of `perf.yml` (G7): the permanent evidence is the GitHub release, the Actions artefact is transient. **UNPROBED — confirm in
