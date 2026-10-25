@@ -18,7 +18,7 @@ self-test uses a constant.
 - **Base.** `origin/main` after Phase 3 Tasks 3, 4, 5 and 6 (they are merged: `ba3ee19`).
 - **Harness pin.** Unchanged (`v0.2.15`). **Environment change.** None. The cgroup question of §3.8 is a finding, not a change.
 - **Unit tests.** B1 = count on `main` when the build starts. Measured on 2026-10-25: **790** on `main` (`ba3ee19`), 818 on the Task
-  10 head (`c48faff`), 841 expected after Task 11. This plan adds **+49** (§12); expected B1 + 49.
+  10 head (`c48faff`), 841 expected after Task 11. This plan adds **+61** (§12; 49 of the first draft plus 12 from the product probes of §3.9); expected B1 + 61.
 - **Stop for owner review.** Yes (rule 10): a new CI job in `perf.yml`; the label type and `K6RunSpec` get additive fields. No harness
   pin and no shared runner change.
 
@@ -121,8 +121,7 @@ The current validity judge (`src/load/validity.ts`) makes any dropped iteration 
 In a knee run the product's own slowdown at the stop step also drops iterations (the burn stub dropped 56 in its stop step, 36 for
 the slot stub; `vus_max` stayed far below `maxVUs`). So a knee run cannot use the run-wide counter. The probe shows the clean signal is
 the **per-step started count against the plan**: `started(step) / (rate x holdSec)` was 1.000, 1.000 on the clean steps of the burn
-stub and 0.67 on a generator-starved step. The rule (unit-tested, §6.5): a **clean** step (before the stop step) that starts under 97
-% of its planned iterations makes the run INVALID (`dropped_iterations`); the stop step is not judged (it saturated, which is the
+stub and 0.67 on a generator-starved step. The rule (unit-tested, §6.5): a **clean** step (before the stop step) that starts fewer iterations than planned minus an allowance of `max(2, floor(3 % of planned))` makes the run INVALID (`dropped_iterations`; a bare 3 % would make 14 of 15 planned iterations a false INVALID at Medusa's 0.5 per second, §3.9); the stop step is not judged (it saturated, which is the
 result); the code `vu_exhausted` is not used in knee mode (VU exhaustion shows as dropped iterations in a clean step); `k6_cpu`,
 `runner_cpu`, `runner_memory`, `telemetry_gap`, `clock_skew` apply to the whole run as today. A new code `no_knee` marks a plan that
 ended without a trip.
@@ -161,15 +160,14 @@ pool is **not** observable from outside (only its effect on `db.total` and `db.a
 
 1. For every step, take the samples whose time lies in the step's hold window minus 2 s at each edge (the window comes from
    `p6_knee_t0_ms` and the plan).
-2. A resource is **over its level** in a sample when: `app_cpu` application group CPU >= 0.9 cores (Node serves from one thread; the
-   burn stub read 1.0 when saturated and 0.78 at 70 % of its limit); `db_wait` `db.waiting >= 1` or `db.waitingLocks >= 1`;
+2. A resource is **over its level** in a sample when: `app_cpu` is judged per **step**, not per sample (below); `runner_cpu` the host CPU busy fraction of the sample is at least 0.85 (the validity limit `runnerBusyPctMax`; needs the `host` source, §3.9); `db_wait` `db.waiting >= 1` or `db.waitingLocks >= 1`;
    `db_conn` `db.total >= 0.8 x max_connections` (needs the setting, §3.8); `db_cpu` database container CPU >= 0.9 cores (only when the
    container source read without errors); `app_fds` fds >= 0.8 x the process soft limit (`/proc/<pid>/limits`, read once); `probe_slow`
    `probe.ms >= 10 x` its median in step 0.
 3. A resource is **saturated in a step** when it is over its level in at least half of that step's samples (`SATURATED_FRACTION =
 0.5`), and it must also be saturated in every later observed step (a blip does not count).
 4. The **first saturated resource** is the one whose first saturated step is the smallest; a tie is broken by the fixed priority
-   `app_cpu, db_wait, db_conn, db_cpu, app_fds, probe_slow`. If none is saturated at the stop step the report says
+   `app_cpu, runner_cpu, db_wait, db_conn, db_cpu, app_fds, probe_slow`. `app_cpu` is saturated in a step when the mean cores of the step are at least 0.85 times the peak step mean over the run **and** at least 0.9 cores (§3.9 R2). If none is saturated at the stop step the report says
    `none_observed` ("a limit inside the application, such as the event loop or a pool, that outside telemetry cannot see; harness
    H2 is Phase 5"), never a guess.
 5. RSS is reported as a context series, not as a resource: nothing outside the process can say what its memory ceiling is. (Open
@@ -200,6 +198,31 @@ pool is **not** observable from outside (only its effect on `db.total` and `db.a
 3. **Stub self-test timing on the runner**: the job estimate of §9 is from the VM.
 4. **`delayAbortEval` against short holds**: probed at hold 8 to 10 s with 4 s; the product plans set hold and delay from their own rate
    (a step needs at least 100 samples before its p95 is read; Task 2 to 4 plans size it).
+
+### 3.9 Refinements found by the product probes of Tasks 2 to 6 (same session, 2026-10-25)
+
+The Cal, Medusa and Documenso ramps, steady runs and spikes (the plans of Tasks 2 to 6) showed four things that belong here, because every later task builds on them.
+Each has its evidence in the plan named.
+
+- **R1. Rates below one per second need a longer `timeUnit`.** k6 rejects a fractional `target`, `startRate` or `rate` (`cannot unmarshal number 0.5 into … of type int64`;
+  [Task 3 §3.1](2026-10-25-p6-phase4-task3-med-knee.md)). Medusa's steps are 0.5, 1.0, 1.5 per second. With `timeUnit: "10s"` and whole targets k6 started an iteration every 2.0 s
+  at 0.5 per second (probed on `/health`). So the rates of a `KneePlanSpec` are iterations per second with a resolution of 0.1, and `buildKneePlan` makes every knee scenario
+  `timeUnit: "10s"` with targets `round(rate x 10)`. Planned iterations per step stay `rate x holdSec` (15 at 0.5 per second for 30 s), which is why the dropped-iteration allowance
+  of §3.3 has an absolute floor of 2.
+- **R2. The application CPU level is relative to the run.** A fixed 0.9 cores would name `app_cpu` at Medusa's step 0 (0.82 to 0.92 cores, p95 394 ms) and every product's
+  application group uses more than one core (Cal 0.43 / 0.75 / 0.97 / 1.08, Medusa 0.82 / 1.20 / 1.24, Documenso 0.89 / 1.37 / 1.61 / 1.69 cores per step; the Node main thread
+  plus the Prisma engine or the in-process jobs). The rule of §3.6 point 4 (step mean at least 0.85 of the run's peak step mean, and at least 0.9 cores) names `app_cpu` at Cal step 2, Medusa
+  step 1, Documenso step 2, the burn stub step 2: the step before or at the stop. The host CPU (`runner_cpu`, the 4-vCPU box shared by k6, the product and Postgres) needs a per-second
+  source: `src/load/telemetry/host-stats.ts` reads `/proc/stat` deltas (`busyFraction`) and `MemAvailable`; the maximum seen in the probes was 46 to 69 % of the box, never the limit. The
+  sampler also reads `SELECT current_setting('max_connections')::int` once at start (read-only, through `assertSelectOnly`) for `db_conn` (Medusa's is 100: 7 to 11 connections in use).
+- **R3. Every audit needs the iterations a stop interrupted.** When k6 aborts, in-flight iterations lose their answer although the work is committed: Cal database 318 vs client 311
+  and 334 vs 327 (k6: 336 started, 327 completed, 9 interrupted); Documenso 197 vs 192 completed with 27 to 36 unfinished documents; Medusa orders of interrupted checkouts are counted by
+  the audit as ghost orders (`F-M2`). The common part is here: the reconcile stage passes `interrupted = max(0, started - completed)` (the summary's `p6_step_started` total minus `iterations`)
+  to every audit, and each audit accepts `0 <= database - client <= interrupted` (Cal orders, Medusa orders, Documenso completed envelopes). A difference beyond the slack stays a `PRODUCT BUG
+(SUSPECTED)` with both numbers; below zero too. Medusa's `no-ghost-orders` counts under `F-M2` only the excess. The Documenso pipeline part is in Task 4.
+- **R4. One parser for the dispatch inputs.** Tasks 2 to 4 take the plan from workflow inputs (`KNEE_START_RATE`, `KNEE_STEP_RATE`, `KNEE_HOLD_SEC`, `KNEE_RAMP_SEC`, `KNEE_MAX_STEPS`; empty
+  string = default). `src/load/knee/plan-input.ts` (`kneePlanFromInputs(env, defaults)`) validates them once: rates 0.1 to 100 with one decimal, hold 10 to 120 s, ramp 0 to 10 s, steps 1 to 30,
+  and a planned total of at most 5,000 iterations; otherwise `ENV: knee plan out of bounds` with the field named.
 
 ## 4. Depends on earlier plans
 
@@ -236,6 +259,10 @@ src/load/knee/stop-rule.ts                  NEW      StopRule, evaluateStopRule
 src/load/knee/first-saturated.ts            NEW      SATURATION, firstSaturated
 src/load/knee/knee-report.ts                NEW      KneeReport, buildKneeReport, formatKneeTable, kneeValidity
 src/load/knee/stage.ts                      NEW      kneeStage (reconcile slot), expected-range check for the self-test
+src/load/knee/plan-input.ts                 NEW      kneePlanFromInputs (workflow inputs → KneePlanSpec, validated)
+src/load/telemetry/host-stats.ts            NEW      readHostSample (/proc/stat busy fraction, MemAvailable)
+src/load/telemetry/sampler.ts               CHANGED  + host source; max_connections read once
+src/load/reconcile/{index,cal,medusa,types}.ts   CHANGED  counters { clientCount, interrupted }; audits accept 0 <= db - client <= interrupted
 src/load/chart/k6-points.ts                 CHANGED  + readPointsGzStream (streaming); readPointsGz stays for small runs
 src/load/chart/render-chart.ts              CHANGED  + optional step bands
 src/load/published.ts                       CHANGED  + formatPublishedKnee
@@ -250,6 +277,7 @@ package.json                                CHANGED  + load:knee-selftest
 .github/workflows/perf.yml                  CHANGED  + job load-knee-selftest
 README.md                                   CHANGED  + "How to read a knee"
 tests/unit/{k6-lib-knee,knee-step-stats,knee-stop-rule,knee-first-saturated,knee-report,knee-validity,knee-stage,load-cases-knee,k6-points-stream,stub-server-burn}.test.ts   NEW
+tests/unit/{knee-plan-input,reconcile-knee-slack,telemetry-host}.test.ts   NEW
 tests/unit/{render-chart,load-table,load-published}.test.ts   CHANGED (+1, +1, +2 counted in §12)
 ```
 
@@ -260,8 +288,8 @@ export type LoadLabel = "functional load, not capacity" | "knee range, environme
 // LoadCase.label and RunMeta.label: LoadLabel (was the first literal)
 
 export interface KneePlanSpec {
-  startRate: number; // iterations per second of step 0
-  stepRate: number; // added per step
+  startRate: number; // iterations per second of step 0, one decimal (0.1 to 100); the scenario uses timeUnit "10s" (R1)
+  stepRate: number; // added per step, one decimal
   holdSec: number; // the measured window of a step
   rampSec: number; // linear change between holds
   maxSteps: number;
@@ -482,7 +510,9 @@ export function evaluateStopRule(stats: StepStat[], rule: StopRule): StopVerdict
 
 ```ts
 export const SATURATION = {
-  appCores: 0.9,
+  appCores: 0.9, // floor; the level is also 0.85 x the run's peak step mean (R2)
+  appPeakFraction: 0.85,
+  hostBusy: 0.85,
   dbWaiting: 1,
   dbConnFraction: 0.8,
   dbCores: 0.9,
@@ -491,9 +521,11 @@ export const SATURATION = {
 } as const;
 export const SATURATED_FRACTION = 0.5;
 export const EDGE_TRIM_MS = 2000;
-export type Resource = "app_cpu" | "db_wait" | "db_conn" | "db_cpu" | "app_fds" | "probe_slow";
+export type Resource =
+  "app_cpu" | "runner_cpu" | "db_wait" | "db_conn" | "db_cpu" | "app_fds" | "probe_slow";
 export const PRIORITY: Resource[] = [
   "app_cpu",
+  "runner_cpu",
   "db_wait",
   "db_conn",
   "db_cpu",
@@ -557,7 +589,7 @@ export function buildKneeReport(input: {
   conflicts: number;
 }): KneeReport;
 export function formatKneeTable(r: KneeReport): string; // markdown: header line with the range and reasons, one row per step, the first saturated resource
-/** Pure: knee-mode validity (§3.3). Returns the dropped-iteration reason for the first clean step under 97 % started, and `no_knee`/`knee_below_start`. */
+/** Pure: knee-mode validity (§3.3). Returns the dropped-iteration reason for the first clean step short of its plan by more than the allowance, and `no_knee`/`knee_below_start`. */
 export function kneeInvalidReasons(
   steps: StepStat[],
   stop: StopVerdict,
@@ -669,16 +701,16 @@ and the products are not involved.
 
 ### 6.5 Validity in knee mode, in one place
 
-| Reason               | Source in knee mode                             | Rule                                                               |
-| -------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
-| `dropped_iterations` | per-step `started / planned` on **clean** steps | any clean step under 0.97 → INVALID                                |
-| `vu_exhausted`       | not used                                        | replaced by the line above                                         |
-| `k6_cpu`             | `ResourceSummary.k6CoresAvg` whole run          | unchanged (> 0.5 × nproc)                                          |
-| `runner_cpu`         | whole run                                       | unchanged (> 85 %)                                                 |
-| `runner_memory`      | whole run                                       | unchanged (< 10 % available)                                       |
-| `telemetry_gap`      | sampler                                         | unchanged                                                          |
-| `clock_skew`         | marker                                          | unchanged                                                          |
-| `no_knee`            | `stopStep === null`                             | INVALID, "the plan ended without a stop: the knee is above step N" |
+| Reason               | Source in knee mode                             | Rule                                                                        |
+| -------------------- | ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `dropped_iterations` | per-step `started / planned` on **clean** steps | any clean step short by more than `max(2, floor(3 % of planned))` → INVALID |
+| `vu_exhausted`       | not used                                        | replaced by the line above                                                  |
+| `k6_cpu`             | `ResourceSummary.k6CoresAvg` whole run          | unchanged (> 0.5 × nproc)                                                   |
+| `runner_cpu`         | whole run                                       | unchanged (> 85 %)                                                          |
+| `runner_memory`      | whole run                                       | unchanged (< 10 % available)                                                |
+| `telemetry_gap`      | sampler                                         | unchanged                                                                   |
+| `clock_skew`         | marker                                          | unchanged                                                                   |
+| `no_knee`            | `stopStep === null`                             | INVALID, "the plan ended without a stop: the knee is above step N"          |
 
 ### 6.6 The streaming reader and the chart
 
@@ -726,7 +758,7 @@ This task has no product oracle. Its correctness contract is the self-test's, ev
 | Run          | Must show                                                                             | Probe value                                 | Margin                                                                                                                     |
 | ------------ | ------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `knee`       | verdict KNEE, range `[140, 220)`, stop reason `p95`, first saturated `app_cpu`, VALID | stop at step 2 of 5, CPU 0.78 → 1.0         | last clean step 140/s = 70 % of the limit (200/s), stop step 220/s = 110 %; the CPU level 0.9 is 0.12 above the clean 0.78 |
-| `undersized` | INVALID with `dropped_iterations` (and also `no_knee`: nothing tripped)               | started 666 of 1000                         | 0.67 against the 0.97 limit                                                                                                |
+| `undersized` | INVALID with `dropped_iterations` (and also `no_knee`: nothing tripped)               | started 666 of 1000                         | 1000 planned: short by 334 against an allowance of 30                                                                      |
 | `norule`     | INVALID with `no_knee` only                                                           | started 1000 / 2500 / 3999 of 4000, no trip | all steps within 0.01 of plan                                                                                              |
 
 **PRODUCT BUG vs TEST BUG.** There is no product. A range that does not contain the stub's limit, a disagreement between the k6 exit
@@ -801,31 +833,33 @@ Counts are relative to B1 (§5 check 2).
 | 0    | `docs(plans): bring the phase 4 task 1 plan onto the build branch`              | `docs/plans/2026-10-25-p6-phase4-task1-breakpoint-method.md`                                                                                                                                                                                                                                                                                                                                                                            | exit 0, B1                                                               |
 | 1    | `feat(k6): add the knee plan, stop thresholds and response classifier`          | `k6/lib/pure/knee.js tests/unit/k6-lib-knee.test.ts`                                                                                                                                                                                                                                                                                                                                                                                    | exit 0, **B1 + 8**; `k6 inspect` ok                                      |
 | 2    | `feat(load): read the per-step statistics of a knee run`                        | `src/load/knee/step-stats.ts tests/unit/knee-step-stats.test.ts src/load/types.ts`                                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 12**                                                      |
-| 3    | `feat(load): add the stop rule and the first saturated resource rule`           | `src/load/knee/stop-rule.ts src/load/knee/first-saturated.ts tests/unit/knee-stop-rule.test.ts tests/unit/knee-first-saturated.test.ts`                                                                                                                                                                                                                                                                                                 | exit 0, **B1 + 25**                                                      |
-| 4    | `feat(load): add the knee report, its validity and the published form`          | `src/load/knee/knee-report.ts src/load/published.ts tests/unit/knee-report.test.ts tests/unit/knee-validity.test.ts tests/unit/load-published.test.ts`                                                                                                                                                                                                                                                                                  | exit 0, **B1 + 37**                                                      |
-| 5    | `feat(load): add a cpu-burn mode to the stub`                                   | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 39**                                                      |
-| 6    | `feat(k6): add the knee library and the breakpoint self-test script`            | `k6/lib/knee.js k6/lib/http.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json`                                                                                                                                                                                                                                                                                                                                 | exit 0, B1 + 39; `k6 inspect: N script(s) ok.` (N + 2)                   |
-| 7    | `feat(load): add the knee stage, the streaming points reader and the self-test` | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 49**; `npm run load:knee-selftest -- --profile pr` exit 0 |
-| 8    | `ci(perf): run the knee self-test in its own job`                               | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 49                                      |
-| 9    | `docs: explain how to read a knee`                                              | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 49                                   |
+| 3    | `feat(load): add the stop rule and the first saturated resource rule`           | `src/load/knee/stop-rule.ts src/load/knee/first-saturated.ts tests/unit/knee-stop-rule.test.ts tests/unit/knee-first-saturated.test.ts`                                                                                                                                                                                                                                                                                                 | exit 0, **B1 + 26**                                                      |
+| 4    | `feat(load): add the knee report, its validity and the published form`          | `src/load/knee/knee-report.ts src/load/published.ts tests/unit/knee-report.test.ts tests/unit/knee-validity.test.ts tests/unit/load-published.test.ts`                                                                                                                                                                                                                                                                                  | exit 0, **B1 + 38**                                                      |
+| 5    | `feat(load): parse and bound the knee plan inputs`                              | `src/load/knee/plan-input.ts tests/unit/knee-plan-input.test.ts`                                                                                                                                                                                                                                                                                                                                                                        | exit 0, **B1 + 42**                                                      |
+| 6    | `feat(load): let the audits accept the iterations a stop interrupted`           | `src/load/reconcile/index.ts src/load/reconcile/cal.ts src/load/reconcile/medusa.ts src/load/reconcile/types.ts tests/unit/reconcile-knee-slack.test.ts`                                                                                                                                                                                                                                                                                | exit 0, **B1 + 46**; the existing reconcile tests unchanged              |
+| 7    | `feat(load): sample the host cpu and the database connection limit`             | `src/load/telemetry/host-stats.ts src/load/telemetry/sampler.ts tests/unit/telemetry-host.test.ts`                                                                                                                                                                                                                                                                                                                                      | exit 0, **B1 + 49**; the existing sampler tests unchanged                |
+| 8    | `feat(load): add a cpu-burn mode to the stub`                                   | `src/load/stub-server.ts tests/unit/stub-server-burn.test.ts`                                                                                                                                                                                                                                                                                                                                                                           | exit 0, **B1 + 51**                                                      |
+| 9    | `feat(k6): add the knee library and the breakpoint self-test script`            | `k6/lib/knee.js k6/lib/http.js k6/selftest/breakpoint-stub.js k6/selftest/breakpoint-stub.example.json`                                                                                                                                                                                                                                                                                                                                 | exit 0, B1 + 51; `k6 inspect: N script(s) ok.` (N + 2)                   |
+| 10   | `feat(load): add the knee stage, the streaming points reader and the self-test` | `src/load/knee/stage.ts src/load/chart/k6-points.ts src/load/chart/render-chart.ts src/load/telemetry/stages.ts src/load/telemetry/run.ts src/load/run-meta.ts src/load/runner.ts src/load/stages.ts src/load/cases.ts scripts/write-ci-job-summary.ts package.json tests/unit/knee-stage.test.ts tests/unit/load-cases-knee.test.ts tests/unit/k6-points-stream.test.ts tests/unit/render-chart.test.ts tests/unit/load-table.test.ts` | exit 0, **B1 + 61**; `npm run load:knee-selftest -- --profile pr` exit 0 |
+| 11   | `ci(perf): run the knee self-test in its own job`                               | `.github/workflows/perf.yml`                                                                                                                                                                                                                                                                                                                                                                                                            | exit 0 (actionlint silent), B1 + 61                                      |
+| 12   | `docs: explain how to read a knee`                                              | `README.md`                                                                                                                                                                                                                                                                                                                                                                                                                             | exit 0 (`readme-rules` green), B1 + 61                                   |
 
-New unit tests by name (49): `k6-lib-knee` (8: plan shape, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
-minimum and cap; `stopRuleThresholds` keys, `p(95)<X`, `rate<=0.01`, `abortOnFail`, empty submetric lists; `classifyResponse` Cal;
-Medusa; Documenso with a 429; `standardOptions` still throws on `http_req_duration`);
-`knee-step-stats` (4: full summary; Rate `passes` is the error count; missing step is not reached and counts 0; planned = rate x
-hold); `knee-stop-rule` (6: p95 equal to the limit trips; just below does not; error rate exactly 1 % does not, 1.01 % does; under
-`minRequests` is ignored; first step wins; reasons list error_rate before p95); `knee-first-saturated` (7: cores from ticks; half of
-the samples; a blip that later recovers is not saturated; tie broken by priority; `db_wait`; `none_observed`; absent source listed and
-never named, edge trimming); `knee-report` (7: range is last clean to stop step; stop at step 0 is a TEST BUG finding; no stop is
-`NO_KNEE`; dropped iterations on a clean step are INVALID; the stop step's drops are ignored; markdown table; JSON passes `findHits`);
-`knee-validity` (3: dropped replaced by the per-step rule; `no_knee`; generator codes still apply); `load-published` (2: knee string
-has range, rule, resource, environment; refuses a non-KNEE and a non-publishable meta); `stub-server-burn` (2); `knee-stage` (4:
-happy fixture writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value
-is not kept); `load-cases-knee` (2: the case and its three runs; `package.json` has the script); `k6-points-stream` (2: equals the
-sync reader on a fixture; handles a file larger than one chunk); `render-chart` (+1: step bands); `load-table` (+1: knee block).
-Count: 8 + 4 + 13 + 10 + 2 + 2 + 4 + 2 + 2 + 1 + 1 = **49** (steps: 1 → +8, 2 → +4, 3 → +13, 4 → +12 = 7 + 3 + 2, 5 → +2, 7 → +10 = 4 + 2 + 2 + 1 + 1).
+New unit tests by name (61): `k6-lib-knee` (8: plan shape with `timeUnit "10s"` targets, stages and bad input rejected; `stepAt` hold, ramp, boundary, after the end; `kneeVus` sizing,
+minimum and cap; `stopRuleThresholds` keys, `p(95)<X`, `rate<=0.01`, `abortOnFail`, empty submetric lists; `classifyResponse` Cal; Medusa; Documenso with a 429; `standardOptions` still
+throws on `http_req_duration`); `knee-step-stats` (4: full summary; Rate `passes` is the error count; missing step is not reached and counts 0; planned = rate x hold); `knee-stop-rule` (6: p95
+equal to the limit trips; just below does not; error rate exactly 1 % does not, 1.01 % does; under `minRequests` is ignored; first step wins; reasons list error_rate before p95);
+`knee-first-saturated` (8: cores from ticks; half of the samples; a blip that later recovers is not saturated; tie broken by priority; `db_wait`; `none_observed`; absent source listed and never
+named, edge trimming; **the run-relative `app_cpu` level of §3.9 R2 and `runner_cpu`**); `knee-report` (7: range is last clean to stop step; stop at step 0 is a TEST BUG finding; no stop is
+`NO_KNEE`; a clean step short of its plan by more than the allowance is INVALID, with the floor of 2 at 15 planned iterations; the stop step's drops are ignored; markdown table; JSON passes
+`findHits`); `knee-validity` (3: dropped replaced by the per-step rule; `no_knee`; generator codes still apply); `load-published` (2: knee string has range, rule, resource, environment; refuses a
+non-KNEE and a non-publishable meta); `knee-plan-input` (4: defaults for empty strings; one-decimal rates; bounds and the 5,000-iteration cap name the field; non-numeric input is rejected);
+`reconcile-knee-slack` (4: Cal `0 <= db - client <= interrupted` passes; beyond the slack and below zero are findings; Medusa counts under `F-M2` only the excess; the counters read
+`interrupted` from a summary); `telemetry-host` (3: busy fraction from two `/proc/stat` reads; first sample has none; `MemAvailable` parsed); `stub-server-burn` (2); `knee-stage` (4: happy fixture
+writes json and md; expected-range mismatch is a TEST BUG; exit 99 with no stop step is a TEST BUG; a token-like value is not kept); `load-cases-knee` (2: the case and its three runs;
+`package.json` has the script); `k6-points-stream` (2: equals the sync reader on a fixture; handles a file larger than one chunk); `render-chart` (+1: step bands); `load-table` (+1: knee block).
+Count: 8 + 4 + 6 + 8 + 7 + 3 + 2 + 4 + 4 + 3 + 2 + 4 + 2 + 2 + 1 + 1 = **61** (steps: 1 → +8, 2 → +4, 3 → +14, 4 → +12, 5 → +4, 6 → +4, 7 → +3, 8 → +2, 10 → +10 = 4 + 2 + 2 + 1 + 1).
 
-After step 9: `git push -u origin feat/<build date>-p6-breakpoint-method`, `gh pr create` (rule 3), read CI once (rule 15): `load-knee-selftest`
+After step 12: `git push -u origin feat/<build date>-p6-breakpoint-method`, `gh pr create` (rule 3), read CI once (rule 15): `load-knee-selftest`
 green on the PR; once more on `main` after the merge (roadmap done-when). Merge only when the owner says "merge".
 
 ## 13. Risks, proposed extras, open decisions
@@ -849,6 +883,8 @@ green on the PR; once more on `main` after the merge (roadmap done-when). Merge 
 | C4  | "INVALID if the generator saturates"                                                              | `dropped_iterations` also occurs at the stop step                                    | per-step rule, §3.3                                            |
 | C5  | stop rule from "the LOAD runner; k6 aborts (`abortOnFail`, or the runner stops k6; plan decides)" | option A works and is standalone                                                     | k6 aborts; the runner re-evaluates and must agree              |
 | C6  | "k6 aborts on the rule" with k6 thresholds                                                        | `assertCorrectnessThresholds` forbids latency thresholds (RULE-001, D9)              | separate `stopRuleThresholds`, §3.7                            |
+| C7  | rates are iterations per second                                                                   | k6 accepts whole targets only; Medusa's steps are 0.5, 1.0, 1.5                      | `timeUnit` 10 s, rates with one decimal (§3.9 R1)              |
+| C8  | the post-load audit after the stop                                                                | in-flight iterations committed work the client never saw                             | audits accept the interrupted slack (§3.9 R3)                  |
 
 **Proposed extras (out of scope until accepted; new IDs).**
 
@@ -872,7 +908,7 @@ green on the PR; once more on `main` after the merge (roadmap done-when). Merge 
 
 ## 14. Done when (roadmap, made measurable)
 
-- [ ] `npm run check` exit 0 with **B1 + 49** unit tests; the new tests cover the stop rule, the report and the first-saturated rule from fixtures.
+- [ ] `npm run check` exit 0 with **B1 + 61** unit tests; the new tests cover the stop rule, the report and the first-saturated rule from fixtures.
 - [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM, `knee-report-knee.md` says "between step 1 (140/s) and step 2 (220/s)"
       (values from the plan constants), first saturated `app_cpu`; `undersized` and `norule` are INVALID with their codes.
 - [ ] The job `load-knee-selftest` is green on the PR and once on `main` after the merge; the artefact holds the reports and the chart.
