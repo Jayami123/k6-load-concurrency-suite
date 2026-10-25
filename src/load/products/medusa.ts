@@ -30,6 +30,8 @@ export interface MedusaDeps {
   /** The storm probe's cart and complete calls; the store helpers when absent. */
   prepareCart?: typeof prepareReadyCart;
   complete?: typeof completeCart;
+  /** The clock of the storm probe, in ms; performance.now when absent. A test injects a fixed clock. */
+  now?: () => number;
 }
 
 const defaultDeps: MedusaDeps = {
@@ -75,7 +77,8 @@ async function measureStormMinComplete(
     leaf: "probe",
     s: carts,
     onCreated: (ids) => {
-      ctx.config.probeProductId = ids.productId;
+      // createStockedVariant calls this twice (product, then inventory item): a call without a product id must not erase it.
+      if (ids.productId !== undefined) ctx.config.probeProductId = ids.productId;
     },
   });
   ctx.config.probeProductId = probe.productId;
@@ -94,9 +97,10 @@ async function measureStormMinComplete(
       email: prefixedEmail(`probe-${ctx.runPrefix}`, String(i)),
       quantity: 1,
     });
-    const started = performance.now();
+    const now = deps.now ?? (() => performance.now());
+    const started = now();
     const res = await complete(catalog.publishableKey, cart.cartId);
-    times.push(performance.now() - started);
+    times.push(now() - started);
     const orderId = res.status === 200 ? orderIdOf(res.body) : undefined;
     if (!orderId) throw new Error(`TEST BUG: storm probe complete HTTP ${res.status}`);
     pending.push(orderId);
@@ -132,8 +136,9 @@ export async function medusaSetupWith(
       leaf: "load",
       s,
       onCreated: (ids) => {
-        ctx.config.productId = ids.productId;
-        ctx.config.inventoryItemId = ids.inventoryItemId;
+        // Called once per id: a call without an id leaves the recorded one alone, so cleanup never loses a product.
+        if (ids.productId !== undefined) ctx.config.productId = ids.productId;
+        if (ids.inventoryItemId !== undefined) ctx.config.inventoryItemId = ids.inventoryItemId;
       },
     });
     ctx.config = {
