@@ -21,7 +21,7 @@ export interface RunValues {
 export interface RunFolder {
   verdict: LoadRunRecord["verdict"];
   meta: RunMeta;
-  summary: { metrics?: Record<string, { values?: Record<string, number>; rate?: number }> };
+  summary: { metrics?: Record<string, Record<string, number>> };
   bins: SecondBin[];
 }
 
@@ -67,14 +67,14 @@ function requireNumber(value: number | undefined, what: string): number {
 /** The run-level values of one folder: the http_req_duration percentiles, the error rate and the request rate of the k6 summary. */
 export function runValues(folder: RunFolder): RunValues {
   const m = folder.summary.metrics ?? {};
-  const duration = m.http_req_duration?.values;
+  const duration = m.http_req_duration;
   return {
     runId: runIdOf(folder.meta) ?? folder.meta.runId,
     p50Ms: requireNumber(duration?.med, "http_req_duration med"),
     p95Ms: requireNumber(duration?.["p(95)"], "http_req_duration p(95)"),
     p99Ms: requireNumber(duration?.["p(99)"], "http_req_duration p(99)"),
-    errorRate: requireNumber(m.http_req_failed?.values?.rate ?? 0, "http_req_failed rate"),
-    requestsPerSec: requireNumber(m.http_reqs?.values?.rate, "http_reqs rate"),
+    errorRate: requireNumber(m.http_req_failed?.value ?? 0, "http_req_failed value"),
+    requestsPerSec: requireNumber(m.http_reqs?.rate, "http_reqs rate"),
   };
 }
 
