@@ -7,5 +7,6 @@
   "regionId": "reg_placeholder",
   "salesChannelId": "sc_placeholder",
   "variantId": "variant_placeholder",
-  "prefix": "p6-qa-00000000t000000z-00000000-p6-med-load-006"
+  "prefix": "p6-qa-00000000t000000z-00000000-p6-med-load-006",
+  "stormTimeoutMs": 100
 }

@@ -660,7 +660,7 @@ export const MED_LOAD_006: LoadCase = {
   },
   runs: () => [{ label: "main", script: "k6/cases/med-load-006.js", env: {} }],
   stages: {
-    setup: makeMedusaSetup({ stockFor: (planned) => planned + 20 }),
+    setup: makeMedusaSetup({ stockFor: (planned) => planned + 20, stormProbeCarts: 3 }),
     reconcile: composeStages([reconcileStage, medusaRetryStage]),
     cleanup: medusaCleanup,
   },

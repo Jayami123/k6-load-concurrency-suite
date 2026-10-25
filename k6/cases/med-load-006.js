@@ -19,12 +19,14 @@ const cfg = {
   salesChannelId: "sc_placeholder",
   variantId: "variant_placeholder",
   prefix: "p6-qa-00000000t000000z-00000000-p6-med-load-006",
+  stormTimeoutMs: 100,
   ...loadLoadConfig([]),
 };
 
-// Two short storm attempts (100 ms: the complete finishes after the client gave up), then one that waits for the server.
+// Two short storm attempts (the complete finishes after the client gave up), then one that waits for the server.
+// The storm timeout is measured by the setup (a quarter of the fastest probe complete, plan PRE-1); 100 ms is the fallback.
 const RETRY = buildPlan({
-  stormTimeoutMs: 100,
+  stormTimeoutMs: cfg.stormTimeoutMs ?? 100,
   stormAttempts: 2,
   finalTimeoutMs: 30000,
   delayMs: 0,
