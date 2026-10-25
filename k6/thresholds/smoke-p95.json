@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "metric": "http_req_duration p(95)",
+  "unit": "ms",
+  "release": "p6-phase3",
+  "cases": {
+    "P6-CAL-LOAD-001": {
+      "product": "cal",
+      "profile": "full",
+      "rate": 2,
+      "durationSec": 30,
+      "medianP95Ms": 77.1246696,
+      "n": 3,
+      "runIds": ["40177412186", "40178773022", "40180625279"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40177412186": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40178773022": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40180625279": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
+    },
+    "P6-MED-LOAD-001": {
+      "product": "medusa",
+      "profile": "full",
+      "rate": 1,
+      "durationSec": 30,
+      "medianP95Ms": 171.6001092,
+      "n": 3,
+      "runIds": ["40177412186", "40178773022", "40180625279"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40177412186": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40178773022": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40180625279": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
+    },
+    "P6-DOC-LOAD-001": {
+      "product": "documenso",
+      "profile": "full",
+      "rate": 1,
+      "durationSec": 30,
+      "medianP95Ms": 233.131137,
+      "n": 3,
+      "runIds": ["40177412186", "40178773022", "40180625279"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40177412186": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40178773022": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40180625279": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
+    }
+  }
+}
