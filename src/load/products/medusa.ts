@@ -30,6 +30,8 @@ export interface MedusaDeps {
   /** The storm probe's cart and complete calls; the store helpers when absent. */
   prepareCart?: typeof prepareReadyCart;
   complete?: typeof completeCart;
+  /** The clock of the storm probe, in ms; performance.now when absent. A test injects a fixed clock. */
+  now?: () => number;
 }
 
 const defaultDeps: MedusaDeps = {
@@ -94,9 +96,10 @@ async function measureStormMinComplete(
       email: prefixedEmail(`probe-${ctx.runPrefix}`, String(i)),
       quantity: 1,
     });
-    const started = performance.now();
+    const now = deps.now ?? (() => performance.now());
+    const started = now();
     const res = await complete(catalog.publishableKey, cart.cartId);
-    times.push(performance.now() - started);
+    times.push(now() - started);
     const orderId = res.status === 200 ? orderIdOf(res.body) : undefined;
     if (!orderId) throw new Error(`TEST BUG: storm probe complete HTTP ${res.status}`);
     pending.push(orderId);
