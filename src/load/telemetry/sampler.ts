@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type pg from "pg";
 import { findGaps } from "./gaps.ts";
@@ -32,7 +32,7 @@ export interface TelemetryFile {
   samples: TelemetrySample[];
   gaps: Array<{ fromMs: number; toMs: number; lengthMs: number }>;
   /** Read once at start: the database's max_connections (plan task 1 §3.9 R2). Absent when the database was not read. */
-  limits?: { maxConnections?: number };
+  limits?: { maxConnections?: number; fdsSoftLimit?: number };
 }
 
 export interface SamplerOptions {
@@ -57,6 +57,20 @@ export interface SamplerOptions {
   readGroup?: (pgid: number) => GroupStats;
   outDir?: string;
   label?: string;
+}
+
+/** The soft limit of open files of a process, from /proc/<pid>/limits. Undefined when unreadable or unlimited. */
+export function readFdsSoftLimit(pid: number | undefined): number | undefined {
+  if (pid === undefined) return undefined;
+  try {
+    const line = readFileSync(`/proc/${pid}/limits`, "utf8")
+      .split("\n")
+      .find((l) => l.startsWith("Max open files"));
+    const soft = line ? Number(line.trim().split(/\s+/)[3]) : NaN;
+    return Number.isFinite(soft) ? soft : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Sampler {
@@ -116,14 +130,23 @@ export function startSampler(opts: SamplerOptions): Sampler {
   let hostPrev: CpuTimes | undefined;
   let limitsRead = false;
   let maxConnections: number | undefined;
+  // The application's open-file soft limit, read once from /proc/<pid>/limits of its group leader (plan task 1 §3.6).
+  let fdsSoftLimit: number | undefined;
+  let fdsLimitRead = false;
 
   const readAll = async (sample: TelemetrySample): Promise<void> => {
     readProc(sample);
     const tasks: Array<Promise<void>> = [];
+    if (opts.appProcess && !fdsLimitRead) {
+      fdsLimitRead = true;
+      fdsSoftLimit = readFdsSoftLimit(opts.appProcess[0]?.pgid);
+    }
     if (opts.host) {
       const r = readHostSample(hostPrev);
       hostPrev = r.cpu ?? hostPrev;
       sample.host = r.sample;
+      // Neither the cpu nor the memory reading: the host source is unavailable for this sample and is counted as an error.
+      if (!r.cpu && r.sample.memAvailableKb === undefined) errors.host = (errors.host ?? 0) + 1;
     }
     if (opts.pool) {
       const pool = opts.pool;
@@ -239,7 +262,9 @@ export function startSampler(opts: SamplerOptions): Sampler {
           samples.map((s) => s.t),
           intervalMs,
         ),
-        ...(maxConnections !== undefined ? { limits: { maxConnections } } : {}),
+        ...(maxConnections !== undefined || fdsSoftLimit !== undefined
+          ? { limits: { maxConnections, fdsSoftLimit } }
+          : {}),
       };
       if (opts.outDir) {
         mkdirSync(opts.outDir, { recursive: true });

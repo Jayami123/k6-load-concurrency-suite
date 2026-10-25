@@ -4,7 +4,7 @@ import exec from "k6/execution";
 import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { iterationId } from "../lib/pure/prefix.js";
-import { request, retried, retryCounters } from "../lib/http.js";
+import { observe, request, retried, retryCounters } from "../lib/http.js";
 export const completedCounter = new Counter("p6_docs_completed");
 const TOKEN = __ENV.DOCUMENSO_API_TOKEN; // secret: environment only, never the config file, never logged
 
@@ -41,6 +41,7 @@ export function runDocSign(cfg, pdf, opts = {}) {
           },
           { headers: A, tags: { name: "POST envelope/create" } },
         );
+        observe(r);
         return { ok: r.status === 200, data: { envelopeId: r.json("id") } };
       },
     },

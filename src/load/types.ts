@@ -51,7 +51,7 @@ export interface K6RunSpec {
     maxVUs: number;
     /** The stub port the run's requests go to (the self-test only). */
     port?: number;
-    expect?: { lowerRate: number; upperRate: number; firstSaturated?: string };
+    expect?: { firstSaturated?: string };
   };
 }
 

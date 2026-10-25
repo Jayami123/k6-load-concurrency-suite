@@ -57,7 +57,7 @@ describe("published knee form", () => {
   const report = {
     schema: 1,
     ruleId: "P6-RULE-006",
-    caseId: "P6-MED-LOAD-004",
+    caseId: "P6-X-LOAD-001",
     runId: "r",
     label: "knee range, environment-bound",
     verdict: "KNEE",

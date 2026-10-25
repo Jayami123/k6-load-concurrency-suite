@@ -130,7 +130,7 @@ export function observeResponses(fn) {
 }
 
 /**
- * Passes a response to the observer and returns it. The doc-sign multipart call uses it directly (plan task 1 §6.3).
+ * Passes a response to the observer and returns it. The Documenso journey's multipart create calls it (plan task 1 §6.3).
  * @param {any} res
  */
 export function observe(res) {

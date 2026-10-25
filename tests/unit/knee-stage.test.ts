@@ -10,7 +10,7 @@ const T0 = 1_792_801_000_000;
 const PLAN: KneePlanSpec & {
   smokeP95Ms: number;
   maxVUs: number;
-  expect?: { lowerRate: number; upperRate: number; firstSaturated?: string };
+  expect?: { firstSaturated?: string };
 } = {
   startRate: 2,
   stepRate: 2,
@@ -82,17 +82,14 @@ describe("knee stage", () => {
     }
   });
 
-  it("an expected range that differs is a TEST BUG with both values", async () => {
+  it("a self-test expectation that the run does not meet is a TEST BUG that names both values", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "knee-stage-"));
     try {
-      const plan = { ...PLAN, expect: { lowerRate: 3, upperRate: 5, firstSaturated: "app_cpu" } };
+      const plan = { ...PLAN, expect: { firstSaturated: "app_cpu" } };
       const r = await kneeStage(ctxWith({ dir, summary: summary(500), exitCode: 99, plan }));
       assert.equal(r.ok, false);
       assert.equal(r.kind, "TEST BUG");
-      assert.match(
-        r.reasons.join(" "),
-        /expected range 3\.\.5 with app_cpu, got 4\.\.6 with none_observed/,
-      );
+      assert.match(r.reasons.join(" "), /first saturated none_observed, expected app_cpu/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

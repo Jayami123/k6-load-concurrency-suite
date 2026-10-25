@@ -24,7 +24,7 @@ const flat = /** @type {any} */ ({
   smokeP95Ms: 6,
   pre: 40,
   max: 80,
-  delayAbortEvalSec: 12,
+  delayAbortEvalSec: 4,
   ...loadLoadConfig([]),
 });
 const knee = flat.knee ?? {

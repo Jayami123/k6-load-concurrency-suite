@@ -86,5 +86,13 @@ export function kneePlanFromInputs(
       `plans ${Math.round(planned)} iterations; the cap is ${KNEE_BOUNDS.plannedTotal} (lower the rates, the hold or the steps)`,
     );
   }
+  // Every planned step, not only the first, stays inside the rate bound.
+  const lastRate = plan.startRate + (plan.maxSteps - 1) * plan.stepRate;
+  if (lastRate > KNEE_BOUNDS.rate.max) {
+    fail(
+      "KNEE_MAX_STEPS",
+      `the last step runs at ${Math.round(lastRate * 10) / 10}/s; the rate limit is ${KNEE_BOUNDS.rate.max}`,
+    );
+  }
   return plan;
 }

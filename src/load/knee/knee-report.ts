@@ -81,9 +81,14 @@ export function buildKneeReport(input: {
   saturated: FirstSaturated;
   meta: RunMeta;
   conflicts: number;
+  /** The generator-limited reasons of validityStage (k6 cpu, runner cpu and memory, telemetry, clock). Any one makes the run INVALID. */
+  generatorInvalid?: Array<{ code: string; detail: string }>;
 }): KneeReport {
   const { stop, steps } = input;
-  const invalid: Array<{ code: string; detail: string }> = [...kneeInvalidReasons(steps, stop)];
+  const invalid: Array<{ code: string; detail: string }> = [
+    ...kneeInvalidReasons(steps, stop),
+    ...(input.generatorInvalid ?? []),
+  ];
   let range: KneeReport["range"];
   if (stop.stopStep === 0) {
     invalid.push({
@@ -100,9 +105,7 @@ export function buildKneeReport(input: {
     };
   }
   const env = input.meta.environment;
-  const invalidated = invalid.some(
-    (f) => f.code === "dropped_iterations" || f.code === "knee_below_start",
-  );
+  const invalidated = invalid.some((f) => f.code !== "no_knee");
   const verdict: KneeReport["verdict"] = invalidated
     ? "INVALID"
     : stop.stopStep === null

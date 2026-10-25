@@ -23,6 +23,11 @@ export function formatPublishedKnee(report: KneeReport, meta: RunMeta, metaLink:
   if (report.verdict !== "KNEE" || !report.range || !report.stop) {
     throw new Error(`not a knee range: verdict ${report.verdict}`);
   }
+  if (report.caseId !== meta.caseId || report.runId !== meta.runId) {
+    throw new Error(
+      `report ${report.caseId} ${report.runId} does not belong to run-meta ${meta.caseId} ${meta.runId}`,
+    );
+  }
   const check = isPublishable(meta);
   if (!check.ok) throw new Error(`not publishable: ${check.reasons.join("; ")}`);
   const env = meta.environment;

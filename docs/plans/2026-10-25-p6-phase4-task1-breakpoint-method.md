@@ -952,7 +952,8 @@ P6-X-LOAD-021 (knee range, environment-bound) run 20261025T120000Z-3fa9c0d1
   k6 knee      exit 99  steps 0..2 of 5 (stopped), stop step 2 (220/s) p95 339 ms >= 60 ms
   k6 undersized exit 0  steps 3 of 3, started 666 of 1000 in step 0
   k6 norule    exit 0   steps 3 of 3, no stop
-  knee         KNEE  between step 1 (140/s) and step 2 (220/s); stop: p95; first saturated: app_cpu (step 2)
+  knee         KNEE  between step s and step s+1 (rates from the step schedule); stop: p95; first saturated: app_cpu
+                     (reference, not asserted: VM 171 to 191/s, CI runner 191 to 211/s, section 9A)
   undersized   INVALID dropped_iterations, no_knee
   norule       INVALID no_knee
   tokenScan    ok   clean
@@ -1072,8 +1073,11 @@ file on main and collide with Phase 3 Tasks 4 and 5; that file is not edited her
 ## 14. Done when (roadmap, made measurable)
 
 - [ ] `npm run check` exit 0 with **B1 + 69** unit tests; the new tests cover the stop rule, the report, the first-saturated rule and the per-intent audit from fixtures.
-- [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM, `knee-report-knee.md` says "between step 1 (140/s) and step 2 (220/s)"
-      (values from the plan constants), first saturated `app_cpu`; `undersized` and `norule` are INVALID with their codes.
+- [ ] `npm run load:knee-selftest -- --profile pr` exits 0 on a VM and on the CI runner. The assertions are machine-independent (owner
+      decision, PR #73): a knee is found on the p95 stop rule (not error or `no_knee`); the stop step is the first step over the p95 limit
+      with the step before it under; the range is last clean rate to stop rate, consistent with the step schedule; the first saturated
+      resource is `app_cpu`; the stop step has at least 2 post-trim telemetry samples; `undersized` shows `dropped_iterations`; `norule` shows
+      `no_knee`. The measured ranges are reference values only (section 9A), never assertions.
 - [ ] The job `load-knee-selftest` is green on the PR and once on `main` after the merge; the artefact holds the reports and the chart.
 - [ ] `k6 run k6/selftest/breakpoint-stub.js` works standalone (D6) with the example config; exit 99 and the threshold line.
 - [ ] The report meets `P6-RULE-006` (case `P6-X-LOAD-021`): a step range with both rates, the stop reasons, the run id and environment label, the first
