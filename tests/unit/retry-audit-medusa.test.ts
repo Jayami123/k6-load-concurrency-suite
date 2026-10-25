@@ -71,6 +71,13 @@ describe("retry audit: medusa", () => {
     assert.equal(f?.kind, "PRODUCT BUG");
   });
 
+  it("an order the client got back that the database does not hold is a PRODUCT BUG", () => {
+    const r = judgeMedusaRetries(input({ ordersPerIntent: {}, paymentsPerOrder: [] }));
+    const f = r.findings.find((x) => x.check === "client-orders-in-db");
+    assert.equal(f?.ok, false);
+    assert.equal(f?.kind, "PRODUCT BUG");
+  });
+
   it("a ghost order the client never got back is counted under F-M2, not a failure", () => {
     const r = judgeMedusaRetries(input({ counters: counters({ intentsOk: 9 }) }));
     assert.deepEqual(failed(r), []);

@@ -178,3 +178,30 @@ describe("cal private-link setup and restore", () => {
     assert.deepEqual(out.reasons, ["TEST BUG: prior links not restored: restore refused"]);
   });
 });
+
+describe("cal private-link setup refuses saved links with an expiry", () => {
+  it("setup fails as a TEST BUG and sets no link when a saved link has an expiry", async () => {
+    const ctx = fakeCtx();
+    const { pool } = fakePool([[HOST_ROW]]);
+    const set: PrivateLinkInput[][] = [];
+    const deps: CalLinkDeps = {
+      password: () => "pw-not-logged",
+      login: async () => "session=cookie-value-xyz",
+      readLinks: async () => [
+        { link: "timed", maxUsageCount: 1, usageCount: 0, expiresAt: new Date("2030-01-01") },
+      ],
+      setLinks: async (_base, _cookie, _event, links) => {
+        set.push(links);
+      },
+    };
+    const out = await calSetupWith(
+      ctx,
+      { openPool: () => pool, cancel: async () => {}, links: deps },
+      { privateLinks: true },
+    );
+    assert.equal(out.ok, false);
+    assert.equal(out.kind, "TEST BUG");
+    assert.match(out.reasons[0] ?? "", /saved private links have an expiry/);
+    assert.deepEqual(set, []);
+  });
+});

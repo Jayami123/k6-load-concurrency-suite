@@ -45,6 +45,15 @@ export function judgeMedusaRetries(i: MedusaRetryInput): RetryJudgement {
     detail: `${duplicates} intent(s) with more than one order`,
   });
 
+  // Every answer the client got back as an order must be in the database (the ghost check below allows the reverse).
+  const acked = c.intentsOk <= counts.length;
+  findings.push({
+    check: "client-orders-in-db",
+    ok: acked,
+    kind: acked ? undefined : "PRODUCT BUG",
+    detail: `client acknowledged ${c.intentsOk} order(s), database holds ${counts.length} order-bearing intent(s)`,
+  });
+
   const dbOrders = counts.reduce((sum, n) => sum + n, 0);
   const ghosts = Math.max(0, dbOrders - c.intentsOk);
   if (ghosts > 0) knownBugs[MEDUSA_KNOWN_GHOST] = ghosts;

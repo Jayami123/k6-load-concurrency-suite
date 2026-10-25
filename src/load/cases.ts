@@ -421,6 +421,9 @@ export const DOC_LOAD_008: LoadCase = {
   },
 };
 
+/** The retry audit file of a retry case. The reconcile stage of the same case writes audit.json, so the two never share a file. */
+export const RETRY_AUDIT_FILE = "retry-audit.json";
+
 /** The journey counters of the main run (plan task 10 §6.2), read from its summary export. A counter the run never bumped is 0. */
 export function retryCountersOf(ctx: LoadContext): RetryCounters {
   const run = ctx.k6.find((k) => k.label === "main");
@@ -442,7 +445,7 @@ export function retryCountersOf(ctx: LoadContext): RetryCounters {
 }
 
 /**
- * Writes audit.json (counts, ids and check names only) after a token scan. Returns a failing result when the scan matched, so the
+ * Writes retry-audit.json (counts, ids and check names only) after a token scan. The reconcile audit keeps audit.json. Returns a failing result when the scan matched, so the
  * caller returns it; undefined when the file was written.
  */
 function writeRetryAudit(
@@ -451,13 +454,13 @@ function writeRetryAudit(
   extra: Record<string, unknown> = {},
 ): StageResult | undefined {
   const text = JSON.stringify({ schema: 1, caseId: ctx.caseDef.id, ...extra, ...j }, null, 2);
-  const file = path.join(ctx.outDir, "audit.json");
+  const file = path.join(ctx.outDir, RETRY_AUDIT_FILE);
   if (findHits(text).length > 0) {
     rmSync(file, { force: true });
     return {
       ok: false,
       kind: "TEST BUG",
-      reasons: ["audit.json matched a token pattern; not kept"],
+      reasons: ["retry-audit.json matched a token pattern; not kept"],
     };
   }
   writeFileSync(file, `${text}\n`);
@@ -491,7 +494,7 @@ function retryStageResult(
     ok: failing.length === 0,
     kind,
     reasons,
-    data: { audit: "audit.json", checks: j.findings.length, failing: failing.length },
+    data: { audit: RETRY_AUDIT_FILE, checks: j.findings.length, failing: failing.length },
   };
 }
 
@@ -592,7 +595,7 @@ const documensoRetryStage: Stage = async (ctx) => {
       ok: gate.ok,
       kind: gate.kind,
       reasons: gate.reasons,
-      data: { audit: "audit.json", observed: gate.observed },
+      data: { audit: RETRY_AUDIT_FILE, observed: gate.observed },
     };
   } finally {
     await closePool(pool);

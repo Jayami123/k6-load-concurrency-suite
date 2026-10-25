@@ -584,7 +584,7 @@ Each bug is listed with its evidence. Where a `test.fail()` test exists, it turn
   not observed". Then remove `P6-OBS-DOC-005` from the case's `knownBugs`, this row and this section, in the same PR as the fix.
 - **Gate.** The verdict of the case is the gate (`src/load/known-bug-gate.ts`): the duplicate seal, the completed audit row and the
   duplicate emails are KNOWN BUG when observed. The gate fails the case if the bug is not observed, if any other violation appears,
-  or if the storm checks or `audit.json` are missing.
+  or if the storm checks or `retry-audit.json` are missing.
 
 ### Phase 1 status
 
@@ -727,7 +727,7 @@ gives up after a short timeout (`k6/lib/retry.js`), so the server finishes a req
 again. Each case then checks that the storm happened (at least half of the first attempts timed out, `src/load/retry-validity.ts`) and
 that the side effects happened once per intent: one accepted Cal booking (one cap-1 link per booking in `-009`), one Medusa order with
 one payment and stock taken once, one Documenso seal, one `DOCUMENT_COMPLETED` row and one completion email per recipient. A Cal
-redacted 400 (`P6-OBS-CAL-001`) and a 409 are counted, not failures. The audit is written to `audit.json` of each run.
+redacted 400 (`P6-OBS-CAL-001`) and a 409 are counted, not failures. The retry audit is written to `retry-audit.json` of each run (the reconcile audit keeps `audit.json`).
 
 Numbers from a cloud session or a laptop only prove that a test works. Published numbers come from GitHub Actions only (median of
 at least 3 valid runs, P6-RULE-005), each with its `run-meta.json` (P6-RULE-003, Task 4).

@@ -80,7 +80,12 @@ async function setupPrivateLinks(
 ): Promise<void> {
   const cookie = await links.login(base.baseUrl, links.password());
   ctx.secrets.CAL_HOST_COOKIE = cookie;
-  ctx.handles.calPriorLinks = await links.readLinks(pool, base.eventTypeId);
+  const prior = await links.readLinks(pool, base.eventTypeId);
+  // The restore sends no expiry (PrivateLinkInput has none), so a time-limited link would lose it: refuse, as run-state-case does.
+  if (prior.some((l) => l.expiresAt !== null)) {
+    throw new Error("TEST BUG: saved private links have an expiry; the restore would drop it");
+  }
+  ctx.handles.calPriorLinks = prior;
   const ids = Array.from({ length: base.planned + 2 }, (_, i) =>
     privateLinkId(base.dataPrefix, i),
   );

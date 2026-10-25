@@ -18,7 +18,7 @@ that the storm happened and that each intent still had one effect.
   retried). It also holds the shared `RetryCounters`, `RetryFinding` and `RetryJudgement` types.
 - **Audits** (`src/load/retry-audit/{cal,medusa,documenso}.ts`): pure judges with read-only readers.
   - Cal: one accepted booking per intent; redacted 400 and 409 counted; per-intent join of each booking to its link's usage, before
-    and after the run (`judgeCalLinkJoin`), written to `audit.json` on every run.
+    and after the run (`judgeCalLinkJoin`), written to `retry-audit.json` on every run.
   - Medusa: one order and one payment per intent; reserved equals orders; one order id per intent.
   - Documenso: one seal, one `DOCUMENT_COMPLETED` row, every recipient signed, one completion email per recipient.
 - **Cal private links** (`src/load/products/cal.ts`): `calSetup({ privateLinks: true })` sets planned + 2 cap-1 links, keeps the host
@@ -33,7 +33,7 @@ that the storm happened and that each intent still had one effect.
     completion emails. The Task 6 audit files the same duplicate under the declared ID, so it is not "unexpected".
   - FAIL when the declared bug is not observed (the product is fixed: remove the marker).
   - FAIL when any other violation appears (for example a 5xx or a document not COMPLETED).
-  - FAIL when the storm checks or `audit.json` are missing.
+  - FAIL when the storm checks or `retry-audit.json` are missing.
   - Four unit tests cover the four outcomes (known bug only; bug absent; extra violation; missing audit).
 - **CI** (`.github/workflows/perf.yml`): one LOAD step in `medusa-load` (`P6-MED-LOAD-006`), two in `cal-smoke` (`-007`, then `-009`
   last, because it restores the shared event type's links), one in `documenso-smoke` (`P6-DOC-LOAD-007`). Each has
@@ -51,7 +51,7 @@ Repeat 1 of the full profile (`40135722015`, before the diagnostics) failed: 31 
 per-intent diagnostics and three repeats.
 
 - Diagnostics: per intent, the booking id, uid and status, the link, the usage before and after the run, and any accepted booking
-  whose link shows no use. Written to `audit.json` on every run.
+  whose link shows no use. Written to `retry-audit.json` on every run.
 - First diagnostic run (`40141368545`) failed as a TEST BUG of the audit: the join covered the two spare links that setup creates
   beyond the iterations that ran. Fixed in `c48faff`: the join covers the intents that ran (`p6_intents`) only.
 - Repeats on the fixed head `c48faff`: `40142908660` PASS (31 join rows, none flagged), `40144142420` PASS (30 rows, none flagged),
@@ -105,6 +105,20 @@ Final head: see the status line added below after the final dispatch.
 - The Documenso duplicate seal is a known product bug (P6-OBS-DOC-005) and stays open until the product fixes it.
 - The Cal `-009` failure before the diagnostics is not established (see above).
 - Task 11 is not started.
+
+## Review notes
+
+CodeRabbit reviewed head `9214ef0`: seven findings. Each one is triaged below; no comments were posted on the PR.
+
+| Finding                                                                                 | Decision                                                                                                                                                                                                                                                                                                | Where                                           |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `cal-load-009.js`: a run without `cfg.links` books unlinked and passes as a plain storm | Fixed: the case throws `TEST BUG` when the links are not set                                                                                                                                                                                                                                            | `k6/cases/cal-load-009.js`                      |
+| `med-checkout.js`: a 200 with `type: "cart"` counted as an order on the retry path      | Fixed: the retry path's done answer is `type === "order"`, and a 2xx that is not done is classed other                                                                                                                                                                                                  | `k6/journeys/med-checkout.js`, `k6/lib/http.js` |
+| `cases.ts`: the retry audit overwrote the reconcile `audit.json`                        | Fixed: the retry audit is `retry-audit.json`                                                                                                                                                                                                                                                            | `src/load/cases.ts`, README                     |
+| `cal.ts`: setup replaces the whole event-type link list                                 | Rejected, with reason: the plan's replace semantics (§6.5) are accepted and tested (the planned-count assertion stays unchanged). The Cal `-009` step is the last Cal step of its job, nothing else uses the event type during it, and cleanup restores the saved list (a failed restore is `TEST BUG`) | none                                            |
+| `cal.ts`: the restore drops `expiresAt`                                                 | Fixed: setup refuses saved links that have an expiry, as `run-state-case.ts` does                                                                                                                                                                                                                       | `src/load/products/cal.ts` + test               |
+| `reconcile/documenso.ts`: a duplicate completion row is an untagged violation           | Already fixed in `4638367`: the declared bug `P6-OBS-DOC-005` counts it; a completed envelope with no row stays a violation                                                                                                                                                                             | `src/load/reconcile/documenso.ts` + tests       |
+| `medusa.ts`: an empty order set passes the retry audit when clients saw orders          | Fixed: `client-orders-in-db` is a PRODUCT BUG when the database holds fewer order-bearing intents than clients acknowledged                                                                                                                                                                             | `src/load/retry-audit/medusa.ts` + test         |
 
 ## Merge order
 
