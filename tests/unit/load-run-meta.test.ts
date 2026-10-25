@@ -114,3 +114,26 @@ describe("run meta", () => {
     assert.throws(() => validateRunMeta(m), /secret-shaped value/);
   });
 });
+
+describe("run meta label", () => {
+  it("a knee case records its own label, not the functional one", () => {
+    const knee = {
+      ...caseDef,
+      id: "P6-CAL-LOAD-005",
+      label: "knee range, environment-bound" as const,
+    };
+    const meta = buildRunMeta({
+      caseDef: knee,
+      profileName: "pr",
+      profile,
+      runId: "r1",
+      startedAt: new Date("2026-10-24T01:02:03Z"),
+      env: {},
+      k6Version: "2.3.0",
+      os,
+      readHarnessPin: () => "v0.2.14",
+      gitSha: () => undefined,
+    });
+    assert.equal(meta.label, "knee range, environment-bound");
+  });
+});
