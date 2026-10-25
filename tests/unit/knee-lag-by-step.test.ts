@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DocumentLag, Stage } from "../../src/load/pipeline-lag.ts";
-import { lagByStep, lagMarker, type StepLag } from "../../src/load/knee/lag-by-step.ts";
+import {
+  formatSealLag,
+  lagByStep,
+  lagMarker,
+  type StepLag,
+} from "../../src/load/knee/lag-by-step.ts";
 
 const ALL: Record<Stage, boolean> = {
   completed: true,
@@ -75,5 +80,15 @@ describe("seal lag per step", () => {
     const table = lagByStep([doc(1, 500, 10)], WINDOWS);
     assert.deepEqual(table[1]?.p95, {});
     assert.equal(table[1]?.documents, 0);
+  });
+
+  it("the lag table and the marker: the lag came first when the marker is earlier than the HTTP stop", () => {
+    const table: StepLag[] = [
+      { index: 0, documents: 30, p50: {}, p95: { seal: 100 }, max: {} },
+      { index: 1, documents: 30, p50: {}, p95: { seal: 1500 }, max: {} },
+    ];
+    const text = formatSealLag({ byStep: table, lagMarker: 1, unfinishedIndeterminate: 0 }, 2);
+    assert.match(text, /\| 1 \| 30 \| - \| 1500 \| - \|/);
+    assert.match(text, /Seal-lag marker at step 1; HTTP stop at step 2: the lag came first\./);
   });
 });

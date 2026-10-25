@@ -13,6 +13,8 @@ import { judgeWebhookRetry, type RetryInput } from "./webhook-retry.ts";
 import { classifyIntents, type IntentLog } from "./knee/intents.ts";
 import { docRowsByIntent } from "./knee/doc-intents.ts";
 import { intentCountersFor } from "./reconcile/index.ts";
+import { kneeWindows } from "./knee/stage.ts";
+import { lagByStep, lagMarker, type KneeSealLag } from "./knee/lag-by-step.ts";
 import {
   joinStages,
   STAGES,
@@ -382,7 +384,24 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
             }
           : undefined;
       const verdict = evaluatePipelineKnee(input, drain, knee, CONTRACT_MS, expectedEmails);
+      // The seal lag per hold window (plan task 4 §6.3): completed documents bucketed by their last signature.
+      let kneeLag: KneeSealLag | undefined;
+      if (knee && summary) {
+        const spec = ctx.caseDef.runs(ctx).find((r) => r.knee)?.knee;
+        const completedDocs = input.documents.filter((d) => d.completedAtMs !== null);
+        const joined = joinStages({ ...input, documents: completedDocs }).map((d, i) => ({
+          ...d,
+          lastSignedMs: completedDocs[i]?.lastSignedMs ?? null,
+        }));
+        const byStep = lagByStep(joined, spec ? kneeWindows(summary, spec) : []);
+        kneeLag = {
+          byStep,
+          lagMarker: lagMarker(byStep),
+          unfinishedIndeterminate: judgeUnfinished(knee).indeterminate,
+        };
+      }
       const doc = {
+        knee: kneeLag,
         schema: 1,
         contractMs: CONTRACT_MS,
         drained: drain.drained,

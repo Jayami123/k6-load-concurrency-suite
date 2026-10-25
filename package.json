@@ -41,6 +41,7 @@
     "load:cal-link-retry": "node scripts/load/run-load.ts --case P6-CAL-LOAD-009",
     "load:cal-knee": "node scripts/load/run-load.ts --case P6-CAL-LOAD-005",
     "load:medusa-knee": "node scripts/load/run-load.ts --case P6-MED-LOAD-004",
+    "load:documenso-knee": "node scripts/load/run-load.ts --case P6-DOC-LOAD-005",
     "load:medusa-retry": "node scripts/load/run-load.ts --case P6-MED-LOAD-006",
     "load:documenso-retry": "node scripts/load/run-load.ts --case P6-DOC-LOAD-007",
     "load:medusa-conservation": "node scripts/load/run-load.ts --case P6-MED-LOAD-002",

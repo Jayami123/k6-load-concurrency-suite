@@ -111,6 +111,13 @@ export function medKneeDefaultsFor(profileName: string): KneePlanSpec {
     : { startRate: 0.5, stepRate: 0.5, holdSec: 10, rampSec: 2, maxSteps: 3 };
 }
 
+/** The Documenso knee's defaults per profile (plan task 4 §6.5): 1 per second, +1 per step; `full` 8 steps of 30 s, `pr` 3 steps of 12 s. */
+export function docKneeDefaultsFor(profileName: string): KneePlanSpec {
+  return profileName === "full"
+    ? { startRate: 1, stepRate: 1, holdSec: 30, rampSec: 2, maxSteps: 8 }
+    : { startRate: 1, stepRate: 1, holdSec: 12, rampSec: 2, maxSteps: 3 };
+}
+
 /**
  * The knee plan of a run: the dispatch inputs (ctx.env) over the product's defaults for the profile. Setup and runs() both call it.
  * Cal uses kneeDefaultsFor (the default); Medusa passes medKneeDefaultsFor.
