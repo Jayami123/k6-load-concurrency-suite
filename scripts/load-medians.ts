@@ -17,7 +17,11 @@ const args = process.argv.slice(2);
 const metricIndex = args.indexOf("--metric");
 const metric = (metricIndex === -1 ? "requests" : args[metricIndex + 1]) as MedianMetric;
 const asJson = args.includes("--json");
-const folders = args.filter((a, i) => a !== "--json" && a !== "--metric" && i !== metricIndex + 1);
+const folders = args.filter((a, i) => {
+  if (a === "--json") return false;
+  if (metricIndex === -1) return true;
+  return i !== metricIndex && i !== metricIndex + 1;
+});
 if (folders.length === 0 || !METRICS.includes(metric)) {
   console.error(
     "usage: load-medians.ts <folder>... --metric requests|dropped|iterations|p95 [--json]",

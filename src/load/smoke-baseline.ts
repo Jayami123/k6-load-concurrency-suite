@@ -60,23 +60,30 @@ export function buildSmokeBaseline(input: {
   const cases = {} as Record<SmokeCaseId, SmokeCaseBaseline>;
   for (const caseId of Object.keys(SMOKE_CASES) as SmokeCaseId[]) {
     const { used, excluded } = selectSmokeRuns(caseId, input.runs[caseId] ?? []);
-    const values = used
-      .map((r) => pickMetric("p95", r))
-      .filter((v): v is number => v !== undefined);
-    if (values.length < 3) {
-      const reasons = excluded.map((e) => `${e.runId}: ${e.why.join("; ")}`).join(" | ");
+    // A run without a p95 value is left out of the median and out of n, the run ids and the environment alike.
+    const scored = used.flatMap((r) => {
+      const p95 = pickMetric("p95", r);
+      return p95 === undefined ? [] : [{ r, p95 }];
+    });
+    const noP95 = used
+      .filter((r) => pickMetric("p95", r) === undefined)
+      .map((r) => ({ runId: runIdOf(r.meta) ?? r.meta.runId, why: ["no k6[0].p95Ms"] }));
+    if (scored.length < 3) {
+      const reasons = [...excluded, ...noP95]
+        .map((e) => `${e.runId}: ${e.why.join("; ")}`)
+        .join(" | ");
       throw new Error(
-        `${caseId}: ${values.length} usable run(s), need at least 3. Excluded: ${reasons || "none"}`,
+        `${caseId}: ${scored.length} usable run(s), need at least 3. Excluded: ${reasons || "none"}`,
       );
     }
-    const first = used[0]!;
-    const ids = used.map((r) => runIdOf(r.meta)!);
+    const first = scored[0]!.r;
+    const ids = scored.map((s) => runIdOf(s.r.meta)!);
     cases[caseId] = {
       product: SMOKE_CASES[caseId],
       profile: "full",
       rate: first.meta.rate,
       durationSec: first.meta.durationSec,
-      medianP95Ms: medianOf(values),
+      medianP95Ms: medianOf(scored.map((s) => s.p95)),
       n: ids.length,
       runIds: [...new Set(ids)].sort((a, b) => Number(a) - Number(b)),
       environment: `${first.meta.environment.runnerImage} ${first.meta.environment.imageVersion}, ${first.meta.environment.nproc} vCPU`,
@@ -104,7 +111,8 @@ export function parseSmokeBaseline(value: unknown): SmokeBaseline {
       throw new Error(`smoke baseline: ${caseId} has n ${c.n} for ${c.runIds.length} run ids`);
     if (new Set(c.runIds).size !== c.runIds.length || !c.runIds.every((id) => /^\d+$/.test(id)))
       throw new Error(`smoke baseline: ${caseId} has duplicate or non-numeric run ids`);
-    if (!(c.medianP95Ms > 0)) throw new Error(`smoke baseline: ${caseId} medianP95Ms must be > 0`);
+    if (typeof c.medianP95Ms !== "number" || !Number.isFinite(c.medianP95Ms) || c.medianP95Ms <= 0)
+      throw new Error(`smoke baseline: ${caseId} medianP95Ms must be a finite number > 0`);
   }
   return b;
 }

@@ -123,4 +123,20 @@ describe("smoke baseline", () => {
     delete (missing.cases as Partial<SmokeBaseline["cases"]>)["P6-DOC-LOAD-001"];
     assert.throws(() => parseSmokeBaseline(missing), /P6-DOC-LOAD-001 is missing/);
   });
+
+  it("a run without a p95 value is left out of n and the run ids", () => {
+    const noP95 = run("P6-CAL-LOAD-001", "1004", 0);
+    delete (noP95.verdict as { k6?: Array<{ p95Ms?: number }> }).k6![0]!.p95Ms;
+    const b = buildSmokeBaseline(
+      input({ "P6-CAL-LOAD-001": [...three("P6-CAL-LOAD-001", 100, 200, 300), noP95] }),
+    );
+    assert.equal(b.cases["P6-CAL-LOAD-001"].n, 3);
+    assert.deepEqual(b.cases["P6-CAL-LOAD-001"].runIds, ["1001", "1002", "1003"]);
+  });
+
+  it("parseSmokeBaseline rejects a median stored as a string", () => {
+    const b = JSON.parse(JSON.stringify(buildSmokeBaseline(input()))) as SmokeBaseline;
+    (b.cases["P6-CAL-LOAD-001"] as unknown as { medianP95Ms: unknown }).medianP95Ms = "Infinity";
+    assert.throws(() => parseSmokeBaseline(b), /finite number/);
+  });
 });
