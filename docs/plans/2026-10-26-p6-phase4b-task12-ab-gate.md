@@ -1,13 +1,13 @@
 # P6 Phase 4b Task 12: A/B regression gate (`P6-X-LOAD-003`) and its self-test (`P6-X-LOAD-008`) (plan only)
 
-Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) lines 672 to 716 (Task 12), D5 (line 816), D17 (line 850), Note 2 and the Cal two-ref note in the task. Written on `plan/2026-10-26-p6-phase4b-plans` from `origin/main` at `e27ad5a`. Probe date 2026-10-25 (UTC), cloud VM. **VM timings prove that a step works; none is a published number or a target.** The A/B arms themselves need a candidate ref: **UNPROBED** on this VM (§3.2).
+Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) lines 672 to 716 (Task 12), D5 (line 816), D17 (line 850), Note 2 and the Cal two-ref note in the task. Written on `plan/2026-10-26-p6-phase4b-plans` from `origin/main` at `86dbbde` (merged into this branch at `fe09ba6`; re-checked 2026-10-26 against main 86dbbde). Probe date 2026-10-25 (UTC), cloud VM. **VM timings prove that a step works; none is a published number or a target.** The A/B arms themselves need a candidate ref: **UNPROBED** on this VM (§3.2).
 
 ## 1. Header
 
 - **Task and roadmap line:** Phase 4b Task 12, roadmap lines 672 to 716.
 - **Cases:** `P6-X-LOAD-003` (P1, noise-aware A/B gate), accepted extra `P6-X-LOAD-008` (gate self-test, D17).
 - **Build branch pattern:** `feat/<build date>-p6-ab-gate`.
-- **Unit-test delta:** **+11 against B0 1025**. The chain: Task 11 (+10) first, so the expected count is **1046** (1025 + 10 + 11), and **1082** with Task 6 (1061 + 10 + 11).
+- **Unit-test delta:** **+11 against B 1173** (B0 1102, plus the bound PR's +1, Tasks 7 to 11 in index §2 order: +23, +14, +11, +12, +10). Expected after the last step: **1184**.
 - **Stop for owner review: yes.** A new dispatch-and-path-triggered workflow `gate.yml` changes (shared CI), a required-check decision is the owner's (roadmap line 709), and the ref-bump detection edits a CI trigger.
 
 ## 2. What it proves
@@ -21,13 +21,13 @@ Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) line
 
 ### 3.1 What was probed (sizing only)
 
-| #   | Roadmap probe item                                                              | Command or source                                                                                                                                                                                                  | Output (trimmed)                                                                                                                                                                                                              | Value it sets                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G-1 | Job time for six arms per product, including stack switches                     | Medusa: `npm run up:medusa` start 28 to 100 s (Task 10 M10-1 and Task 11 A-2); one steady arm 139 s (Task 7 M-3)                                                                                                   | a six-arm Medusa job: 100 s start + 6 × 140 s = **17 min** of arms, plus up to 6 restarts at 30 to 100 s = **3 to 10 min**                                                                                                    | Medusa A/B fits one job of 60 min with margin                                                                                                                             |
-| G-2 | Cal cold build time for the B ref and the cache hit for A                       | Cal `up:cal` cold: **421 s** (Task 11 A-3), `next build` 98 s; cache: none on the VM                                                                                                                               | a cold B-ref start is ~7 min; a cache hit for A is **UNPROBED** (no cache on the VM)                                                                                                                                          | the Cal A/B job: worst case six stack switches × 7 min cold = 42 min + six arms × 147 s = 15 min → 57 min; with the cache, far less: **confirm in the first CI dispatch** |
-| G-3 | Ref bump detection (diff of `*_REF`)                                            | `grep -n "_REF" .github/workflows/perf.yml scripts/bootstrap.sh`                                                                                                                                                   | `CAL_REF`, `MEDUSA_REF`, `DOCUMENSO_REF` appear in `perf.yml` env (lines near the top: `MEDUSA_REF`, `CAL_REF`, `DOCUMENSO_REF`) and in `scripts/bootstrap.sh` lines 9 to 13 (`MEDUSA_REF=…`, `DOCUMENSO_REF=…`, `CAL_REF=…`) | the detection greps those exact names in `git diff base...head` (§6.4)                                                                                                    |
-| G-4 | The self-test on the stub: fail on a slowed candidate, pass on an unchanged one | **UNPROBED** here: the self-test is a new k6 script (`k6/selftest/gate-slowdown.js`); a stub run with `node src/load/stub-server.ts 18080 25 1500 10000` exists (README line 767), so the stub itself is available | —                                                                                                                                                                                                                             | the build runs the self-test on the stub in CI (product-free), like `load-knee-selftest`                                                                                  |
-| G-5 | Gate triggers: `paths` filters                                                  | `grep -n "paths:" .github/workflows/*.yml`                                                                                                                                                                         | no `paths:` filter on main for `k6/**`, `scripts/load/**`, `src/load/**` (perf.yml has `pull_request:` without paths; knee.yml has dispatch only)                                                                             | the gate's `paths:` filter is NEW                                                                                                                                         |
+| #   | Roadmap probe item                                                              | Command or source                                                                                                                                                                                                  | Output (trimmed)                                                                                                                                                                                                                                              | Value it sets                                                                                                                                                       |
+| --- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G-1 | Job time for six arms per product, including stack switches                     | Medusa: `npm run up:medusa` start 28 to 100 s (Task 10 M10-1 and Task 11 A-2); one steady arm 139 s (Task 7 M-3)                                                                                                   | a six-arm Medusa job: 100 s start + 6 × 140 s = **17 min** of arms, plus up to 6 restarts at 30 to 100 s = **3 to 10 min**                                                                                                                                    | Medusa A/B fits one job of 60 min with margin                                                                                                                       |
+| G-2 | Cal cold build time for the B ref and the cache hit for A                       | Cal `up:cal` cold: **421 s** on the cache-less VM (not a CI number; Task 11 A-3), `next build` 98 s                                                                                                                | A is restored from the cache (CI: 9 of 9 4a `knee.yml` runs restored it, 0–3 s); B is built cold once (≤ 255 s, PRE-2 worst case); later switches reuse the build. CI evidence: Start Cal 52–70 s (19 % of the 6-min cap); the 6-min cap stays (never raised) | the Cal A/B job: six switches, each start capped at 6 min (never more), plus six arms of 4 min = 97 of 120 min (§6.6); a cache-miss warning goes in the job summary |
+| G-3 | Ref bump detection (diff of `*_REF`)                                            | `grep -n "_REF" .github/workflows/perf.yml scripts/bootstrap.sh`                                                                                                                                                   | `CAL_REF`, `MEDUSA_REF`, `DOCUMENSO_REF` appear in `perf.yml` env (lines near the top: `MEDUSA_REF`, `CAL_REF`, `DOCUMENSO_REF`) and in `scripts/bootstrap.sh` lines 9 to 13 (`MEDUSA_REF=…`, `DOCUMENSO_REF=…`, `CAL_REF=…`)                                 | the detection greps those exact names in `git diff base...head` (§6.4)                                                                                              |
+| G-4 | The self-test on the stub: fail on a slowed candidate, pass on an unchanged one | **UNPROBED** here: the self-test is a new k6 script (`k6/selftest/gate-slowdown.js`); a stub run with `node src/load/stub-server.ts 18080 25 1500 10000` exists (README line 767), so the stub itself is available | —                                                                                                                                                                                                                                                             | the build runs the self-test on the stub in CI (product-free), like `load-knee-selftest`                                                                            |
+| G-5 | Gate triggers: `paths` filters                                                  | `grep -n "paths:" .github/workflows/*.yml`                                                                                                                                                                         | no `paths:` filter on main for `k6/**`, `scripts/load/**`, `src/load/**` (perf.yml has `pull_request:` without paths; knee.yml has dispatch only)                                                                                                             | the gate's `paths:` filter is NEW                                                                                                                                   |
 
 ### 3.2 What the probe could not confirm
 
@@ -38,14 +38,29 @@ Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) line
 
 ## 4. Depends on
 
-Main at `e27ad5a`, verified:
+Main at `86dbbde` (re-checked 2026-10-26; verified):
 
 - Task 11 (A/A): `k6/thresholds/tolerance.json` (**not on main**: written by the tolerance-file PR after the first A/A dispatch, Task 11 §12). This task cannot run its gate until that file exists (§5 row 1).
 - `src/load/stub-server.ts` (`node src/load/stub-server.ts <port> <serviceMs> <stallMs> <periodMs>`, README line 767), `src/load/telemetry/*`, `src/load/medians.ts`, `src/load/smoke-baseline.ts`.
 - `k6/lib/pure/options.js` (`openModelScenario`, `timeUnitSec`), `k6/lib/pure/sizing.js` (`preAllocatedVUs`, `maxVUs`).
 - `perf.yml` env `MEDUSA_REF`, `CAL_REF`, `DOCUMENSO_REF` (lines near 33 to 39 of the workflow's `env:` block: the same SHAs as `scripts/bootstrap.sh` lines 9 to 13), `knee.yml` (the dispatch guard and the artefact pattern), `perf.yml` `load-knee-selftest` (line 2390, the product-free self-test job the gate self-test copies).
 - `scripts/bootstrap.sh` (the product checkouts; a second ref is checked out into a separate directory for B).
-- The Cal build cache keyed on ref: `cal-next-${CAL_REF}-h0.2.11` in `perf.yml` (roadmap D5, Phase 1).
+- The Cal build cache keyed on ref: `cal-next-${CAL_REF}-h0.2.15` in `perf.yml` on main (`${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15`, lines 1114, 1293 and 1408; re-read at build) (roadmap D5, Phase 1).
+
+**4a lessons applied** (each is checked by the build step it names):
+
+- `DANGEROUS_BYPASS_RATE_LIMITS` defaults to true (`scripts/harness.mjs` line 33, `||=`); the A/B cases are Cal and Medusa, which do not use the limiter.
+- Minute-boundary alignment with a 5 s guard applies to limiter windows only; the A/B arms have none.
+- `no_reference` → INVALID, never PASS (a missing tolerance, §9).
+- `low_sample_stop`: an arm whose verdict rests on too few requests is flagged and not counted as a VALID arm.
+- Config-used tests for every new config field (the self-test's arm config, §6.5).
+- k6 has no URL global: URLs are built by string concatenation.
+- Cleanup never runs inside a limiter window under test.
+- Per-intent audit with no slack (L9): each arm's audit is a FAIL (PRODUCT BUG) or TEST BUG, never a regression (§6.7).
+- The F-M2 ghost flag (Medusa) is not read as a gate result.
+- "knee range" wording, never "capacity" (R10).
+- CI budget rules (§6.6, §9, X8): every step capped, the 80 % rule, retention 90.
+- The owner dispatches in the UI and pastes the run ids.
 
 ## 5. Build-time recheck table
 
@@ -121,7 +136,7 @@ Workflow triggers (`gate.yml`):
 
 - `pull_request` with `paths: ['k6/**', 'scripts/load/**', 'src/load/**', '.github/workflows/perf.yml', 'scripts/bootstrap.sh']`. The last two paths are the ref-bump files: a PR that changes only `CAL_REF`, `MEDUSA_REF` or `DOCUMENSO_REF` has no P6 code change, so without them the gate never starts for a ref bump.
 - `push` with `branches: [main]` and the same `paths` list, so a bump merged to `main` also starts the gate. The `push` run compares `main` with its parent, not with a PR base.
-- A step that runs `git diff <base>...HEAD -- .github/workflows/perf.yml scripts/bootstrap.sh` (where `<base>` is `origin/main` on `pull_request`, and `HEAD~1` on `push`) through `changedRefs`. Only a changed ref name starts the gate for the bumped product; other edits to those two files do not.
+- A step that runs `git diff <base>...HEAD -- .github/workflows/perf.yml scripts/bootstrap.sh` (where `<base>` is `origin/main` on `pull_request`, and `HEAD~1` on `push`) through `changedRefs`. Only a changed ref name starts the gate for the bumped product; other edits to those two files do not. The `pull_request` A/B checkout uses `fetch-depth: 0`, so `git diff origin/main...HEAD` has the base commit.
 
 **Not a required check** unless the owner sets it by hand (roadmap line 709).
 
@@ -142,7 +157,7 @@ Jobs: `gate-selftest` (product-free, every `pull_request` and `push` to `main` t
 Budgets (the new jobs set their own timeouts, under 6 h):
 
 - `ab-medusa`: setup 21 (the `medusa-knee` setup sum, Task 7 §9) + six arm steps × 4 min (24) + stack restarts 6 (one per arm switch, 1 min each as an upper bound from the 28 to 100 s probes, UNPROBED) + summary 2 + scan 2 + upload 3 + stop 1 = **21 + 24 + 6 + 2 + 2 + 3 + 1 = 59**; job **75**, margin **16** ✓.
-- `ab-cal`: setup 29 + six arm steps × 4 (24) + stack switches (six × 7 min cold worst case = 42; the cache-hit case is UNPROBED) + summary 2 + scan 2 + upload 3 + stop 1 = **103** (cold); job **120**, margin **17** ✓ for the cold worst case. **Confirm in the first CI dispatch.**
+- `ab-cal` (Q-CALAB, decided: six interleaved switches): A from the cache; B cold once (≤ 255 s, PRE-2 worst case); later switches reuse the build. Every step is capped, and each switch's start is capped at 6 min (never more). Setup 29 + six arm steps × 4 (24) + six switch starts × 6 (36) + summary 2 + scan 2 + upload 3 + stop 1 = **97**; job **120**, margin **23** ✓. A cache-miss warning goes in the job summary. **Confirm in the first CI dispatch.**
 - `gate-selftest`: stub arms of 30 s each (nine arms of 30 s = 4.5 min) + the classifier, step caps summing to 12; job **20**, margin **8** ✗ → the job is **25**, margin **13** ✓.
 
 ### 6.7 Oracles and assertions
@@ -156,7 +171,7 @@ Each arm has its own prefix (`p6-qa-<run id>-<case>-<arm>`), its own cleanup and
 
 ## 9. CI, token scan and budget
 
-Budgets in §6.6. Token scan before every upload; permissions `contents: read` for every job (the workflow needs nothing more: the B checkout is public-ref read only).
+Budgets in §6.6; every step has `timeout-minutes`. Uploads use `retention-days: 90`. Token scan before every upload; permissions `contents: read` for every job (the workflow needs nothing more: the B checkout is public-ref read only). A missing `k6/thresholds/tolerance.json` is a hard stop for the A/B job (§5 row 1); an A/B run that reaches the gate without its tolerance is INVALID (`no_reference`), never PASS.
 
 ## 10. Expected output
 
@@ -173,24 +188,24 @@ None. The B ref's product build is a second checkout of the same bootstrap; no n
 
 ## 12. Build order
 
-| Step | Commit                                                              | Files                                                                                                                       | Unit tests after the step (B0 1025 + Task 11's 10 = 1035) |
-| ---- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 1    | `feat(load): add the a/b gate decision and the ratios`              | `src/load/gate/ab-gate.ts`, `src/load/gate/ratio.ts`, `tests/unit/gate-ab.test.ts` (4), `tests/unit/gate-ratio.test.ts` (3) | 1042                                                      |
-| 2    | `feat(load): add the trigger detection for load code and ref bumps` | `src/load/gate/triggers.ts`, `tests/unit/gate-triggers.test.ts` (3)                                                         | 1045                                                      |
-| 3    | `feat(k6): add the gate self-test`                                  | `k6/selftest/gate-slowdown.js`, `scripts/load/run-load.ts` (`--case P6-X-LOAD-008`), `tests/unit/gate-selftest.test.ts` (1) | 1046                                                      |
-| 4    | `ci(gate): add the a/b arms and the self-test job`                  | `.github/workflows/gate.yml`                                                                                                | 1046 (plus `lint:actions`)                                |
-| 5    | `docs(load): describe the gate in the readme`                       | `README.md`                                                                                                                 | 1046                                                      |
+| Step | Commit                                                              | Files                                                                                                                       | Unit tests after the step (B 1173) |
+| ---- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 1    | `feat(load): add the a/b gate decision and the ratios`              | `src/load/gate/ab-gate.ts`, `src/load/gate/ratio.ts`, `tests/unit/gate-ab.test.ts` (4), `tests/unit/gate-ratio.test.ts` (3) | 1180                               |
+| 2    | `feat(load): add the trigger detection for load code and ref bumps` | `src/load/gate/triggers.ts`, `tests/unit/gate-triggers.test.ts` (3)                                                         | 1183                               |
+| 3    | `feat(k6): add the gate self-test`                                  | `k6/selftest/gate-slowdown.js`, `scripts/load/run-load.ts` (`--case P6-X-LOAD-008`), `tests/unit/gate-selftest.test.ts` (1) | 1184                               |
+| 4    | `ci(gate): add the a/b arms and the self-test job`                  | `.github/workflows/gate.yml`                                                                                                | 1184 (plus `lint:actions`)         |
+| 5    | `docs(load): describe the gate in the readme`                       | `README.md`                                                                                                                 | 1184                               |
 
-**Expected after the last step: 1046** (B0 1025 + Task 11's 10 + Task 12's 11). With Task 6 merged first: 1082.
+**Expected after the last step: 1184** (B 1173 + Task 12's 11).
 
 ## 13. Risks, proposed extras and open decisions
 
 **Open decisions:**
 
-- **Q-REPEAT.** The "repeated" rule: every B arm above the tolerance (recommended: with three arms, the strictest reading that is still robust) versus a majority (two of three). Evidence: the A/A spread (Task 11 A-4: Cal 36 %, Medusa 3 %). Recommended: **every B arm**, because a majority rule with a 36 % spread is too easy to trip.
-- **Q-REQ.** The gate as a required check: owner, by hand (roadmap line 709). Recommended: **not required** until three real triggers have run green.
-- **Q-CALAB.** The Cal A/B job's time: six stack switches cold can take 42 min; options: (a) keep six switches (the roadmap's interleaving, recommended); (b) run both refs' stacks side by side on the runner if memory allows (4 vCPU, 15 GB: UNPROBED; the roadmap allows one stack at a time on the VM). Recommended: **(a)**.
-- **Q-SELFTOL.** The self-test's fixed tolerance 0.20 is a test constant, not a product tolerance. Recommended: keep it fixed and labelled.
+- **Q-REPEAT.** The "repeated" rule: every B arm above the tolerance (recommended: with three arms, the strictest reading that is still robust) versus a majority (two of three). Evidence: the A/A spread (Task 11 A-4: Cal 36 %, Medusa 3 %). Decided: **every B arm**, because a majority rule with a 36 % spread is too easy to trip.
+- **Q-REQ.** The gate as a required check: owner, by hand (roadmap line 709). Decided: **not required** until three real triggers have run green; the owner decides later.
+- **Q-CALAB.** The Cal A/B job's time: six stack switches cold can take 42 min; options: (a) keep six switches (the roadmap's interleaving, recommended); (b) run both refs' stacks side by side on the runner if memory allows (4 vCPU, 15 GB: UNPROBED; the roadmap allows one stack at a time on the VM). Decided: **(a)**, six interleaved switches.
+- **Q-SELFTOL.** The self-test's fixed tolerance 0.20 is a test constant, not a product tolerance. Decided: fixed 0.20, a labelled test constant.
 
 **Proposed extras:** none needed. `P6-X-LOAD-008` is the accepted extra (D17).
 
@@ -198,13 +213,13 @@ None. The B ref's product build is a second checkout of the same bootstrap; no n
 
 - The B ref build is cold on a cache miss (G-2): the Cal job can reach its cold worst case (103 of 120 min).
 - A slow runner can make all three B arms regress together without a product change (the same-runner design reduces this, not eliminates it). The Task 11 tolerance and the "every arm" rule are the defence; a false FAIL is re-run once only after the cause is recorded (rule 13: no blind re-runs).
-- The trigger on `k6/**` runs the gate on every P6 k6 change: CI minutes.
+- CI minutes: a `k6/**` path trigger runs `ab-cal` (about 97 min) on every load PR. Recommended: paths limited to `k6/journeys/**`, `k6/lib/**` and the `*_REF` lines, plus `workflow_dispatch`. The owner decides in the build PR.
 
 ## 14. Done when (roadmap, made measurable)
 
 Roadmap: "The gate runs on one real trigger of each kind (a P6 k6 change, and a ref bump on a probe branch) and passes on an unchanged B; `P6-X-LOAD-008` fails on the deliberately slowed candidate and passes on the unchanged one, in CI; history stored for the dashboard; `npm run check` green."
 
-Measured: (1) `npm run check` with 1046 tests (1082 with Task 6), `# fail 0`; (2) one gate run from a P6 k6 change and one from a `*_REF` bump on a probe branch, each with its verdict; (3) the `gate-selftest` job green in CI with both expectations met; (4) the gate history stored as `gate-history.json` in the evidence (for the dashboard, Task 13).
+Measured: (1) `npm run check` with 1184 tests, `# fail 0`; (2) one gate run from a P6 k6 change and one from a `*_REF` bump on a probe branch, each with its verdict; (3) the `gate-selftest` job green in CI with both expectations met; (4) the gate history stored as `gate-history.json` in the evidence (for the dashboard, Task 13).
 
 ## 15. Rule self-check
 
