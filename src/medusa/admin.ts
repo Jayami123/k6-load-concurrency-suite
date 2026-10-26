@@ -77,7 +77,8 @@ function pickName<T extends { name?: string; id?: string }>(
 
 export async function seedAndLogin(): Promise<string> {
   const file = medusaAdminPasswordFile();
-  const { password, created } = resolveAdminPassword(file, process.env.MEDUSA_ADMIN_PASSWORD);
+  const credential = resolveAdminPassword(file, process.env.MEDUSA_ADMIN_PASSWORD);
+  const { password } = credential;
   // The harness reads its config on the first getAdapter call, so the credentials must be in the environment before it.
   process.env.MEDUSA_ADMIN_PASSWORD = password;
   process.env.MEDUSA_ADMIN_EMAIL ??= "admin@qa.local";
@@ -89,7 +90,7 @@ export async function seedAndLogin(): Promise<string> {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ email, password: medusaAdminPasswordFromEnv() }),
   });
-  if (res.status === 401) throw new Error(adminLoginFailure(res.status, file, created));
+  if (res.status === 401) throw new Error(adminLoginFailure(res.status, file, credential));
   const json = (await res.json()) as { token?: string };
   if (res.status !== 200 || !json.token) {
     throw new Error(`TEST BUG: POST /auth/user/emailpass HTTP ${res.status}`);

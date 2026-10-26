@@ -19,6 +19,8 @@ export interface AdminPassword {
   password: string;
   /** True when this call wrote the file: the value is new, so an existing admin user does not have it. */
   created: boolean;
+  /** Where the value came from: the MEDUSA_ADMIN_PASSWORD variable, or the file. */
+  source: "env" | "file";
 }
 
 /**
@@ -26,30 +28,37 @@ export interface AdminPassword {
  * written to the file (owner-only, exclusive create). The messages never contain the password.
  */
 export function resolveAdminPassword(file: string, envValue: string | undefined): AdminPassword {
-  if (envValue) return { password: envValue, created: false };
+  if (envValue) return { password: envValue, created: false, source: "env" };
   if (existsSync(file)) {
+    // POSIX mode bits mean nothing on Windows (Node reports 0o666 for a writable file), so the check is POSIX-only.
     const mode = statSync(file).mode & 0o777;
-    if ((mode & 0o077) !== 0)
+    if (process.platform !== "win32" && (mode & 0o077) !== 0)
       throw new Error(
         `TEST BUG: ${file} is readable by others (mode ${mode.toString(8)}); chmod 600 it, then rerun.`,
       );
     const password = readFileSync(file, "utf8").trim();
     if (password === "")
       throw new Error(`TEST BUG: ${file} is empty; delete it and reset the Medusa volume.`);
-    return { password, created: false };
+    return { password, created: false, source: "file" };
   }
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const password = generateAdminPassword();
   writeFileSync(file, `${password}\n`, { mode: 0o600, flag: "wx" });
-  return { password, created: true };
+  return { password, created: true, source: "file" };
 }
 
 /**
  * The message for a login the admin API refused with 401: the user exists with another password, so the stored file and the
  * database disagree. The fix is the volume reset; the file is kept and reused after it.
  */
-export function adminLoginFailure(status: number, file: string, created: boolean): string {
-  const why = created
+export function adminLoginFailure(
+  status: number,
+  file: string,
+  credential: Pick<AdminPassword, "created" | "source">,
+): string {
+  if (credential.source === "env")
+    return `TEST BUG: Medusa admin login answered HTTP ${status} with the password from MEDUSA_ADMIN_PASSWORD. The stored file is not used in this run. Use the password the admin user was created with, or unset the variable to use ${file}.`;
+  const why = credential.created
     ? `${file} did not exist, so a new password was written there, but the admin user already exists with another one`
     : `the password in ${file} does not match the admin user`;
   return `TEST BUG: Medusa admin login answered HTTP ${status}: ${why}. Reset the Medusa volume (npm run down:medusa, remove only qa-harness-medusa_medusa_harness_pg, npm run up:medusa), keep ${file}, then rerun.`;

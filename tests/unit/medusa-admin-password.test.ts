@@ -21,7 +21,7 @@ describe("medusa admin password", () => {
   it("uses the environment value when set and writes nothing", () => {
     const file = fileIn();
     const r = resolveAdminPassword(file, "env-value");
-    assert.deepEqual(r, { password: "env-value", created: false });
+    assert.deepEqual(r, { password: "env-value", created: false, source: "env" });
     assert.equal(existsSync(file), false);
   });
 
@@ -29,7 +29,9 @@ describe("medusa admin password", () => {
     const file = fileIn();
     const first = resolveAdminPassword(file, undefined);
     assert.equal(first.created, true);
-    assert.equal((statSync(file).mode & 0o777).toString(8), "600");
+    // Windows reports 0o666 for a writable file, so the mode is asserted on POSIX only.
+    if (process.platform !== "win32")
+      assert.equal((statSync(file).mode & 0o777).toString(8), "600");
     const second = resolveAdminPassword(file, undefined);
     assert.equal(second.created, false);
     assert.equal(second.password, first.password);
@@ -40,6 +42,7 @@ describe("medusa admin password", () => {
     const file = fileIn();
     writeFileSync(file, "secret-value\n");
     chmodSync(file, 0o644);
+    if (process.platform === "win32") return;
     assert.throws(
       () => resolveAdminPassword(file, undefined),
       (err: Error) => /chmod 600/.test(err.message) && !err.message.includes("secret-value"),
@@ -54,12 +57,19 @@ describe("medusa admin password", () => {
   });
 
   it("a 401 with a missing file says to reset the volume, and never carries a password", () => {
-    const msg = adminLoginFailure(401, "/h/.p6/medusa-admin", true);
+    const msg = adminLoginFailure(401, "/h/.p6/medusa-admin", { created: true, source: "file" });
     assert.match(msg, /^TEST BUG: Medusa admin login answered HTTP 401/);
     assert.match(msg, /qa-harness-medusa_medusa_harness_pg/);
     assert.match(msg, /did not exist, so a new password/);
-    const stale = adminLoginFailure(401, "/h/.p6/medusa-admin", false);
+    const stale = adminLoginFailure(401, "/h/.p6/medusa-admin", { created: false, source: "file" });
     assert.match(stale, /does not match the admin user/);
     assert.match(stale, /Reset the Medusa volume/);
+  });
+
+  it("a 401 with the environment password names the variable and does not send the operator to the file", () => {
+    const msg = adminLoginFailure(401, "/h/.p6/medusa-admin", { created: false, source: "env" });
+    assert.match(msg, /from MEDUSA_ADMIN_PASSWORD/);
+    assert.match(msg, /file is not used in this run/);
+    assert.doesNotMatch(msg, /Reset the Medusa volume/);
   });
 });
