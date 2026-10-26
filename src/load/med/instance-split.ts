@@ -33,6 +33,13 @@ export function classifySplit(input: {
   invalidReasons: string[];
 }): SplitVerdict {
   const base = { orders: input.orders, stock: input.stock, perInstance: input.perInstance };
+  // the aggregate counts must be finite numbers: NaN or Infinity would pass the conservation checks silently
+  if (!Number.isFinite(input.orders) || !Number.isFinite(input.stock))
+    return {
+      ...base,
+      verdict: "TEST BUG",
+      reasons: ["TEST BUG: orders and stock must be finite numbers"],
+    };
   // each required instance has exactly one row: a missing or duplicated row is the probe's fault, never a pass
   const malformed = (["primary", "secondary"] as const).filter(
     (name) => input.perInstance.filter((r) => r.instance === name).length !== 1,

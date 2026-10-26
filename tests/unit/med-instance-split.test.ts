@@ -36,6 +36,11 @@ describe("medusa two-instance conservation", () => {
     assert.ok(v.reasons[0]?.includes("secondary"));
   });
 
+  it("is a test bug when the aggregate orders or stock is not a finite number", () => {
+    assert.equal(classifySplit({ ...clean, stock: Number.POSITIVE_INFINITY }).verdict, "TEST BUG");
+    assert.equal(classifySplit({ ...clean, orders: Number.NaN }).verdict, "TEST BUG");
+  });
+
   it("is a test bug when an instance count is negative or not a number, never a pass", () => {
     const negative = [both[0]!, { instance: "secondary" as const, requests: -1, orders: 0 }];
     assert.equal(classifySplit({ ...clean, perInstance: negative }).verdict, "TEST BUG");
