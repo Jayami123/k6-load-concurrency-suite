@@ -1584,6 +1584,13 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: npm run load:documenso-limiter-contract
 
+      # The contract (P6-DOC-LOAD-009) spends the tRPC and v2 windows of the minute. The spike starts after both windows have reset
+      # (the limiter is a fixed one-minute window per IP; 70 s covers the reset). Counters are database-backed, so a restart does not clear them.
+      - name: Wait for the tRPC and v2 limiter windows to reset
+        if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
+        timeout-minutes: 3
+        run: sleep 70
+
       - name: Spike P6-DOC-LOAD-004 on the limiter profile
         id: spike
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}

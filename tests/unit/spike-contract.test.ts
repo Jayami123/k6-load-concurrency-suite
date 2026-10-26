@@ -118,3 +118,11 @@ describe("spike contract", () => {
     assert.match(limitedLineMismatch(9, 10) ?? "", /TEST BUG/);
   });
 });
+
+describe("spike recovery reference", () => {
+  it("a run with no pre-spike window that has a p95 reports no reference, not a failed recovery", () => {
+    const r = evaluateSpike(input({ preSpike: [win(0, undefined, 10)] }));
+    assert.equal(r.recoveryReason, "no_reference");
+    assert.equal(r.recoverySec, undefined);
+  });
+});

@@ -115,7 +115,11 @@ function formatSpike(label: string, r: SpikeResult): string {
     .map((c) => `| ${c.name} | ${c.ok ? "ok" : "FINDING"} | ${c.detail} |`)
     .join("\n");
   const recovery =
-    r.recoverySec === undefined ? "not reached in the watch period" : `${r.recoverySec} s`;
+    r.recoveryReason === "no_reference"
+      ? "no reference (no pre-spike window has a p95)"
+      : r.recoverySec === undefined
+        ? "not reached in the watch period"
+        : `${r.recoverySec} s`;
   return `### Spike ${label}: ${r.label}\n\nVerdict: ${r.verdict}${r.invalidReason ? ` (${r.invalidReason})` : ""}. Recovery: ${recovery}.\n\n| check | result | detail |\n| --- | --- | --- |\n${rows}\n`;
 }
 

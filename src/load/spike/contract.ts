@@ -31,7 +31,8 @@ export type SpikeCheck = { name: string; ok: boolean; detail: string };
 
 export interface SpikeResult {
   label: "characterisation" | "limiter contract";
-  recoverySec?: number; // undefined: "not reached in the watch period"
+  recoverySec?: number; // undefined: "not reached in the watch period" (with a reference) or no reference (see recoveryReason)
+  recoveryReason?: "no_reference"; // no pre-spike window had a p95, so there is nothing to recover to
   checks: SpikeCheck[];
   verdict: "PASS" | "PRODUCT BUG (SUSPECTED)" | "INVALID";
   invalidReason?: "dropped_iterations" | "no_refusals";
@@ -90,16 +91,18 @@ export function evaluateSpike(input: SpikeInput): SpikeResult {
   }
 
   let recoverySec: number | undefined;
+  let recoveryReason: "no_reference" | undefined;
   try {
     const upper = referenceUpper(preSpike, band);
     recoverySec = recoverySeconds(windows, spikeEndMs, upper);
   } catch {
-    recoverySec = undefined;
+    recoveryReason = "no_reference";
   }
 
   const result: SpikeResult = {
     label,
     recoverySec,
+    ...(recoveryReason ? { recoveryReason } : {}),
     checks,
     verdict: checks.every((c) => c.ok) ? "PASS" : "PRODUCT BUG (SUSPECTED)",
   };

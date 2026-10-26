@@ -1109,7 +1109,8 @@ export const MED_LOAD_003: LoadCase = {
   ],
   stages: {
     setup: makeMedusaSetup({
-      stockFor: (planned) => Math.ceil(1.2 * planned) + 10,
+      stockFor: (_planned, ctx) =>
+        Math.ceil(1.2 * plannedIterations(spikeSpec(ctx, "medusa", 10))) + 10,
     }),
     reconcile: composeStages([spikeStage, reconcileStage]),
     cleanup: medusaCleanup,
