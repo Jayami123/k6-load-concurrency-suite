@@ -100,14 +100,20 @@ function writeSoakReport(
   // The run's own outcome decides the audit, so soak.json cannot disagree with verdict.json.
   const { outcome, reasons: runReasons } = evaluateVerdict(result.ctx);
   const testBugReasons = runReasons.filter((r) => r.includes("TEST BUG"));
+  // A failed k6 check is not an audit finding: the soak cannot read it as a product verdict, so it is INVALID with its own reason.
+  const checkFailReasons =
+    outcome === "FAIL"
+      ? runReasons.filter((r) => !r.startsWith("reconcile:") && !r.includes("TEST BUG"))
+      : [];
   const invalidReasons = [
     ...(outcome === "INVALID" || outcome === "ENV" ? [`run outcome ${outcome}`] : []),
+    ...checkFailReasons.map((r) => `run check failed: ${r}`),
     ...(telemetry.gaps.length > 0
       ? [`telemetry gaps over two intervals: ${telemetry.gaps.length}`]
       : []),
   ];
   const { verdict, reasons } = soakVerdict({
-    auditOk: outcome !== "FAIL" || testBugReasons.length > 0,
+    auditOk: !runReasons.some((r) => r.startsWith("reconcile:") && !r.includes("TEST BUG")),
     invalidReasons,
     testBugReasons,
     slopeRpm: statistics.rssMb.slope,

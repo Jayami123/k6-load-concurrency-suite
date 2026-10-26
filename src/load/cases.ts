@@ -1220,10 +1220,11 @@ export const DOC_LOAD_009: LoadCase = {
 };
 
 /**
- * The Cal soak's slot pool (plan Phase 4b task 7 §6.3): the iteration i books pool[i mod P] and cancels it, so a pool of 50 slots
- * holds at 4 per second with a 2 s worst case (50 / 4 = 12.5 s per slot, against 2 s).
+ * The Cal soak's slot pool (plan Phase 4b task 7 §6.3): the iteration i books pool[i mod P] and cancels it, so a slot is free again
+ * only after P / rate seconds. The probe of 2026-10-26 showed 50 slots (12.5 s) too few for the warm-up iterations (up to 16 s with the
+ * tail), so the pool is 100 (25 s at 4 per second).
  */
-export const CAL_SOAK_POOL = 50;
+export const CAL_SOAK_POOL = 100;
 
 /** P6-CAL-LOAD-008: the Cal booking soak with slot recycling (plan Phase 4b task 7 §6.3). Rate and duration come from withSoakProfile. */
 export const CAL_LOAD_008: LoadCase = {
