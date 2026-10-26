@@ -190,18 +190,27 @@ export function evaluatePipeline(
   contractMs = CONTRACT_MS,
   expectedEmails?: Map<string, number>,
 ): PipelineVerdict {
-  const summary = summariseLag(joinStages(input), contractMs);
-  const reasons: string[] = [];
-  const knownBugs: Record<string, number> = {};
-  if (summary.documents === 0) {
+  if (input.documents.length === 0)
     return {
       ok: false,
       kind: "TEST BUG",
       reasons: ["TEST BUG: no documents of the run found (join key or scope)"],
-      summary,
-      knownBugs,
+      summary: summariseLag(joinStages(input), contractMs),
+      knownBugs: {},
     };
-  }
+  return judgePipeline(input, drain, contractMs, expectedEmails);
+}
+
+/** The judgement of the documents given; the caller decides whether zero documents is a TEST BUG. */
+function judgePipeline(
+  input: StageInput,
+  drain: { drained: boolean; drainMs: number },
+  contractMs: number,
+  expectedEmails?: Map<string, number>,
+): PipelineVerdict {
+  const summary = summariseLag(joinStages(input), contractMs);
+  const reasons: string[] = [];
+  const knownBugs: Record<string, number> = {};
   for (const stage of STAGES) {
     if (stage === "email") continue; // judged below, per recipient
     if (summary.missing[stage] > 0)
@@ -342,12 +351,10 @@ export function evaluatePipelineKnee(
   const completedEmails = expectedEmails
     ? new Map([...expectedEmails].filter(([envelopeId]) => ids.has(envelopeId)))
     : undefined;
-  const verdict = evaluatePipeline(
-    { ...input, documents: completed },
-    drain,
-    contractMs,
-    completedEmails,
-  );
+  // Every document unfinished (all exempt): judged by judgeUnfinished alone, not as "no documents of the run".
+  const judge =
+    completed.length === 0 && input.documents.length > 0 ? judgePipeline : evaluatePipeline;
+  const verdict = judge({ ...input, documents: completed }, drain, contractMs, completedEmails);
   const judged = judgeUnfinished(knee);
   const reasons = [...verdict.reasons, ...judged.reasons];
   return {
