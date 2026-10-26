@@ -62,7 +62,10 @@ export async function readDocRows(
   for (const s of seals)
     sealsOf.set(s.documentId, [...(sealsOf.get(s.documentId) ?? []), s.status]);
   const callsOf = new Map<string, Array<{ envelopeId: string | null; status: string }>>();
-  const runEnvelopes = new Set(envelopes.map((e) => e.envelopeId));
+  // only document envelopes count as matched: a call that names another envelope names no run document
+  const runEnvelopes = new Set(
+    envelopes.filter((e) => docIdOf(e.secondaryId) !== null).map((e) => e.envelopeId),
+  );
   let unmatchedWebhookCalls = 0;
   for (const c of calls) {
     if (c.envelopeId === null || !runEnvelopes.has(c.envelopeId)) {
