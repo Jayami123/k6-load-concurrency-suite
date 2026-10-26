@@ -5,6 +5,7 @@ import {
   CASES,
   CAL_LOAD_004,
   DOC_LOAD_004,
+  DOC_LOAD_009,
   MED_LOAD_003,
   SPIKE_RATES,
 } from "../../src/load/cases.ts";
@@ -13,8 +14,8 @@ import { parseKneeBounds, steadyRateFor } from "../../src/load/knee/bounds.ts";
 const bounds = parseKneeBounds(JSON.parse(readFileSync("k6/thresholds/knee-bounds.json", "utf8")));
 
 describe("load cases spike", () => {
-  it("registers the three spike cases with their labels and exit codes", () => {
-    for (const c of [CAL_LOAD_004, MED_LOAD_003, DOC_LOAD_004]) {
+  it("registers the four spike and limiter cases with their labels and exit codes", () => {
+    for (const c of [CAL_LOAD_004, MED_LOAD_003, DOC_LOAD_004, DOC_LOAD_009]) {
       assert.ok(CASES[c.id], `${c.id} is registered`);
       assert.match(c.label, /spike|limiter/);
     }

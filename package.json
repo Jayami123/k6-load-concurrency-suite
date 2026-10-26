@@ -45,6 +45,7 @@
     "load:cal-spike": "node scripts/load/run-load.ts --case P6-CAL-LOAD-004 --profile full",
     "load:medusa-spike": "node scripts/load/run-load.ts --case P6-MED-LOAD-003 --profile full",
     "load:documenso-limiter": "node scripts/load/run-load.ts --case P6-DOC-LOAD-004 --profile full",
+    "load:documenso-limiter-contract": "node scripts/load/run-load.ts --case P6-DOC-LOAD-009 --profile full",
     "load:medusa-steady": "node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady",
     "load:documenso-knee": "node scripts/load/run-load.ts --case P6-DOC-LOAD-005",
     "load:medusa-retry": "node scripts/load/run-load.ts --case P6-MED-LOAD-006",

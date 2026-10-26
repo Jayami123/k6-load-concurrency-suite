@@ -11,6 +11,7 @@ import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
 import { spikeStage } from "./spike/stage.ts";
+import { limiterContractStage } from "./spike/limiter-stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
 import { docKneeDefaultsFor, kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
 import { stockForKnee } from "./knee/med-stock.ts";
@@ -1147,6 +1148,26 @@ export const DOC_LOAD_004: LoadCase = {
   },
 };
 
+/**
+ * P6-DOC-LOAD-009: the Documenso limiter contract (plan Phase 4 task 6 §6.5). No k6 process: the stage probes the ten routes of the
+ * limiter table once each (max + 1 requests), against the stack the job started (DOCUMENSO_BASE_URL).
+ */
+export const DOC_LOAD_009: LoadCase = {
+  id: "P6-DOC-LOAD-009",
+  telemetry: { product: "documenso" },
+  title: "Documenso limiter contract on the ten probed routes",
+  product: "documenso",
+  label: "limiter contract, environment-bound",
+  profiles: {
+    pr: { rate: 0, durationSec: 60, maxLatencyMs: 8000 },
+    full: { rate: 0, durationSec: 120, maxLatencyMs: 8000 },
+  },
+  runs: () => [],
+  stages: {
+    reconcile: limiterContractStage,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1164,6 +1185,7 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_004.id]: CAL_LOAD_004,
   [MED_LOAD_003.id]: MED_LOAD_003,
   [DOC_LOAD_004.id]: DOC_LOAD_004,
+  [DOC_LOAD_009.id]: DOC_LOAD_009,
   [CAL_LOAD_003.id]: CAL_LOAD_003,
   [DOC_LOAD_005.id]: DOC_LOAD_005,
   [MED_LOAD_004.id]: MED_LOAD_004,
