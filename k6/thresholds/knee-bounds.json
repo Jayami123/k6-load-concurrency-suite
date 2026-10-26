@@ -35,6 +35,22 @@
         "40237156783": "ubuntu24 20261023.334.3, 4 vCPU"
       },
       "notes": []
+    },
+    "documenso": {
+      "caseId": "P6-DOC-LOAD-005",
+      "profile": "full",
+      "lowerBoundRate": 4,
+      "medianLowerRate": 4,
+      "upperBoundRate": 5,
+      "n": 3,
+      "runIds": ["40290101719", "40291101493", "40291950598"],
+      "environment": "ubuntu24 20261023.334.3, 4 vCPU",
+      "environments": {
+        "40290101719": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40291101493": "ubuntu24 20261023.334.3, 4 vCPU",
+        "40291950598": "ubuntu24 20261023.334.3, 4 vCPU"
+      },
+      "notes": []
     }
   }
 }
