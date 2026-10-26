@@ -29,5 +29,5 @@ export function unfinishedFinding(rec: IntentRecord): string | null {
 export function limitedLineMismatch(limitedLines: number, counterLimited: number): string | null {
   return limitedLines === counterLimited
     ? null
-    : `limited lines ${limitedLines} differ from p6_iter_limited ${counterLimited} (TEST BUG: lost log)`;
+    : `TEST BUG: limited lines ${limitedLines} differ from p6_iter_limited ${counterLimited} (a lost log line)`;
 }

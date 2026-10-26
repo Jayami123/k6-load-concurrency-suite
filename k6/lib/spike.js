@@ -17,6 +17,7 @@ const counters = {
   transport: new Counter("p6_resp_transport"),
 };
 const iterLimited = new Counter("p6_iter_limited");
+const started = new Counter("p6_step_started"); // the intents started, as the knee counts them (per-intent reconciliation)
 const t0 = new Gauge("p6_spike_t0_ms");
 
 // Per VU, per iteration: whether a 429 or a network error was seen.
@@ -59,6 +60,7 @@ export function spikeOptions(cfg) {
  * @param {ReturnType<typeof buildSpikePlan>} plan
  */
 export function beginSpikeIteration(plan) {
+  started.add(1);
   exec.vu.tags.phase = phaseAt(plan, Date.now() - exec.scenario.startTime) ?? "after";
   sawLimited = false;
   sawNetworkError = false;

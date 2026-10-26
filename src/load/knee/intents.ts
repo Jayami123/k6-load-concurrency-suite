@@ -6,6 +6,9 @@ export interface IntentLog {
   outcomes: Map<number, { outcome: IntentOutcome; net: boolean; ghost: boolean }>;
   duplicateLines: number[]; // an intent that has two lines: TEST BUG
   beyondStarted: number[]; // an intent >= started: TEST BUG
+  /** Intents with a {"intent":n,"limited":true} line (a spike iteration that saw a 429; Task 6 §6.5). */
+  limited?: Set<number>;
+  limitedLines?: number; // every limited line, for the check against the k6 counter p6_iter_limited
 }
 
 /** The k6 console line: `time="…" level=info msg="{\"intent\":3,\"outcome\":\"ok\"}" source=console`. Every other line is ignored. */
@@ -15,13 +18,26 @@ export function parseIntentLog(logText: string, started: number): IntentLog {
   const outcomes: IntentLog["outcomes"] = new Map();
   const duplicateLines: number[] = [];
   const beyondStarted: number[] = [];
+  const limited = new Set<number>();
+  let limitedLines = 0;
   for (const line of logText.split("\n")) {
     const match = MSG.exec(line);
     if (!match) continue;
-    let obj: { intent?: unknown; outcome?: unknown; net?: unknown; ghost?: unknown };
+    let obj: {
+      intent?: unknown;
+      outcome?: unknown;
+      net?: unknown;
+      ghost?: unknown;
+      limited?: unknown;
+    };
     try {
       obj = JSON.parse(match[1]!.replace(/\\"/g, '"').replace(/\\\\/g, "\\")) as typeof obj;
     } catch {
+      continue;
+    }
+    if (obj.limited === true && Number.isInteger(obj.intent)) {
+      limitedLines += 1;
+      if ((obj.intent as number) < started) limited.add(obj.intent as number);
       continue;
     }
     if (!Number.isInteger(obj.intent) || (obj.outcome !== "ok" && obj.outcome !== "fail")) continue;
@@ -40,7 +56,7 @@ export function parseIntentLog(logText: string, started: number): IntentLog {
       ghost: obj.ghost === true,
     });
   }
-  return { outcomes, duplicateLines, beyondStarted };
+  return { outcomes, duplicateLines, beyondStarted, limited, limitedLines };
 }
 
 /** Started set = 0..started-1. ok / fail (a plain fail) / indeterminate (no line, or a fail with net: true). */

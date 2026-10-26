@@ -1143,7 +1143,8 @@ export const DOC_LOAD_004: LoadCase = {
   ],
   stages: {
     setup: makeDocumensoSetup({ webhookMode: "ok" }),
-    reconcile: composeStages([spikeStage, reconcileStage]),
+    // The pipeline judges the completed documents and the unfinished ones per intent (the spike is knee-mode for the pipeline).
+    reconcile: composeStages([reconcileStage, pipelineStage, spikeStage]),
     cleanup: documensoCleanup,
   },
 };

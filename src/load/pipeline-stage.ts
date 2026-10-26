@@ -12,7 +12,8 @@ import { expectedEmailsOf, readCompletionEmails, type RecipientRow } from "./pip
 import { judgeWebhookRetry, type RetryInput } from "./webhook-retry.ts";
 import { classifyIntents, type IntentLog } from "./knee/intents.ts";
 import { docRowsByIntent } from "./knee/doc-intents.ts";
-import { intentCountersFor } from "./reconcile/index.ts";
+import { limitedLineMismatch, unfinishedFinding } from "./spike/limited.ts";
+import { intentCountersFor, summaryCounter } from "./reconcile/index.ts";
 import { kneeWindows } from "./knee/stage.ts";
 import { lagByStep, lagMarker, type KneeSealLag } from "./knee/lag-by-step.ts";
 import {
@@ -251,6 +252,10 @@ export interface KneeDocuments {
   interrupted: number;
   log: IntentLog;
   rows: Array<{ title: string; completed: boolean }>;
+  /** Only P6-DOC-LOAD-004 (plan §6.5): a limited fail intent may leave one unfinished envelope. */
+  exemptLimited?: boolean;
+  /** The k6 counter of iterations that saw a 429; its mismatch with the limited lines is a TEST BUG. */
+  limitedCounter?: number;
 }
 
 /**
@@ -273,8 +278,36 @@ export function judgeUnfinished(k: KneeDocuments): { reasons: string[]; indeterm
   const ok = new Set(classes.ok);
   const fail = new Set(classes.fail);
   let indeterminate = 0;
+  if (k.limitedCounter !== undefined) {
+    const mismatch = limitedLineMismatch(k.log.limitedLines ?? 0, k.limitedCounter);
+    if (mismatch) reasons.push(mismatch);
+  }
+  const record = (intent: number, unfinished: number) => ({
+    intent,
+    outcome: ok.has(intent) ? ("ok" as const) : fail.has(intent) ? ("fail" as const) : undefined,
+    limited: k.log.limited?.has(intent) === true,
+    envelopes: [
+      ...Array.from({ length: unfinished }, () => ({ status: "PENDING" })),
+      ...Array.from({ length: (rowsByIntent.get(intent) ?? 0) - unfinished }, () => ({
+        status: "COMPLETED",
+      })),
+    ],
+  });
+  if (k.exemptLimited === true) {
+    // The exact exemption of Task 6 §6.5, applied to every limited intent (including one with no unfinished envelope).
+    for (const intent of k.log.limited ?? []) {
+      if (intent < 0 || intent >= k.started) continue;
+      const finding = unfinishedFinding(record(intent, unfinishedByIntent.get(intent) ?? 0));
+      if (finding) reasons.push(`PRODUCT BUG: ${finding}`);
+    }
+  }
   for (const [intent, unfinished] of unfinishedByIntent) {
     if (intent < 0 || intent >= k.started) continue; // counted as ghosts above
+    if (k.exemptLimited === true && k.log.limited?.has(intent)) {
+      const finding = unfinishedFinding(record(intent, unfinished));
+      if (finding) reasons.push(`PRODUCT BUG: ${finding}`);
+      continue;
+    }
     if (ok.has(intent))
       reasons.push(
         `PRODUCT BUG: intent ${intent} was told ok and has ${unfinished} unfinished envelope(s)`,
@@ -369,7 +402,8 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
       const drain = await deps.drain(pool, prefixLike);
       const { input, expectedEmails, titles } = await deps.readInput(pool, run, prefixLike);
       // A knee run judges the unfinished documents per intent (plan task 4 §6.4); a Phase 3 run is judged as before.
-      const isKnee = ctx.caseDef?.runs?.(ctx)?.some((r) => r.knee) === true;
+      // A knee or a spike run judges the unfinished documents per intent (plan task 4 §6.4; Task 6 §6.5).
+      const isKnee = ctx.caseDef?.runs?.(ctx)?.some((r) => r.knee || r.spike) === true;
       const main = isKnee ? (ctx.k6.find((k) => k.label === "main") ?? ctx.k6[0]) : undefined;
       const summary = main ? JSON.parse(readFileSync(main.summaryPath, "utf8")) : undefined;
       const counters = isKnee ? await intentCountersFor(ctx, summary) : undefined;
@@ -381,6 +415,8 @@ export function makePipelineStage(deps: PipelineDeps = defaultDeps): Stage {
               interrupted: counters.interrupted,
               log: counters.log,
               rows: titles,
+              exemptLimited: ctx.caseDef.limitedFailMayLeaveUnfinished === true,
+              limitedCounter: summary ? summaryCounter(summary, "p6_iter_limited") : undefined,
             }
           : undefined;
       const verdict = evaluatePipelineKnee(input, drain, knee, CONTRACT_MS, expectedEmails);
