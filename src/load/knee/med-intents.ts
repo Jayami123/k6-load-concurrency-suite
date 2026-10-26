@@ -13,7 +13,15 @@ export function medIntentOf(prefix: string, email: string): number | undefined {
   return /^\d+$/.test(digits) ? Number(digits) : undefined;
 }
 
-/** Orders per intent; an order of no intent is a ghost row. Each order counts once: two orders of one intent are two rows. */
+/** The address of the spike's probe purchase (P6-MED-LOAD-010, spike/stage.ts): an order of the run that no k6 intent made. */
+export function probeEmailOf(prefix: string): string {
+  return `${prefix}-probe${DOMAIN}`;
+}
+
+/**
+ * Orders per intent; an order of no intent is a ghost row. Each order counts once: two orders of one intent are two rows.
+ * The spike's probe purchase is not a ghost: the stage makes it after the run and it has its own address.
+ */
 export function medRowsByIntent(
   rows: Array<{ id: string; email: string }>,
   prefix: string,
@@ -21,6 +29,7 @@ export function medRowsByIntent(
   const rowsByIntent = new Map<number, number>();
   let ghostRows = 0;
   for (const row of rows) {
+    if (row.email === probeEmailOf(prefix)) continue;
     const intent = medIntentOf(prefix, row.email);
     if (intent === undefined) ghostRows += 1;
     else rowsByIntent.set(intent, (rowsByIntent.get(intent) ?? 0) + 1);

@@ -63,4 +63,10 @@ describe("medusa abandoned-cart verdict wiring", () => {
     assert.equal(v.verdict, "PRODUCT BUG (SUSPECTED)");
     assert.match(v.findings[0] ?? "", /reservation rows 76 differ from orders 75/);
   });
+
+  it("zero abandoned carts counted is INVALID, never a pass", () => {
+    const v = medusaAbandonVerdict({ abandoned: 0, snapshot, stock: 200, probeStatus: 200 });
+    assert.equal(v.verdict, "INVALID");
+    assert.match(v.findings[0] ?? "", /no abandoned carts counted/);
+  });
 });

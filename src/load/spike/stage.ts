@@ -8,6 +8,7 @@ import path from "node:path";
 import { findHits } from "../../../scripts/evidence-token-scan.mjs";
 import { readPointsGzStream } from "../chart/k6-points.ts";
 import { parseBaselineBand } from "../baseline-band.ts";
+import { probeEmailOf } from "../knee/med-intents.ts";
 import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
 import { readOversellSnapshot } from "../../medusa/oracle.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
@@ -92,7 +93,7 @@ async function medusaAbandon(ctx: LoadContext, abandoned: number): Promise<MedAb
     regionId: String(cfg.regionId),
     salesChannelId: String(cfg.salesChannelId),
     variantId: String(cfg.variantId),
-    email: `${String(audit.prefix)}-probe@qa.local`,
+    email: probeEmailOf(String(audit.prefix)),
     quantity: 1,
   });
   // A refused line item is the probe's answer (the stock is out, or the variant refuses it); otherwise complete the cart.
@@ -196,7 +197,9 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
         recoverySec: result.recoverySec,
         ...(abandon ? { abandon: abandon.verdict } : {}),
       });
-      if (abandon && abandon.verdict !== "PASS")
+      if (abandon?.verdict === "INVALID")
+        ctx.invalid.push(`${label}: abandoned carts: ${abandon.findings.join("; ")}`);
+      else if (abandon && abandon.verdict !== "PASS")
         fail(
           "PRODUCT BUG",
           `${label}: abandoned carts: ${abandon.findings.join("; ")} (suspected; the owner labels it)`,

@@ -55,7 +55,7 @@ export interface MedAbandonRun {
 }
 
 export interface MedAbandonVerdict {
-  verdict: "PASS" | "PRODUCT BUG (SUSPECTED)";
+  verdict: "PASS" | "PRODUCT BUG (SUSPECTED)" | "INVALID";
   findings: string[];
   abandoned: number;
   orders: number;
@@ -68,6 +68,16 @@ export interface MedAbandonVerdict {
  */
 export function medusaAbandonVerdict(run: MedAbandonRun): MedAbandonVerdict {
   const orders = run.snapshot.orderQty;
+  // No abandoned cart was counted (the counter is zero or missing): the judgement has nothing to judge, so the run is invalid, not a pass.
+  if (!(run.abandoned > 0))
+    return {
+      verdict: "INVALID",
+      findings: [
+        "no abandoned carts counted (p6_abandoned is zero or missing): the judgement cannot run",
+      ],
+      abandoned: 0,
+      orders,
+    };
   const judged = judgeAbandon({
     abandoned: run.abandoned,
     orders,
