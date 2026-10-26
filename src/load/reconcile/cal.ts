@@ -97,13 +97,30 @@ export function evaluateCalAudit(s: CalSnapshot, prefixLike: string): AuditResul
   return result;
 }
 
+/**
+ * Recycle mode: two bookings of one user whose slots overlap and whose lifetimes overlap (created to cancelled, or to infinity while
+ * live) are a double acceptance. A cancelled booking is no longer `accepted`, so OVERLAP_PAIRS_SQL cannot see it; the lifetime does.
+ */
+export const RECYCLE_OVERLAP_SQL = `
+SELECT a.id AS "aId", b.id AS "bId"
+FROM "Booking" a
+JOIN "Booking" b ON b."userId" = a."userId" AND a.id < b.id
+  AND a."startTime" < b."endTime" AND b."startTime" < a."endTime"
+  AND a."createdAt" < CASE WHEN b.status = 'cancelled' THEN b."updatedAt" ELSE 'infinity'::timestamp END
+  AND b."createdAt" < CASE WHEN a.status = 'cancelled' THEN a."updatedAt" ELSE 'infinity'::timestamp END
+WHERE a."userId" = $1 AND a.status IN ('accepted', 'cancelled') AND b.status IN ('accepted', 'cancelled')
+  AND EXISTS (SELECT 1 FROM "Attendee" x WHERE x."bookingId" = a.id AND x.email LIKE $2)
+  AND EXISTS (SELECT 1 FROM "Attendee" y WHERE y."bookingId" = b.id AND y.email LIKE $2)
+ORDER BY a.id, b.id
+`;
+
 /** Bookings of the run in status cancelled (recycle mode): each one is an iteration whose cancel the database kept. */
 export const CAL_CANCELLED_BOOKINGS_SQL = `SELECT count(DISTINCT b.id)::int AS n FROM "Booking" b JOIN "Attendee" a ON a."bookingId" = b.id WHERE a.email LIKE $1 AND b.status = 'cancelled'`;
 
 export interface CalRecycleSnapshot {
   cancelled: number; // bookings of the run in status cancelled
   live: number; // bookings of the run in status accepted or pending
-  overlapPairs: number;
+  overlapPairs: number; // pairs by lifetime, from RECYCLE_OVERLAP_SQL
   clientAccepted?: number;
   cancelsOk?: number; // k6 p6_cancels_ok: cancels the client saw succeed
 }
@@ -163,6 +180,12 @@ export function evaluateCalRecycleAudit(s: CalRecycleSnapshot, prefixLike: strin
       s.cancelsOk === s.clientAccepted,
       `${s.cancelsOk} cancels acknowledged for ${s.clientAccepted} accepted bookings`,
     );
+    if (s.cancelsOk !== s.clientAccepted) {
+      addFinding(result, {
+        kind: "PRODUCT BUG",
+        text: `the client saw ${s.cancelsOk} cancels succeed for ${s.clientAccepted} accepted bookings`,
+      });
+    }
   }
 
   check(
@@ -191,7 +214,7 @@ export async function readCalRecycleSnapshot(
 ): Promise<CalRecycleSnapshot> {
   const [row] = await selectRows<{ n: number }>(pool, CAL_CANCELLED_BOOKINGS_SQL, [cfg.prefixLike]);
   const live = await caseLiveBookings(pool, cfg.prefixLike);
-  const pairs = await readOverlapPairs(pool, cfg.userId, cfg.prefixLike);
+  const pairs = await selectRows(pool, RECYCLE_OVERLAP_SQL, [cfg.userId, cfg.prefixLike]);
   return {
     cancelled: row?.n ?? 0,
     live: live.length,

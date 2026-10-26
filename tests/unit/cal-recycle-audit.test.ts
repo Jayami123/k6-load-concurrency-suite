@@ -31,6 +31,16 @@ describe("cal recycle audit", () => {
     );
   });
 
+  it("reports cancels the client saw succeed that differ from the accepted count as PRODUCT BUG", () => {
+    const r = evaluateCalRecycleAudit(
+      { cancelled: 5, live: 0, overlapPairs: 0, clientAccepted: 5, cancelsOk: 4 },
+      PREFIX,
+    );
+    assert.ok(
+      r.violations.some((v) => v.kind === "PRODUCT BUG" && v.text.includes("4 cancels succeed")),
+    );
+  });
+
   it("reports an audit that sees no bookings as a TEST BUG", () => {
     const r = evaluateCalRecycleAudit({ cancelled: 0, live: 0, overlapPairs: 0 }, PREFIX);
     assert.equal(r.violations.length, 1);
