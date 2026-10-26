@@ -131,12 +131,16 @@ Rules (stated, unit-tested):
 - Attempts other than `expectedAttempts`, any dropped iteration, or a request-start spread above 100 ms → INVALID (the burst was not the burst the case defines); the contention rules are not applied.
 - Two or more ACCEPTED on S → FAIL (PRODUCT BUG, SUSPECTED until repeated, rule 13).
 - Zero ACCEPTED with the slot free at setup → TEST BUG (the burst did not run its attempt).
+- Zero ACCEPTED with `slotFreeAtSetup` false → TEST BUG as well: the target was not free, so the setup did not give the case its precondition, and no contention verdict can be read from it. The outcome is never PASS.
+- Precedence, one outcome per burst: INVALID (completeness and spread) is checked first, then TEST BUG (setup precondition), then the contention rules (FAIL or PASS).
 - Any HTTP 5xx in the burst → FAIL (PRODUCT BUG, SUSPECTED); the redacted 400 of `P6-OBS-CAL-001` is counted, not a failure.
 - `P6-OBS-CAL-003` (`Booking_uid_key` P2002 lines in the web log via `src/load/telemetry/log-grep.ts`) is a characterisation count per burst, not a verdict input.
 
 ### 6.3 The stale read (`P6-CAL-LOAD-006`)
 
 Under steady load, the case books S (the burst's target, a second free slot), then polls `getSchedule` for the window every 2 s for 60 s, recording the first poll that no longer offers S (the time-to-disappear). With the cache **inactive** (C8-1), the contract is "never offered again after commit": the case FAILS (PRODUCT BUG, SUSPECTED) if any poll after the 2xx offers S. With the cache **active** (a future harness with Redis), the contract is bounded staleness: S may be offered for at most `DEFAULT_SLOTS_CACHE_TTL` (2000 ms, `packages/trpc/server/routers/viewer/slots/util.ts` line 79 at `CAL_REF`) plus a margin, and any booking attempt on a stale offer is refused (never a second ACCEPTED). The branch is written in `src/load/cal/stale.ts` and tested; only the inactive branch runs in CI until a Redis client exists.
+
+**What a 2-second poll can and cannot show.** A poll is a sample. An offer of S that appears and disappears between two polls is not seen, so 30 polls with no offer do not prove "never offered again". The verdict therefore reports `observation: "sampled-2s"` and reads `PASS (sampled, 2 s)`: no offer in N of N sampled polls. The claim "never offered again" is made only with `observation: "full-coverage"`, which needs either a proven invalidation window (a bound from the code, for example the cache TTL when the cache is active) or a probe that covers the whole post-commit interval (a finer poll, or a listener on the booking). The build's step-5 probe decides which of the two is possible; until one is in place the case reports sampled coverage, and no document or README line calls it "never offered again" without that qualifier.
 
 ```ts
 // src/load/cal/stale.ts
@@ -151,7 +155,8 @@ export interface StaleVerdict {
   pollsExpected: number; // 60 s / 2 s = 30 polls after commit
   pollsDone: number; // polls with a non-null result
   timeToDisappearMs: number | null; // null when S was never offered again after commit (the expected inactive result)
-  verdict: "PASS" | "FAIL (PRODUCT BUG)" | "TEST BUG";
+  observation: "sampled-2s" | "full-coverage"; // a 2 s poll is a sample: an offer that appears and disappears between polls is not seen. "full-coverage" needs a proven invalidation window (see §6.3)
+  verdict: "PASS" | "PASS (sampled, 2 s)" | "FAIL (PRODUCT BUG)" | "TEST BUG";
   reasons: string[];
 }
 /**
@@ -251,7 +256,7 @@ The token scan runs before every upload (the `token_scan` step, upload guarded b
 
 ```text
 P6-CAL-LOAD-002 burst: slot <slot>, attempts <N>, accepted 1, slot-taken <N-1>, redacted-400 <r>, 5xx 0, dropped 0 → PASS
-P6-CAL-LOAD-006 stale: contract never-offered-again, polls <P>, offered after commit 0 → PASS
+P6-CAL-LOAD-006 stale: contract never-offered-again, observation sampled-2s, polls <P> of <P>, offered after commit 0 → PASS (sampled, 2 s)
 P6-OBS-CAL-001 count <r>, P6-OBS-CAL-003 count <p>
 ```
 

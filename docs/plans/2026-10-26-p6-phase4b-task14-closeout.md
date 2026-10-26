@@ -155,7 +155,7 @@ None. Repo settings: the Pages source is set by the owner (Task 13). No cloud ch
 
 Roadmap: "Exit met; release exists; README cites only VALID GitHub Actions runs with labels; RULE-001..006 checked and recorded; every open bug has evidence and an upstream draft or URL; `npm run check` green."
 
-Measured: (1) the release `p6-phase4` exists (`git ls-remote --exit-code origin refs/tags/p6-phase4`, an exact ref lookup: a prefix grep also matches `refs/tags/p6-phase4a` and `refs/tags/p6-phase4b`, so it could pass before the tag exists) and `docs/releases/p6-phase4.md` is on main; (2) every run cited in the README has a VALID verdict and a label (a grep check at build time); (3) §6.2 has a status for each of the six rules; (4) each open bug has a draft under `docs/upstream/` or a URL the owner supplies; (5) `npm run check` exit 0.
+Measured: (1) the release `p6-phase4` exists (`git ls-remote --exit-code origin refs/tags/p6-phase4`, an exact ref lookup: a prefix grep also matches `refs/tags/p6-phase4a` and `refs/tags/p6-phase4b`, so it could pass before the tag exists) and `docs/releases/p6-phase4.md` is on main; (2) for each run ID cited in the README, the corresponding artefact is downloaded and its own `verdict.json` shows `validity.verdict` VALID and its own `run-meta.json` carries the environment label (the association is per run ID, checked by reading each artefact, not by a text match that could pair a run ID with another run's verdict); (3) §6.2 has a status for each of the six rules; (4) each open bug has a draft under `docs/upstream/` or a URL the owner supplies; (5) `npm run check` exit 0.
 
 ## 15. Rule self-check
 

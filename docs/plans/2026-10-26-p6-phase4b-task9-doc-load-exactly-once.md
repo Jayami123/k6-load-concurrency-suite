@@ -118,23 +118,26 @@ export interface ExactlyOnceVerdict {
 }
 /**
  * A sequential document is exact only when ALL of: seal === 1 (COMPLETED seal jobs only), failedSeal === 0,
- * audit === 1, webhook === 1 with webhookPayloadMatched === true, emailsMatchedToRecipients === recipients (each
- * completion email's token joins to a Recipient.token of that document; the caller performs the join before classification, with the webhook payload comparison, as the inputs say).
- * PASS when every sequential document is exact and invalidReasons is empty. PASS (P6-OBS-DOC-002 counted) when the
- * sequential share is exact and pairKnownDuplicates > 0. FAIL (PRODUCT BUG) when any sequential document is not exact.
- * TEST BUG when testBugReasons is not empty (setup or drain check). INVALID when invalidReasons is not empty; the caller
- * puts the L9 reconciliation result there (an intent count that differs from the rows, or a missing document or pair),
- * so a missing row cannot pass on the observed rows alone.
+ * pendingSeal === 0, audit === 1, webhook === 1 with webhookPayloadMatched === true, and matchedRecipientTokens is a
+ * one-to-one match: its length equals recipients, its values are distinct, and each is a Recipient.token of that
+ * document (the caller performs the join and the distinct check before classification; a duplicate or unmatched token
+ * is reported in invalidReasons, never counted).
+ *
+ * Precedence, one outcome per run, highest first: TEST BUG (testBugReasons not empty: setup or drain failure) >
+ * INVALID (invalidReasons not empty: telemetry, dropped iterations, L9 mismatch, duplicate or unmatched token) >
+ * FAIL (PRODUCT BUG) (any sequential document not exact) > PASS (P6-OBS-DOC-002 counted) (sequential exact and
+ * pairKnownDuplicates > 0) > PASS. Both PASS branches require empty invalidReasons and empty testBugReasons.
  */
 export function classifyExactlyOnce(input: {
   sequential: Array<{
     docId: string;
     seal: number; // COMPLETED seal jobs only
     failedSeal: number; // FAILED seal jobs after drain: any value is a FAIL
+    pendingSeal: number; // seal jobs still PENDING or PROCESSING after the drain: any value is a FAIL (readTerminalJobs timed out)
     audit: number;
     webhook: number;
     webhookPayloadMatched: boolean; // caller compares WebhookCall.requestBody with the document's payload; a mismatch is FAIL (PRODUCT BUG)
-    emailsMatchedToRecipients: number; // completion emails whose token joins to Recipient.token of this document
+    matchedRecipientTokens: string[]; // one entry per completion email whose token joined to a Recipient.token; duplicates are kept so the classifier can see them
     recipients: number;
   }>;
   pairRows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" }>;
