@@ -29,10 +29,14 @@ export function terminalTransitionVerdict(
   const counts = { x04Double: 0, x05CancelFulfil: 0, f3Restore: 0, singleTerminal: 0 };
   const unexplained: string[] = [];
   for (const o of orders) {
-    const canceled = o.terminal.includes("CANCELED");
+    const cancels = o.terminal.filter((t) => t === "CANCELED").length;
+    const canceled = cancels > 0;
+    // no terminal transition at all is a lost transition after the drain: never a pass
+    if (o.terminal.length === 0) unexplained.push(o.orderId);
     if (o.terminal.length === 1) counts.singleTerminal++;
     if (o.terminal.length > 1) {
-      if (o.sideEffects.refunds > 1) counts.x04Double++;
+      // X04 is a double cancel: two cancel entries and more than one refund
+      if (cancels >= 2 && o.sideEffects.refunds > 1) counts.x04Double++;
       else if (o.openFulfilment && canceled) counts.x05CancelFulfil++;
       else unexplained.push(o.orderId);
     }
@@ -47,9 +51,7 @@ export function terminalTransitionVerdict(
     return {
       ...base,
       verdict: "FAIL (PRODUCT BUG)",
-      reasons: [
-        `${unexplained.length} order(s) with a double terminal state no known bug explains`,
-      ],
+      reasons: [`${unexplained.length} order(s) with a missing or unexplained terminal state`],
     };
   const known = counts.x04Double + counts.x05CancelFulfil;
   if (known > 0)

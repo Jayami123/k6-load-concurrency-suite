@@ -36,6 +36,13 @@ describe("medusa two-instance conservation", () => {
     assert.ok(v.reasons[0]?.includes("secondary"));
   });
 
+  it("is a test bug when an instance row is missing or duplicated, even if the rows present are clean", () => {
+    const primaryOnly = [both[0]!];
+    assert.equal(classifySplit({ ...clean, perInstance: primaryOnly }).verdict, "TEST BUG");
+    const duplicated = [...both, both[1]!];
+    assert.equal(classifySplit({ ...clean, perInstance: duplicated }).verdict, "TEST BUG");
+  });
+
   it("is INVALID when the run carries invalid reasons, which outrank a product failure", () => {
     const v = classifySplit({ ...clean, orders: 11, invalidReasons: ["3 dropped iterations"] });
     assert.equal(v.verdict, "INVALID");

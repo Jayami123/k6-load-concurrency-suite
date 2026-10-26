@@ -33,6 +33,16 @@ export function classifySplit(input: {
   invalidReasons: string[];
 }): SplitVerdict {
   const base = { orders: input.orders, stock: input.stock, perInstance: input.perInstance };
+  // each required instance has exactly one row: a missing or duplicated row is the probe's fault, never a pass
+  const malformed = (["primary", "secondary"] as const).filter(
+    (name) => input.perInstance.filter((r) => r.instance === name).length !== 1,
+  );
+  if (malformed.length > 0)
+    return {
+      ...base,
+      verdict: "TEST BUG",
+      reasons: [`TEST BUG: instance row(s) missing or duplicated: ${malformed.join(", ")}`],
+    };
   const idle = input.perInstance.filter((i) => i.requests === 0).map((i) => i.instance);
   if (idle.length > 0)
     return {
