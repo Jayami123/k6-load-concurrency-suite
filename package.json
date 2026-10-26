@@ -12,6 +12,7 @@
     "down:cal": "node scripts/harness.mjs down cal",
     "race:cal": "playwright test --project=cal-race",
     "up:documenso": "node scripts/harness.mjs up documenso",
+    "up:documenso:for": "node scripts/load/documenso-up.ts",
     "down:documenso": "node scripts/harness.mjs down documenso",
     "race:documenso": "playwright test --project=documenso-race",
     "up:twenty": "node scripts/harness.mjs up twenty",

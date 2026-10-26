@@ -17,7 +17,8 @@ import { runDocSign } from "../journeys/doc-sign.js";
 // Defaults equal k6/cases/doc-load-004.example.json, so `k6 inspect` runs the init context without a config file.
 const cfg = /** @type {any} */ ({
   steadyRate: 0.2,
-  spikeRate: 1.0, // probed on the VM (3.4): 1.0 documents per second exceeds the 100-per-minute tRPC limit in a 30 s spike
+  // 9 tRPC calls per document (measured, run a7968c28): 0.6 x 30 s x 9 = 162 calls in the spike, above the 100-per-minute limit
+  spikeRate: 0.6,
   steadySec: 60,
   spikeSec: 30,
   rampSec: 2,

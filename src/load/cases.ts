@@ -1020,12 +1020,13 @@ export const KNEE_RULE_006: LoadCase = {
 /**
  * The spike rates (plan Phase 4 task 6 §6.4, §6.5): steady = 50 % and spike = 150 % of the knee's lower bound, rounded down to 0.1, from
  * k6/thresholds/knee-bounds.json (Cal 8, Medusa 1.5). The Documenso rates are the limiter's own: 100 tRPC calls per minute over 4 calls
- * per document. A unit test re-derives the bound rates from the file.
+ * per document. A unit test re-derives the bound rates from the file. The Documenso spike is 0.6 docs/s: 9 tRPC calls per document
+ * (measured), so 0.6 x 30 s x 9 = 162 calls in the spike window, at least the 100-per-minute limit.
  */
 export const SPIKE_RATES = {
   cal: { steadyRate: 4, spikeRate: 12 },
   medusa: { steadyRate: 0.7, spikeRate: 2.2 },
-  documenso: { steadyRate: 0.2, spikeRate: 1.0 },
+  documenso: { steadyRate: 0.2, spikeRate: 0.6 },
 } as const;
 
 /**

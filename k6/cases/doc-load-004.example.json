@@ -1,6 +1,6 @@
 {
   "steadyRate": 0.2,
-  "spikeRate": 1.0,
+  "spikeRate": 0.6,
   "steadySec": 60,
   "spikeSec": 30,
   "rampSec": 2,
