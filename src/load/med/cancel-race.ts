@@ -37,7 +37,13 @@ export function terminalTransitionVerdict(
     if (o.terminal.length > 1) {
       // X04 is a double cancel: two cancel entries and more than one refund
       if (cancels >= 2 && o.sideEffects.refunds > 1) counts.x04Double++;
-      else if (o.openFulfilment && canceled) counts.x05CancelFulfil++;
+      else if (
+        o.openFulfilment &&
+        o.terminal.length === 2 &&
+        cancels === 1 &&
+        o.terminal.includes("FULFILLED")
+      )
+        counts.x05CancelFulfil++;
       else unexplained.push(o.orderId);
     }
     if (canceled && o.sideEffects.reservationsLive > 0) counts.f3Restore++;
