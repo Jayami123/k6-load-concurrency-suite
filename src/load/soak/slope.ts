@@ -26,6 +26,7 @@ export function postWarmup(points: SoakPoint[], startMs: number, warmupSec: numb
   return points.filter((p) => p.tMs >= from).sort((a, b) => a.tMs - b.tMs);
 }
 
+/** The median of values: the middle value, or the mean of the two middle values for an even count. */
 function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);

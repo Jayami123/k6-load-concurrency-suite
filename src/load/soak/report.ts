@@ -19,6 +19,7 @@ export interface SoakStatistics {
   dbConnections: SoakMetricStats;
 }
 
+/** The (time, value) points of the samples that have a numeric value for the picked metric. */
 function pointsOf(
   samples: SoakTelemetry["samples"],
   pick: (s: SoakTelemetry["samples"][number]) => number | undefined,

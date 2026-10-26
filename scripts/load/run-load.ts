@@ -1,11 +1,12 @@
 // CLI of the LOAD runner: node scripts/load/run-load.ts --case P6-X-LOAD-001 [--profile pr|full|steady|soak] [--out results/load]
 // The soak profile reads SOAK_DURATION_MIN (30 or 120) and writes soak.json next to verdict.json (plan Phase 4b task 7 §6.7).
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CASES } from "../../src/load/cases.ts";
 import { loadRepoEnv } from "../../src/load/env.ts";
 import { parseKneeBounds } from "../../src/load/knee/bounds.ts";
-import { runLoad } from "../../src/load/runner.ts";
+import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
+import type { LoadContext } from "../../src/load/types.ts";
 import { withSteadyProfile } from "../../src/load/steady.ts";
 import { soakDurationSec, withSoakProfile } from "../../src/load/soak/profile.ts";
 import { soakStatistics, type SoakTelemetry } from "../../src/load/soak/report.ts";
@@ -75,27 +76,40 @@ if (profile === "steady" || profile === "soak") {
 
 loadRepoEnv();
 const result = await runLoad(caseDef, { profile, outRoot: arg("--out") });
-if (profile === "soak") writeSoakReport(result.verdictPath, soakSec, result.exitCode);
+if (profile === "soak") writeSoakReport(result, soakSec);
 console.log(`${caseDef.id} ${result.outcome} ${result.verdictPath}`);
 process.exit(result.exitCode);
 
 /** soak.json: the statistics of the run's telemetry and the soak verdict (no thresholds yet: NO THRESHOLD YET). Points are not written (L5). */
-function writeSoakReport(verdictPath: string, durationSec: number, runExit: number): void {
-  const dir = path.dirname(verdictPath);
-  const telemetry = JSON.parse(
-    readFileSync(path.join(dir, "telemetry-main.json"), "utf8"),
-  ) as SoakTelemetry & {
+function writeSoakReport(
+  result: { verdictPath: string; ctx: LoadContext },
+  durationSec: number,
+): void {
+  const dir = path.dirname(result.verdictPath);
+  const telemetryPath = path.join(dir, "telemetry-main.json");
+  // A run that fails in setup or preflight never starts the sampler, so there is no telemetry to report.
+  if (!existsSync(telemetryPath)) {
+    console.warn(`soak.json not written: ${telemetryPath} is missing`);
+    return;
+  }
+  const telemetry = JSON.parse(readFileSync(telemetryPath, "utf8")) as SoakTelemetry & {
     startedAtMs: number;
     gaps: unknown[];
   };
   const statistics = soakStatistics(telemetry, telemetry.startedAtMs, durationSec);
+  // The run's own outcome decides the audit, so soak.json cannot disagree with verdict.json.
+  const { outcome, reasons: runReasons } = evaluateVerdict(result.ctx);
+  const testBugReasons = runReasons.filter((r) => r.includes("TEST BUG"));
+  const invalidReasons = [
+    ...(outcome === "INVALID" || outcome === "ENV" ? [`run outcome ${outcome}`] : []),
+    ...(telemetry.gaps.length > 0
+      ? [`telemetry gaps over two intervals: ${telemetry.gaps.length}`]
+      : []),
+  ];
   const { verdict, reasons } = soakVerdict({
-    auditOk: runExit === 0,
-    invalidReasons:
-      telemetry.gaps.length > 0
-        ? [`telemetry gaps over two intervals: ${telemetry.gaps.length}`]
-        : [],
-    testBugReasons: [],
+    auditOk: outcome !== "FAIL" || testBugReasons.length > 0,
+    invalidReasons,
+    testBugReasons,
     slopeRpm: statistics.rssMb.slope,
     plateau: statistics.rssMb.plateau,
     thresholds: null,

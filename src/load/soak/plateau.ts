@@ -8,6 +8,7 @@ export interface PlateauResult {
   reason: "ok" | "no samples" | "too few samples" | "zero middle median";
 }
 
+/** The median of values: the middle value, or the mean of the two middle values for an even count. */
 function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
