@@ -1238,7 +1238,13 @@ export const CAL_LOAD_008: LoadCase = {
   },
   runs: () => [{ label: "main", script: "k6/cases/cal-load-008.js", env: {} }],
   stages: {
-    setup: calSetup({ slots: { count: CAL_SOAK_POOL } }),
+    // Recycle mode: the audit reads the cancelled rows (plan Phase 4b task 7 §6.3), set after the setup has built the audit config.
+    setup: async (ctx) => {
+      const result = await calSetup({ slots: { count: CAL_SOAK_POOL } })(ctx);
+      if (ctx.config.audit !== undefined)
+        (ctx.config.audit as Record<string, unknown>).recycle = true;
+      return result;
+    },
     reconcile: reconcileStage,
     cleanup: calCleanup,
   },
