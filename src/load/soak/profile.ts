@@ -9,7 +9,9 @@ export const SOAK_TIME_UNIT_SEC = 10;
 
 /** The slowest single iteration in ms per product: the input of the Little's-law sizing (plan Task 7 §6.2). */
 export const SOAK_MAX_LATENCY_MS: Record<KneeBoundProduct, number> = {
-  cal: 2000,
+  // 4000 for Cal (task 7 probe, 2026-10-26): a recycled iteration (book, poll, cancel) took about 3.9 s with the VUs saturated,
+  // so 2000 dropped 190 of 7200 iterations (INVALID). The pool is 1.25 x 4 x 4 = 20 VUs.
+  cal: 4000,
   medusa: 5000,
   documenso: 12000,
 };

@@ -41,7 +41,7 @@ describe("soak profile", () => {
     assert.deepEqual(c.profiles.soak, {
       rate: 4,
       durationSec: 1800,
-      maxLatencyMs: 2000,
+      maxLatencyMs: 4000,
       timeUnitSec: 10,
     });
   });
