@@ -609,9 +609,9 @@ cases; `n` equals `runIds.length` and ≥ 3; run ids unique digits; `medianP95Ms
 
 **Proposed extras (out of scope until accepted; new IDs).**
 
-- `P6-X-LOAD-012`: a unit test that parses `evidence-release.yml` and fails when a step downloads artefacts without calling
+- `P6-X-LOAD-025`: a unit test that parses `evidence-release.yml` and fails when a step downloads artefacts without calling
   `scripts/ci/filter-evidence.sh` (keeps the filter from drifting back).
-- `P6-X-LOAD-013`: `detectCgroup` falls back to `docker-stats` when the cgroup paths cannot be read (covers VM images with a
+- `P6-X-LOAD-026`: `detectCgroup` falls back to `docker-stats` when the cgroup paths cannot be read (covers VM images with a
   `tmpfs` `/sys/fs/cgroup`). Gated on §5 check 8.
 
 **Open decisions** (option, evidence, recommended default).
