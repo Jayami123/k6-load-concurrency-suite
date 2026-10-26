@@ -22,6 +22,9 @@ export interface CancelRaceVerdict {
  * Precedence, highest first: TEST BUG (no orders) > INVALID (invalidReasons) > FAIL (PRODUCT BUG: a double terminal state that is
  * not one of the counted known bugs) > PASS (X04/X05 counted) > PASS.
  */
+/** The terminal states this check knows. Any other status in an order's history is unexplained, never a pass. */
+const KNOWN_TERMINAL = ["CANCELED", "FULFILLED"];
+
 export function terminalTransitionVerdict(
   orders: OrderTerminal[],
   invalidReasons: string[],
@@ -31,20 +34,25 @@ export function terminalTransitionVerdict(
   for (const o of orders) {
     const cancels = o.terminal.filter((t) => t === "CANCELED").length;
     const canceled = cancels > 0;
-    // no terminal transition at all is a lost transition after the drain: never a pass
-    if (o.terminal.length === 0) unexplained.push(o.orderId);
-    if (o.terminal.length === 1) counts.singleTerminal++;
-    if (o.terminal.length > 1) {
-      // X04 is a double cancel: two cancel entries and more than one refund
-      if (o.terminal.length === 2 && cancels === 2 && o.sideEffects.refunds > 1) counts.x04Double++;
-      else if (
-        o.openFulfilment &&
-        o.terminal.length === 2 &&
-        cancels === 1 &&
-        o.terminal.includes("FULFILLED")
-      )
-        counts.x05CancelFulfil++;
-      else unexplained.push(o.orderId);
+    // no transition at all is a lost transition after the drain, and a status outside the known terminal states cannot be
+    // explained: both are never a pass
+    const known = o.terminal.every((t) => KNOWN_TERMINAL.includes(t));
+    if (o.terminal.length === 0 || !known) unexplained.push(o.orderId);
+    else {
+      if (o.terminal.length === 1) counts.singleTerminal++;
+      if (o.terminal.length > 1) {
+        // X04 is a double cancel: two cancel entries and more than one refund
+        if (o.terminal.length === 2 && cancels === 2 && o.sideEffects.refunds > 1)
+          counts.x04Double++;
+        else if (
+          o.openFulfilment &&
+          o.terminal.length === 2 &&
+          cancels === 1 &&
+          o.terminal.includes("FULFILLED")
+        )
+          counts.x05CancelFulfil++;
+        else unexplained.push(o.orderId);
+      }
     }
     if (canceled && o.sideEffects.reservationsLive > 0) counts.f3Restore++;
   }

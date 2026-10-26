@@ -71,6 +71,16 @@ describe("medusa terminal transition", () => {
     assert.equal(terminalTransitionVerdict([one, threeCancels], []).verdict, "FAIL (PRODUCT BUG)");
   });
 
+  it("is a product bug for a single status outside the known terminal states, never a pass", () => {
+    const unknown: OrderTerminal = {
+      orderId: "o10",
+      terminal: ["UNRECOGNIZED"],
+      openFulfilment: false,
+      sideEffects: { refunds: 0, reservationsLive: 0 },
+    };
+    assert.equal(terminalTransitionVerdict([one, unknown], []).verdict, "FAIL (PRODUCT BUG)");
+  });
+
   it("is a test bug for an empty order list, and a product bug for an order with no terminal transition", () => {
     assert.equal(terminalTransitionVerdict([], []).verdict, "TEST BUG");
     const none: OrderTerminal = {
