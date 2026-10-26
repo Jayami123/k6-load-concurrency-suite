@@ -1254,7 +1254,8 @@ export const CAL_LOAD_008: LoadCase = {
 
 /** The burst and stale target: the last offered slot, which the steady stream never reaches (it books the first `steady` slots). */
 function calInvariantSetup(ctx: LoadContext): Promise<StageResult> {
-  return calSetup({ slots: { count: calSteadySlots(ctx) + 1 } })(ctx).then((result) => {
+  // k6 numbers iterations across scenarios (iterationInTest), so the target index sits beyond the steady and burst indices: 2 x N + 1 spare.
+  return calSetup({ slots: { count: calSteadySlots(ctx) + 2 * 8 + 1 } })(ctx).then((result) => {
     if (result.ok && Array.isArray(ctx.config.slotStarts)) {
       const starts = ctx.config.slotStarts as string[];
       ctx.config.burstSlot = starts[starts.length - 1];

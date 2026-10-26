@@ -14,13 +14,19 @@ export const ACCEPTED_ON_SLOT_SQL = `SELECT count(*)::int AS n FROM "Booking" b
 WHERE b."startTime" = $1::timestamptz AND b.status = 'accepted'
   AND EXISTS (SELECT 1 FROM "Attendee" a WHERE a."bookingId" = b.id AND a.email LIKE $2)`;
 
-/** The JSON that follows a marker on each line of the k6 log (k6 prefixes nothing; the marker is found anywhere in the line). */
+/**
+ * The JSON that follows a marker on each k6 log line. k6 writes console output as logfmt (`msg="<marker>{...}" source=console`), so the
+ * JSON is cut at the closing quote and its escaped quotes are unescaped.
+ */
 export function markedLines<T>(logPath: string, marker: string): T[] {
   const out: T[] = [];
   for (const line of readFileSync(logPath, "utf8").split("\n")) {
     const at = line.indexOf(marker);
     if (at === -1) continue;
-    out.push(JSON.parse(line.slice(at + marker.length)) as T);
+    const rest = line.slice(at + marker.length);
+    const end = rest.lastIndexOf('" source=');
+    const json = end === -1 ? rest : rest.slice(0, end);
+    out.push(JSON.parse(json.replace(/\\"/g, '"')) as T);
   }
   return out;
 }
