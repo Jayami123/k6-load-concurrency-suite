@@ -36,6 +36,13 @@ describe("medusa two-instance conservation", () => {
     assert.ok(v.reasons[0]?.includes("secondary"));
   });
 
+  it("is a test bug when an instance count is negative or not a number, never a pass", () => {
+    const negative = [both[0]!, { instance: "secondary" as const, requests: -1, orders: 0 }];
+    assert.equal(classifySplit({ ...clean, perInstance: negative }).verdict, "TEST BUG");
+    const nan = [both[0]!, { instance: "secondary" as const, requests: Number.NaN, orders: 0 }];
+    assert.equal(classifySplit({ ...clean, perInstance: nan }).verdict, "TEST BUG");
+  });
+
   it("is a test bug when an instance row is missing or duplicated, even if the rows present are clean", () => {
     const primaryOnly = [both[0]!];
     assert.equal(classifySplit({ ...clean, perInstance: primaryOnly }).verdict, "TEST BUG");

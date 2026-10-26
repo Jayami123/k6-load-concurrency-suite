@@ -43,7 +43,9 @@ export function classifySplit(input: {
       verdict: "TEST BUG",
       reasons: [`TEST BUG: instance row(s) missing or duplicated: ${malformed.join(", ")}`],
     };
-  const idle = input.perInstance.filter((i) => i.requests === 0).map((i) => i.instance);
+  const idle = input.perInstance
+    .filter((i) => !(Number.isFinite(i.requests) && i.requests > 0))
+    .map((i) => i.instance);
   if (idle.length > 0)
     return {
       ...base,
