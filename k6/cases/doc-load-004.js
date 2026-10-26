@@ -17,7 +17,7 @@ import { runDocSign } from "../journeys/doc-sign.js";
 // Defaults equal k6/cases/doc-load-004.example.json, so `k6 inspect` runs the init context without a config file.
 const cfg = /** @type {any} */ ({
   steadyRate: 0.2,
-  spikeRate: 0.6,
+  spikeRate: 1.0, // probed on the VM (3.4): 1.0 documents per second exceeds the 100-per-minute tRPC limit in a 30 s spike
   steadySec: 60,
   spikeSec: 30,
   rampSec: 2,
@@ -29,12 +29,14 @@ const cfg = /** @type {any} */ ({
   ...loadLoadConfig([]),
 });
 
-const plan = buildSpikePlan(cfg);
+// The run's own spike (k6-config.json `spike`, written from the case) wins over the defaults above.
+const sp = { ...cfg, ...(cfg.spike ?? {}) };
+const plan = buildSpikePlan(sp);
 // The fixture is opened once, in the init context (k6 open() runs only there).
 const PDF = cfg.pdfPath ? open(cfg.pdfPath, "b") : null;
 
 export const options = spikeOptions({
-  ...cfg,
+  ...sp,
   plan,
   exec: "journey",
   tags: { case: "P6-DOC-LOAD-004", journey: "doc-sign" },

@@ -1025,7 +1025,7 @@ export const KNEE_RULE_006: LoadCase = {
 export const SPIKE_RATES = {
   cal: { steadyRate: 4, spikeRate: 12 },
   medusa: { steadyRate: 0.7, spikeRate: 2.2 },
-  documenso: { steadyRate: 0.2, spikeRate: 0.6 },
+  documenso: { steadyRate: 0.2, spikeRate: 1.0 },
 } as const;
 
 /** The spike of a run: 60 s steady, 30 s spike, 120 s watch on full; 10 s and 20 s on pr (a smoke of the machinery). */

@@ -30,9 +30,11 @@ const cfg = /** @type {any} */ ({
   ...loadLoadConfig([]),
 });
 
-const plan = buildSpikePlan(cfg);
+// The run's own spike (k6-config.json `spike`, written from the case) wins over the defaults above.
+const sp = { ...cfg, ...(cfg.spike ?? {}) };
+const plan = buildSpikePlan(sp);
 export const options = spikeOptions({
-  ...cfg,
+  ...sp,
   plan,
   exec: "journey",
   tags: { case: "P6-MED-LOAD-003", journey: "med-checkout" },

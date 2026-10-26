@@ -36,7 +36,7 @@ describe("load cases spike", () => {
   });
 
   it("the Documenso rates are the limiter's constants", () => {
-    assert.deepEqual(SPIKE_RATES.documenso, { steadyRate: 0.2, spikeRate: 0.6 });
+    assert.deepEqual(SPIKE_RATES.documenso, { steadyRate: 0.2, spikeRate: 1.0 });
   });
 
   it("the package.json scripts exist", () => {
@@ -68,5 +68,19 @@ describe("load cases spike", () => {
       !/^ {6}DANGEROUS_BYPASS_RATE_LIMITS:/m.test(job),
       "the key is not set at the job level",
     );
+  });
+});
+
+describe("spike scripts", () => {
+  it("each spike script reads the run's spike block, not only its defaults", () => {
+    for (const f of [
+      "k6/cases/cal-load-004.js",
+      "k6/cases/med-load-003.js",
+      "k6/cases/doc-load-004.js",
+    ]) {
+      const text = readFileSync(f, "utf8");
+      assert.match(text, /const sp = \{ \.\.\.cfg, \.\.\.\(cfg\.spike \?\? \{\}\) \};/, f);
+      assert.match(text, /buildSpikePlan\(sp\)/, f);
+    }
   });
 });
