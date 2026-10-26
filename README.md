@@ -719,6 +719,35 @@ correctness under load, and redefined the IDs as the Phase 3 roadmap (Note 5) de
 
 The next phase is in [the Phase 4 roadmap](docs/plans/2026-10-22-p6-phase4-roadmap.md).
 
+## Phase 4a results
+
+Knee ranges, steady baselines and spike recovery, measured in CI. These are knee ranges on the runners of these runs: each
+range is where the stop rule fired, not a figure a product can be promised. The full notes are in
+[docs/releases/p6-phase4a.md](docs/releases/p6-phase4a.md), and the evidence is on the
+[`p6-phase4a` release](https://github.com/Jayami123/k6-load-concurrency-suite/releases/tag/p6-phase4a) (nine zips and `SHA256SUMS.txt`).
+
+All nine runs are `knee.yml` dispatches on `main` at `0b41fa7` (the merge of PR #86, on top of `efc2f7b`), and each concluded
+`success`. Every case verdict is VALID.
+
+| Mode   | Runs                                                                                                                                                                                                                                                                                           | Cases                                                                                               |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| knee   | [40290101719](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40290101719), [40291101493](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40291101493), [40291950598](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40291950598) | `P6-CAL-LOAD-005`, `P6-MED-LOAD-004`, `P6-DOC-LOAD-005`                                             |
+| spike  | [40293082174](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40293082174), [40294541228](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40294541228), [40295754821](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40295754821) | `P6-CAL-LOAD-004`, `P6-MED-LOAD-003` (with `P6-MED-LOAD-010`), `P6-DOC-LOAD-004`, `P6-DOC-LOAD-009` |
+| steady | [40296658253](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40296658253), [40296661816](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40296661816), [40296665884](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40296665884) | `P6-CAL-LOAD-003`, `P6-MED-LOAD-002`                                                                |
+
+**Knee ranges** (iterations per second, one row per run): Cal 8 to 10, 8 to 10 and 12 to 14; Medusa 1.5 to 2 in all three; Documenso
+4 to 5 in all three. The Cal and Medusa ranges fall inside their committed bounds in `k6/thresholds/knee-bounds.json`. Documenso has
+no committed bound in this release.
+
+**Steady p95** (ms, three runs): `P6-CAL-LOAD-003` 92.7, 81.4 and 60.9 against a band of 54.1 to 82.6; `P6-MED-LOAD-002` 236.3, 242.7
+and 236.4 against a band of 214.5 to 220.8. The Medusa shift is repeatable; its cause is not established.
+
+**Spike recovery** (seconds): `P6-CAL-LOAD-004` 48, 28 and 28; `P6-MED-LOAD-003` 58, 38 and 58; `P6-DOC-LOAD-004` not reached in the
+watch period in run 1, then 140 and 169. `P6-DOC-LOAD-009` passes in all three runs.
+
+The knee stop rule is a property of the run's environment, not a gate on the product. Limitations (fast stop, first saturated
+resource before the stop, the 5 s spike start guard, and harness state under `results/harness`) are listed in the release notes.
+
 ## How to read a LOAD run
 
 A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<label>-summary.json`, one `k6-<label>.json.gz`
