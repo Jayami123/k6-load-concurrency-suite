@@ -23,6 +23,7 @@ import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.t
 import { conservationStage, makeConservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
 import { calBurstStage, calStaleStage } from "./cal/invariant-stages.ts";
+import { exactlyOnceStage } from "./doc/exactly-once-stage.ts";
 import {
   judgeCalLinkJoin,
   judgeCalRetries,
@@ -411,9 +412,8 @@ export const DOC_LOAD_002: LoadCase = {
 };
 
 /** P6-DOC-LOAD-003: exactly-once under load (plan Phase 4b task 9). The sequential stream at the steady rate (2 per second, 50 % of
- * the committed Documenso lower bound 4) and the concurrent pair stream at rate × pairShare, in addition. The pairs are counted under
- * P6-OBS-DOC-002 by pair key (src/load/doc/exactly-once.ts). The exactly-once reconcile stage is not wired yet: the stage here is the
- * pipeline check of P6-DOC-LOAD-002, so this case does not yet produce the exactly-once verdict. */
+ * the committed Documenso lower bound 4) and the concurrent pair stream at rate × pairShare, in addition. The reconcile stage is the
+ * audit, then the exactly-once verdict (src/load/doc/exactly-once-stage.ts); the pairs are counted under P6-OBS-DOC-002 by pair key. */
 export const DOC_LOAD_003: LoadCase = {
   id: "P6-DOC-LOAD-003",
   telemetry: { product: "documenso" },
@@ -434,7 +434,7 @@ export const DOC_LOAD_003: LoadCase = {
   ],
   stages: {
     setup: makeDocumensoSetup({ webhookMode: "ok" }),
-    reconcile: composeStages([reconcileStage, pipelineStage]),
+    reconcile: composeStages([reconcileStage, exactlyOnceStage]),
     cleanup: documensoCleanup,
   },
 };
