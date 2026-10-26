@@ -11,7 +11,7 @@ export interface LimiterRoute {
   preLimitId?: string; // the suspected PRODUCT BUG id of a 5xx before the limit (§3.4)
 }
 
-/** The ten routes the probe measured (§3.4). Auth paths follow the probe's request shapes (§6.6). */
+/** The ten routes the probe measured (§3.4). The auth routes sit under /api/auth/email-password (packages/auth/server/routes/email-password.ts). */
 export const ROUTES: LimiterRoute[] = [
   { id: "trpc", method: "GET", path: "/api/trpc/p6.probe", family: "A", max: 100 },
   { id: "v2", method: "GET", path: "/api/v2/envelope/p6probe", family: "A", max: 1000 },
@@ -26,19 +26,31 @@ export const ROUTES: LimiterRoute[] = [
     max: 10,
     preLimitId: "P6-OBS-DOC-001",
   },
-  { id: "forgot-password", method: "POST", path: "/api/auth/forgot-password", family: "B", max: 3 },
   {
-    id: "resend-verify-email",
+    id: "forgot-password",
     method: "POST",
-    path: "/api/auth/resend-verify-email",
+    path: "/api/auth/email-password/forgot-password",
     family: "B",
     max: 3,
   },
-  { id: "verify-email", method: "POST", path: "/api/auth/verify-email", family: "B", max: 5 },
+  {
+    id: "resend-verify-email",
+    method: "POST",
+    path: "/api/auth/email-password/resend-verify-email",
+    family: "B",
+    max: 3,
+  },
+  {
+    id: "verify-email",
+    method: "POST",
+    path: "/api/auth/email-password/verify-email",
+    family: "B",
+    max: 5,
+  },
   {
     id: "reset-password",
     method: "POST",
-    path: "/api/auth/reset-password",
+    path: "/api/auth/email-password/reset-password",
     family: "B",
     max: 5,
     preLimitId: "P6-OBS-DOC-006",
