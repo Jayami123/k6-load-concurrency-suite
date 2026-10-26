@@ -1,9 +1,10 @@
 // Pure spike plan, sizing and response classes (Phase 4 Task 6). No k6 import: the scenario objects are plain data.
 
 /**
- * Stages for steady -> spike -> steady, rates per second. The k6 side writes fractional rates over timeUnitSec (Task 5).
- * @param {{ steadyRate: number, spikeRate: number, steadySec: number, spikeSec: number, rampSec: number, watchSec: number, timeUnitSec?: number }} p
- * @returns {{ stages: Array<{ target: number, duration: string }>, startRate: number, timeUnitSec: number, rampSec: number, marks: { steadyEnd: number, spikeStart: number, spikeEnd: number, end: number } }}
+ * Stages for steady -> spike -> quiet -> steady, rates per second. The quiet phase (quietSec, 0 for none) sends nothing, so a
+ * fixed limiter window has reset before the watch phase starts. The k6 side writes fractional rates over timeUnitSec (Task 5).
+ * @param {{ steadyRate: number, spikeRate: number, steadySec: number, spikeSec: number, rampSec: number, watchSec: number, quietSec?: number, timeUnitSec?: number }} p
+ * @returns {{ stages: Array<{ target: number, duration: string }>, startRate: number, timeUnitSec: number, rampSec: number, marks: { steadyEnd: number, spikeStart: number, spikeEnd: number, quietEnd: number, end: number } }}
  */
 export function buildSpikePlan({
   steadyRate,
@@ -12,38 +13,42 @@ export function buildSpikePlan({
   spikeSec,
   rampSec,
   watchSec,
+  quietSec = 0,
   timeUnitSec = 1,
 }) {
   for (const [name, v] of Object.entries({ steadySec, spikeSec, rampSec, watchSec })) {
     if (!(v > 0)) throw new Error(`spike plan: ${name} must be above 0 (got ${v})`);
   }
+  if (!(quietSec >= 0)) throw new Error(`spike plan: quietSec must be 0 or more (got ${quietSec})`);
   if (!(steadyRate > 0) || !(spikeRate > steadyRate))
     throw new Error(
       `spike plan: need 0 < steadyRate < spikeRate (got ${steadyRate} and ${spikeRate})`,
     );
   const spikeStart = steadySec + rampSec;
   const spikeEnd = spikeStart + spikeSec;
-  const end = spikeEnd + rampSec + watchSec;
+  const quietEnd = spikeEnd + rampSec + quietSec;
+  const end = quietEnd + watchSec;
   return {
     stages: [
       { target: steadyRate, duration: `${steadySec}s` },
       { target: spikeRate, duration: `${rampSec}s` },
       { target: spikeRate, duration: `${spikeSec}s` },
       { target: steadyRate, duration: `${rampSec}s` },
+      ...(quietSec > 0 ? [{ target: 0, duration: `${quietSec}s` }] : []),
       { target: steadyRate, duration: `${watchSec}s` },
     ],
     startRate: steadyRate,
     timeUnitSec,
     rampSec,
-    marks: { steadyEnd: steadySec, spikeStart, spikeEnd, end },
+    marks: { steadyEnd: steadySec, spikeStart, spikeEnd, quietEnd, end },
   };
 }
 
 /**
- * "steady" | "ramp-up" | "spike" | "ramp-down" | "recovery" at an elapsed time; undefined after the plan ends.
+ * "steady" | "ramp-up" | "spike" | "ramp-down" | "quiet" | "recovery" at an elapsed time; undefined after the plan ends.
  * @param {ReturnType<typeof buildSpikePlan>} plan
  * @param {number} elapsedMs
- * @returns {"steady" | "ramp-up" | "spike" | "ramp-down" | "recovery" | undefined}
+ * @returns {"steady" | "ramp-up" | "spike" | "ramp-down" | "quiet" | "recovery" | undefined}
  */
 export function phaseAt(plan, elapsedMs) {
   const t = elapsedMs / 1000;
@@ -52,6 +57,7 @@ export function phaseAt(plan, elapsedMs) {
   if (t < m.spikeStart) return "ramp-up";
   if (t < m.spikeEnd) return "spike";
   if (t < m.spikeEnd + plan.rampSec) return "ramp-down";
+  if (t < m.quietEnd) return "quiet";
   if (t < m.end) return "recovery";
   return undefined;
 }

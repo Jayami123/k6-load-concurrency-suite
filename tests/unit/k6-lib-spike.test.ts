@@ -28,7 +28,13 @@ describe("k6 lib spike", () => {
         [3, "120s"],
       ],
     );
-    assert.deepEqual(plan.marks, { steadyEnd: 60, spikeStart: 62, spikeEnd: 92, end: 214 });
+    assert.deepEqual(plan.marks, {
+      steadyEnd: 60,
+      spikeStart: 62,
+      spikeEnd: 92,
+      quietEnd: 94,
+      end: 214,
+    });
     assert.equal(plan.startRate, 3);
   });
 
@@ -77,5 +83,34 @@ describe("k6 lib spike", () => {
     assert.equal(classifySpikeResponse(404, false), "refused_no_body");
     assert.equal(classifySpikeResponse(503, true), "server_error");
     assert.equal(classifySpikeResponse(0, false), "transport");
+  });
+
+  it("a quiet phase sends nothing (target 0) between the ramp down and the watch, and is labelled quiet", () => {
+    const quiet = buildSpikePlan({
+      steadyRate: 3,
+      spikeRate: 9,
+      steadySec: 58,
+      spikeSec: 30,
+      rampSec: 2,
+      watchSec: 58,
+      quietSec: 60,
+      timeUnitSec: 10,
+    });
+    assert.deepEqual(quiet.stages.slice(3), [
+      { target: 3, duration: "2s" },
+      { target: 0, duration: "60s" },
+      { target: 3, duration: "58s" },
+    ]);
+    assert.deepEqual(quiet.marks, {
+      steadyEnd: 58,
+      spikeStart: 60,
+      spikeEnd: 90,
+      quietEnd: 152,
+      end: 210,
+    });
+    assert.equal(phaseAt(quiet, 91_000), "ramp-down");
+    assert.equal(phaseAt(quiet, 100_000), "quiet");
+    assert.equal(phaseAt(quiet, 151_999), "quiet");
+    assert.equal(phaseAt(quiet, 152_000), "recovery");
   });
 });

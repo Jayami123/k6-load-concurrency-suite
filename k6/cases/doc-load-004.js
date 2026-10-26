@@ -23,6 +23,7 @@ const cfg = /** @type {any} */ ({
   spikeSec: 30,
   rampSec: 2,
   watchSec: 120,
+  quietSec: 60,
   timeUnitSec: 10,
   baseUrl: "http://127.0.0.1:3001",
   prefix: "p6-qa-00000000t000000z-00000000-p6-doc-load-004",

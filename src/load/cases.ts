@@ -11,6 +11,7 @@ import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
 import { spikeStage } from "./spike/stage.ts";
+import { MIN_WINDOW_REQUESTS } from "./recovery.ts";
 import { limiterContractStage } from "./spike/limiter-stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
 import { docKneeDefaultsFor, kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
@@ -1038,12 +1039,43 @@ export const DOC_LIMITED_CALLS_PER_DOCUMENT = 4;
 export const DOC_TRPC_LIMIT_PER_MIN = 100;
 
 /** The spike of a run: 60 s steady, 30 s spike, 120 s watch on full; 10 s and 20 s on pr (a smoke of the machinery). */
+/** Measured Documenso journey requests per iteration (run 3afbe358: 344 requests over 38 iterations): 9.05. */
+export const DOC_REQUESTS_PER_ITERATION = 9.05;
+/** The limiter's fixed window, one minute. */
+export const DOC_LIMITER_WINDOW_SEC = 60;
+/** The quiet phase after the spike: no requests, so the limiter window has fully reset before the post-spike windows start. */
+export const DOC_QUIET_SEC = 60;
+
+/**
+ * The Documenso recovery window in seconds: ceil(MIN_WINDOW_REQUESTS / requests per second), plus 25 %, rounded up (owner decision, PR #84 follow-up).
+ * At 0.2 docs/s x 9.05 = 1.81 requests per second: ceil(40 / 1.81) = 23 s, x 1.25 = 28.75, so 29 s.
+ */
+export function documensoWindowSec(steadyRate: number = SPIKE_RATES.documenso.steadyRate): number {
+  const requestsPerSec = steadyRate * DOC_REQUESTS_PER_ITERATION;
+  return Math.ceil(Math.ceil(MIN_WINDOW_REQUESTS / requestsPerSec) * 1.25);
+}
+
 export function spikeSpec(
   ctx: LoadContext,
   product: keyof typeof SPIKE_RATES,
   timeUnitSec: number,
 ): SpikeRunSpec {
   const pr = ctx.profileName === "pr";
+  if (product === "documenso") {
+    const windowSec = documensoWindowSec();
+    // Two full windows of steady: window 0 is the warm-up, window 1 the reference. Two full windows of watch after the quiet phase.
+    return {
+      product,
+      ...SPIKE_RATES[product],
+      steadySec: pr ? 2 * windowSec : 60,
+      spikeSec: 30,
+      rampSec: 2,
+      quietSec: DOC_QUIET_SEC,
+      watchSec: pr ? 2 * windowSec : 120,
+      windowSec,
+      timeUnitSec,
+    };
+  }
   return {
     product,
     ...SPIKE_RATES[product],

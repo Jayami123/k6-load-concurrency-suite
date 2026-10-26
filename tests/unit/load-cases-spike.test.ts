@@ -5,8 +5,12 @@ import {
   CASES,
   CAL_LOAD_004,
   DOC_LOAD_004,
-  DOC_LOAD_009,
   DOC_LIMITED_CALLS_PER_DOCUMENT,
+  DOC_LIMITER_WINDOW_SEC,
+  DOC_LOAD_009,
+  DOC_QUIET_SEC,
+  DOC_REQUESTS_PER_ITERATION,
+  documensoWindowSec,
   DOC_TRPC_LIMIT_PER_MIN,
   MED_LOAD_003,
   SPIKE_RATES,
@@ -98,5 +102,36 @@ describe("spike scripts", () => {
       assert.match(text, /const sp = \{ \.\.\.cfg, \.\.\.\(cfg\.spike \?\? \{\}\) \};/, f);
       assert.match(text, /buildSpikePlan\(sp\)/, f);
     }
+  });
+
+  it("the Documenso recovery window is ceil(40 / measured requests per second) plus 25 %, here 29 s", () => {
+    const rps = SPIKE_RATES.documenso.steadyRate * DOC_REQUESTS_PER_ITERATION;
+    assert.equal(rps, 0.2 * 9.05);
+    assert.equal(Math.ceil(40 / rps), 23);
+    assert.equal(documensoWindowSec(), 29);
+  });
+
+  it("the Documenso steady and watch cover two full windows, and the quiet phase covers the one-minute limiter window", () => {
+    const window = documensoWindowSec();
+    for (const profile of ["pr", "full"] as const) {
+      const spec = spikeSpec({ profileName: profile } as LoadContext, "documenso", 10);
+      assert.equal(spec.windowSec, window, profile);
+      assert.ok(spec.steadySec >= 2 * window, `${profile} steady ${spec.steadySec} s`);
+      assert.ok(spec.watchSec >= 2 * window, `${profile} watch ${spec.watchSec} s`);
+      assert.ok(
+        (spec.quietSec ?? 0) >= DOC_LIMITER_WINDOW_SEC,
+        `${profile} quiet ${spec.quietSec} s is below the limiter window`,
+      );
+    }
+    assert.equal(DOC_QUIET_SEC, DOC_LIMITER_WINDOW_SEC);
+  });
+
+  it("the Documenso case config carries the quiet phase and the window, and its example file matches", () => {
+    const run = DOC_LOAD_004.runs?.({ profileName: "pr" } as LoadContext)[0]?.spike;
+    assert.ok(run, "P6-DOC-LOAD-004 has a spike run");
+    assert.ok((run.quietSec ?? 0) >= DOC_LIMITER_WINDOW_SEC);
+    assert.equal(run.windowSec, documensoWindowSec());
+    const example = JSON.parse(readFileSync("k6/cases/doc-load-004.example.json", "utf8"));
+    assert.ok(example.quietSec >= DOC_LIMITER_WINDOW_SEC);
   });
 });

@@ -75,4 +75,19 @@ describe("recovery", () => {
   it("a window with 5xx under 1 % of its requests is not a storm", () => {
     assert.equal(isStorm(win(0, 100, 1000, 5)), false);
   });
+
+  it("a 29 s window aggregates its own seconds and keeps the 40-request floor (the Documenso windows)", () => {
+    // 1.81 requests per second for 58 s (two full 29 s windows): 52 requests in each window, above the 40-request floor.
+    const steady = Array.from({ length: 58 }, (_, s) => ({
+      t: T0 + s * 1000,
+      requests: 1.81,
+      p95Ms: 100,
+    }));
+    const w = windowsFromBins(steady, T0, 29);
+    assert.equal(w.length, 2);
+    assert.equal(w[1]?.fromMs, T0 + 29_000);
+    assert.equal(w[1]?.toMs, T0 + 58_000);
+    assert.ok((w[1]?.requests ?? 0) >= 40, `window 1 has ${w[1]?.requests} requests`);
+    assert.equal(w[1]?.p95Ms, 100);
+  });
 });

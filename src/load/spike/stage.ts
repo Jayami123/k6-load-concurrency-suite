@@ -13,7 +13,7 @@ import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
 import { readOversellSnapshot } from "../../medusa/oracle.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
 import { medusaAbandonVerdict, type MedAbandonVerdict } from "./med-abandon.ts";
-import { windowsFromBins } from "../recovery.ts";
+import { WINDOW_SEC, windowsFromBins } from "../recovery.ts";
 import type { LoadContext, Stage, StageResult } from "../types.ts";
 import {
   evaluateSpike,
@@ -151,7 +151,7 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
         continue;
       }
       const bins = await readPointsGzStream(run.pointsPath);
-      const windows = windowsFromBins(bins, t0);
+      const windows = windowsFromBins(bins, t0, sp.windowSec ?? WINDOW_SEC);
       const spikeStartMs = t0 + (sp.steadySec + sp.rampSec) * 1000;
       const spikeEndMs = spikeStartMs + sp.spikeSec * 1000;
       const tags = await limitedTags(run.pointsPath);
