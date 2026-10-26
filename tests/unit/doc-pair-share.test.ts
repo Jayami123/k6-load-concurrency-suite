@@ -15,4 +15,10 @@ describe("documenso pair share", () => {
     assert.throws(() => pairRateFor(2, 0), /pairShare must be above 0/);
     assert.throws(() => pairRateFor(2, 1.5), /pairShare must be above 0/);
   });
+
+  it("rejects a share that gives less than one whole pair start per 10 s, naming the share", () => {
+    assert.throws(() => pairRateFor(2, 0.01), /pairShare 0\.01 gives 0\.2 pair starts per 10 s/);
+    assert.throws(() => pairRateFor(2, 0.0001), /pairShare 0\.0001/);
+    assert.equal(pairRateFor(2, 0.05), 0.1); // 1 start per 10 s
+  });
 });

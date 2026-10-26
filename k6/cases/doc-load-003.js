@@ -24,7 +24,9 @@ const cfg = {
 // The fixture is opened once, in the init context (k6 open() runs only there).
 const PDF = cfg.pdfPath ? open(cfg.pdfPath, "b") : null;
 
-const pairRate = pairRateFor(cfg.rate, cfg.pairShare);
+// the pair stream is written over 10 s: 0.2 per second is 2 starts per 10 s
+const PAIR_UNIT_SEC = 10;
+const pairRate = pairRateFor(cfg.rate, cfg.pairShare, PAIR_UNIT_SEC);
 
 export const options = standardOptions({
   scenarios: {
@@ -37,7 +39,7 @@ export const options = standardOptions({
     }),
     pairs: openModelScenario({
       rate: pairRate,
-      timeUnitSec: 10, // 0.2 per second is 2 starts per 10 s (a fractional rate is written over a longer unit)
+      timeUnitSec: PAIR_UNIT_SEC,
       durationSec: cfg.durationSec,
       maxLatencyMs: cfg.maxLatencyMs,
       exec: "pair",
