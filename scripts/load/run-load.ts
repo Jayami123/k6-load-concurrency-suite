@@ -106,6 +106,7 @@ function writeSoakReport(
       ? runReasons.filter((r) => !r.startsWith("reconcile:") && !r.includes("TEST BUG"))
       : [];
   const invalidReasons = [
+    ...result.ctx.invalid,
     ...(outcome === "INVALID" || outcome === "ENV" ? [`run outcome ${outcome}`] : []),
     ...checkFailReasons.map((r) => `run check failed: ${r}`),
     ...(telemetry.gaps.length > 0
