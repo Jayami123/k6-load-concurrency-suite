@@ -74,6 +74,12 @@ export interface SpikeRunSpec {
   spikeSec: number;
   rampSec: number;
   watchSec: number;
+  /** The quiet phase after the spike (0 or absent for none): no requests, so the limiter's fixed window resets. */
+  quietSec?: number;
+  /** The recovery window length in seconds (absent: the 10-second default of src/load/recovery.ts). */
+  windowSec?: number;
+  /** The spike begins on a wall-clock minute boundary (the limiter's fixed windows); the stage checks the spike sits in one window. */
+  alignToMinute?: boolean;
   timeUnitSec: number;
 }
 

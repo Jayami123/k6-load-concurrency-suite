@@ -51,6 +51,7 @@ export function spikeOptions(cfg) {
     })),
     ...(cfg.exec ? { exec: cfg.exec } : {}),
     ...(cfg.tags ? { tags: cfg.tags } : {}),
+    ...(cfg.startTime ? { startTime: cfg.startTime } : {}),
   };
   return standardOptions({ scenarios: { spike: scenario }, thresholds: {}, tags: cfg.tags ?? {} });
 }
@@ -61,6 +62,8 @@ export function spikeOptions(cfg) {
  */
 export function beginSpikeIteration(plan) {
   started.add(1);
+  // The spike origin is the scenario's own start (not the setup time): every iteration records the same value.
+  t0.add(exec.scenario.startTime);
   exec.vu.tags.phase = phaseAt(plan, Date.now() - exec.scenario.startTime) ?? "after";
   sawLimited = false;
   sawNetworkError = false;
@@ -124,13 +127,12 @@ export function observeSpikeResponses() {
   });
 }
 
-/** setup() and teardown(): the Phase 3 clock markers plus the spike origin (p6_spike_t0_ms). @param {string | undefined} markerUrl */
+/** setup() and teardown(): the Phase 3 clock markers. The spike origin (p6_spike_t0_ms) is set by each iteration. @param {string | undefined} markerUrl */
 export function spikeHooks(markerUrl) {
   const clock = clockHooks(markerUrl);
   return {
     setup() {
       clock.setup();
-      t0.add(Date.now());
     },
     teardown: clock.teardown,
   };

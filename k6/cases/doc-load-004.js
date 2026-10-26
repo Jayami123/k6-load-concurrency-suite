@@ -11,7 +11,7 @@ import {
   spikeHooks,
   spikeOptions,
 } from "../lib/spike.js";
-import { buildSpikePlan } from "../lib/pure/spike.js";
+import { alignDelayMs, buildSpikePlan } from "../lib/pure/spike.js";
 import { runDocSign } from "../journeys/doc-sign.js";
 
 // Defaults equal k6/cases/doc-load-004.example.json, so `k6 inspect` runs the init context without a config file.
@@ -23,6 +23,7 @@ const cfg = /** @type {any} */ ({
   spikeSec: 30,
   rampSec: 2,
   watchSec: 120,
+  quietSec: 60,
   timeUnitSec: 10,
   baseUrl: "http://127.0.0.1:3001",
   prefix: "p6-qa-00000000t000000z-00000000-p6-doc-load-004",
@@ -33,6 +34,10 @@ const cfg = /** @type {any} */ ({
 // The run's own spike (k6-config.json `spike`, written from the case) wins over the defaults above.
 const sp = { ...cfg, ...(cfg.spike ?? {}) };
 const plan = buildSpikePlan(sp);
+// The limiter's windows are fixed minutes: when the run asks for it, the scenario waits so the spike begins on a minute boundary
+// and its 30 s sit in one window. The wait is below one minute (alignDelayMs) and is logged.
+const alignDelay = sp.alignToMinute ? alignDelayMs(Date.now(), plan.marks.spikeStart * 1000) : 0;
+if (sp.alignToMinute) console.log(`spike aligned: waiting ${alignDelay} ms before the scenario`);
 // The fixture is opened once, in the init context (k6 open() runs only there).
 const PDF = cfg.pdfPath ? open(cfg.pdfPath, "b") : null;
 
@@ -41,6 +46,7 @@ export const options = spikeOptions({
   plan,
   exec: "journey",
   tags: { case: "P6-DOC-LOAD-004", journey: "doc-sign" },
+  ...(alignDelay > 0 ? { startTime: `${alignDelay}ms` } : {}),
 });
 export const { setup, teardown } = spikeHooks(__ENV.MARKER_URL);
 observeSpikeResponses();
