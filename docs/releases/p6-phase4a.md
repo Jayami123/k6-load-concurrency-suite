@@ -45,8 +45,8 @@ Range in iterations per second, from the knee report of each run (`P6-CAL-LOAD-0
 | Medusa    | 1.5 to 2 | 1.5 to 2 | 1.5 to 2 | lower 1.5, upper 2.5                               |
 | Documenso | 4 to 5   | 4 to 5   | 4 to 5   | not committed                                      |
 
-All three new knee runs fall inside the committed bounds. The Cal lower step moved from 8 to 12 across runs, so the
-8 per second bound is the smallest value seen, not a stable point. The Documenso range has no committed bound in this release.
+The Cal and Medusa knee ranges of all three runs fall inside their committed bounds. The Cal lower step moved from 8 to 12
+across runs, so the 8 per second bound is the smallest value seen, not a stable point. Documenso has no committed bound in this release.
 
 ## Steady baselines
 
@@ -61,8 +61,9 @@ Every steady run is VALID, with no dropped iterations and no telemetry gaps. Two
 
 - `P6-CAL-LOAD-003` run 1 (92.7 ms) is above the band maximum (82.6 ms) by about 12 %. Runs 2 and 3 sit inside the band.
 - `P6-MED-LOAD-002` is above the band maximum (220.8 ms) in all three runs, by 7 to 10 %. The band was measured on runs
-  `40242002499`, `40242007346` and `40242009224`. The three new runs agree with each other, so this is a shift of the
-  runner's level, not one bad run. The band is not changed in this release; a later release may re-measure it.
+  `40242002499`, `40242007346` and `40242009224`. The three new runs agree with each other, so the shift is repeatable. Its
+  cause is undetermined: the run metadata here does not confirm a runner or environment change. The band is not changed in
+  this release; a later release may re-measure it.
 
 ## Spike and recovery
 
