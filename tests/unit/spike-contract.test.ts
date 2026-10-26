@@ -125,4 +125,24 @@ describe("spike recovery reference", () => {
     assert.equal(r.recoveryReason, "no_reference");
     assert.equal(r.recoverySec, undefined);
   });
+
+  it("a run with no recovery reference is INVALID, never PASS, even when every other check passes", () => {
+    const r = evaluateSpike(input({ preSpike: [win(0, undefined, 10)] }));
+    assert.equal(
+      r.checks.every((c) => c.ok),
+      true,
+    );
+    assert.equal(r.verdict, "INVALID");
+    assert.equal(r.invalidReason, "no_reference");
+    assert.equal(r.recoveryReason, "no_reference");
+  });
+
+  it("a run with a reference keeps its PASS, and a failed check there stays a product bug, not INVALID", () => {
+    assert.equal(evaluateSpike(input()).verdict, "PASS");
+    const storm = evaluateSpike(
+      input({ windows: [win(0, 100), win(1, 100), win(2, 100, 100, 100), win(3, 100)] }),
+    );
+    assert.equal(storm.verdict, "PRODUCT BUG (SUSPECTED)");
+    assert.equal(storm.invalidReason, undefined);
+  });
 });

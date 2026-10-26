@@ -35,7 +35,7 @@ export interface SpikeResult {
   recoveryReason?: "no_reference"; // no pre-spike window had a p95, so there is nothing to recover to
   checks: SpikeCheck[];
   verdict: "PASS" | "PRODUCT BUG (SUSPECTED)" | "INVALID";
-  invalidReason?: "dropped_iterations" | "no_refusals";
+  invalidReason?: "dropped_iterations" | "no_refusals" | "no_reference";
 }
 
 /** The Documenso limiter must answer at least this many 429s during the spike, else the spike did not exceed it. */
@@ -112,6 +112,10 @@ export function evaluateSpike(input: SpikeInput): SpikeResult {
   } else if (product === "documenso" && counts.limited < MIN_LIMITED) {
     result.verdict = "INVALID";
     result.invalidReason = "no_refusals";
+  } else if (recoveryReason === "no_reference") {
+    // Recovery cannot be judged without a reference: the run never passes on it (owner decision, PR #84).
+    result.verdict = "INVALID";
+    result.invalidReason = "no_reference";
   }
   return result;
 }
