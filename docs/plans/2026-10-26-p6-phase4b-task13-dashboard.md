@@ -120,13 +120,13 @@ export function buildSiteModel(input: {
   hasSoakData: boolean;
   hasInvariantData: boolean;
 }): SiteModel;
-/** The escape of a run label before it is put in HTML (no raw label in the page). */
+/** Escapes every artifact-derived value before it is put in HTML: run labels, case IDs, verdicts, INVALID reasons, resource names and run IDs. No raw artifact text reaches the page. */
 export function escapeLabel(s: string): string;
 ```
 
 ### 6.3 The build and the scans (`scripts/dashboard/build-site.ts`, NEW; `pages.yml`)
 
-The build writes `site/index.html` (one page: the three showcases, the knee table with the first saturated resource, the steady band, the INVALID list, links to every run and its `run-meta.json`). No script or stylesheet from a CDN; the inline chart of each run is reused from the artefact (`chart-main.html`, self-contained, §3.1 S-2).
+The build writes `site/index.html` (one page: the three showcases, the knee table with the first saturated resource, the steady band, the INVALID list, links to every run and its `run-meta.json`). No script or stylesheet from a CDN; each run's chart (`chart-main.html`, self-contained, §3.1 S-2) is linked as a separate file copied from the verified release zip; its markup is never inlined into the page HTML, and the token scan covers it.
 
 **Scans before deploy (both, as D9 requires):**
 
@@ -152,6 +152,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # only for the unreleased-run fallback (actions/download-artifact); the release path needs no actions read
   pages: write
   id-token: write
 
@@ -170,7 +171,7 @@ Jobs: `build` (checkout, setup-node, the evidence zips of the cited releases (`p
 
 The three commits exist on their upstream repositories (web read, 2026-10-26). The build PR re-verifies the tags on the upstream tag pages.
 
-**No `actions: read` is needed:** the evidence is public release assets (curl), and `pages.yml` is not an evidence source: it is not in `EVIDENCE_WORKFLOW_IDS`. An unreleased run is the fallback only: `actions/download-artifact` with run-id and github-token (the 90-day artefact expiry applies there). The site is built only from `main`, on both paths: the `workflow_run` trigger runs only when its `head_branch` is `main` (`if: github.event.workflow_run.head_branch == 'main'`), and a `workflow_dispatch` run is guarded by `if: github.ref == 'refs/heads/main'` in the `build` job, so a manual dispatch from another ref stops before any download.
+**`actions: read` is for the fallback only:** the evidence is public release assets (curl), and `pages.yml` is not an evidence source: it is not in `EVIDENCE_WORKFLOW_IDS`. An unreleased run is the fallback only: `actions/download-artifact` with run-id and github-token (the 90-day artefact expiry applies there). The site is built only from `main`, on both paths: the `workflow_run` trigger runs only when its `head_branch` is `main` (`if: github.event.workflow_run.head_branch == 'main'`), and a `workflow_dispatch` run is guarded by `if: github.ref == 'refs/heads/main'` in the `build` job, so a manual dispatch from another ref stops before any download.
 
 **Each evidence run is validated before its zip is fetched, on both paths.** The `workflow_run` check above validates only the triggering run, not the runs the release contains. For every run ID the build reads from `k6/thresholds/*.json`, a validation step requires all of: (1) `conclusion` is `success`; (2) the run's `workflow_id` is in the `EVIDENCE_WORKFLOW_IDS` list of `evidence-release.yml` (line 39); (3) `head_branch` is `main`; (4) `head_sha` is an ancestor of the Pages target commit (`git merge-base --is-ancestor <head_sha> ${{ github.sha }}`). The run metadata comes from the public REST endpoint `GET /repos/{owner}/{repo}/actions/runs/{id}`. A run that fails any check stops the build with its run ID named, so a stale or unapproved run ID never enters the public dashboard. The zips themselves are checked against `SHA256SUMS.txt` (§6.5).
 

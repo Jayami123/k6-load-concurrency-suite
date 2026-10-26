@@ -22,7 +22,7 @@ Written on `plan/2026-10-26-p6-phase4b-plans` (docs PR #83, never deleted). Base
 
 ### 0.2 The 4a plan branch
 
-Read on `origin/plan/2026-10-25-p6-phase4a-plans` at `cbc4f6e` (no checkout): the index (`docs/plans/2026-10-25-p6-phase4a-plans-index.md`), Task 5, Task 6 and Tasks 1 to 4 plans and PRE-1 to PRE-3. Cited as "4a plan branch cbc4f6e, <file>, line <n>". Task 6 itself was built and released (tag `p6-phase4a`, PRs #84 to #87).
+Read on `origin/plan/2026-10-25-p6-phase4a-plans` at `cbc4f6e` (no checkout): the index (`docs/plans/2026-10-25-p6-phase4a-plans-index.md`), Task 5, Task 6 and Tasks 1 to 4 plans and PRE-1 to PRE-3. Cited as "4a plan branch cbc4f6e, <file>, line <n>". Task 6 itself was built and released (tag `p6-phase4a`, PRs #84 to #87). The released tag does not put the Documenso bound on `origin/main`: the `products.documenso` entry is added by step 0b, and dependent consumers wait for it.
 
 ## 1. Table
 

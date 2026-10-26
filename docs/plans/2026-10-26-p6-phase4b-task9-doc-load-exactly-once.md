@@ -134,11 +134,12 @@ export interface ExactlyOnceVerdict {
  * A sequential document is exact only when ALL of: seal === 1 (COMPLETED seal jobs only), failedSeal === 0,
  * pendingSeal === 0, audit === 1, webhook === 1 with webhookPayloadMatched === true, and matchedRecipientTokens is a
  * one-to-one match: its length equals recipients, its values are distinct, and each is a Recipient.token of that
- * document (the caller performs the join and the distinct check before classification; a duplicate or unmatched token
- * is reported in invalidReasons, never counted).
+ * document (the caller performs the join before classification). A duplicate matched token means one recipient received
+ * two completion emails: it counts as a failure of the one-to-one rule (exact is false, FAIL PRODUCT BUG). An unmatched
+ * token is reported in invalidReasons, never counted.
  *
  * Precedence, one outcome per run, highest first: TEST BUG (testBugReasons not empty: setup or drain failure) >
- * INVALID (invalidReasons not empty: telemetry, dropped iterations, L9 mismatch, duplicate or unmatched token) >
+ * INVALID (invalidReasons not empty: telemetry, dropped iterations, L9 mismatch, unmatched token) >
  * FAIL (PRODUCT BUG) (any sequential document not exact) > PASS (P6-OBS-DOC-002 counted) (sequential exact and
  * pairKnownDuplicates > 0) > PASS. Both PASS branches require empty invalidReasons and empty testBugReasons.
  */
