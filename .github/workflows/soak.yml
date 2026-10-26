@@ -367,6 +367,9 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
+          SECONDS=0
+          npm run up:medusa
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
       - name: Soak P6-MED-LOAD-005 (setup, run, audit and cleanup inside the step)
         timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
@@ -407,6 +410,14 @@ jobs:
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
       DOCUMENSO_CHECKOUT_PATH: products/documenso
+      DOCUMENSO_BASE_URL: http://127.0.0.1:3001
+      # Harness compose's local placeholder credentials. Not a secret.
+      DOCUMENSO_DB_URL: postgres://documenso:password@127.0.0.1:5451/documenso
+      INBUCKET_BASE_URL: http://127.0.0.1:9003
+      P6_WEBHOOK_HOST: p6-webhook.test
+      # Test environment: limiters off (harness passes it through), SSRF allowlist for the receiver.
+      DANGEROUS_BYPASS_RATE_LIMITS: "true"
+      NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS: p6-webhook.test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       COREPACK_ENABLE_STRICT: "0"
       SOAK_DURATION_MIN: ${{ inputs.duration_min }}
@@ -525,7 +536,6 @@ jobs:
           SECONDS=0
           npm run up:documenso
           echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
-
       - name: Soak P6-DOC-LOAD-006 (setup, run, audit and cleanup inside the step)
         timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
