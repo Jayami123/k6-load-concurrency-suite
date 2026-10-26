@@ -51,4 +51,22 @@ describe("load cases spike", () => {
       .map((c) => c.id);
     assert.deepEqual(flagged, ["P6-DOC-LOAD-004"]);
   });
+
+  it('the bypass key is "false" exactly once, inside the documenso-limiter job, and not at that job\'s level', () => {
+    const files = [".github/workflows/knee.yml", ".github/workflows/perf.yml"];
+    const lines = files
+      .flatMap((f) => readFileSync(f, "utf8").split("\n"))
+      .filter((l) => l.trim() === 'DANGEROUS_BYPASS_RATE_LIMITS: "false"');
+    assert.equal(lines.length, 1);
+    const knee = readFileSync(".github/workflows/knee.yml", "utf8");
+    const start = knee.indexOf("\n  documenso-limiter:\n") + 1;
+    const rest = knee.slice(start + 5);
+    const next = rest.search(/\n {2}[a-z][\w-]*:\n/);
+    const job = knee.slice(start, next < 0 ? undefined : start + 5 + next);
+    assert.ok(job.includes('DANGEROUS_BYPASS_RATE_LIMITS: "false"'));
+    assert.ok(
+      !/^ {6}DANGEROUS_BYPASS_RATE_LIMITS:/m.test(job),
+      "the key is not set at the job level",
+    );
+  });
 });
