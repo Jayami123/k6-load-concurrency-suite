@@ -897,6 +897,24 @@ Any dropped iteration, a request-start spread above 100 ms, or a missing attempt
 The stale read uses the contract "never offered again after commit": the cache is inactive in CI, so the verdict reads
 `PASS (sampled, 2 s)` when no poll after the commit offers the slot. A 2 s poll is a sample; the verdict does not claim full coverage.
 
+## Documenso exactly-once under load
+
+`perf.yml` job `documenso-invariants` (schedule, and a full dispatch) runs `P6-DOC-LOAD-003` on a live Documenso stack: a sequential
+stream at 2 signings per second (50 % of the committed Documenso knee lower bound), and a concurrent pair stream at 0.2 per second
+(`pairShare` 0.1, in addition). In a pair, the last two recipients of one document complete in one batch, at the same moment.
+
+The sequential share must be exact on every document: one completed seal job, one completion audit row, one webhook call with the
+document's payload, and one completion email per recipient. Any other count is a FAIL (PRODUCT BUG, suspected until repeated). The
+pair share is counted, not hidden: a document with a duplicate seal or audit row is counted under `P6-OBS-DOC-002` by its pair key
+(`<document id>:<pair index>`), and the run reads `PASS (P6-OBS-DOC-002 counted)` when only that known race appears. Webhook exactness
+is checked on the sequential share only; a pair's webhook calls are not in the accounting.
+
+Any dropped iteration, a missing iteration row, or an unmatched completion token is INVALID. A setup or drain failure is a TEST BUG.
+
+**Not built yet:** the exactly-once verdict (`classifyExactlyOnce`, `src/load/doc/exactly-once.ts`) has no caller. The job runs the
+case, which reconciles with the pipeline check of `P6-DOC-LOAD-002` until the reads that feed the verdict are wired. Until then the job
+does not report an exactly-once verdict, and the pair counts are not in its summary.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp

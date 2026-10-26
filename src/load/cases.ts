@@ -410,6 +410,35 @@ export const DOC_LOAD_002: LoadCase = {
   },
 };
 
+/** P6-DOC-LOAD-003: exactly-once under load (plan Phase 4b task 9). The sequential stream at the steady rate (2 per second, 50 % of
+ * the committed Documenso lower bound 4) and the concurrent pair stream at rate × pairShare, in addition. The pairs are counted under
+ * P6-OBS-DOC-002 by pair key (src/load/doc/exactly-once.ts). The exactly-once reconcile stage is not wired yet: the stage here is the
+ * pipeline check of P6-DOC-LOAD-002, so this case does not yet produce the exactly-once verdict. */
+export const DOC_LOAD_003: LoadCase = {
+  id: "P6-DOC-LOAD-003",
+  telemetry: { product: "documenso" },
+  title: "Documenso exactly-once under load, with concurrent pairs",
+  product: "documenso",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 2, durationSec: 10, maxLatencyMs: 12000 },
+    full: { rate: 2, durationSec: 30, maxLatencyMs: 12000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-003.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    reconcile: composeStages([reconcileStage, pipelineStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 /** P6-DOC-LOAD-008: the receiver answers 500 to the first delivery of each event; Documenso must retry it (plan task 9 §3.5). */
 export const DOC_LOAD_008: LoadCase = {
   id: "P6-DOC-LOAD-008",
@@ -1367,6 +1396,7 @@ export const CASES: Record<string, LoadCase> = {
   [DOC_LOAD_001.id]: DOC_LOAD_001,
   [MED_LOAD_002.id]: MED_LOAD_002,
   [DOC_LOAD_002.id]: DOC_LOAD_002,
+  [DOC_LOAD_003.id]: DOC_LOAD_003,
   [DOC_LOAD_008.id]: DOC_LOAD_008,
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,

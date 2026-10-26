@@ -15,8 +15,10 @@ const signedOrAlready = (/** @type {{ status: number, body: unknown }} */ r) =>
 /**
  * @param {{ baseUrl: string, prefix: string }} cfg
  * @param {string | ArrayBuffer} pdf the fixture, opened once per VU by the case script
- * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
+ * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void, pairLast?: boolean, intent?: string }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): each recipient's completeDocumentWithToken is sent through the plan.
+ *   opts.pairLast (plan task 9 §6.3): the last two recipients complete in one batch, at the same moment.
+ *   opts.intent (plan task 9 §7, L9): the run logs one P6_DOC line per iteration with this intent.
  */
 export function runDocSign(cfg, pdf, opts = {}) {
   const n = exec.scenario.iterationInTest;
@@ -146,6 +148,8 @@ export function runDocSign(cfg, pdf, opts = {}) {
       name: "sign and complete",
       run: (/** @type {Record<string, any>} */ s) => {
         let ok = true;
+        // with pairLast, the final two recipients are completed together below, not one after the other
+        const completeFrom = opts.pairLast ? s.recipientIds.length - 2 : s.recipientIds.length;
         s.recipientIds.forEach((/** @type {number} */ rid, /** @type {number} */ i) => {
           const f = s.fields.find(
             (/** @type {{ recipientId: number }} */ x) => x.recipientId === rid,
@@ -163,6 +167,7 @@ export function runDocSign(cfg, pdf, opts = {}) {
               },
               "POST signFieldWithToken",
             ).status === 200 && ok;
+          if (i >= completeFrom) return;
           if (opts.retryPlan) {
             const out = retried(
               opts.retryPlan,
@@ -183,6 +188,7 @@ export function runDocSign(cfg, pdf, opts = {}) {
               "POST completeDocumentWithToken",
             ).status === 200 && ok;
         });
+        if (opts.pairLast) ok = completePair(s, cfg, J) && ok;
         if (ok) {
           completedCounter.add(1);
           opts.onCommit?.();
@@ -192,8 +198,42 @@ export function runDocSign(cfg, pdf, opts = {}) {
       },
     },
   ];
-  return runJourney({
+  const out = runJourney({
     steps,
     deps: { check: (nme, ok) => check(null, { [nme]: () => ok }), sleep: () => {}, now: Date.now },
   });
+  if (opts.intent)
+    console.log(
+      `P6_DOC ${JSON.stringify({
+        intent: `${iterationId(cfg.prefix, n)} ${opts.intent}`,
+        pairId: opts.pairLast ? String(n) : null,
+        documentId: out.state.documentId ?? null,
+        completed: out.completed,
+        failedStep: out.failedStep,
+      })}`,
+    );
+  return out;
+}
+
+/**
+ * The last two recipients of one document complete at the same moment, in one batch (the known race of
+ * P6-OBS-DOC-002, plan task 9 §6.3). Returns true only when both completions answered 200.
+ * @param {Record<string, any>} s the journey state: tokens, documentId and recipientIds
+ * @param {{ baseUrl: string }} cfg
+ * @param {Record<string, string>} J the JSON headers
+ */
+function completePair(s, cfg, J) {
+  // http.batch answers an object keyed by request index; the two responses are its values
+  const res = Object.values(
+    http.batch(
+      s.recipientIds.slice(-2).map((/** @type {number} */ rid) => ({
+        method: "POST",
+        url: `${cfg.baseUrl}/api/trpc/recipient.completeDocumentWithToken`,
+        body: JSON.stringify({ json: { token: s.tokens[rid], documentId: s.documentId } }),
+        params: { headers: J, tags: { name: "POST completeDocumentWithToken" } },
+      })),
+    ),
+  );
+  res.forEach((r) => observe(r));
+  return res.every((r) => r.status === 200);
 }

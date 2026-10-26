@@ -2721,3 +2721,173 @@ jobs:
         timeout-minutes: 1
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: npm run down:cal
+
+  documenso-invariants:
+    name: documenso-invariants
+    # Plan Phase 4b task 9 §9 (Q-PLACE option a): dispatch and schedule only, never from the medusa_retry_repeats dispatch.
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.medusa_retry_repeats == '') }}
+    runs-on: ubuntu-24.04
+    # Setup 22 (copied from documenso-soak, every step capped) + run 10 + summary 2 + token scan 2 + upload 3 + stop 1 = 40.
+    # Job 60, margin 20 (the 80 % rule: the cleanup of about 240 documents is 13 s, S4).
+    timeout-minutes: 60
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      DOCUMENSO_CHECKOUT_PATH: products/documenso
+      DOCUMENSO_BASE_URL: http://127.0.0.1:3001
+      # Harness compose's local placeholder credentials. Not a secret.
+      DOCUMENSO_DB_URL: postgres://documenso:password@127.0.0.1:5451/documenso
+      INBUCKET_BASE_URL: http://127.0.0.1:9003
+      P6_WEBHOOK_HOST: p6-webhook.test
+      # Test environment: limiters off (harness passes it through), SSRF allowlist for the receiver.
+      DANGEROUS_BYPASS_RATE_LIMITS: "true"
+      NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS: p6-webhook.test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+    steps:
+      - name: Stop unless dispatched from main
+        timeout-minutes: 1
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::documenso invariant runs must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Documenso fork
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository_owner }}/documenso
+          ref: ${{ env.DOCUMENSO_REF }}
+          path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Documenso fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${DOCUMENSO_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${DOCUMENSO_REF}" ]; then
+            echo "::error::Documenso HEAD ${head} does not match DOCUMENSO_REF ${DOCUMENSO_REF}"
+            exit 1
+          fi
+
+      - name: Verify DOCUMENSO_REF matches bootstrap.sh
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if ! grep -q "^DOCUMENSO_REF=\"${DOCUMENSO_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"; then
+            echo "::error::DOCUMENSO_REF in perf.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      # Documenso needs Node 24 (fork engines, harness assert). This job only; the other jobs keep .nvmrc.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: |
+            p6/package-lock.json
+            products/documenso/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      - name: Install Documenso dependencies
+        timeout-minutes: 2
+        working-directory: ${{ env.DOCUMENSO_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
+      - name: Prepare harness roots
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh documenso
+
+      - name: Map the webhook host
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
+
+      - name: Restore Documenso build cache
+        timeout-minutes: 1
+        id: documenso_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
+
+      - name: Pull Documenso images (3 tries, 15 s then 30 s)
+        id: documenso_pull
+        timeout-minutes: 3
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-documenso -f documenso.compose.yml
+
+      - name: Start Documenso (harness up)
+        timeout-minutes: 5
+        id: documenso_up
+        if: ${{ steps.documenso_pull.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run up:documenso
+
+      - name: Run P6-DOC-LOAD-003 (setup, run, audit and cleanup inside the step)
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/load/run-load.ts --case P6-DOC-LOAD-003 --profile full
+
+      - name: Token scan of the documenso invariant results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/evidence-token-scan.mjs results/load
+
+      - name: Job summary (documenso invariants table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/write-ci-job-summary.ts
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 3
+        with:
+          name: documenso-invariants
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Stop Documenso (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: npm run down:documenso
