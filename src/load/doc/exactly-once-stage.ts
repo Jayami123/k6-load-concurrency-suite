@@ -32,12 +32,15 @@ const docIdOf = (secondaryId: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-/** Reads one DocRows per document of the run: seal jobs, audit rows, webhook calls and the completion-email tokens. */
+/**
+ * Reads one DocRows per document of the run: seal jobs, audit rows, webhook calls and the completion-email tokens. Also counts the
+ * calls on the run's webhook that name no run document (a null or foreign envelope id): each is an unexplained side effect.
+ */
 export async function readDocRows(
   pool: pg.Pool,
   run: RunContext,
   prefixLike: string,
-): Promise<DocRows[]> {
+): Promise<{ docs: DocRows[]; unmatchedWebhookCalls: number }> {
   const envelopes = await selectRows<{ envelopeId: string; secondaryId: string }>(
     pool,
     PIPELINE_DOCUMENTS_SQL,
@@ -59,8 +62,13 @@ export async function readDocRows(
   for (const s of seals)
     sealsOf.set(s.documentId, [...(sealsOf.get(s.documentId) ?? []), s.status]);
   const callsOf = new Map<string, Array<{ envelopeId: string | null; status: string }>>();
+  const runEnvelopes = new Set(envelopes.map((e) => e.envelopeId));
+  let unmatchedWebhookCalls = 0;
   for (const c of calls) {
-    if (c.envelopeId === null) continue;
+    if (c.envelopeId === null || !runEnvelopes.has(c.envelopeId)) {
+      unmatchedWebhookCalls++;
+      continue;
+    }
     callsOf.set(c.envelopeId, [...(callsOf.get(c.envelopeId) ?? []), c]);
   }
   const recipientsOf = new Map<string, number>();
@@ -103,7 +111,7 @@ export async function readDocRows(
       matchedTokens: matched.get(e.envelopeId) ?? [],
     });
   }
-  return out;
+  return { docs: out, unmatchedWebhookCalls };
 }
 
 /** P6-DOC-LOAD-003: the exactly-once verdict of one run (plan §6.4). Writes exactly-once.json and returns the stage result. */
@@ -124,11 +132,12 @@ export const exactlyOnceStage: Stage = async (ctx: LoadContext): Promise<StageRe
   const summary = JSON.parse(readFileSync(main.summaryPath, "utf8"));
   const pool = createReadOnlyPool(documensoDatabaseUrlFromEnv());
   try {
-    const docs = await readDocRows(pool, run, prefixLike);
+    const { docs, unmatchedWebhookCalls } = await readDocRows(pool, run, prefixLike);
     const input = buildExactlyOnceInput({
       docs,
       lines,
       droppedIterations: summaryCounter(summary, "dropped_iterations") ?? 0,
+      unmatchedWebhookCalls,
     });
     const verdict = exactlyOnceVerdictOf(input);
     writeFileSync(

@@ -29,6 +29,7 @@ export interface ExactlyOnceInput {
   pairRows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" }>;
   invalidReasons: string[];
   testBugReasons: string[];
+  unmatchedWebhookCalls?: number;
 }
 
 /** The webhook call is one of this document's when its body names the document's envelope. */
@@ -48,6 +49,7 @@ export function buildExactlyOnceInput(input: {
   docs: DocRows[];
   lines: IterationLine[];
   droppedIterations: number;
+  unmatchedWebhookCalls?: number;
 }): ExactlyOnceInput {
   const invalidReasons: string[] = [];
   const testBugReasons: string[] = [];
@@ -109,7 +111,13 @@ export function buildExactlyOnceInput(input: {
     invalidReasons.push(
       `L9: ${sequentialLines} sequential iteration lines, ${sequentialDocs} sequential document rows`,
     );
-  return { sequential, pairRows, invalidReasons, testBugReasons };
+  return {
+    sequential,
+    pairRows,
+    invalidReasons,
+    testBugReasons,
+    unmatchedWebhookCalls: input.unmatchedWebhookCalls ?? 0,
+  };
 }
 
 /** The number of distinct pair documents named by the lines (a document is one iteration, so the count is the lines'). */

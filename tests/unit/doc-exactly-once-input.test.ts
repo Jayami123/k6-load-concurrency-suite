@@ -81,6 +81,17 @@ describe("exactly-once input", () => {
     assert.equal(exactlyOnceVerdictOf(input).verdict, "INVALID");
   });
 
+  it("makes an unexplained webhook call a PRODUCT BUG that INVALID does not hide", () => {
+    const input = buildExactlyOnceInput({
+      docs: [exact(1)],
+      lines: [seq(1)],
+      droppedIterations: 1,
+      unmatchedWebhookCalls: 1,
+    });
+    assert.equal(exactlyOnceVerdictOf(input).verdict, "FAIL (PRODUCT BUG)");
+    assert.equal(input.unmatchedWebhookCalls, 1);
+  });
+
   it("reports a run with no P6_DOC lines as a TEST BUG", () => {
     const input = buildExactlyOnceInput({ docs: [exact(1)], lines: [], droppedIterations: 0 });
     assert.ok(input.testBugReasons.some((r) => r.startsWith("TEST BUG: no P6_DOC")));
