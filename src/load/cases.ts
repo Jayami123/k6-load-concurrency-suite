@@ -1028,8 +1028,17 @@ export const SPIKE_RATES = {
   documenso: { steadyRate: 0.2, spikeRate: 1.0 },
 } as const;
 
+/**
+ * tRPC calls per Documenso document, measured on the spike run 20261026T060557Z-a7968c28 (38 documents, 342 calls: 294 answered 200
+ * and 48 answered 429). The journey makes 9: envelope/create, recipient/create-many, envelope GET, field/create-many, envelope/distribute,
+ * two signFieldWithToken and two completeDocumentWithToken.
+ */
+export const DOC_TRPC_CALLS_PER_DOCUMENT = 9;
+/** The tRPC limiter's limit per minute (src/load/spike/limiter-contract.ts, the trpc route). */
+export const DOC_TRPC_LIMIT_PER_MIN = 100;
+
 /** The spike of a run: 60 s steady, 30 s spike, 120 s watch on full; 10 s and 20 s on pr (a smoke of the machinery). */
-function spikeSpec(
+export function spikeSpec(
   ctx: LoadContext,
   product: keyof typeof SPIKE_RATES,
   timeUnitSec: number,
