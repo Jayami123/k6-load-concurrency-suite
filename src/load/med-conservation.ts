@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { readOversellSnapshot, type OversellOracleSnapshot } from "../medusa/oracle.ts";
 import { closePool, createReadOnlyPool } from "../oracles/pg.ts";
 import { parseK6Summary } from "./summary.ts";
-import type { LoadContext, StageResult } from "./types.ts";
+import type { LoadContext, Stage, StageResult } from "./types.ts";
 
 export interface ConservationCounters {
   iterations: number;
@@ -19,6 +19,12 @@ export interface ConservationInput {
   counters: ConservationCounters;
   snapshot: OversellOracleSnapshot;
   stock: number;
+  /** false for a soak whose stock never runs out by design (planned + 20): only the stock-exhausted check is skipped. Default true. */
+  expectStockExhausted?: boolean;
+}
+
+export interface ConservationStageOptions {
+  expectStockExhausted: boolean;
 }
 
 export interface ConservationFinding {
@@ -49,13 +55,15 @@ export function judgeConservation(i: ConservationInput): {
     detail: `terminal outcomes ${accounted} of ${c.iterations} iterations`,
   });
 
-  const exhausted = c.iterations > stock && s.orderCount >= stock;
-  add({
-    check: "stock-exhausted",
-    ok: exhausted,
-    kind: exhausted ? undefined : "TEST BUG",
-    detail: `stock never ran out: orders ${s.orderCount} of S ${stock}, iterations ${c.iterations}`,
-  });
+  if (i.expectStockExhausted !== false) {
+    const exhausted = c.iterations > stock && s.orderCount >= stock;
+    add({
+      check: "stock-exhausted",
+      ok: exhausted,
+      kind: exhausted ? undefined : "TEST BUG",
+      detail: `stock never ran out: orders ${s.orderCount} of S ${stock}, iterations ${c.iterations}`,
+    });
+  }
 
   const oversold = s.orderCount > stock || s.orderQty > stock;
   add({
@@ -138,39 +146,51 @@ export function conservationCounters(summary: unknown): ConservationCounters {
 }
 
 /** The case's conservation stage: reads the counters and the database, then judges. Findings are one line each. */
-export const conservationStage = async (ctx: LoadContext): Promise<StageResult> => {
-  const main = ctx.k6.find((k) => k.label === "main");
-  const audit = ctx.config.audit as Record<string, unknown> | undefined;
-  if (!main || !audit)
-    return {
-      ok: false,
-      kind: "TEST BUG",
-      reasons: ["conservation: no main run or no audit config"],
-    };
-  const counters = conservationCounters(JSON.parse(readFileSync(main.summaryPath, "utf8")));
-  const pool = createReadOnlyPool();
-  try {
-    const snapshot = await readOversellSnapshot(
-      pool,
-      String(audit.variantId),
-      String(audit.inventoryItemId),
-      String(audit.locationId),
-    );
-    const stock = Number(audit.stock);
-    const { findings, knownBugs } = judgeConservation({ counters, snapshot, stock });
-    const failed = failedFindings(findings, counters);
-    const kind = failed.some((f) => f.kind === "PRODUCT BUG")
-      ? "PRODUCT BUG"
-      : failed.length > 0
-        ? "TEST BUG"
-        : undefined;
-    return {
-      ok: failed.length === 0,
-      kind: kind as StageResult["kind"],
-      reasons: failed.map((f) => `${f.check}: ${f.detail}`),
-      data: { findings: findings.map((f) => `${f.check}: ${f.ok ? "ok" : "fail"}`), knownBugs },
-    };
-  } finally {
-    await closePool(pool);
-  }
-};
+/** The conservation stage. `expectStockExhausted` false is for a soak whose stock never runs out (see ConservationInput). */
+export function makeConservationStage(
+  opts: ConservationStageOptions = { expectStockExhausted: true },
+): Stage {
+  return async (ctx: LoadContext): Promise<StageResult> => {
+    const main = ctx.k6.find((k) => k.label === "main");
+    const audit = ctx.config.audit as Record<string, unknown> | undefined;
+    if (!main || !audit)
+      return {
+        ok: false,
+        kind: "TEST BUG",
+        reasons: ["conservation: no main run or no audit config"],
+      };
+    const counters = conservationCounters(JSON.parse(readFileSync(main.summaryPath, "utf8")));
+    const pool = createReadOnlyPool();
+    try {
+      const snapshot = await readOversellSnapshot(
+        pool,
+        String(audit.variantId),
+        String(audit.inventoryItemId),
+        String(audit.locationId),
+      );
+      const stock = Number(audit.stock);
+      const { findings, knownBugs } = judgeConservation({
+        counters,
+        snapshot,
+        stock,
+        expectStockExhausted: opts.expectStockExhausted,
+      });
+      const failed = failedFindings(findings, counters);
+      const kind = failed.some((f) => f.kind === "PRODUCT BUG")
+        ? "PRODUCT BUG"
+        : failed.length > 0
+          ? "TEST BUG"
+          : undefined;
+      return {
+        ok: failed.length === 0,
+        kind: kind as StageResult["kind"],
+        reasons: failed.map((f) => `${f.check}: ${f.detail}`),
+        data: { findings: findings.map((f) => `${f.check}: ${f.ok ? "ok" : "fail"}`), knownBugs },
+      };
+    } finally {
+      await closePool(pool);
+    }
+  };
+}
+
+export const conservationStage: Stage = makeConservationStage();
