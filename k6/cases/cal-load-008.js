@@ -12,7 +12,7 @@ const cfg = {
   rate: 4,
   timeUnitSec: 10,
   durationSec: 30,
-  maxLatencyMs: 4000,
+  maxLatencyMs: 8000,
   baseUrl: "http://127.0.0.1:3000",
   eventTypeId: 1,
   eventTypeSlug: "30min",
