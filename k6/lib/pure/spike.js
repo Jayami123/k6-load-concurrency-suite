@@ -20,13 +20,16 @@ export function buildSpikePlan({
     if (!(v > 0)) throw new Error(`spike plan: ${name} must be above 0 (got ${v})`);
   }
   if (!(quietSec >= 0)) throw new Error(`spike plan: quietSec must be 0 or more (got ${quietSec})`);
+  if (quietSec > 0 && !(watchSec >= 2))
+    throw new Error(`spike plan: watchSec must be 2 or more after a quiet phase (got ${watchSec})`);
   if (!(steadyRate > 0) || !(spikeRate > steadyRate))
     throw new Error(
       `spike plan: need 0 < steadyRate < spikeRate (got ${steadyRate} and ${spikeRate})`,
     );
   const spikeStart = steadySec + rampSec;
   const spikeEnd = spikeStart + spikeSec;
-  const quietEnd = spikeEnd + rampSec + quietSec;
+  // k6 ramps linearly between stage targets, so each change to zero or back to steadyRate takes 1 s, then holds.
+  const quietEnd = spikeEnd + rampSec + (quietSec > 0 ? 1 + quietSec : 0);
   const end = quietEnd + watchSec;
   return {
     stages: [
@@ -34,8 +37,14 @@ export function buildSpikePlan({
       { target: spikeRate, duration: `${rampSec}s` },
       { target: spikeRate, duration: `${spikeSec}s` },
       { target: steadyRate, duration: `${rampSec}s` },
-      ...(quietSec > 0 ? [{ target: 0, duration: `${quietSec}s` }] : []),
-      { target: steadyRate, duration: `${watchSec}s` },
+      ...(quietSec > 0
+        ? [
+            { target: 0, duration: "1s" },
+            { target: 0, duration: `${quietSec}s` },
+            { target: steadyRate, duration: "1s" },
+            { target: steadyRate, duration: `${watchSec - 1}s` },
+          ]
+        : [{ target: steadyRate, duration: `${watchSec}s` }]),
     ],
     startRate: steadyRate,
     timeUnitSec,
@@ -110,4 +119,15 @@ export function alignDelayMs(nowMs, spikeStartOffsetMs, boundaryMs = 60000) {
  */
 export function inOneWindow(startMs, endMs, windowMs = 60000) {
   return Math.floor(startMs / windowMs) === Math.floor((endMs - 1) / windowMs);
+}
+
+/**
+ * The distance, in ms, from a time to the nearest wall-clock boundary (a multiple of boundaryMs).
+ * @param {number} ms
+ * @param {number} [boundaryMs]
+ * @returns {number}
+ */
+export function distanceToBoundaryMs(ms, boundaryMs = 60000) {
+  const r = ms % boundaryMs;
+  return Math.min(r, boundaryMs - r);
 }

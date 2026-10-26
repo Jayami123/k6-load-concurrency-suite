@@ -4,6 +4,7 @@ import {
   alignDelayMs,
   buildSpikePlan,
   classifySpikeResponse,
+  distanceToBoundaryMs,
   inOneWindow,
   phaseAt,
   spikeVus,
@@ -100,22 +101,41 @@ describe("k6 lib spike", () => {
     });
     assert.deepEqual(quiet.stages.slice(3), [
       { target: 3, duration: "2s" },
+      { target: 0, duration: "1s" },
       { target: 0, duration: "60s" },
-      { target: 3, duration: "58s" },
+      { target: 3, duration: "1s" },
+      { target: 3, duration: "57s" },
     ]);
     assert.deepEqual(quiet.marks, {
       steadyEnd: 58,
       spikeStart: 60,
       spikeEnd: 90,
-      quietEnd: 152,
-      end: 210,
+      quietEnd: 153,
+      end: 211,
     });
     assert.equal(phaseAt(quiet, 91_000), "ramp-down");
     assert.equal(phaseAt(quiet, 100_000), "quiet");
-    assert.equal(phaseAt(quiet, 151_999), "quiet");
-    assert.equal(phaseAt(quiet, 152_000), "recovery");
+    assert.equal(phaseAt(quiet, 152_999), "quiet");
+    assert.equal(phaseAt(quiet, 153_000), "recovery");
+    assert.throws(
+      () => buildSpikePlan({ ...quietBase(), watchSec: 1 }),
+      /watchSec must be 2 or more after a quiet phase/,
+    );
   });
 });
+
+function quietBase() {
+  return {
+    steadyRate: 3,
+    spikeRate: 9,
+    steadySec: 58,
+    spikeSec: 30,
+    rampSec: 2,
+    watchSec: 58,
+    quietSec: 60,
+    timeUnitSec: 10,
+  };
+}
 
 describe("spike alignment to the limiter's minute windows", () => {
   it("a start exactly on the boundary waits 0 ms, and any other start waits less than one minute", () => {
@@ -135,5 +155,12 @@ describe("spike alignment to the limiter's minute windows", () => {
     assert.equal(inOneWindow(120_000, 150_000), true);
     assert.equal(inOneWindow(120_000, 179_999), true);
     assert.equal(inOneWindow(170_000, 200_000), false);
+  });
+
+  it("the distance to the nearest minute boundary is the smaller of the two sides", () => {
+    assert.equal(distanceToBoundaryMs(120_000), 0);
+    assert.equal(distanceToBoundaryMs(120_001), 1);
+    assert.equal(distanceToBoundaryMs(119_999), 1);
+    assert.equal(distanceToBoundaryMs(150_000), 30_000);
   });
 });

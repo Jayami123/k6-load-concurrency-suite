@@ -14,7 +14,10 @@ import { readOversellSnapshot } from "../../medusa/oracle.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
 import { medusaAbandonVerdict, type MedAbandonVerdict } from "./med-abandon.ts";
 import { WINDOW_SEC, windowsFromBins } from "../recovery.ts";
-import { inOneWindow } from "../../../k6/lib/pure/spike.js";
+import { distanceToBoundaryMs, inOneWindow } from "../../../k6/lib/pure/spike.js";
+
+/** How far the spike start may sit from a minute boundary: the k6 init-to-start latency and the scheduler, stated explicitly. */
+const ALIGN_TOLERANCE_MS = 5000;
 import type { LoadContext, Stage, StageResult } from "../types.ts";
 import {
   evaluateSpike,
@@ -155,11 +158,15 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
       const windows = windowsFromBins(bins, t0, sp.windowSec ?? WINDOW_SEC);
       const spikeStartMs = t0 + (sp.steadySec + sp.rampSec) * 1000;
       const spikeEndMs = spikeStartMs + sp.spikeSec * 1000;
-      if (sp.alignToMinute && !inOneWindow(spikeStartMs, spikeEndMs)) {
+      if (sp.alignToMinute && distanceToBoundaryMs(spikeStartMs) > ALIGN_TOLERANCE_MS) {
         fail(
           "TEST BUG",
-          `${label}: the spike crosses a limiter window (its start is not on a minute boundary)`,
+          `${label}: the spike start is ${distanceToBoundaryMs(spikeStartMs)} ms from a minute boundary (tolerance ${ALIGN_TOLERANCE_MS} ms)`,
         );
+        continue;
+      }
+      if (sp.alignToMinute && !inOneWindow(spikeStartMs, spikeEndMs)) {
+        fail("TEST BUG", `${label}: the spike crosses a limiter window`);
         continue;
       }
       const tags = await limitedTags(run.pointsPath);
