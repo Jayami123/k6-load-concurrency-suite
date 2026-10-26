@@ -138,6 +138,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # the build job downloads the evidence artefacts of other workflow runs with the workflow token; without it gh run download fails on non-public artifacts
   pages: write
   id-token: write
 
@@ -146,7 +147,9 @@ concurrency:
   cancel-in-progress: false
 ```
 
-Jobs: `build` (checkout, setup-node, the pinned download of the evidence artefacts with `gh run download` for the run IDs in `k6/thresholds/*.json`, `scripts/dashboard/build-site.ts`, the two scans, `actions/upload-pages-artifact` pinned by SHA (S-4), each step with its `timeout-minutes`), and `deploy` (`actions/deploy-pages` pinned by SHA, `needs: build`, `environment: github-pages`). The `workflow_run` trigger runs only for `main` (`if: github.event.workflow_run.head_branch == 'main'`).
+Jobs: `build` (checkout, setup-node, the pinned download of the evidence artefacts with `gh run download` for the run IDs in `k6/thresholds/*.json`, `scripts/dashboard/build-site.ts`, the two scans, `actions/upload-pages-artifact` pinned by SHA (S-4), each step with its `timeout-minutes`), and `deploy` (`actions/deploy-pages` pinned by SHA, `needs: build`, `environment: github-pages`). The site is built only from `main`, on both paths: the `workflow_run` trigger runs only when its `head_branch` is `main` (`if: github.event.workflow_run.head_branch == 'main'`), and a `workflow_dispatch` run is guarded by `if: github.ref == 'refs/heads/main'` in the `build` job, so a manual dispatch from another ref stops before any download.
+
+**Each selected evidence run is validated before `gh run download`, on both paths.** The `workflow_run` check above validates only the triggering run, not the runs listed in `k6/thresholds/*.json`. For every run ID the build reads from those files, a validation step requires all of: (1) `conclusion` is `success`; (2) the run's `workflow_id` is in the `EVIDENCE_WORKFLOW_IDS` list of `evidence-release.yml` (line 39); (3) `head_branch` is `main`; (4) `head_sha` is an ancestor of the Pages target commit (`git merge-base --is-ancestor <head_sha> ${{ github.sha }}`). A run that fails any check stops the build with its run ID named, so a stale or unapproved run ID never enters the public dashboard. The checks use the REST API (`gh api repos/<owner>/<repo>/actions/runs/<id>`), which is also the route this session's `gh` uses.
 
 Budget: `build` 20 min (setup 5, download 5, build 2, scans 3, upload 2, the rest 3); `deploy` 10 min; both far under the 6 h cap.
 

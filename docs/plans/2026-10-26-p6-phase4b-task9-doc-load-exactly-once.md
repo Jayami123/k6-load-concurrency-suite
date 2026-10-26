@@ -54,13 +54,13 @@ Main at `e27ad5a`, verified in this plan run:
 
 ## 5. Build-time recheck table
 
-| #   | Check                                                                                   | Exact command                                                                                                           | Expected                                                          | If it differs                                                                         |
-| --- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 1   | Task 6 merged and the Documenso knee entry exists (**hard stop for the Documenso job**) | `jq '.products.documenso' k6/thresholds/knee-bounds.json`                                                               | not `null`, `lowerBoundRate` > 0                                  | Stop. Build the parser and the classifier (steps 1 to 3); the job waits               |
-| 2   | Upstream PR #3353 state, recorded in the build PR                                       | `gh pr view 3353 -R documenso/documenso --json state,mergedAt` (the owner or the build session, with the repo in scope) | `state` and `mergedAt` recorded with the date                     | Record the result; the verdict does not depend on it (roadmap line 597)               |
-| 3   | The Documenso fork present                                                              | `ls -A /home/user/products/documenso \| wc -l`                                                                          | > 0 with `apps/remix/example/cert.p12` after `npm ci` in the fork | Owner provides the checkout (bootstrap clones the fork, outside this session's scope) |
-| 4   | Steady rate source                                                                      | `jq '.products.documenso.lowerBoundRate' k6/thresholds/knee-bounds.json`                                                | the value the file carries (4 in the knee reports, D-2)           | the rate follows the file; state the change                                           |
-| 5   | `npm run check`                                                                         | `npm run check`                                                                                                         | exit 0, 1036 or 1072 tests as in §12                              | fix before the next step                                                              |
+| #   | Check                                                                                   | Exact command                                                                                                           | Expected                                                                                                                                                                                            | If it differs                                                                         |
+| --- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | Task 6 merged and the Documenso knee entry exists (**hard stop for the Documenso job**) | `jq '.products.documenso' k6/thresholds/knee-bounds.json`                                                               | not `null`, `lowerBoundRate` > 0                                                                                                                                                                    | Stop. Build the parser and the classifier (steps 1 to 3); the job waits               |
+| 2   | Upstream PR #3353 state, recorded in the build PR                                       | `gh pr view 3353 -R documenso/documenso --json state,mergedAt` (the owner or the build session, with the repo in scope) | `state` and `mergedAt` recorded with the date                                                                                                                                                       | Record the result; the verdict does not depend on it (roadmap line 597)               |
+| 3   | The Documenso fork present                                                              | `ls -A /home/user/products/documenso \| wc -l`                                                                          | > 0 with `apps/remix/example/cert.p12` after `npm ci` in the fork                                                                                                                                   | Owner provides the checkout (bootstrap clones the fork, outside this session's scope) |
+| 4   | Steady rate source                                                                      | `jq '.products.documenso.lowerBoundRate' k6/thresholds/knee-bounds.json`                                                | the file carries a lower bound (4 in the knee reports, D-2); the case rate is **50 % of it, rounded down to 0.1, via `steadyRateFor(bounds, "documenso")`**, so 4 gives **2.0 per second**, never 4 | the rate follows the file; state the change                                           |
+| 5   | `npm run check`                                                                         | `npm run check`                                                                                                         | exit 0, 1036 or 1072 tests as in §12                                                                                                                                                                | fix before the next step                                                              |
 
 ## 6. Design
 
@@ -92,7 +92,7 @@ Any other count for a document in this share is **FAIL (PRODUCT BUG, SUSPECTED)*
 
 ### 6.3 Concurrent pair share (the known bug)
 
-`pairShare` (a build-time parameter, proposal 0.1 of the documents) of the iterations are **pairs**: the two last recipients of one document sign at the same moment, in `k6/journeys/doc-pair.js`. Each pair has a pair id `<document id>:<pair index>`. The count of seal jobs, audit rows and webhook calls per document is taken per **document id**; a document with two seal jobs is counted once under `P6-OBS-DOC-002` by the pair key, not as a new bug per row.
+`pairShare` is a build-time parameter, proposal 0.1. It is **relative to the sequential steady rate**: the pair stream runs at `rate × pairShare` **in addition to** the sequential stream at `rate`. The pair fraction of all documents is therefore `pairShare / (1 + pairShare)` (0.1 gives 9.1 %, not 10 %), and the scenario rates are not changed. In a pair, the two last recipients of one document sign at the same moment, in `k6/journeys/doc-pair.js`. Each pair has a pair id `<document id>:<pair index>`. Seal jobs and audit rows are counted per **document id**; a document with two seal jobs is counted once under `P6-OBS-DOC-002` by the pair key, not as a new bug per row. Webhook calls are **not** in the pair accounting: no source on main carries a pair id for a webhook call (checked: `WEBHOOK_CALLS_SQL` in `src/documenso/oracle.ts` line 5 has no pair column), so a duplicate webhook in a pair is UNPROBED and not counted. Webhook exactness is checked on the sequential share only.
 
 ```ts
 // src/load/doc/pair-key.ts
@@ -100,8 +100,8 @@ Any other count for a document in this share is **FAIL (PRODUCT BUG, SUSPECTED)*
 export function pairKey(documentId: string, pairId: string): string;
 /** Duplicates per pair key: a map of key to the count of side-effect rows beyond the first. Pure. */
 export function pairCounts(
-  rows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" | "webhook" }>,
-): Map<string, { seal: number; audit: number; webhook: number }>;
+  rows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" }>,
+): Map<string, { seal: number; audit: number }>;
 ```
 
 ### 6.4 The verdict (`src/load/doc/exactly-once.ts`)
@@ -110,28 +110,35 @@ export function pairCounts(
 // src/load/doc/exactly-once.ts
 export interface ExactlyOnceVerdict {
   sequentialDocs: number;
-  sequentialExact: number; // documents with exactly one of each side effect and the right email count
+  sequentialExact: number; // documents that pass every check of the input below
   pairDocs: number;
   pairKnownDuplicates: number; // pair keys with a duplicate seal, counted under P6-OBS-DOC-002 (never a verdict input on its own)
   verdict: "PASS" | "PASS (P6-OBS-DOC-002 counted)" | "FAIL (PRODUCT BUG)" | "TEST BUG" | "INVALID";
   reasons: string[];
 }
 /**
- * PASS when every sequential document is exact. PASS (P6-OBS-DOC-002 counted) when the sequential share is exact and
- * pairKnownDuplicates > 0 (the known bug, SUSPECTED until the owner labels it). FAIL when any sequential document is not
- * exact. TEST BUG when a setup or drain check fails. INVALID when telemetry or dropped iterations invalidate the run.
+ * A sequential document is exact only when ALL of: seal === 1 (COMPLETED seal jobs only), failedSeal === 0,
+ * audit === 1, webhook === 1 with webhookPayloadMatched === true, emailsMatchedToRecipients === recipients (each
+ * completion email's token joins to a Recipient.token of that document; the caller performs the join before classification, with the webhook payload comparison, as the inputs say).
+ * PASS when every sequential document is exact and invalidReasons is empty. PASS (P6-OBS-DOC-002 counted) when the
+ * sequential share is exact and pairKnownDuplicates > 0. FAIL (PRODUCT BUG) when any sequential document is not exact.
+ * TEST BUG when testBugReasons is not empty (setup or drain check). INVALID when invalidReasons is not empty; the caller
+ * puts the L9 reconciliation result there (an intent count that differs from the rows, or a missing document or pair),
+ * so a missing row cannot pass on the observed rows alone.
  */
 export function classifyExactlyOnce(input: {
   sequential: Array<{
     docId: string;
-    seal: number;
+    seal: number; // COMPLETED seal jobs only
+    failedSeal: number; // FAILED seal jobs after drain: any value is a FAIL
     audit: number;
     webhook: number;
-    emails: number;
+    webhookPayloadMatched: boolean; // caller compares WebhookCall.requestBody with the document's payload; a mismatch is FAIL (PRODUCT BUG)
+    emailsMatchedToRecipients: number; // completion emails whose token joins to Recipient.token of this document
     recipients: number;
   }>;
-  pairRows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" | "webhook" }>;
-  invalidReasons: string[];
+  pairRows: Array<{ documentId: string; pairId: string; kind: "seal" | "audit" }>;
+  invalidReasons: string[]; // includes the L9 reconciliation failure and telemetry or dropped-iteration reasons
   testBugReasons: string[];
 }): ExactlyOnceVerdict;
 ```
@@ -140,7 +147,9 @@ export function classifyExactlyOnce(input: {
 
 ```js
 // k6/cases/doc-load-003.js  (P6-DOC-LOAD-003: exactly-once seal, audit, webhook and email under load; P6-OBS-DOC-002 counted)
-// Scenario: sequential stream at the steady rate (steadyRateFor documenso, Task 6 file) + a pair share of pairShare.
+// Rate: rate = steadyRateFor(bounds, "documenso") = 50 % of products.documenso.lowerBoundRate (Task 6 file), rounded down to 0.1;
+// 4 gives 2.0 per second. The k6 call passes that rate, never the lower bound itself.
+// Scenario: sequential stream at `rate`, plus a pair stream at rate x pairShare (in addition, §6.3).
 // Oracle: classifyExactlyOnce over the audit rows, the seal and email jobs and the webhook receiver's calls, per document id and pair key.
 export const options = standardOptions({
   scenarios: {
@@ -176,7 +185,7 @@ VU pools: `preAllocatedVUs` with `maxLatencyMs` 12,000 (PR #79 `iterationMs 1200
 | no stuck jobs after the drain         | `STUCK_JOBS_FOR_RUN_SQL` (`src/load/reconcile/documenso.ts` line 131), `waitForDrain` (line 22)        | 0                                                                                                                          |
 | pair duplicates                       | `pairCounts` (§6.3) over `SEAL_JOBS_SQL` and `DOCUMENT_COMPLETED_AUDIT_SQL` rows                       | counted under `P6-OBS-DOC-002`, keyed by the pair key                                                                      |
 
-**L9 (per-intent audit, no count slack):** every iteration writes one intent line (`<prefix>-i<n> sequential` or `<prefix>-i<n> pair`) and one outcome line; reconciliation counts by intent and must match exactly.
+**L9 (per-intent audit, no count slack):** every iteration writes one intent line (`<prefix>-i<n> sequential` or `<prefix>-i<n> pair`) and one outcome line; reconciliation counts by intent and must match exactly. The caller runs this reconciliation **before** `classifyExactlyOnce` and puts any mismatch (a count that differs, a document or pair missing from the rows) into `invalidReasons` (§6.4), so a missing row cannot pass on the observed rows alone.
 
 **Known bugs (counted, never hidden):** `P6-OBS-DOC-002` (concurrent pairs, documenso/documenso#3187; the count per pair key). `P6-OBS-DOC-001` and `-006` are not on this path and are not counted here. **Labels: SUSPECTED until the owner confirms; only the owner labels a bug, after repeated runs (L12).**
 

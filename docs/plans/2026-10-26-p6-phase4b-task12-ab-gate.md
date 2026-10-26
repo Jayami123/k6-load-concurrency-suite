@@ -117,7 +117,13 @@ export function changedRefs(diffText: string): Array<(typeof REF_NAMES)[number]>
 export function touchesLoadCode(paths: string[]): boolean;
 ```
 
-Workflow triggers: `pull_request` with `paths: ['k6/**', 'scripts/load/**', 'src/load/**']` and a step that runs `git diff origin/main...HEAD -- .github/workflows/perf.yml scripts/bootstrap.sh` through `changedRefs` (a ref bump runs the gate for the bumped product only). **Not a required check** unless the owner sets it by hand (roadmap line 709).
+Workflow triggers (`gate.yml`):
+
+- `pull_request` with `paths: ['k6/**', 'scripts/load/**', 'src/load/**', '.github/workflows/perf.yml', 'scripts/bootstrap.sh']`. The last two paths are the ref-bump files: a PR that changes only `CAL_REF`, `MEDUSA_REF` or `DOCUMENSO_REF` has no P6 code change, so without them the gate never starts for a ref bump.
+- `push` with `branches: [main]` and the same `paths` list, so a bump merged to `main` also starts the gate. The `push` run compares `main` with its parent, not with a PR base.
+- A step that runs `git diff <base>...HEAD -- .github/workflows/perf.yml scripts/bootstrap.sh` (where `<base>` is `origin/main` on `pull_request`, and `HEAD~1` on `push`) through `changedRefs`. Only a changed ref name starts the gate for the bumped product; other edits to those two files do not.
+
+**Not a required check** unless the owner sets it by hand (roadmap line 709).
 
 ### 6.5 The self-test (`P6-X-LOAD-008`, `k6/selftest/gate-slowdown.js`)
 

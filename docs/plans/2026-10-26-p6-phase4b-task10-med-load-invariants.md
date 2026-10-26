@@ -105,12 +105,24 @@ export interface SplitVerdict {
   verdict: "PASS" | "FAIL (PRODUCT BUG)" | "TEST BUG" | "INVALID";
   reasons: string[];
 }
-/** orders ≤ stock and one order per cart are PASS conditions; an instance with zero requests is a TEST BUG (it got no load); a duplicate order per cart is a FAIL (PRODUCT BUG, SUSPECTED). */
+/**
+ * The conservation audit of P6-MED-LOAD-007, as one fail-closed aggregation. PASS only when EVERY required check holds:
+ * orders <= stock; one order per cart (duplicateCartOrders 0); reservations equal live orders
+ * (RESERVATION_QTY_SQL, reservationsMatchOrders); one payment per order (onePaymentPerOrder); per-intent reconciliation
+ * matches exactly (L9, perIntentReconciled); no ghost order (ghostOrders 0; a ghost is reported with ghost: true, L10);
+ * and both instances served requests. Any failed check gives FAIL (PRODUCT BUG, SUSPECTED) for a product invariant, or
+ * TEST BUG when the check is about the probe itself (an instance with zero requests). INVALID when invalidReasons is not
+ * empty. A missing input is a TEST BUG, never a pass: the input types have no optional fields.
+ */
 export function classifySplit(input: {
   orders: number;
   stock: number;
   perInstance: InstanceCount[];
   duplicateCartOrders: number;
+  reservationsMatchOrders: boolean; // RESERVATION_QTY_SQL: live reservation units equal live order units
+  onePaymentPerOrder: boolean; // every live order has exactly one payment
+  perIntentReconciled: boolean; // L9: counts by intent equal the rows, no count slack
+  ghostOrders: number; // orders no k6 intent explains (L10); never dropped
   invalidReasons: string[];
 }): SplitVerdict;
 ```

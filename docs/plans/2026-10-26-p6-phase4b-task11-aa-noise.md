@@ -102,8 +102,15 @@ export const K = 2;
 export const FLOOR = 0.1;
 /** The tolerance of one metric from its A/A arms. Throws when fewer than three arms or any value is not finite and > 0. */
 export function toleranceOf(metric: Tolerance["metric"], arms: ArmMedian[]): Tolerance;
-/** Parses k6/thresholds/tolerance.json: schema 1, the checks of parseKneeBounds (ids digits-only and ascending, n >= 3). */
-export function parseTolerance(value: unknown): Record<string, Record<string, Tolerance>>;
+/**
+ * Parses k6/thresholds/tolerance.json. The root shape is the one of knee-bounds.json: `{ schema: 1, metric, unit, release,
+ * products: { cal: { "p95Ms": Tolerance, ... }, medusa: { ... } } }`. Every consumer (write-tolerance.ts, the gate, the
+ * jq preflight of Task 12 §5, which reads `.products`) uses this root. Checks: ids digits-only and ascending, n >= 3.
+ */
+export function parseTolerance(value: unknown): {
+  schema: 1;
+  products: Record<string, Record<string, Tolerance>>;
+};
 ```
 
 ```ts
@@ -165,7 +172,12 @@ The `aa-cal` and `aa-medusa` jobs follow Task 7 §6.6 (the same setup steps, cop
 
 ### 6.5 P6-RULE-004 check (in `npm run check` through `test:unit`)
 
-`tests/unit/gate-rule-004.test.ts` asserts, from the repo files: (a) `k6/thresholds/tolerance.json` exists and parses; (b) every product in it cites at least three run IDs; (c) every gate config (`.github/workflows/gate.yml`, `src/load/gate/ab-gate.ts` once Task 12 lands, and any file that names `--gate`) cites a product present in the tolerance file; (d) the tolerance file's case IDs are the steady cases (L3). Until Task 12 exists, (c) checks `gate.yml` only and passes trivially for a file with no gate step; the test fails if a gate config appears without a tolerance (the rule's purpose).
+`tests/unit/gate-rule-004.test.ts` asserts, from the repo files, in two tiers so that step 2 is green without the tolerance file:
+
+- **Tier 1 (always, no file needed):** no gate configuration references a tolerance. The rule is "no A/B config without a cited A/A set", so a gate config that names `tolerance.json` or a `--tolerance` flag while the file is absent fails. The A/A workflow of step 3 names neither, so the test passes with the file absent ("no A/A set yet").
+- **Tier 2 (only when `k6/thresholds/tolerance.json` exists):** (a) it parses; (b) every product in it cites at least three run IDs; (c) every gate config (`.github/workflows/gate.yml`, `src/load/gate/ab-gate.ts` once Task 12 lands, and any file that names `--gate`) cites a product present in the tolerance file; (d) its case IDs are the steady cases (L3).
+
+Tier 2 starts to bind when the tolerance-file PR (§12) adds the file.
 
 ## 7. Oracles and assertions
 
@@ -178,7 +190,7 @@ Each arm has its own run prefix (`p6-qa-<run id>-P6-CAL-LOAD-003`), its own clea
 
 ## 9. CI, token scan and budget
 
-Job timeouts 60 for both jobs (§6.3). Arm steps: 147 s measured for Cal (A-5) and 139 s for Medusa at 120 s (Task 7 M-3). The arm step caps are **4 min** (240 s): Cal's arm needs 147 s, Medusa's 139 s, both with room. An arm is a fixed-duration k6 run with no stop rule, so the 80 % stop rule of §9 does not apply to its duration. With the warm-up arm (§6.3), the step-cap sums are `aa-cal` **53** against a job of **75** (margin 22) and `aa-medusa` **45** against a job of **60** (margin 15). **Confirm in the first CI dispatch** (runner durations of the cold and cached starts).
+Job timeouts: `aa-cal` **75** and `aa-medusa` **60** (§6.3). Arm steps: 147 s measured for Cal (A-5) and 139 s for Medusa at 120 s (Task 7 M-3). The arm step caps are **4 min** (240 s): Cal's arm needs 147 s, Medusa's 139 s, both with room. An arm is a fixed-duration k6 run with no stop rule, so the 80 % stop rule of §9 does not apply to its duration. With the warm-up arm (§6.3), the step-cap sums are `aa-cal` **53** against a job of **75** (margin 22) and `aa-medusa` **45** against a job of **60** (margin 15). **Confirm in the first CI dispatch** (runner durations of the cold and cached starts).
 
 The token scan runs before every upload (`token_scan`, upload guarded by its success). Permissions `contents: read`.
 

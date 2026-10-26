@@ -69,7 +69,7 @@ The plans state their deltas against **B0 = 1025**. The chain below is the cumul
 
 **Caution on the per-plan totals.** Each plan's "expected after the last step" line (for example Task 8: 1039) is correct for its own delta on B0 (1025 + 14). When a plan is built after another 4b PR has merged, its expected total is **B + delta**, with B the count on main when the build starts (the chain above). The plans say this in §1 ("unit-test delta against B"); the chain is authoritative. Tasks 11 and 12 were written against the same rule.
 
-**Expected final count** of the whole 4b chain with Task 6: **1152**; without Task 6, **1116**. (Measured on `main` before each merge, not predicted: `npm run check`.)
+**Expected final count** of the whole 4b chain with Task 6: **1152**; without Task 6, **1116**. (Forecast, not measured: each count is a forecast from the plan's delta. Verify with `npm run check` on `main` after each merge, and replace the forecast with the measured count.)
 
 ## 3. Run order for the 4b builds
 

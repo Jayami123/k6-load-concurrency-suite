@@ -111,7 +111,7 @@ Documenso rows (**blocked in this session**; the Documenso stack did not start):
 
 - **Warm-up.** Probe M-F2 shows RSS still rising at 100 s on Medusa. The 4a index (finding 2) shows Cal RSS 707 → 1,697 MB over 170 s and Documenso 1,078 → 1,418 MB. A fixed 30 s warm-up is not enough for a 2 h soak, so the rule is `warmupSec = max(300, 0.2 × durationSec)`: 6 min for the 30-min soak, 24 min for the 2-h soak. The 2-min probes cannot test this rule (they are shorter than the warm-up); **UNPROBED: confirm from the first three VALID 30-min soaks.**
 - **Plateau windows.** The post-warm-up samples are split in thirds: middle third and last third. The 30-min soak has 24 min after warm-up (8 min per third); the 2-h soak has 96 min (32 min per third).
-- **Thresholds.** No slope or ratio threshold is chosen in this plan. The probe data cannot set one (2-min runs, one step in M-F2). The build writes raw statistics first and sets the verdict thresholds in `k6/thresholds/soak-bounds.json` (a new file, D13) from the first three VALID 30-min soaks per product, the same way `knee-bounds.json` and `baseline-band.json` were set (medians of ≥ 3 VALID runs). Until that file exists the verdict is `NO THRESHOLD YET`, never PASS (Q-SOAKTHR, §13).
+- **Thresholds.** No slope or ratio threshold is chosen in this plan. The probe data cannot set one (2-min runs, one step in M-F2). The build writes raw statistics first and sets the verdict thresholds in `k6/thresholds/soak-bounds.json` (a new file, D13) from the first three 30-min soaks per product that qualify for calibration, the same way `knee-bounds.json` and `baseline-band.json` were set (medians of ≥ 3 runs). **Calibration eligibility is separate from the publishable PASS.** A run qualifies when its run metadata is valid, its run-level `validity.verdict` is `VALID` with no `validity.reasons`, and its audit is clean. Its `soakVerdict` may be `NO THRESHOLD YET`, because that verdict is what calibration produces. Calibration therefore must not use the PASS-only `selectPublishable` selector (`src/load/medians.ts`), which would exclude every pre-calibration run; it uses a new `selectSoakCalibration` selector (NEW, in `src/load/soak/verdict.ts`, unit-tested). Until that file exists the verdict is `NO THRESHOLD YET`, never PASS (Q-SOAKTHR, §13).
 
 ### 3.5 What the probe could not confirm
 
@@ -191,8 +191,10 @@ README.md                                        CHANGED  section "Soaks" (after
 ```js
 // k6/lib/pure/recycle.js
 /**
- * Pure: the slot of iteration i in a pool of `size` slots. A slot is reused only after `size` other
- * iterations, so a slot cancelled in its own iteration is free again before it is offered back.
+ * Pure: the slot of iteration i in a pool of `size` slots. A slot is reused after `size` other iterations. It is
+ * free again only if its own iteration finished the cancel within `size / rate` seconds. Sizing rule: `size >= rate x
+ * worst-case iteration seconds`, and every request has a per-request timeout below `size / rate` (Cal: P = 50 at 4 per
+ * second gives 12.5 s, against a 2 s worst case).
  * @param {number} iteration  the iteration index (exec.scenario.iterationInTest)
  * @param {number} size       the pool size P (>= 1)
  * @returns {number}          index into the pool, 0 <= i < size
@@ -399,7 +401,8 @@ jobs:
 ```yaml
 medusa-soak:
   name: medusa-soak
-  if: ${{ inputs.product == 'medusa' || inputs.product == 'all' }}
+  needs: cal-soak
+  if: ${{ always() && (inputs.product == 'medusa' || (inputs.product == 'all' && needs.cal-soak.result == 'success')) }}
   runs-on: ubuntu-24.04
   # 120 min: setup steps 21 (copied from medusa-knee, includes Start Medusa 3) + soak 165 + summary 2 + scan 2 + upload 5
   # + stop 1 = 196, job 225, margin 29. 30 min: 21 + 45 + 10 = 76, job 105, margin 29.
@@ -454,7 +457,8 @@ medusa-soak:
 
 documenso-soak:
   name: documenso-soak
-  if: ${{ inputs.product == 'documenso' || inputs.product == 'all' }}
+  needs: medusa-soak
+  if: ${{ always() && (inputs.product == 'documenso' || (inputs.product == 'all' && needs.medusa-soak.result == 'success')) }}
   runs-on: ubuntu-24.04
   # Same arithmetic as cal-soak: 225 for 120 min, 105 for 30 min (cleanup per document UNPROBED: confirm in the first dispatch).
   timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}

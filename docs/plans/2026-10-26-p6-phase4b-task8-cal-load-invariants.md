@@ -108,11 +108,19 @@ export interface BurstVerdict {
   knownBugs: { "P6-OBS-CAL-001": number; "P6-OBS-CAL-003": number }; // counted, never a verdict input
 }
 
-/** Exactly one ACCEPTED row on the target slot is PASS. Zero is a TEST BUG when the slot was free (setup check), two or more is a FAIL (PRODUCT BUG). Any 5xx is a FAIL (PRODUCT BUG) per Task 8 §2. */
+/**
+ * Completeness is checked first: INVALID when attempts.length !== expectedAttempts, when droppedIterations > 0, or when
+ * the request-start spread (max minus min of requestStartMs, recorded by cal-burst.js) exceeds 100 ms. Only a complete,
+ * in-window burst reaches the contention rules: exactly one ACCEPTED on S is PASS; zero with the slot free at setup is a
+ * TEST BUG; two or more is a FAIL (PRODUCT BUG); any 5xx is a FAIL (PRODUCT BUG) per Task 8 §2.
+ */
 export function classifyBurst(input: {
   targetSlot: string;
   accepted: number;
   attempts: BurstAttempt[];
+  expectedAttempts: number; // N, from the case (8)
+  droppedIterations: number; // k6 dropped_iterations for the burst scenario
+  requestStartMs: number[]; // one per attempt, recorded by k6/journeys/cal-burst.js
   slotFreeAtSetup: boolean;
   fiveXx: number;
 }): BurstVerdict;
@@ -120,6 +128,7 @@ export function classifyBurst(input: {
 
 Rules (stated, unit-tested):
 
+- Attempts other than `expectedAttempts`, any dropped iteration, or a request-start spread above 100 ms → INVALID (the burst was not the burst the case defines); the contention rules are not applied.
 - Two or more ACCEPTED on S → FAIL (PRODUCT BUG, SUSPECTED until repeated, rule 13).
 - Zero ACCEPTED with the slot free at setup → TEST BUG (the burst did not run its attempt).
 - Any HTTP 5xx in the burst → FAIL (PRODUCT BUG, SUSPECTED); the redacted 400 of `P6-OBS-CAL-001` is counted, not a failure.
@@ -133,28 +142,34 @@ Under steady load, the case books S (the burst's target, a second free slot), th
 // src/load/cal/stale.ts
 export interface StalePoll {
   tMs: number;
-  offered: boolean;
+  offered: boolean | null; // null when the poll failed (a non-200 from getFreeSlots, or a transport error)
 }
 export type StaleContract = "never-offered-again" | "bounded-staleness";
 export interface StaleVerdict {
   contract: StaleContract; // the contract that applied, recorded in the verdict (D15)
   staleCount: number; // polls after commit that still offered S
+  pollsExpected: number; // 60 s / 2 s = 30 polls after commit
+  pollsDone: number; // polls with a non-null result
   timeToDisappearMs: number | null; // null when S was never offered again after commit (the expected inactive result)
   verdict: "PASS" | "FAIL (PRODUCT BUG)" | "TEST BUG";
   reasons: string[];
 }
-/** Classifies the polls after the commit. contract is passed by the caller from the cache probe (C8-1 result), never inferred. */
+/**
+ * Fails closed. A failed poll (offered null) or a missing poll (polls.length < pollsExpected) is a TEST BUG, so
+ * incomplete coverage can never pass. contract is passed by the caller from the cache probe (C8-1 result), never inferred.
+ */
 export function classifyStale(input: {
   contract: StaleContract;
   commitMs: number;
   polls: StalePoll[];
+  pollsExpected: number;
   ttlMs: number;
   marginMs: number;
   secondAcceptedOnS: boolean;
 }): StaleVerdict;
 ```
 
-`secondAcceptedOnS` true is always a FAIL (PRODUCT BUG) under either contract.
+`secondAcceptedOnS` true is always a FAIL (PRODUCT BUG) under either contract. The runner aborts the poll loop on the first error and records it as `offered: null`, so the case can only reach PASS with every expected poll answered.
 
 ### 6.4 k6 cases
 
@@ -162,6 +177,10 @@ export function classifyStale(input: {
 // k6/cases/cal-load-002.js  (P6-CAL-LOAD-002: one free slot, N simultaneous bookings, inside steady load; D15 n/a)
 // Scenario: steady constant-arrival-rate journey at the P6-CAL-LOAD-003 rate (steadyRateFor cal) + one burst scenario that
 // starts at burstAtSec inside the hold. Oracle: SLOT_ACCEPTED_SQL on S, classifyBurst.
+// The 400 of a losing booking is an expected status: declared before the burst, so http_req_failed counts only the rest.
+import { expectStatuses } from "../lib/http.js";
+
+expectStatuses(400);
 export const options = standardOptions({
   scenarios: {
     steady: openModelScenario({
@@ -189,7 +208,7 @@ export const options = standardOptions({
 // Scenario: steady load; one booking of S (fixed-slot), then a 60 s poll of getSchedule every 2 s. Oracle: classifyStale.
 ```
 
-`N` = 8 attempts in 100 ms (proposal, to be confirmed by the build's probe, C8-7). `burstAtSec` = 40 (steady hold 120 s).
+`N` = 8 attempts in 100 ms (proposal, to be confirmed by the build's probe, C8-7). `burstAtSec` = 40 (steady hold 120 s). `k6/journeys/cal-burst.js` (NEW) records `Date.now()` at the start of each attempt into `requestStartMs`, so `classifyBurst` can measure the spread; a spread above 100 ms is INVALID (the attempts were not in one burst). The burst's dropped iterations come from the scenario's `dropped_iterations` metric, passed as `droppedIterations`.
 
 ### 6.5 CI (`perf.yml` or `knee.yml`, Q-PLACE)
 
@@ -211,10 +230,10 @@ Q-PLACE alternatives are in §13.
 
 ## 7. Oracles (summary)
 
-| Case   | Oracle                                    | Verdict                                                                                                                                                    |
-| ------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-002` | `SLOT_ACCEPTED_SQL` on S; `classifyBurst` | PASS: exactly one ACCEPTED. FAIL (PRODUCT BUG): ≥ 2 ACCEPTED or a 5xx. TEST BUG: zero ACCEPTED with the slot free. INVALID: dropped iterations (generator) |
-| `-006` | `classifyStale` (inactive contract)       | PASS: S never offered after commit. FAIL (PRODUCT BUG): a poll after commit offers S, or a second ACCEPTED                                                 |
+| Case   | Oracle                                    | Verdict                                                                                                                                                                                                                           |
+| ------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-002` | `SLOT_ACCEPTED_SQL` on S; `classifyBurst` | PASS: exactly one ACCEPTED. FAIL (PRODUCT BUG): ≥ 2 ACCEPTED or a 5xx. TEST BUG: zero ACCEPTED with the slot free. INVALID: dropped iterations (generator), an attempt count other than N, or a request-start spread above 100 ms |
+| `-006` | `classifyStale` (inactive contract)       | PASS: S never offered after commit and every expected poll answered. FAIL (PRODUCT BUG): a poll after commit offers S, or a second ACCEPTED. TEST BUG: a poll failed or is missing (fail closed)                                  |
 
 ## 8. Data isolation, cleanup and leak check
 
