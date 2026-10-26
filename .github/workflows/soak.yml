@@ -69,7 +69,7 @@ jobs:
         timeout-minutes: 2
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Jayami123/cal
+          repository: ${{ github.repository_owner }}/cal
           ref: ${{ env.CAL_REF }}
           path: ${{ env.CAL_CHECKOUT_PATH }}
           persist-credentials: false
@@ -267,7 +267,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Jayami123/medusa-dtc-starter
+          repository: ${{ github.repository_owner }}/medusa-dtc-starter
           ref: ${{ env.MEDUSA_REF }}
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}
           persist-credentials: false
@@ -429,7 +429,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Jayami123/documenso
+          repository: ${{ github.repository_owner }}/documenso
           ref: ${{ env.DOCUMENSO_REF }}
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}
           persist-credentials: false
