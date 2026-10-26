@@ -14,6 +14,7 @@ import { readOversellSnapshot } from "../../medusa/oracle.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
 import { medusaAbandonVerdict, type MedAbandonVerdict } from "./med-abandon.ts";
 import { WINDOW_SEC, windowsFromBins } from "../recovery.ts";
+import { inOneWindow } from "../../../k6/lib/pure/spike.js";
 import type { LoadContext, Stage, StageResult } from "../types.ts";
 import {
   evaluateSpike,
@@ -154,6 +155,13 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
       const windows = windowsFromBins(bins, t0, sp.windowSec ?? WINDOW_SEC);
       const spikeStartMs = t0 + (sp.steadySec + sp.rampSec) * 1000;
       const spikeEndMs = spikeStartMs + sp.spikeSec * 1000;
+      if (sp.alignToMinute && !inOneWindow(spikeStartMs, spikeEndMs)) {
+        fail(
+          "TEST BUG",
+          `${label}: the spike crosses a limiter window (its start is not on a minute boundary)`,
+        );
+        continue;
+      }
       const tags = await limitedTags(run.pointsPath);
       const counts: SpikeCounts & { abandoned?: number } = {
         ok: count(summary, "p6_resp_ok"),

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  alignDelayMs,
   buildSpikePlan,
   classifySpikeResponse,
+  inOneWindow,
   phaseAt,
   spikeVus,
 } from "../../k6/lib/pure/spike.js";
@@ -112,5 +114,26 @@ describe("k6 lib spike", () => {
     assert.equal(phaseAt(quiet, 100_000), "quiet");
     assert.equal(phaseAt(quiet, 151_999), "quiet");
     assert.equal(phaseAt(quiet, 152_000), "recovery");
+  });
+});
+
+describe("spike alignment to the limiter's minute windows", () => {
+  it("a start exactly on the boundary waits 0 ms, and any other start waits less than one minute", () => {
+    // The spike begins 60 s after the scenario start (steady 58 s + ramp 2 s).
+    assert.equal(alignDelayMs(120_000, 60_000), 0);
+    assert.equal(alignDelayMs(120_001, 60_000), 59_999);
+    assert.equal(alignDelayMs(60_000, 0), 0);
+    assert.equal(alignDelayMs(90_000, 0), 30_000);
+    for (let now = 0; now < 180_000; now += 997) {
+      const d = alignDelayMs(now, 62_000);
+      assert.ok(d >= 0 && d < 60_000, `wait ${d} ms at ${now}`);
+      assert.equal((now + d + 62_000) % 60_000, 0, `spike start at ${now} + ${d} is on a boundary`);
+    }
+  });
+
+  it("the spike's 30 s sit in one window when the spike starts on a boundary, and cross one when it does not", () => {
+    assert.equal(inOneWindow(120_000, 150_000), true);
+    assert.equal(inOneWindow(120_000, 179_999), true);
+    assert.equal(inOneWindow(170_000, 200_000), false);
   });
 });

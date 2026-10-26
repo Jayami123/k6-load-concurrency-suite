@@ -1073,6 +1073,7 @@ export function spikeSpec(
       quietSec: DOC_QUIET_SEC,
       watchSec: pr ? 2 * windowSec : 120,
       windowSec,
+      alignToMinute: true,
       timeUnitSec,
     };
   }

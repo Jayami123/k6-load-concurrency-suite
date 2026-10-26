@@ -78,6 +78,8 @@ export interface SpikeRunSpec {
   quietSec?: number;
   /** The recovery window length in seconds (absent: the 10-second default of src/load/recovery.ts). */
   windowSec?: number;
+  /** The spike begins on a wall-clock minute boundary (the limiter's fixed windows); the stage checks the spike sits in one window. */
+  alignToMinute?: boolean;
   timeUnitSec: number;
 }
 

@@ -51,6 +51,7 @@ export function spikeOptions(cfg) {
     })),
     ...(cfg.exec ? { exec: cfg.exec } : {}),
     ...(cfg.tags ? { tags: cfg.tags } : {}),
+    ...(cfg.startTime ? { startTime: cfg.startTime } : {}),
   };
   return standardOptions({ scenarios: { spike: scenario }, thresholds: {}, tags: cfg.tags ?? {} });
 }
@@ -124,13 +125,18 @@ export function observeSpikeResponses() {
   });
 }
 
-/** setup() and teardown(): the Phase 3 clock markers plus the spike origin (p6_spike_t0_ms). @param {string | undefined} markerUrl */
-export function spikeHooks(markerUrl) {
+/**
+ * setup() and teardown(): the Phase 3 clock markers plus the spike origin (p6_spike_t0_ms). The origin is the scenario start when the
+ * caller knows it (an aligned start), else the setup time.
+ * @param {string | undefined} markerUrl
+ * @param {number} [originMs]
+ */
+export function spikeHooks(markerUrl, originMs) {
   const clock = clockHooks(markerUrl);
   return {
     setup() {
       clock.setup();
-      t0.add(Date.now());
+      t0.add(originMs ?? Date.now());
     },
     teardown: clock.teardown,
   };

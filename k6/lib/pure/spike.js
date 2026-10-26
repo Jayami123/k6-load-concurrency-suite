@@ -87,3 +87,27 @@ export function classifySpikeResponse(status, bodyIsJson) {
   if (status >= 400) return bodyIsJson ? "refused_with_body" : "refused_no_body";
   return "other";
 }
+
+/**
+ * The wait, in ms, that starts the scenario so its spike begins on a wall-clock boundary (the limiter's fixed one-minute windows).
+ * spikeStartOffsetMs is the time from the scenario start to the spike (steady + ramp). Always in [0, boundaryMs): a start exactly on
+ * the boundary waits 0 ms.
+ * @param {number} nowMs
+ * @param {number} spikeStartOffsetMs
+ * @param {number} [boundaryMs]
+ * @returns {number}
+ */
+export function alignDelayMs(nowMs, spikeStartOffsetMs, boundaryMs = 60000) {
+  return (boundaryMs - ((nowMs + spikeStartOffsetMs) % boundaryMs)) % boundaryMs;
+}
+
+/**
+ * True when [startMs, endMs) lies inside one window of windowMs.
+ * @param {number} startMs
+ * @param {number} endMs
+ * @param {number} [windowMs]
+ * @returns {boolean}
+ */
+export function inOneWindow(startMs, endMs, windowMs = 60000) {
+  return Math.floor(startMs / windowMs) === Math.floor((endMs - 1) / windowMs);
+}
