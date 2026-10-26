@@ -8,6 +8,10 @@ import path from "node:path";
 import { findHits } from "../../../scripts/evidence-token-scan.mjs";
 import { readPointsGzStream } from "../chart/k6-points.ts";
 import { parseBaselineBand } from "../baseline-band.ts";
+import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
+import { readOversellSnapshot } from "../../medusa/oracle.ts";
+import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
+import { medusaAbandonVerdict, type MedAbandonVerdict } from "./med-abandon.ts";
 import { windowsFromBins } from "../recovery.ts";
 import type { LoadContext, Stage, StageResult } from "../types.ts";
 import {
@@ -63,6 +67,48 @@ function bandFor(product: SpikeProduct): { max: number } | undefined {
   return entry ? { max: entry.windowP95.max } : undefined;
 }
 
+/**
+ * P6-MED-LOAD-010 (the abandoned-cart judgement) for a Medusa spike run: the snapshot after the spike, then one probe purchase through the
+ * store API (a cart, a line item of the case variant, complete). The probe is made after the snapshot, so it is not counted in it.
+ */
+async function medusaAbandon(ctx: LoadContext, abandoned: number): Promise<MedAbandonVerdict> {
+  const audit = ctx.config.audit as Record<string, unknown> | undefined;
+  if (!audit) throw new Error("TEST BUG: no audit config for the medusa spike");
+  const cfg = ctx.config as Record<string, string>;
+  const pool = createReadOnlyPool();
+  let snapshot;
+  try {
+    snapshot = await readOversellSnapshot(
+      pool,
+      String(audit.variantId),
+      String(audit.inventoryItemId),
+      String(audit.locationId),
+    );
+  } finally {
+    await closePool(pool);
+  }
+  const probe = await prepareReadyCart({
+    publishableKey: String(cfg.publishableKey),
+    regionId: String(cfg.regionId),
+    salesChannelId: String(cfg.salesChannelId),
+    variantId: String(cfg.variantId),
+    email: `${String(audit.prefix)}-probe@qa.local`,
+    quantity: 1,
+  });
+  // A refused line item is the probe's answer (the stock is out, or the variant refuses it); otherwise complete the cart.
+  const probeStatus =
+    probe.lineItemStatus !== 200
+      ? probe.lineItemStatus
+      : (await completeCart(String(cfg.publishableKey), probe.cartId, String(cfg.baseUrl))).status;
+  return medusaAbandonVerdict({ abandoned, snapshot, stock: Number(audit.stock), probeStatus });
+}
+
+/** The P6-MED-LOAD-010 verdict as report text (numbers and the judgement's own lines only). */
+function formatAbandon(a: MedAbandonVerdict): string {
+  const lines = a.findings.length > 0 ? a.findings.map((f) => `- ${f}`).join("\n") : "- none";
+  return `\n### P6-MED-LOAD-010 abandoned carts\n\nVerdict: ${a.verdict}. Abandoned ${a.abandoned}, orders ${a.orders}.\n\n${lines}\n`;
+}
+
 /** The report of one spike run: the verdict, the recovery and the checks, as text (no ids beyond the run's own, no secrets). */
 function formatSpike(label: string, r: SpikeResult): string {
   const rows = r.checks
@@ -104,7 +150,7 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
       const spikeStartMs = t0 + (sp.steadySec + sp.rampSec) * 1000;
       const spikeEndMs = spikeStartMs + sp.spikeSec * 1000;
       const tags = await limitedTags(run.pointsPath);
-      const counts: SpikeCounts = {
+      const counts: SpikeCounts & { abandoned?: number } = {
         ok: count(summary, "p6_resp_ok"),
         refusedWithBody: count(summary, "p6_resp_4xx_body"),
         refusedNoBody: count(summary, "p6_resp_4xx_nobody"),
@@ -113,6 +159,7 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
         serverError: count(summary, "p6_resp_5xx"),
         transport: count(summary, "p6_resp_transport"),
         droppedIterations: count(summary, "dropped_iterations"),
+        abandoned: count(summary, "p6_abandoned"),
         limitedByRoute: tags.byRoute,
       };
       const result = evaluateSpike({
@@ -124,8 +171,10 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
         counts,
       });
 
-      const text = formatSpike(label, result);
-      const json = `${JSON.stringify({ schema: 1, run: label, caseId: ctx.caseDef.id, runId: ctx.runId, ...result, counts }, null, 2)}\n`;
+      const abandon =
+        sp.product === "medusa" ? await medusaAbandon(ctx, counts.abandoned ?? 0) : undefined;
+      const text = `${formatSpike(label, result)}${abandon ? formatAbandon(abandon) : ""}`;
+      const json = `${JSON.stringify({ schema: 1, run: label, caseId: ctx.caseDef.id, runId: ctx.runId, ...result, counts, ...(abandon ? { abandon } : {}) }, null, 2)}\n`;
       const jsonPath = path.join(ctx.outDir, `spike-report-${label}.json`);
       const mdPath = path.join(ctx.outDir, `spike-report-${label}.md`);
       if (findHits(json).length > 0 || findHits(text).length > 0) {
@@ -137,7 +186,17 @@ export const spikeStage: Stage = async (ctx: LoadContext): Promise<StageResult> 
       writeFileSync(jsonPath, json);
       writeFileSync(mdPath, text);
 
-      results.push({ label, verdict: result.verdict, recoverySec: result.recoverySec });
+      results.push({
+        label,
+        verdict: result.verdict,
+        recoverySec: result.recoverySec,
+        ...(abandon ? { abandon: abandon.verdict } : {}),
+      });
+      if (abandon && abandon.verdict !== "PASS")
+        fail(
+          "PRODUCT BUG",
+          `${label}: abandoned carts: ${abandon.findings.join("; ")} (suspected; the owner labels it)`,
+        );
       if (result.verdict === "INVALID") ctx.invalid.push(`${label}: spike ${result.invalidReason}`);
       else if (result.verdict !== "PASS") {
         const failed = result.checks.filter((c) => !c.ok).map((c) => c.name);
