@@ -1,13 +1,13 @@
 # P6 Phase 4b Task 14: Phase 4 closeout and release `p6-phase4` (plan only)
 
-Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) lines 752 to 779 (Task 14), D11 (line 829), D14 (line 837). Written on `plan/2026-10-26-p6-phase4b-plans` from `origin/main` at `e27ad5a`. Probe date 2026-10-25 (UTC). **This is a closeout plan: it cannot be built until Tasks 1 to 13 have merged, so most of its inputs are UNPROBED here, and the plan says which.** Phase 4a's interim release `p6-phase4a` does not exist yet (tags on origin: `p6-phase1`, `p6-phase3` only, checked with `git ls-remote --tags origin`).
+Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) lines 752 to 779 (Task 14), D11 (line 829), D14 (line 837). Written on `plan/2026-10-26-p6-phase4b-plans` from `origin/main` at `86dbbde` (merged into this branch at `fe09ba6`; re-checked 2026-10-26 against main 86dbbde). Probe date 2026-10-25 (UTC). **This is a closeout plan: it cannot be built until Tasks 1 to 13 have merged, so most of its inputs are UNPROBED here, and the plan says which.** Phase 4a's interim release `p6-phase4a` is released (tag at `0b41fa7`, released 2026-10-26 15:30 Asia/Colombo; checked with `git ls-remote --tags origin`).
 
 ## 1. Header
 
 - **Task and roadmap line:** Phase 4b Task 14 (closeout), roadmap lines 752 to 779.
 - **Cases:** all Phase 4 cases (evidence only); `P6-RULE-001` to `P6-RULE-006` checked and recorded.
 - **Build branch pattern:** `docs/<build date>-p6-phase4-closeout` (roadmap Task 14 table). The release notes go in their own `chore(release)` PR (index run order 15).
-- **Unit-test delta:** **+0** (documentation and the release notes; the readme-rules test already covers the wording). The expected count is the count after Task 13 (1056, or 1092 with Task 6).
+- **Unit-test delta:** **+0** (documentation and the release notes; the readme-rules test already covers the wording). The expected count is the count after Task 13 (1194).
 - **Stop for owner review: yes.** The release is outward-facing: a tag (`p6-phase4`), a GitHub release, and the upstream drafts (drafts only, never filed).
 
 ## 2. What it proves
@@ -19,18 +19,18 @@ Roadmap: [2026-10-22-p6-phase4-roadmap.md](2026-10-22-p6-phase4-roadmap.md) line
 
 ## 3. Live probe evidence
 
-Probes here cover only what can be checked now, with the harness and the repo as they are on `main` at `e27ad5a`.
+Probes here cover only what can be checked now, with the harness and the repo as they are on `main` at `86dbbde`.
 
-| #   | Roadmap probe item                             | Command                                                                             | Output (trimmed)                                                                                                                                                                                                | Value it sets                                                                                                                                         |
-| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R-1 | Release tags on origin                         | `git ls-remote --tags origin`                                                       | `p6-phase1`, `p6-phase3` only                                                                                                                                                                                   | `p6-phase4a` does not exist; `p6-phase4` is ahead                                                                                                     |
-| R-2 | Release notes present                          | `ls docs/releases`                                                                  | `p6-phase1.md`, `p6-phase2.md`, `p6-phase3.md`                                                                                                                                                                  | `p6-phase4a.md` and `p6-phase4.md` are to be written; the template is `docs/templates/phase-closeout.md` (rule E19)                                   |
-| R-3 | The release filter and its allowlist           | `grep -n "allowlist\|json log csv html txt" .github/workflows/evidence-release.yml` | the allowlist `json log csv html txt` (line 140, PR #63)                                                                                                                                                        | D14 is in place: HTML charts and CSV telemetry reach the release; `*.json.gz` does not (L5)                                                           |
-| R-4 | The release workflow's ids                     | `grep -n "EVIDENCE_WORKFLOW_IDS" .github/workflows/evidence-release.yml`            | `"376454455 396253729"` (perf.yml and knee.yml, line 39)                                                                                                                                                        | `soak.yml` and `gate.yml` ids are added by their `ci(evidence)` PRs (L4); the test `tests/unit/evidence-release-ids.test.ts` line 8 changes with them |
-| R-5 | Upstream drafts exist and say "not filed"      | `head -3 docs/upstream/*.md`                                                        | `2026-10-25-cal-link-usage-mismatch.md` (Cal bug report, `.github/ISSUE_TEMPLATE/bug_report.md`); `2026-10-25-documenso-duplicate-seal.md` (Documenso bug-report form, `.github/ISSUE_TEMPLATE/bug-report.yml`) | the Cal template exists in the Cal fork (`/home/user/products/cal/.github/ISSUE_TEMPLATE/`: `bug_report.md`, `config.yml`, `feature_request.md`)      |
-| R-6 | The Documenso template                         | `ls /home/user/products/documenso/.github/ISSUE_TEMPLATE`                           | **UNPROBED**: the Documenso fork directory is empty on this VM (Task 9 D-1)                                                                                                                                     | the Documenso draft's template match is confirmed at build time from the fork the owner provides                                                      |
-| R-7 | The Phase 4a results section in README         | `grep -n "Phase 4a results\|Phase 4 results" README.md`                             | no match                                                                                                                                                                                                        | both sections are NEW in this closeout (the 4a one in its own PR, Task 6)                                                                             |
-| R-8 | The three knee reports for the Documenso range | Task 7 D-2 (`gh run download` of three runs, read-only)                             | lower 4, upper 5, stop p95 at step 4                                                                                                                                                                            | a Documenso range exists in the artefacts; the `knee-bounds.json` entry is Task 6's                                                                   |
+| #   | Roadmap probe item                             | Command                                                                                                                                                         | Output (trimmed)                                                                                                                                                                                                | Value it sets                                                                                                                                         |
+| --- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-1 | Release tags on origin                         | `git ls-remote --tags origin`                                                                                                                                   | `p6-phase1`, `p6-phase3`, `p6-phase4a` (peels to `0b41fa7`, released 2026-10-26 15:30 Asia/Colombo)                                                                                                             | `p6-phase4a` exists; `p6-phase4` is ahead                                                                                                             |
+| R-2 | Release notes present                          | `ls docs/releases`                                                                                                                                              | `p6-phase1.md`, `p6-phase2.md`, `p6-phase3.md`, `p6-phase4a.md` (present)                                                                                                                                       | `p6-phase4.md` is to be written; the template is `docs/templates/phase-closeout.md` (rule E19)                                                        |
+| R-3 | The release filter and its allowlist           | `grep -n "allowlist\|json log csv html txt" .github/workflows/evidence-release.yml`                                                                             | the allowlist `json log csv html txt` (line 140, PR #63)                                                                                                                                                        | D14 is in place: HTML charts and CSV telemetry reach the release; `*.json.gz` does not (L5)                                                           |
+| R-4 | The release workflow's ids                     | `grep -n "EVIDENCE_WORKFLOW_IDS" .github/workflows/evidence-release.yml`                                                                                        | `"376454455 396253729"` (perf.yml and knee.yml, line 39)                                                                                                                                                        | `soak.yml` and `gate.yml` ids are added by their `ci(evidence)` PRs (L4); the test `tests/unit/evidence-release-ids.test.ts` line 8 changes with them |
+| R-5 | Upstream drafts exist and say "not filed"      | `head -3 docs/upstream/*.md`                                                                                                                                    | `2026-10-25-cal-link-usage-mismatch.md` (Cal bug report, `.github/ISSUE_TEMPLATE/bug_report.md`); `2026-10-25-documenso-duplicate-seal.md` (Documenso bug-report form, `.github/ISSUE_TEMPLATE/bug-report.yml`) | the Cal template exists in the Cal fork (`/home/user/products/cal/.github/ISSUE_TEMPLATE/`: `bug_report.md`, `config.yml`, `feature_request.md`)      |
+| R-6 | The Documenso template                         | `ls /home/user/products/documenso/.github/ISSUE_TEMPLATE`                                                                                                       | S4 (2026-10-26): `bug-report.yml`, `config.yml`, `deploy-provider-request.yml`, `feature-request.yml`, `improvement.yml`                                                                                        | the Documenso draft's template match is `bug-report.yml` (the form the 2026-10-25 draft uses); re-read at build                                       |
+| R-7 | The Phase 4a results section in README         | `grep -n "Phase 4a results\|Phase 4 results" README.md`                                                                                                         | `## Phase 4a results` at README line 722 (present)                                                                                                                                                              | the 4a section is present (README line 722); the "Phase 4 results" section is NEW in this closeout                                                    |
+| R-8 | The three knee reports for the Documenso range | the released runs 40290101719, 40291101493 and 40291950598 (the `p6-phase4a` release assets, fetched with curl and checked against `SHA256SUMS.txt`, read-only) | lower 4, upper 5, stop p95 at step 4                                                                                                                                                                            | a Documenso range exists in the release; the `knee-bounds.json` entry is written by the bound PR (step 0b)                                            |
 
 ### 3.1 What the probe could not confirm (UNPROBED: confirm at build time, after the inputs exist)
 
@@ -40,25 +40,38 @@ Probes here cover only what can be checked now, with the harness and the repo as
 
 ## 4. Depends on
 
-Tasks 1 to 13 merged (exact PRs and SHAs recorded at build time), plus Task 6 (`p6-phase4a`) and the `ci(evidence)` PRs for `soak.yml` and `gate.yml`. On main at `e27ad5a`: `docs/releases/p6-phase3.md` (the template for the new notes), `docs/templates/phase-closeout.md` (rule E19), `evidence-release.yml` (tag rule `^p6-[a-z0-9-]+$` at line 27 of its concurrency group and the input description at line 7), `README.md` ("Phase 3 results", "How to read a LOAD run", "How to read a knee", "Steady baselines"), `tests/unit/readme-rules.test.ts` (no bare "capacity").
+Tasks 1 to 13 merged (exact PRs and SHAs recorded at build time), plus the released `p6-phase4a` (`0b41fa7`) and the `ci(evidence)` PRs for `soak.yml` and `gate.yml`. On main at `86dbbde`: `docs/releases/p6-phase3.md` (the template for the new notes), `docs/templates/phase-closeout.md` (rule E19), `evidence-release.yml` (tag rule `^p6-[a-z0-9-]+$` at line 27 of its concurrency group and the input description at line 7), `README.md` ("Phase 3 results", "How to read a LOAD run", "How to read a knee", "Steady baselines"), `tests/unit/readme-rules.test.ts` (no bare "capacity").
+
+**4a lessons applied** (each is checked by the build step it names):
+
+- `DANGEROUS_BYPASS_RATE_LIMITS` defaults to true (`scripts/harness.mjs` line 33, `||=`); this closeout runs no case.
+- `no_reference` → INVALID, never PASS: a rule with no cited reference is "not met", not "met" (§6.2).
+- `low_sample_stop` and the stop-step zero post-trim limitation are listed where a cited knee range rests on them (§6.2, README).
+- Config-used tests: none new (§12, +0).
+- k6 has no URL global (no k6 code in this task).
+- Cleanup never runs inside a limiter window under test (no cleanup in this task).
+- Per-intent audit with no slack: each cited verdict is read from its own run (§14 item 2).
+- The F-M2 ghost flag (Medusa) is listed as UNEXPLAINED with its cause UNPROBED, never a product bug.
+- "knee range" wording, never "capacity" (R10; `tests/unit/readme-rules.test.ts`).
+- CI budget rules: this task changes no workflow; the release is the owner's dispatch of `evidence-release.yml`.
+- The owner dispatches in the UI and pastes the run ids.
 
 ## 5. Build-time recheck table
 
-| #   | Check                                                    | Exact command                                                                                                      | Expected               | If it differs                                                                            |
-| --- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------- | ---------------------------------------------------------------------------------------- |
-| 1   | Tasks 1 to 13 merged                                     | `git log --oneline origin/main \| head -40` and the PR list                                                        | each task's PR present | a missing task is listed as "not done" in the README and the release notes, never hidden |
-| 2   | `p6-phase4a` released                                    | `git ls-remote --exit-code origin refs/tags/p6-phase4a`                                                            | present                | Task 6 not done: the Phase 4a exit is not met; the closeout says so                      |
-| 3   | Workflow ids for the release                             | `gh api repos/Jayami123/k6-load-concurrency-suite/actions/workflows/soak.yml --jq .id` and the same for `gate.yml` | integers               | the `ci(evidence)` PRs have not merged: the release check fails on them                  |
-| 4   | D14 allowlist unchanged                                  | `grep -n "json log csv html txt" .github/workflows/evidence-release.yml`                                           | present                | a blocker reported to the owner (roadmap line 769), not a fix here                       |
-| 5   | Every VALID run cited has `run-meta.json` with its label | the verdict and run-meta of each cited run (artefact download)                                                     | present for each       | the run is not cited; the gap is listed                                                  |
-| 6   | `npm run check`                                          | `npm run check`                                                                                                    | exit 0                 | fix                                                                                      |
+| #   | Check                                                    | Exact command                                                                                                        | Expected               | If it differs                                                                            |
+| --- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
+| 1   | Tasks 1 to 13 merged                                     | `git log --oneline origin/main \| head -40` and the PR list                                                          | each task's PR present | a missing task is listed as "not done" in the README and the release notes, never hidden |
+| 2   | `p6-phase4a` released                                    | `git ls-remote --exit-code origin refs/tags/p6-phase4a`                                                              | present (`0b41fa7`)    | the Phase 4a exit is not met; the closeout says so                                       |
+| 3   | Workflow ids for the release                             | the session's GitHub tools (list the repository workflows) or the owner pastes the ids for `soak.yml` and `gate.yml` | integers               | the `ci(evidence)` PRs have not merged: the release check fails on them                  |
+| 4   | D14 allowlist unchanged                                  | `grep -n "json log csv html txt" .github/workflows/evidence-release.yml`                                             | present                | a blocker reported to the owner (roadmap line 769), not a fix here                       |
+| 5   | Every VALID run cited has `run-meta.json` with its label | the verdict and run-meta of each cited run (artefact download)                                                       | present for each       | the run is not cited; the gap is listed                                                  |
+| 6   | `npm run check`                                          | `npm run check`                                                                                                      | exit 0                 | fix                                                                                      |
 
 ## 6. Design
 
 ### 6.1 File tree
 
 ```text
-docs/releases/p6-phase4a.md                       NEW  (Task 6's interim release notes; written by the chore(release) PR of Task 6)
 docs/releases/p6-phase4.md                        NEW  the final release notes (the template of p6-phase3.md)
 docs/plans/2026-10-26-p6-phase4-closeout.md       NEW  the closeout record (rule E19), the phase closeout template
 README.md                                         CHANGED  "Phase 4 results" (knee ranges, baselines, spikes, soaks, invariants, gate, dashboard, INVALID runs listed, the master-plan replacement); the rule status table
@@ -87,9 +100,11 @@ For each confirmed PRODUCT BUG (the owner confirms; SUSPECTED stays SUSPECTED): 
 
 ### 6.4 The release
 
-The `chore(release)` PR adds `docs/releases/p6-phase4.md` (and `p6-phase4a.md` from Task 6). The release is dispatched by the owner: `evidence-release.yml` with `tag: p6-phase4`, `target_sha: <40-hex main SHA>`, and `run_ids: <the VALID runs cited>` (the workflow validates the tag `^p6-[a-z0-9-]+$`, the SHA, and the run IDs as digits; the runs must come from `main` and must be in `EVIDENCE_WORKFLOW_IDS`, including the `soak.yml` and `gate.yml` ids).
+The `chore(release)` PR adds `docs/releases/p6-phase4.md`. The release is dispatched by the owner: `evidence-release.yml` with `tag: p6-phase4`, `target_sha: <40-hex main SHA>`, and `run_ids: <the VALID runs cited>` (the workflow validates the tag `^p6-[a-z0-9-]+$`, the SHA, and the run IDs as digits; the runs must come from `main` and must be in `EVIDENCE_WORKFLOW_IDS`, including the `soak.yml` and `gate.yml` ids).
 
-**Q-REL (release name).** The roadmap says `p6-phase4` (D11, lines 168 and 759); the owner's brief says "p6-phase4b". Recommended: **`p6-phase4`**, with a note that the tag rule `^p6-[a-z0-9-]+$` accepts both.
+**Release input: the knee-bound runs.** The `p6-phase4` dispatch includes the knee-bound runs 40234172872 / 40235802167 / 40237156783 (`main`, `success`; created 2026-10-26 02:39–03:17 Asia/Colombo; not in `p6-phase4a`; the Actions artefacts expire 2027-01-24 02:39 Asia/Colombo). Otherwise the committed cal and medusa bound evidence is lost.
+
+**Q-REL (release name).** The roadmap says `p6-phase4` (D11, lines 168 and 759); the owner's brief says "p6-phase4b". Decided: **`p6-phase4`** (D11); the tag rule `^p6-[a-z0-9-]+$` accepts both.
 
 ## 7. Oracles and assertions
 
@@ -126,22 +141,22 @@ None. Repo settings: the Pages source is set by the owner (Task 13). No cloud ch
 
 ## 12. Build order
 
-| Step | Commit                                                                           | Files                                                                                   | Unit tests after the step                                |
-| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| 1    | `docs(phase4): add the phase 4 closeout record`                                  | `docs/plans/2026-10-26-p6-phase4-closeout.md` (from `docs/templates/phase-closeout.md`) | unchanged (B = after Task 13: 1056, or 1092 with Task 6) |
-| 2    | `docs(readme): add the phase 4 results`                                          | `README.md`                                                                             | unchanged (`readme-rules.test.ts` runs)                  |
-| 3    | `chore(release): add the phase 4 evidence notes`                                 | `docs/releases/p6-phase4.md`                                                            | unchanged                                                |
-| 4    | the owner dispatches `evidence-release.yml` with `tag: p6-phase4` (not a commit) | —                                                                                       | —                                                        |
+| Step | Commit                                                                           | Files                                                                                   | Unit tests after the step               |
+| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------- |
+| 1    | `docs(phase4): add the phase 4 closeout record`                                  | `docs/plans/2026-10-26-p6-phase4-closeout.md` (from `docs/templates/phase-closeout.md`) | unchanged (1194)                        |
+| 2    | `docs(readme): add the phase 4 results`                                          | `README.md`                                                                             | unchanged (`readme-rules.test.ts` runs) |
+| 3    | `chore(release): add the phase 4 evidence notes`                                 | `docs/releases/p6-phase4.md`                                                            | unchanged                               |
+| 4    | the owner dispatches `evidence-release.yml` with `tag: p6-phase4` (not a commit) | —                                                                                       | —                                       |
 
-**Expected unit-test count: unchanged** from the count after Task 13 (1056; 1092 with Task 6). `npm run check` must be exit 0 after each step.
+**Expected unit-test count: unchanged** from the count after Task 13 (1194). `npm run check` must be exit 0 after each step.
 
 ## 13. Risks, proposed extras and open decisions
 
 **Open decisions:**
 
-- **Q-REL.** The release name: `p6-phase4` (recommended, §6.4) or `p6-phase4b`.
-- **Q-PHASE4A.** Whether Phase 4a's release notes are published before the Phase 4b work is closed: they are (Task 6's `chore(release)` PR), and the closeout cites them.
-- **Q-RULE-GAP.** A rule that is "met with a gap" (for example P6-RULE-003 if one run lacks a label): listed in the release notes, not forced to "met". Recommended: list it.
+- **Q-REL.** Decided: `p6-phase4` (D11).
+- **Q-PHASE4A.** Resolved: released 2026-10-26 15:30 Asia/Colombo (tag `p6-phase4a` at `0b41fa7`); `docs/releases/p6-phase4a.md` and the README "## Phase 4a results" section exist, and the closeout cites them.
+- **Q-RULE-GAP.** A rule that is "met with a gap" (for example P6-RULE-003 if one run lacks a label) is listed in the release notes, never forced to "met". Decided: list as met with a gap.
 
 **Proposed extras:** none.
 
