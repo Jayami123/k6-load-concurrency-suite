@@ -1594,7 +1594,7 @@ jobs:
       - name: Spike P6-DOC-LOAD-004 on the limiter profile
         id: spike
         if: ${{ !cancelled() && steps.documenso_up.outcome == 'success' }}
-        timeout-minutes: 12
+        timeout-minutes: 9
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
