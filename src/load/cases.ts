@@ -22,6 +22,7 @@ import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { conservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
+import { calBurstStage, calStaleStage } from "./cal/invariant-stages.ts";
 import {
   judgeCalLinkJoin,
   judgeCalRetries,
@@ -1251,6 +1252,59 @@ export const CAL_LOAD_008: LoadCase = {
   },
 };
 
+/** The burst and stale target: the last offered slot, which the steady stream never reaches (it books the first `steady` slots). */
+function calInvariantSetup(ctx: LoadContext): Promise<StageResult> {
+  // k6 numbers iterations across scenarios (iterationInTest), so the target index sits beyond the steady and burst indices: 2 x N + 1 spare.
+  return calSetup({ slots: { count: calSteadySlots(ctx) + 2 * 8 + 1 } })(ctx).then((result) => {
+    if (result.ok && Array.isArray(ctx.config.slotStarts)) {
+      const starts = ctx.config.slotStarts as string[];
+      ctx.config.burstSlot = starts[starts.length - 1];
+      ctx.config.burstAttempts = 8;
+      ctx.config.burstAtSec = ctx.profile.durationSec >= 120 ? 40 : 20;
+      ctx.config.polls = 30;
+    }
+    return result;
+  });
+}
+
+/** P6-CAL-LOAD-002: one free slot, N simultaneous bookings inside steady load (plan Phase 4b task 8 §6.2). */
+export const CAL_LOAD_002: LoadCase = {
+  id: "P6-CAL-LOAD-002",
+  telemetry: { product: "cal" },
+  title: "Cal burst: one free slot, N simultaneous bookings inside steady load",
+  product: "cal",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 2, durationSec: 60, maxLatencyMs: 2000 },
+    full: { rate: 4, durationSec: 120, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-002.js", env: {} }],
+  stages: {
+    setup: calInvariantSetup,
+    reconcile: composeStages([reconcileStage, calBurstStage]),
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-CAL-LOAD-006: the stale read after commit under steady load (plan Phase 4b task 8 §6.3). */
+export const CAL_LOAD_006: LoadCase = {
+  id: "P6-CAL-LOAD-006",
+  telemetry: { product: "cal" },
+  title: "Cal stale read after commit under steady load",
+  product: "cal",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 2, durationSec: 60, maxLatencyMs: 2000 },
+    full: { rate: 4, durationSec: 120, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-006.js", env: {} }],
+  stages: {
+    setup: calInvariantSetup,
+    reconcile: composeStages([reconcileStage, calStaleStage]),
+    cleanup: calCleanup,
+  },
+};
+
 /** P6-MED-LOAD-005: the Medusa checkout soak (plan Phase 4b task 7 §6.3). Stock is planned + 20, never planned / 2 (finding M-F1). */
 export const MED_LOAD_005: LoadCase = {
   id: "P6-MED-LOAD-005",
@@ -1310,6 +1364,8 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_008.id]: CAL_LOAD_008,
+  [CAL_LOAD_002.id]: CAL_LOAD_002,
+  [CAL_LOAD_006.id]: CAL_LOAD_006,
   [MED_LOAD_005.id]: MED_LOAD_005,
   [DOC_LOAD_006.id]: DOC_LOAD_006,
   [CAL_LOAD_005.id]: CAL_LOAD_005,

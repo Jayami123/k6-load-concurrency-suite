@@ -884,6 +884,19 @@ The soak verdict has this precedence: TEST BUG (setup or slots ran out), INVALID
 audit, or a threshold in `k6/thresholds/soak-bounds.json`), NO THRESHOLD YET (no entry for the product yet), then PASS. Growth counts
 as a FAIL only when both slopes are positive, so one step cannot make a leak.
 
+## Cal invariants under load
+
+`perf.yml` job `cal-invariants` (schedule, and a full dispatch) runs two Cal invariants on a live stack: `P6-CAL-LOAD-002` (one free slot,
+N = 8 simultaneous bookings, fired inside a steady stream at 40 s) and `P6-CAL-LOAD-006` (one booking, then `getSchedule` polled every
+2 s for 60 s). Each run writes `burst.json` or `stale.json` next to `verdict.json`.
+
+The burst passes only with exactly one ACCEPTED on the slot. Two or more, or any 5xx, is a FAIL (PRODUCT BUG, suspected until repeated).
+Any dropped iteration, a request-start spread above 100 ms, or a missing attempt is INVALID. Redacted 400 responses are counted under
+`P6-OBS-CAL-001`, not failures.
+
+The stale read uses the contract "never offered again after commit": the cache is inactive in CI, so the verdict reads
+`PASS (sampled, 2 s)` when no poll after the commit offers the slot. A 2 s poll is a sample; the verdict does not claim full coverage.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp
