@@ -85,11 +85,10 @@ export function endSpikeIteration(intent, committed) {
  * @param {any} res
  */
 function routeOf(res) {
-  try {
-    return new URL(res.url).pathname.split("/").slice(0, 3).join("/");
-  } catch {
-    return "unknown";
-  }
+  // k6 does not guarantee the WHATWG URL global, so the path is cut from the string.
+  const m = /^https?:\/\/[^/?#]+(\/[^?#]*)?/.exec(String(res.url ?? ""));
+  if (!m) return "unknown";
+  return (m[1] ?? "/").split("/").slice(0, 3).join("/");
 }
 
 /** @param {any} res */
