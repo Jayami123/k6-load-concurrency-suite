@@ -10,6 +10,9 @@ export const acceptedCounter = new Counter("p6_bookings_accepted");
 export const cancelsOkCounter = new Counter("p6_cancels_ok");
 export const cancelsFailedCounter = new Counter("p6_cancels_failed");
 const CSRF_COOKIE = "calcom.csrf_token";
+// Below the recycle sizing limit (size / rate = 12.5 s at P = 50, 4 per second; k6/lib/pure/recycle.js), so a stalled cancel cannot
+// outlive its slot's reuse window.
+const RECYCLE_TIMEOUT = "10s";
 const DAY = 86400000;
 
 /**
@@ -20,7 +23,9 @@ const DAY = 86400000;
  * @returns {boolean}
  */
 function cancelRecycled(cfg, uid) {
-  const csrf = request("GET", `${cfg.baseUrl}/api/csrf`, "GET csrf");
+  const csrf = request("GET", `${cfg.baseUrl}/api/csrf`, "GET csrf", undefined, {
+    timeout: RECYCLE_TIMEOUT,
+  });
   const token = csrf.status === 200 ? csrf.json("csrfToken") : undefined;
   const cookie = csrf.cookies[CSRF_COOKIE];
   if (!token || !cookie || uid === undefined) {
@@ -39,6 +44,7 @@ function cancelRecycled(cfg, uid) {
     },
     {
       headers: { "Content-Type": "application/json", Cookie: `${CSRF_COOKIE}=${cookie[0].value}` },
+      timeout: RECYCLE_TIMEOUT,
     },
   );
   const ok = res.status === 200;
