@@ -134,4 +134,28 @@ describe("documenso knee judgement", () => {
       false,
     );
   });
+
+  it("a run whose documents are all unfinished (exempt) is judged per intent, not as no documents of the run", () => {
+    const input: StageInput = {
+      documents: [{ documentId: 1, envelopeId: "e1", completedAtMs: null, lastSignedMs: null }],
+      sealJobs: [],
+      webhookJobs: [],
+      webhookCalls: [],
+      deliveries: [],
+      emailJobs: [],
+      emails: [],
+    };
+    const knee: KneeDocuments = {
+      prefix: PREFIX,
+      started: 1,
+      interrupted: 1,
+      log: log([]),
+      rows: [{ title: `${PREFIX}-i0 journey`, completed: false }],
+    };
+    const verdict = evaluatePipelineKnee(input, DRAIN, knee);
+    assert.equal(
+      verdict.reasons.some((r) => /no documents of the run/.test(r)),
+      false,
+    );
+  });
 });

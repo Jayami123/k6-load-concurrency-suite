@@ -16,6 +16,8 @@ export interface LoadProfile {
 export type LoadLabel =
   | "functional load, not capacity"
   | "knee range, environment-bound"
+  | "spike characterisation, environment-bound"
+  | "limiter contract, environment-bound"
   | "steady baseline, environment-bound";
 
 /**
@@ -51,6 +53,8 @@ export interface K6RunSpec {
   expectCodes?: InvalidCode[];
   /** Exit codes the run may end with (plan task 1 §6.2). A knee run allows 0 and 99 (a stop is a result, not a failure). Default [expectExit ?? 0]. */
   allowExits?: number[];
+  /** The spike plan of this run (plan Phase 4 task 6 §6.2): steady, spike and recovery rates and durations. */
+  spike?: SpikeRunSpec;
   /** The knee plan of this run (plan task 1): steps, stop rule and the sizing the scenario was built with. */
   knee?: KneePlanSpec & {
     smokeP95Ms: number;
@@ -61,7 +65,21 @@ export interface K6RunSpec {
   };
 }
 
+/** The spike of a run (plan Phase 4 task 6). The rates are per second; timeUnitSec writes the fractions as whole numbers. */
+export interface SpikeRunSpec {
+  product: "cal" | "medusa" | "documenso";
+  steadyRate: number;
+  spikeRate: number;
+  steadySec: number;
+  spikeSec: number;
+  rampSec: number;
+  watchSec: number;
+  timeUnitSec: number;
+}
+
 export interface LoadCase {
+  /** Set only by P6-DOC-LOAD-004 (plan Phase 4 task 6 §6.5): a limited intent may leave one unfinished document. Any other case is a TEST BUG. */
+  limitedFailMayLeaveUnfinished?: boolean;
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;

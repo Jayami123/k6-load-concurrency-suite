@@ -12,7 +12,7 @@ const COMMIT = /(acceptedCounter|ordersCounter|completedCounter)\.add\(1\)|end\(
 const HOOK = "opts.onCommit?.()";
 
 describe("knee journey commit hooks", () => {
-  it("every commit line is followed by the onCommit hook; only knee cases pass it", () => {
+  it("every commit line is followed by the onCommit hook; only knee and spike cases pass it", () => {
     let commits = 0;
     for (const file of JOURNEYS) {
       const lines = readFileSync(file, "utf8").split("\n");
@@ -28,8 +28,12 @@ describe("knee journey commit hooks", () => {
     for (const file of readdirSync("k6/cases")) {
       if (!file.endsWith(".js")) continue;
       const text = readFileSync(path.join("k6/cases", file), "utf8");
+      // The spike cases (Task 6) are knee-mode cases too: they use the same outcome line and the same commit hook.
       if (text.includes("onCommit"))
-        assert.ok(text.includes("kneeHooks"), `${file} passes onCommit outside a knee`);
+        assert.ok(
+          text.includes("kneeHooks") || text.includes("spikeHooks"),
+          `${file} passes onCommit outside a knee or a spike`,
+        );
     }
   });
 });
