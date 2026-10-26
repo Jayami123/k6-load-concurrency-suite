@@ -1020,21 +1020,20 @@ export const KNEE_RULE_006: LoadCase = {
 /**
  * The spike rates (plan Phase 4 task 6 §6.4, §6.5): steady = 50 % and spike = 150 % of the knee's lower bound, rounded down to 0.1, from
  * k6/thresholds/knee-bounds.json (Cal 8, Medusa 1.5). The Documenso rates are the limiter's own: 100 tRPC calls per minute over 4 calls
- * per document. A unit test re-derives the bound rates from the file. The Documenso spike is 0.6 docs/s: 9 tRPC calls per document
- * (measured), so 0.6 x 30 s x 9 = 162 calls in the spike window, at least the 100-per-minute limit.
+ * per document. A unit test re-derives the bound rates from the file. The Documenso spike is 1.0 docs/s (owner decision, PR #84): the
+ * limiter counts 4 token-keyed calls per document, so 1.0 x 30 s x 4 = 120 calls in the spike window, at least the limit (0.6 gives 72).
  */
 export const SPIKE_RATES = {
   cal: { steadyRate: 4, spikeRate: 12 },
   medusa: { steadyRate: 0.7, spikeRate: 2.2 },
-  documenso: { steadyRate: 0.2, spikeRate: 0.6 },
+  documenso: { steadyRate: 0.2, spikeRate: 1.0 },
 } as const;
 
 /**
- * tRPC calls per Documenso document, measured on the spike run 20261026T060557Z-a7968c28 (38 documents, 342 calls: 294 answered 200
- * and 48 answered 429). The journey makes 9: envelope/create, recipient/create-many, envelope GET, field/create-many, envelope/distribute,
- * two signFieldWithToken and two completeDocumentWithToken.
+ * Token-keyed tRPC calls per Documenso document, the calls the limiter counts. Measured on run a7968c28 (1.0 docs/s): every one of its
+ * 48 429s was signFieldWithToken or completeDocumentWithToken, two of each per document. The other five journey calls were never refused.
  */
-export const DOC_TRPC_CALLS_PER_DOCUMENT = 9;
+export const DOC_LIMITED_CALLS_PER_DOCUMENT = 4;
 /** The tRPC limiter's limit per minute (src/load/spike/limiter-contract.ts, the trpc route). */
 export const DOC_TRPC_LIMIT_PER_MIN = 100;
 

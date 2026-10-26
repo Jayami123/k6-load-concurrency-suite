@@ -6,7 +6,7 @@ import {
   CAL_LOAD_004,
   DOC_LOAD_004,
   DOC_LOAD_009,
-  DOC_TRPC_CALLS_PER_DOCUMENT,
+  DOC_LIMITED_CALLS_PER_DOCUMENT,
   DOC_TRPC_LIMIT_PER_MIN,
   MED_LOAD_003,
   SPIKE_RATES,
@@ -40,15 +40,15 @@ describe("load cases spike", () => {
   });
 
   it("the Documenso rates are the limiter's constants", () => {
-    assert.deepEqual(SPIKE_RATES.documenso, { steadyRate: 0.2, spikeRate: 0.6 });
+    assert.deepEqual(SPIKE_RATES.documenso, { steadyRate: 0.2, spikeRate: 1.0 });
   });
 
   it("the Documenso spike rate makes at least the tRPC limit's worth of calls in the spike window", () => {
     // The 30 s spike of the full and pr profiles (spikeSpec); the calls are the measured per-document count.
     const spec = spikeSpec({ profileName: "full" } as LoadContext, "documenso", 10);
     assert.equal(spec.spikeSec, 30);
-    const calls = Math.round(spec.spikeRate * DOC_TRPC_CALLS_PER_DOCUMENT * spec.spikeSec);
-    assert.equal(calls, 162); // 0.6 x 9 x 30
+    const calls = Math.round(spec.spikeRate * spec.spikeSec * DOC_LIMITED_CALLS_PER_DOCUMENT);
+    assert.equal(calls, 120); // 1.0 x 30 x 4
     assert.ok(
       calls >= DOC_TRPC_LIMIT_PER_MIN,
       `${calls} tRPC calls in the spike window, below the limit ${DOC_TRPC_LIMIT_PER_MIN}`,
