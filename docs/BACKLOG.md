@@ -67,6 +67,11 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
 - **Yarn crash (watch item): closed (owner decision 2026-10-23).** The one-off Yarn "unexpected empty event loop" exit 42
   (job 120555085199, PR #46) did not repeat: 0 matches in 170 `main` job logs (runs A and B included) and 32 Cal job logs of
   the 14 PR runs since then.
+- **P6-CAL-LOAD-010, Later (Phase 4 Task 6 §6.7, Phase 4a release).** The Cal abandoned-cart judgement needs the journey to
+  call `reserveSlot`. Gate evidence: `reserveSlotGate` in `src/load/gates/cal-hold.ts` returns `passes: false`, because no file
+  under `k6/` calls `reserveSlot`; the Cal journey calls `getSchedule` and `POST /api/book/event` only. The case stays out of
+  the knee and spike runs. **Done when** a Cal journey calls `reserveSlot` and the gate passes, then the case is planned in its
+  own PR.
 
 ## Twenty
 

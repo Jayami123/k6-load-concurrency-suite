@@ -108,7 +108,8 @@ export async function intentCountersFor(
   summary: unknown,
 ): Promise<IntentCounters | undefined> {
   const main = ctx.k6.find((k) => k.label === "main") ?? ctx.k6[0];
-  if (!main || !ctx.caseDef.runs(ctx).some((r) => r.label === "main" && r.knee)) return undefined;
+  if (!main || !ctx.caseDef.runs(ctx).some((r) => r.label === "main" && (r.knee || r.spike)))
+    return undefined;
   const started = summaryCounter(summary, "p6_step_started") ?? 0;
   const iterations = summaryCounter(summary, "iterations") ?? 0;
   const log = parseIntentLog(readFileSync(main.stdoutPath, "utf8"), started);

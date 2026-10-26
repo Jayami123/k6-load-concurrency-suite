@@ -16,6 +16,7 @@ const refusedGhost = new Counter("p6_refused_ghost");
 const refusedOther = new Counter("p6_refused_other");
 const iterFailed = new Counter("p6_iter_failed");
 const status5xx = new Counter("p6_status_5xx");
+const abandoned = new Counter("p6_abandoned"); // P6-MED-LOAD-010: carts that stop before "complete" (Task 6 §6.4)
 
 const ADDRESS = {
   first_name: "P6",
@@ -29,8 +30,9 @@ const ADDRESS = {
 /**
  * cfg: { baseUrl, publishableKey, regionId, salesChannelId, variantId, prefix } (written by the runner's setup, no secrets).
  * opts.classify (task 8): refusals are classified (clean, ghost, other) and every iteration ends in exactly one counter.
+ * opts.abandon(n) (task 6): an iteration n for which it returns true stops before "complete" and counts p6_abandoned.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
- * @param {{ classify?: boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
+ * @param {{ classify?: boolean, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
@@ -175,6 +177,10 @@ export function runMedCheckout(cfg, opts = {}) {
     {
       name: "complete",
       run: (/** @type {Record<string, any>} */ s) => {
+        if (opts.abandon?.(exec.scenario.iterationInTest)) {
+          abandoned.add(1);
+          return { ok: true, stop: true };
+        }
         if (opts.retryPlan) {
           const out = retried(
             opts.retryPlan,

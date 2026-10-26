@@ -1,6 +1,6 @@
 // Documenso envelopes by intent (plan task 4 §6.4). The intent of an envelope is the number in its title. Pure.
 
-const SUFFIX = " journey";
+export const SUFFIX = " journey";
 
 /** "<prefix>-i<n> journey" → n (k6/journeys/doc-sign.js:37); undefined for another prefix, another suffix or a leaf that is not a whole number. */
 export function docIntentOf(prefix: string, title: string): number | undefined {

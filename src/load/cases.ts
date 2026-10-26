@@ -10,6 +10,9 @@ import { processGone } from "./runner.ts";
 import { parseK6Summary, type K6Summary } from "./summary.ts";
 import { startStub } from "./stub-server.ts";
 import { kneeStage } from "./knee/stage.ts";
+import { spikeStage } from "./spike/stage.ts";
+import { MIN_WINDOW_REQUESTS } from "./recovery.ts";
+import { limiterContractStage } from "./spike/limiter-stage.ts";
 import { calCleanup, calSetup } from "./products/cal.ts";
 import { docKneeDefaultsFor, kneePlanFor, medKneeDefaultsFor } from "./knee/plan-input.ts";
 import { stockForKnee } from "./knee/med-stock.ts";
@@ -34,7 +37,7 @@ import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../races/env.ts
 import { documensoDatabaseUrlFromEnv } from "../documenso/env.ts";
 import type { RunContext } from "../documenso/run-case.ts";
 import { closePool, createReadOnlyPool } from "../oracles/pg.ts";
-import type { LoadCase, LoadContext, Stage, StageResult } from "./types.ts";
+import type { LoadCase, LoadContext, SpikeRunSpec, Stage, StageResult } from "./types.ts";
 
 const SERVICE_MS = 25;
 const STALL_MS = 1500;
@@ -1015,6 +1018,207 @@ export const KNEE_RULE_006: LoadCase = {
   stages: { setup: kneeSetup, reconcile: kneeStage, cleanup: kneeCleanup },
 };
 
+/**
+ * The spike rates (plan Phase 4 task 6 §6.4, §6.5): steady = 50 % and spike = 150 % of the knee's lower bound, rounded down to 0.1, from
+ * k6/thresholds/knee-bounds.json (Cal 8, Medusa 1.5). The Documenso rates are the limiter's own: 100 tRPC calls per minute over 4 calls
+ * per document. A unit test re-derives the bound rates from the file. The Documenso spike is 1.0 docs/s (owner decision, PR #84): the
+ * limiter counts 4 token-keyed calls per document, so 1.0 x 30 s x 4 = 120 calls in the spike window, at least the limit (0.6 gives 72).
+ */
+export const SPIKE_RATES = {
+  cal: { steadyRate: 4, spikeRate: 12 },
+  medusa: { steadyRate: 0.7, spikeRate: 2.2 },
+  documenso: { steadyRate: 0.2, spikeRate: 1.0 },
+} as const;
+
+/**
+ * Token-keyed tRPC calls per Documenso document, the calls the limiter counts. Measured on run a7968c28 (1.0 docs/s): every one of its
+ * 48 429s was signFieldWithToken or completeDocumentWithToken, two of each per document. The other five journey calls were never refused.
+ */
+export const DOC_LIMITED_CALLS_PER_DOCUMENT = 4;
+/** The tRPC limiter's limit per minute (src/load/spike/limiter-contract.ts, the trpc route). */
+export const DOC_TRPC_LIMIT_PER_MIN = 100;
+
+/** The spike of a run: 60 s steady, 30 s spike, 120 s watch on full; 10 s and 20 s on pr (a smoke of the machinery). */
+/** Measured Documenso journey requests per iteration (run 3afbe358: 344 requests over 38 iterations): 9.05. */
+export const DOC_REQUESTS_PER_ITERATION = 9.05;
+/** The limiter's fixed window, one minute. */
+export const DOC_LIMITER_WINDOW_SEC = 60;
+/** The quiet phase after the spike: no requests, so the limiter window has fully reset before the post-spike windows start. */
+export const DOC_QUIET_SEC = 60;
+
+/**
+ * The Documenso recovery window in seconds: ceil(MIN_WINDOW_REQUESTS / requests per second), plus 25 %, rounded up (owner decision, PR #84 follow-up).
+ * At 0.2 docs/s x 9.05 = 1.81 requests per second: ceil(40 / 1.81) = 23 s, x 1.25 = 28.75, so 29 s.
+ */
+export function documensoWindowSec(steadyRate: number = SPIKE_RATES.documenso.steadyRate): number {
+  const requestsPerSec = steadyRate * DOC_REQUESTS_PER_ITERATION;
+  return Math.ceil(Math.ceil(MIN_WINDOW_REQUESTS / requestsPerSec) * 1.25);
+}
+
+export function spikeSpec(
+  ctx: LoadContext,
+  product: keyof typeof SPIKE_RATES,
+  timeUnitSec: number,
+): SpikeRunSpec {
+  const pr = ctx.profileName === "pr";
+  if (product === "documenso") {
+    const windowSec = documensoWindowSec();
+    // Two full windows of steady: window 0 is the warm-up, window 1 the reference. Two full windows of watch after the quiet phase.
+    return {
+      product,
+      ...SPIKE_RATES[product],
+      steadySec: pr ? 2 * windowSec : 60,
+      spikeSec: 30,
+      rampSec: 2,
+      quietSec: DOC_QUIET_SEC,
+      watchSec: pr ? 2 * windowSec : 120,
+      windowSec,
+      alignToMinute: true,
+      timeUnitSec,
+    };
+  }
+  return {
+    product,
+    ...SPIKE_RATES[product],
+    steadySec: pr ? 10 : 60,
+    spikeSec: 30,
+    rampSec: 2,
+    watchSec: pr ? 20 : 120,
+    timeUnitSec,
+  };
+}
+
+/** Iterations the spike schedules: the steady and watch holds, the spike hold, and the two ramps at the mean of their rates. */
+function plannedIterations(s: SpikeRunSpec): number {
+  return (
+    s.steadyRate * (s.steadySec + s.watchSec) +
+    s.spikeRate * s.spikeSec +
+    (s.steadyRate + s.spikeRate) * s.rampSec
+  );
+}
+
+/** The Cal slot supply of a spike run: 1.05 x the planned iterations, one slot per iteration (as the steady case). */
+function calSpikeSlots(ctx: LoadContext): number {
+  return Math.ceil(1.05 * plannedIterations(spikeSpec(ctx, "cal", 1)));
+}
+
+/** P6-CAL-LOAD-004: the Cal booking spike at 150 % of the knee (characterisation: the product queues, it does not refuse). */
+export const CAL_LOAD_004: LoadCase = {
+  id: "P6-CAL-LOAD-004",
+  telemetry: { product: "cal" },
+  title: "Cal booking journey spike at 150 % of the knee: characterisation",
+  product: "cal",
+  label: "spike characterisation, environment-bound",
+  profiles: {
+    pr: { rate: SPIKE_RATES.cal.steadyRate, durationSec: 64, maxLatencyMs: 2000 },
+    full: { rate: SPIKE_RATES.cal.steadyRate, durationSec: 214, maxLatencyMs: 2000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/cal-load-004.js",
+      env: {},
+      allowExits: [0],
+      spike: spikeSpec(ctx, "cal", 1),
+    },
+  ],
+  stages: {
+    setup: (ctx) => calSetup({ slots: { count: calSpikeSlots(ctx) } })(ctx),
+    reconcile: composeStages([spikeStage, reconcileStage]),
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-MED-LOAD-003: the Medusa checkout spike at 150 % of the knee, with P6-MED-LOAD-010's abandoned carts in the same run. */
+export const MED_LOAD_003: LoadCase = {
+  id: "P6-MED-LOAD-003",
+  telemetry: { product: "medusa" },
+  title: "Medusa checkout journey spike at 150 % of the knee, with abandoned carts",
+  product: "medusa",
+  label: "spike characterisation, environment-bound",
+  profiles: {
+    pr: { rate: SPIKE_RATES.medusa.steadyRate, durationSec: 64, maxLatencyMs: 8000 },
+    full: { rate: SPIKE_RATES.medusa.steadyRate, durationSec: 214, maxLatencyMs: 8000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/med-load-003.js",
+      env: {},
+      allowExits: [0],
+      spike: spikeSpec(ctx, "medusa", 10),
+    },
+  ],
+  stages: {
+    setup: makeMedusaSetup({
+      stockFor: (_planned, ctx) =>
+        Math.ceil(1.2 * plannedIterations(spikeSpec(ctx, "medusa", 10))) + 10,
+    }),
+    reconcile: composeStages([spikeStage, reconcileStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/** The Documenso limiter's one-minute windows reset in about 60 s; 65 s covers it (the same wait as the knee.yml documenso-limiter job). */
+const limiterWindowReset: Stage = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 65_000));
+  return { ok: true, reasons: [] };
+};
+
+/**
+ * P6-DOC-LOAD-004: the Documenso signing spike at the limiter-bound rates, on the production-like limiter profile (the CI job's
+ * environment). Only this case may leave an unfinished document of a limited intent (plan §6.5).
+ */
+export const DOC_LOAD_004: LoadCase = {
+  id: "P6-DOC-LOAD-004",
+  telemetry: { product: "documenso" },
+  title: "Documenso signing journey spike on the limiter profile",
+  product: "documenso",
+  label: "limiter contract, environment-bound",
+  limitedFailMayLeaveUnfinished: true,
+  profiles: {
+    pr: { rate: SPIKE_RATES.documenso.steadyRate, durationSec: 64, maxLatencyMs: 8000 },
+    full: { rate: SPIKE_RATES.documenso.steadyRate, durationSec: 214, maxLatencyMs: 8000 },
+  },
+  runs: (ctx) => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-004.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+      allowExits: [0],
+      spike: spikeSpec(ctx, "documenso", 10),
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    // The pipeline judges the completed documents and the unfinished ones per intent (the spike is knee-mode for the pipeline).
+    reconcile: composeStages([reconcileStage, pipelineStage, spikeStage]),
+    // The spike exhausts the tRPC window of the minute; the cleanup's own tRPC calls wait for it to reset.
+    cleanup: composeStages([limiterWindowReset, documensoCleanup]),
+  },
+};
+
+/**
+ * P6-DOC-LOAD-009: the Documenso limiter contract (plan Phase 4 task 6 §6.5). No k6 process: the stage probes the ten routes of the
+ * limiter table once each (max + 1 requests), against the stack the job started (DOCUMENSO_BASE_URL).
+ */
+export const DOC_LOAD_009: LoadCase = {
+  id: "P6-DOC-LOAD-009",
+  telemetry: { product: "documenso" },
+  title: "Documenso limiter contract on the ten probed routes",
+  product: "documenso",
+  label: "limiter contract, environment-bound",
+  profiles: {
+    pr: { rate: 0, durationSec: 60, maxLatencyMs: 8000 },
+    full: { rate: 0, durationSec: 120, maxLatencyMs: 8000 },
+  },
+  runs: () => [],
+  stages: {
+    reconcile: limiterContractStage,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1029,6 +1233,10 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
+  [CAL_LOAD_004.id]: CAL_LOAD_004,
+  [MED_LOAD_003.id]: MED_LOAD_003,
+  [DOC_LOAD_004.id]: DOC_LOAD_004,
+  [DOC_LOAD_009.id]: DOC_LOAD_009,
   [CAL_LOAD_003.id]: CAL_LOAD_003,
   [DOC_LOAD_005.id]: DOC_LOAD_005,
   [MED_LOAD_004.id]: MED_LOAD_004,

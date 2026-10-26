@@ -23,10 +23,10 @@ export async function runK6(input: RunK6Input): Promise<K6RunResult> {
   const { spec, outDir } = input;
   mkdirSync(outDir, { recursive: true });
   const configPath = path.join(outDir, "k6-config.json");
-  // A knee run's plan goes to the script as its `knee` block (plan task 1 §6.3); the other runs carry no such key.
+  // A knee run's plan goes to the script as its `knee` block (plan task 1 §6.3), a spike run's as `spike` (Task 6); the others carry neither.
   writeFileSync(
     configPath,
-    `${JSON.stringify({ ...input.config, ...(spec.knee ? { knee: spec.knee } : {}), label: spec.label, env: spec.env }, null, 2)}\n`,
+    `${JSON.stringify({ ...input.config, ...(spec.knee ? { knee: spec.knee } : {}), ...(spec.spike ? { spike: spec.spike } : {}), label: spec.label, env: spec.env }, null, 2)}\n`,
   );
   const summaryPath = path.join(outDir, `k6-${spec.label}-summary.json`);
   const pointsPath = path.join(outDir, `k6-${spec.label}.json.gz`);
