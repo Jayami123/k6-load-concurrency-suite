@@ -1117,6 +1117,12 @@ export const MED_LOAD_003: LoadCase = {
   },
 };
 
+/** The Documenso limiter's one-minute windows reset in about 60 s; 65 s covers it (the same wait as the knee.yml documenso-limiter job). */
+const limiterWindowReset: Stage = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 65_000));
+  return { ok: true, reasons: [] };
+};
+
 /**
  * P6-DOC-LOAD-004: the Documenso signing spike at the limiter-bound rates, on the production-like limiter profile (the CI job's
  * environment). Only this case may leave an unfinished document of a limited intent (plan §6.5).
@@ -1146,7 +1152,8 @@ export const DOC_LOAD_004: LoadCase = {
     setup: makeDocumensoSetup({ webhookMode: "ok" }),
     // The pipeline judges the completed documents and the unfinished ones per intent (the spike is knee-mode for the pipeline).
     reconcile: composeStages([reconcileStage, pipelineStage, spikeStage]),
-    cleanup: documensoCleanup,
+    // The spike exhausts the tRPC window of the minute; the cleanup's own tRPC calls wait for it to reset.
+    cleanup: composeStages([limiterWindowReset, documensoCleanup]),
   },
 };
 
