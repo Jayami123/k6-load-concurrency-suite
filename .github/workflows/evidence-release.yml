@@ -36,7 +36,7 @@ jobs:
       TARGET_SHA: ${{ inputs.target_sha }}
       RUN_IDS: ${{ inputs.run_ids }}
       # Space-separated workflow database ids whose successful main runs may be released: perf.yml and knee.yml.
-      EVIDENCE_WORKFLOW_IDS: "376454455 396253729"
+      EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763"
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
