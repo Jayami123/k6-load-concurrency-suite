@@ -726,8 +726,8 @@ range is where the stop rule fired, not a figure a product can be promised. The 
 [docs/releases/p6-phase4a.md](docs/releases/p6-phase4a.md), and the evidence is on the
 [`p6-phase4a` release](https://github.com/Jayami123/k6-load-concurrency-suite/releases/tag/p6-phase4a) (nine zips and `SHA256SUMS.txt`).
 
-All nine runs are `knee.yml` dispatches on `main` at `0b41fa7` (the merge of PR #86, on top of `efc2f7b`), and each concluded
-`success`. Every case verdict is VALID.
+All nine runs are `knee.yml` dispatches on `main` at `efc2f7b` (the merge of PR #85), and each concluded `success`. Every case
+verdict is VALID.
 
 | Mode   | Runs                                                                                                                                                                                                                                                                                           | Cases                                                                                               |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
