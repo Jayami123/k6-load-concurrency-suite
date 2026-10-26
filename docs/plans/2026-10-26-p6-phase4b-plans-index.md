@@ -8,7 +8,6 @@ Written on `plan/2026-10-26-p6-phase4b-plans` (docs PR #83, never deleted). Base
 - **B0 = 1102** (`npm run check` on the merged base `fe09ba6`: exit 0; `# tests 1102`, `# pass 1102`, `# fail 0`; measured in S2 of the fix run; the log is outside the repo).
 - **Node:** v22.23.3 (`node -v`); `npm ci` exit 0.
 - **Git identity:** the environment's.
-- **Branch note:** this session's designated branch is `claude/busy-franklin-5afdgu`; the owner's brief names `plan/2026-10-26-p6-phase4b-plans`, which this branch follows (plan branches are the exception).
 
 ### 0.1 Status of the inputs (checked 2026-10-26)
 

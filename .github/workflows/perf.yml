@@ -2552,7 +2552,7 @@ jobs:
         timeout-minutes: 2
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Jayami123/cal
+          repository: ${{ github.repository_owner }}/cal
           ref: ${{ env.CAL_REF }}
           path: ${{ env.CAL_CHECKOUT_PATH }}
           persist-credentials: false
