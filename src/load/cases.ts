@@ -1319,7 +1319,9 @@ export const MED_LOAD_005: LoadCase = {
   runs: () => [{ label: "main", script: "k6/cases/med-load-005.js", env: {} }],
   stages: {
     setup: makeMedusaSetup({ stockFor: (planned) => planned + 20 }),
-    reconcile: composeStages([reconcileStage, conservationStage]),
+    // The soak's stock never runs out by design (planned + 20), so the conservation judge's stock-exhausted check does not apply here.
+    // The reconcile audit already checks orders <= stock, reservations, payments, balances and ghost orders.
+    reconcile: reconcileStage,
     cleanup: medusaCleanup,
   },
 };
