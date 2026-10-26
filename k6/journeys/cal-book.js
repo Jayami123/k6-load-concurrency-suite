@@ -4,15 +4,59 @@ import { Counter } from "k6/metrics";
 import { runJourney } from "../lib/pure/journey.js";
 import { attendeeEmail } from "../lib/pure/prefix.js";
 import { slotFor, scheduleWindow } from "../lib/pure/cal-slots.js";
+import { recycleSlotIndex } from "../lib/pure/recycle.js";
 import { request, retried, retryCounters } from "../lib/http.js";
 export const acceptedCounter = new Counter("p6_bookings_accepted");
+export const cancelsOkCounter = new Counter("p6_cancels_ok");
+export const cancelsFailedCounter = new Counter("p6_cancels_failed");
+const CSRF_COOKIE = "calcom.csrf_token";
+// Below the recycle sizing limit (size / rate = 12.5 s at P = 50, 4 per second; k6/lib/pure/recycle.js), so a stalled cancel cannot
+// outlive its slot's reuse window.
+const RECYCLE_TIMEOUT = "10s";
 const DAY = 86400000;
+
+/**
+ * cfg.recycle (plan Phase 4b task 7 §6.3): cancels the booking of this iteration with the CSRF flow of src/cal/api.ts
+ * cancelBooking. Returns true on a 200. Never logs the token.
+ * @param {{ baseUrl: string }} cfg
+ * @param {string | undefined} uid the booking uid from the book response
+ * @returns {boolean}
+ */
+function cancelRecycled(cfg, uid) {
+  const csrf = request("GET", `${cfg.baseUrl}/api/csrf`, "GET csrf", undefined, {
+    timeout: RECYCLE_TIMEOUT,
+  });
+  const token = csrf.status === 200 ? csrf.json("csrfToken") : undefined;
+  const cookie = csrf.cookies[CSRF_COOKIE];
+  if (!token || !cookie || uid === undefined) {
+    cancelsFailedCounter.add(1);
+    return false;
+  }
+  const res = request(
+    "POST",
+    `${cfg.baseUrl}/api/cancel`,
+    "POST cancel",
+    {
+      uid,
+      cancellationReason: "p6 soak recycle",
+      cancelledBy: "p6-qa@example.com",
+      csrfToken: token,
+    },
+    {
+      headers: { "Content-Type": "application/json", Cookie: `${CSRF_COOKIE}=${cookie[0].value}` },
+      timeout: RECYCLE_TIMEOUT,
+    },
+  );
+  const ok = res.status === 200;
+  (ok ? cancelsOkCounter : cancelsFailedCounter).add(1);
+  return ok;
+}
 
 /**
  * cfg.links (case -009): one private link per intent; the booking of intent n carries links[n]. opts.retryPlan (retry cases):
  * the booking request is sent through the plan (plan task 10 §6.2); without it the journey is unchanged.
  * cfg.slotStarts (knee, plan task 2 §6.2): iteration n books slotStarts[n], and its getSchedule covers a 28-day window from that day.
- * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[], slotStarts?: string[] }} cfg
+ * @param {{ baseUrl: string, eventTypeId: number, eventTypeSlug: string, host: string, prefix: string, windowDays: number, links?: string[], slotStarts?: string[], recycle?: boolean }} cfg
  * @param {{ retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  */
 export function runCalBook(cfg, opts = {}) {
@@ -34,7 +78,10 @@ export function runCalBook(cfg, opts = {}) {
   // Fixed slot (knee): the target is ours alone, so the list need not shift under concurrency. The target must be offered; otherwise
   // the setup list is stale (TEST BUG).
   const fixedSchedule = () => {
-    const target = slotFor(cfg.slotStarts ?? [], n);
+    const slots = cfg.slotStarts ?? [];
+    // recycle: the pool is reused, so the index wraps at its size (plan Phase 4b task 7 §6.3)
+    const target =
+      cfg.recycle === true ? slots[recycleSlotIndex(n, slots.length)] : slotFor(slots, n);
     if (target === undefined) return { ok: false }; // supply exhausted: TEST BUG
     const w = scheduleWindow(target, 28);
     const fixed = { json: { ...input.json, startTime: w.startTime, endTime: w.endTime } };
@@ -116,6 +163,8 @@ export function runCalBook(cfg, opts = {}) {
           acceptedCounter.add(1);
           opts.onCommit?.();
         }
+        // A failed cancel makes this iteration a FAIL in its intent line (plan Phase 4b task 7 §6.3).
+        if (ok && cfg.recycle === true) return { ok: cancelRecycled(cfg, r.json("uid")) };
         return { ok };
       },
     },

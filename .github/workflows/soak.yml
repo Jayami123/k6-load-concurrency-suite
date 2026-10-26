@@ -1,0 +1,566 @@
+name: soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: "Which product soaks run: cal, medusa, documenso or all"
+        type: choice
+        options: [cal, medusa, documenso, all]
+        default: cal
+      duration_min:
+        description: "Soak length in minutes (30 or 120)"
+        type: choice
+        options: ["30", "120"]
+        default: "30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak-${{ github.event_name == 'schedule' && 'scheduled' || github.run_id }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CAL_REF: c2b7ac44c66f24ffef1662b276f0653988a609a3 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh (the job verifies)
+  MEDUSA_REF: f677db438f27294fc50e4c7c6612e71ff38eeff5 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh
+  DOCUMENSO_REF: f4105e47eba56f5d8d7e70dd516a8fcc0c870d7c # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh
+
+jobs:
+  cal-soak:
+    name: cal-soak
+    if: ${{ inputs.product == 'cal' || inputs.product == 'all' }}
+    runs-on: ubuntu-24.04
+    # 120 min: setup steps 29 (copied from cal-knee, includes Start Cal 6) + soak 165 + summary 2 + scan 2 + upload 5 + stop 1
+    # = 204, job 225, margin 21. 30 min: 29 + 45 + 10 = 84, job 105, margin 21.
+    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      CAL_CHECKOUT_PATH: products/cal
+      CAL_BASE_URL: http://127.0.0.1:3000
+      CAL_DB_URL: postgresql://postgres@127.0.0.1:5450/calendso # Fork trust-auth local DB (no password). Not a secret.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+      TURBO_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+    steps:
+      - name: Stop unless dispatched from main
+        timeout-minutes: 1
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::soak runs must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Cal fork
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository_owner }}/cal
+          ref: ${{ env.CAL_REF }}
+          path: ${{ env.CAL_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Cal fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${CAL_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${CAL_REF}" ]; then
+            echo "::error::Cal HEAD ${head} does not match CAL_REF ${CAL_REF}"
+            exit 1
+          fi
+
+      - name: Verify CAL_REF matches bootstrap.sh
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if ! grep -q "^CAL_REF=\"${CAL_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"; then
+            echo "::error::CAL_REF in perf.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      # Corepack downloads the Yarn the Cal fork pins from repo.yarnpkg.com.
+      - name: Enable corepack
+        timeout-minutes: 1
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          corepack enable
+          version="$(yarn --version)"
+          if [ "$version" != "4.12.0" ]; then
+            echo "::error::yarn ${version} is not the 4.12.0 the Cal fork pins"
+            exit 1
+          fi
+
+      - name: Restore Cal Yarn cache
+        timeout-minutes: 1
+        id: cal_yarn
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/.yarn/cache
+          key: cal-yarn-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      - name: Restore Cal node_modules cache
+        timeout-minutes: 2
+        id: cal_nm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
+          key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      # Always run: the node_modules cache holds only the root folder, not workspace-local
+      # node_modules (e.g. a nested React copy). With both caches warm this is a quick link check.
+      - name: Install Cal dependencies
+        timeout-minutes: 3
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn install --immutable
+
+      - name: Generate Cal Prisma client
+        timeout-minutes: 1
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn workspace @calcom/prisma prisma generate
+
+      - name: Prepare Cal product .env and harness roots
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh cal
+
+      - name: Restore Cal build cache
+        timeout-minutes: 1
+        id: cal_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+
+      - name: Pull Cal images (3 tries, 15 s then 30 s)
+        id: cal_pull
+        timeout-minutes: 3
+        working-directory: ${{ env.PRODUCTS_ROOT }}/cal/packages/prisma
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-cal \
+            -f "${{ env.PRODUCTS_ROOT }}/cal/packages/prisma/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/cal.compose.yml"
+
+      - name: Start Cal (harness up)
+        id: cal_up
+        if: ${{ steps.cal_pull.outcome == 'success' }}
+        # 6 min: the slowest Cal start over 55 cal-smoke runs was 255 s (PRE-2 section 3.2); cap >= 1.25 x that.
+        timeout-minutes: 6
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          SECONDS=0
+          npm run up:cal
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
+
+      - name: Soak P6-CAL-LOAD-008 (setup, run, audit and cleanup inside the step)
+        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          export PATH="/usr/local/bin:$PATH"
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-008 --profile soak
+      - name: Token scan of the soak results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/evidence-token-scan.mjs results/load
+      - name: Job summary (soak table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/write-ci-job-summary.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 5
+        with:
+          name: soak-cal-${{ inputs.duration_min }}
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Stop Cal (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: npm run down:cal
+
+  medusa-soak:
+    name: medusa-soak
+    needs: cal-soak
+    if: ${{ always() && (inputs.product == 'medusa' || (inputs.product == 'all' && needs.cal-soak.result == 'success')) }}
+    runs-on: ubuntu-24.04
+    # 120 min: setup steps 20 (copied from medusa-knee, includes Start Medusa 3) + soak 165 + summary 2 + scan 2 + upload 5
+    # + stop 1 = 195, job 225, margin 30. 30 min: 20 + 45 + 10 = 75, job 105, margin 30.
+    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      MEDUSA_CHECKOUT_PATH: products/medusa-dtc-starter
+      MEDUSA_BASE_URL: http://127.0.0.1:9000
+      MEDUSA_DB_URL: postgres://medusa:medusa@127.0.0.1:5433/medusa # Public harness default database URL, not a secret.
+      MEDUSA_ADMIN_EMAIL: admin@qa.local
+      MEDUSA_SKIP_STOREFRONT: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+    steps:
+      - name: Stop unless dispatched from main
+        timeout-minutes: 1
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::soak runs must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Medusa fork
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository_owner }}/medusa-dtc-starter
+          ref: ${{ env.MEDUSA_REF }}
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Medusa fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${MEDUSA_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${MEDUSA_REF}" ]; then
+            echo "::error::Medusa HEAD ${head} does not match MEDUSA_REF ${MEDUSA_REF}"
+            exit 1
+          fi
+
+      - name: Stub harness product roots
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRODUCTS_ROOT}/cal" "${PRODUCTS_ROOT}/documenso" "${PRODUCTS_ROOT}/twenty-CRM"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      - name: Enable pnpm via corepack
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.11.1 --activate
+          version="$(pnpm --version)"
+          if [ "$version" != "10.11.1" ]; then
+            echo "::error::pnpm ${version} is not the 10.11.1 the Medusa fork pins"
+            exit 1
+          fi
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Restore pnpm store cache
+        timeout-minutes: 1
+        id: medusa_pnpm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
+
+      - name: Install Medusa dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.MEDUSA_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Restore Medusa build cache
+        timeout-minutes: 1
+        id: medusa_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+
+      - name: Generate the CI admin password
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::${pw}"
+          echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 3
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
+      - name: Start Medusa (harness up)
+        timeout-minutes: 3
+        id: medusa_up
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          SECONDS=0
+          npm run up:medusa
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
+      - name: Soak P6-MED-LOAD-005 (setup, run, audit and cleanup inside the step)
+        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/load/run-load.ts --case P6-MED-LOAD-005 --profile soak
+      - name: Token scan of the soak results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/evidence-token-scan.mjs results/load
+      - name: Job summary (soak table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/write-ci-job-summary.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 5
+        with:
+          name: soak-medusa-${{ inputs.duration_min }}
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Stop Medusa (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: npm run down:medusa
+
+  documenso-soak:
+    name: documenso-soak
+    needs: medusa-soak
+    if: ${{ always() && (inputs.product == 'documenso' || (inputs.product == 'all' && needs.medusa-soak.result == 'success')) }}
+    runs-on: ubuntu-24.04
+    # Same arithmetic as cal-soak: 225 for 120 min, 105 for 30 min (the 2-h cleanup total is UNPROBED: confirm in the first dispatch).
+    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      DOCUMENSO_CHECKOUT_PATH: products/documenso
+      DOCUMENSO_BASE_URL: http://127.0.0.1:3001
+      # Harness compose's local placeholder credentials. Not a secret.
+      DOCUMENSO_DB_URL: postgres://documenso:password@127.0.0.1:5451/documenso
+      INBUCKET_BASE_URL: http://127.0.0.1:9003
+      P6_WEBHOOK_HOST: p6-webhook.test
+      # Test environment: limiters off (harness passes it through), SSRF allowlist for the receiver.
+      DANGEROUS_BYPASS_RATE_LIMITS: "true"
+      NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS: p6-webhook.test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+    steps:
+      - name: Stop unless dispatched from main
+        timeout-minutes: 1
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] \
+            || { echo "::error::soak runs must be dispatched from main, not from $DISPATCH_REF"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Documenso fork
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository_owner }}/documenso
+          ref: ${{ env.DOCUMENSO_REF }}
+          path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Documenso fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${DOCUMENSO_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${DOCUMENSO_REF}" ]; then
+            echo "::error::Documenso HEAD ${head} does not match DOCUMENSO_REF ${DOCUMENSO_REF}"
+            exit 1
+          fi
+
+      - name: Verify DOCUMENSO_REF matches bootstrap.sh
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if ! grep -q "^DOCUMENSO_REF=\"${DOCUMENSO_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"; then
+            echo "::error::DOCUMENSO_REF in perf.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      # Documenso needs Node 24 (fork engines, harness assert). This job only; the other jobs keep .nvmrc.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: |
+            p6/package-lock.json
+            products/documenso/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      - name: Install Documenso dependencies
+        timeout-minutes: 2
+        working-directory: ${{ env.DOCUMENSO_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+
+      - name: Prepare harness roots
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh documenso
+
+      - name: Map the webhook host
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          echo "127.0.0.1 ${P6_WEBHOOK_HOST}" | sudo tee -a /etc/hosts >/dev/null
+          getent hosts "${P6_WEBHOOK_HOST}" | grep -q '^127\.0\.0\.1 '
+
+      - name: Restore Documenso build cache
+        timeout-minutes: 1
+        id: documenso_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
+
+      - name: Pull Documenso images (3 tries, 15 s then 30 s)
+        id: documenso_pull
+        timeout-minutes: 3
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-documenso -f documenso.compose.yml
+
+      - name: Start Documenso (harness up)
+        timeout-minutes: 5
+        id: documenso_up
+        if: ${{ steps.documenso_pull.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          SECONDS=0
+          npm run up:documenso
+          echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
+      - name: Soak P6-DOC-LOAD-006 (setup, run, audit and cleanup inside the step)
+        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/load/run-load.ts --case P6-DOC-LOAD-006 --profile soak
+      - name: Token scan of the soak results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/evidence-token-scan.mjs results/load
+      - name: Job summary (soak table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/write-ci-job-summary.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 5
+        with:
+          name: soak-documenso-${{ inputs.duration_min }}
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Stop Documenso (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: npm run down:documenso

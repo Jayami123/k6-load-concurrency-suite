@@ -1219,6 +1219,83 @@ export const DOC_LOAD_009: LoadCase = {
   },
 };
 
+/**
+ * The Cal soak's slot pool (plan Phase 4b task 7 §6.3): the iteration i books pool[i mod P] and cancels it, so a slot is free again
+ * only after P / rate seconds. The probe of 2026-10-26 showed 50 slots (12.5 s) too few for the warm-up iterations (up to 16 s with the
+ * tail), so the pool is 100 (25 s at 4 per second).
+ */
+export const CAL_SOAK_POOL = 100;
+
+/** P6-CAL-LOAD-008: the Cal booking soak with slot recycling (plan Phase 4b task 7 §6.3). Rate and duration come from withSoakProfile. */
+export const CAL_LOAD_008: LoadCase = {
+  id: "P6-CAL-LOAD-008",
+  telemetry: { product: "cal" },
+  title: "Cal booking journey soak with slot recycling",
+  product: "cal",
+  label: "soak, environment-bound",
+  profiles: {
+    pr: { rate: 2, durationSec: 30, maxLatencyMs: 2000 },
+    full: { rate: 2, durationSec: 120, maxLatencyMs: 2000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/cal-load-008.js", env: {} }],
+  stages: {
+    // Recycle mode: the audit reads the cancelled rows (plan Phase 4b task 7 §6.3), set after the setup has built the audit config.
+    setup: async (ctx) => {
+      const result = await calSetup({ slots: { count: CAL_SOAK_POOL } })(ctx);
+      if (ctx.config.audit !== undefined)
+        (ctx.config.audit as Record<string, unknown>).recycle = true;
+      return result;
+    },
+    reconcile: reconcileStage,
+    cleanup: calCleanup,
+  },
+};
+
+/** P6-MED-LOAD-005: the Medusa checkout soak (plan Phase 4b task 7 §6.3). Stock is planned + 20, never planned / 2 (finding M-F1). */
+export const MED_LOAD_005: LoadCase = {
+  id: "P6-MED-LOAD-005",
+  telemetry: { product: "medusa" },
+  title: "Medusa checkout soak",
+  product: "medusa",
+  label: "soak, environment-bound",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 5000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/med-load-005.js", env: {} }],
+  stages: {
+    setup: makeMedusaSetup({ stockFor: (planned) => planned + 20 }),
+    reconcile: composeStages([reconcileStage, conservationStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/** P6-DOC-LOAD-006: the Documenso signing soak (plan Phase 4b task 7 §6.3). Rate and duration come from withSoakProfile. */
+export const DOC_LOAD_006: LoadCase = {
+  id: "P6-DOC-LOAD-006",
+  telemetry: { product: "documenso" },
+  title: "Documenso signing soak",
+  product: "documenso",
+  label: "soak, environment-bound",
+  profiles: {
+    pr: { rate: 1, durationSec: 10, maxLatencyMs: 12000 },
+    full: { rate: 1, durationSec: 30, maxLatencyMs: 12000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/doc-load-006.js",
+      env: {},
+      secretEnv: ["DOCUMENSO_API_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeDocumensoSetup({ webhookMode: "ok" }),
+    reconcile: composeStages([reconcileStage, pipelineStage]),
+    cleanup: documensoCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1232,6 +1309,9 @@ export const CASES: Record<string, LoadCase> = {
   [DOC_LOAD_008.id]: DOC_LOAD_008,
   [CAL_LOAD_007.id]: CAL_LOAD_007,
   [CAL_LOAD_009.id]: CAL_LOAD_009,
+  [CAL_LOAD_008.id]: CAL_LOAD_008,
+  [MED_LOAD_005.id]: MED_LOAD_005,
+  [DOC_LOAD_006.id]: DOC_LOAD_006,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
   [CAL_LOAD_004.id]: CAL_LOAD_004,
   [MED_LOAD_003.id]: MED_LOAD_003,

@@ -869,6 +869,21 @@ per-second p95s of the points file. A window max can come from one slow second.
 | P6-CAL-LOAD-003 | 4             | 3    | 54.1 / 79.8 / 82.6          | 49.8 / 80.9 / 234.3 (33 windows)   | 0          | 8.0                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
 | P6-MED-LOAD-002 | 0.7           | 3    | 214.5 / 220.6 / 220.8       | 217.6 / 228.7 / 314.2 (15 windows) | 0          | 4.2                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
 
+## Soaks
+
+`soak.yml` runs the soak cases `P6-CAL-LOAD-008`, `P6-MED-LOAD-005` and `P6-DOC-LOAD-006` at the steady rate of each product's
+knee lower bound, for `duration_min` minutes (30 or 120). It is dispatch-only and must be dispatched from `main`. The job of each
+product sets up its stack, runs the case with `--profile soak`, and uploads the results as `soak-<product>-<minutes>` (kept 90 days).
+A run without `SOAK_DURATION_MIN` of 30 or 120 ends with ENV (exit 2) before setup.
+
+Each run writes `soak.json` next to `verdict.json`. It holds the statistics of RSS, open fds and pg connections over the telemetry
+after warm-up (the warm-up is the larger of 300 s and 20 % of the soak): the least-squares slope, the Theil–Sen slope, the number of
+steps, and the plateau ratio (last third against middle third). The points are not published.
+
+The soak verdict has this precedence: TEST BUG (setup or slots ran out), INVALID (a telemetry gap or dropped iterations), FAIL (the
+audit, or a threshold in `k6/thresholds/soak-bounds.json`), NO THRESHOLD YET (no entry for the product yet), then PASS. Growth counts
+as a FAIL only when both slopes are positive, so one step cannot make a leak.
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp

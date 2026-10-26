@@ -70,11 +70,11 @@ export function summaryCounter(summary: unknown, name: string): number | undefin
 export async function reconcile(
   cfg: AuditStageConfig,
   pool: import("pg").Pool,
-  counters: { clientCount?: number; intents?: IntentCounters },
+  counters: { clientCount?: number; intents?: IntentCounters; cancelsOk?: number },
 ): Promise<AuditResult> {
   switch (cfg.product) {
     case "cal":
-      return reconcileCal(pool, cfg, counters.clientCount, counters.intents);
+      return reconcileCal(pool, cfg, counters.clientCount, counters.intents, counters.cancelsOk);
     case "medusa":
       return reconcileMedusa(pool, cfg, counters.clientCount, counters.intents);
     case "documenso":
@@ -132,7 +132,8 @@ export function makeReconcileStage(deps: ReconcileDeps = defaultDeps): Stage {
       const audited =
         cfg.product === "documenso" ? { ...cfg, knownBugs: ctx.caseDef.knownBugs } : cfg;
       const intents = await intentCountersFor(ctx, summary);
-      result = await deps.reconcile(audited, pool, { clientCount, intents });
+      const cancelsOk = summary ? summaryCounter(summary, "p6_cancels_ok") : undefined;
+      result = await deps.reconcile(audited, pool, { clientCount, intents, cancelsOk });
     } finally {
       await closePool(pool);
     }

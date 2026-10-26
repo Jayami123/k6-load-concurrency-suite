@@ -48,7 +48,15 @@ export function addFinding(result: AuditResult, finding: Finding, count = 1): vo
 
 /** What a case's setup stage stores in ctx.config.audit. Plain data, no secrets. */
 export type AuditStageConfig =
-  | { product: "cal"; userId: number; eventTypeId: number; prefixLike: string; prefix?: string }
+  | {
+      product: "cal";
+      userId: number;
+      eventTypeId: number;
+      prefixLike: string;
+      prefix?: string;
+      /** Recycle mode (plan Phase 4b task 7 §6.3): each booking is cancelled in its iteration, so the audit reads cancelled rows. */
+      recycle?: boolean;
+    }
   | {
       product: "medusa";
       prefixLike: string;
