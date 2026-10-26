@@ -9,4 +9,9 @@ describe("committed knee bounds", () => {
     assert.equal(steadyRateFor(b, "cal"), 4);
     assert.equal(steadyRateFor(b, "medusa"), 0.7);
   });
+
+  it("gives the steady rate for documenso", () => {
+    const b = parseKneeBounds(JSON.parse(readFileSync("k6/thresholds/knee-bounds.json", "utf8")));
+    assert.equal(steadyRateFor(b, "documenso"), 2);
+  });
 });
