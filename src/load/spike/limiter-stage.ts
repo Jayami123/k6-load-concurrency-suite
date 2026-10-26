@@ -13,11 +13,17 @@ import {
   type RouteJudgement,
 } from "./limiter-contract.ts";
 
-/** The request of answer i of a route. The bodies are the probe's shapes (§6.6); the credentials are invalid on purpose. */
-function requestFor(route: LimiterRoute): { method: string; path: string; body?: string } {
+/**
+ * The request of answer i of a route. The bodies are the probe's shapes (§6.6); the credentials are invalid on purpose.
+ * The auth limits key on the IP and the email (or token): the identifiers carry the run id, so a rerun does not inherit
+ * the counter of an earlier run that is still inside its window. The IP-keyed routes cannot be isolated this way (see the Known issues line).
+ */
+function requestFor(
+  route: LimiterRoute,
+  runId: string,
+): { method: string; path: string; body?: string } {
   const json = (o: unknown) => JSON.stringify(o);
-  // The auth limits key on the IP and the email (or token): one email per route, so the route's own counter is the one that counts.
-  const email = `p6-limit-${route.id}@qa.local`;
+  const email = `p6-limit-${route.id}-${runId}@qa.local`;
   switch (route.id) {
     case "authorize":
       return {
@@ -29,13 +35,13 @@ function requestFor(route: LimiterRoute): { method: string; path: string; body?:
     case "resend-verify-email":
       return { method: "POST", path: route.path, body: json({ email }) };
     case "verify-email":
-      return { method: "POST", path: route.path, body: json({ token: "p6-bad-token" }) };
+      return { method: "POST", path: route.path, body: json({ token: `p6-bad-token-${runId}` }) };
     // The password meets ZPasswordSchema (upper, lower, digit, special): a body the schema rejects never reaches the limiter.
     case "reset-password":
       return {
         method: "POST",
         path: route.path,
-        body: json({ token: "p6-bad-token", password: "P6-probe-Pass-1!" }),
+        body: json({ token: `p6-bad-token-${runId}`, password: "P6-probe-Pass-1!" }),
       };
     case "ai":
       return { method: "POST", path: route.path, body: json({}) };
@@ -75,7 +81,8 @@ export const limiterContractStage: Stage = async (ctx: LoadContext): Promise<Sta
   try {
     for (const route of ROUTES) {
       const obs: Observation[] = [];
-      for (let i = 0; i <= route.max; i++) obs.push(await observe(baseUrl, requestFor(route)));
+      for (let i = 0; i <= route.max; i++)
+        obs.push(await observe(baseUrl, requestFor(route, ctx.runId)));
       judgements.push({ ...judgeRoute(route, obs, nowSec), max: route.max, family: route.family });
     }
   } catch (err) {

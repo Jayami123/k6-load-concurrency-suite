@@ -98,6 +98,19 @@ export function judgeRoute(
       findings: [`only ${obs.length} answers, need ${route.max + 1} (lost requests)`],
       preLimit5xx: {},
     };
+  // A window that rolls over during the probe changes the reset the answers carry: the verdict cannot judge a probe across two windows.
+  const resets = new Set(
+    obs.map((o) => o.headers["x-ratelimit-reset"]).filter((v) => v !== undefined),
+  );
+  if (resets.size > 1)
+    return {
+      route: route.id,
+      verdict: "TEST BUG",
+      findings: [
+        `X-RateLimit-Reset changed during the probe (${[...resets].join(", ")}): the window rolled over, the probe cannot be judged`,
+      ],
+      preLimit5xx: {},
+    };
   const pre = obs.slice(0, route.max);
   const post = obs[route.max] as Observation;
   const findings: string[] = [];

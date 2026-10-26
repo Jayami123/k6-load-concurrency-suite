@@ -110,4 +110,16 @@ describe("documenso limiter contract", () => {
     const j = judgeRoute(trpc, [OK, OK], NOW);
     assert.equal(j.verdict, "TEST BUG");
   });
+
+  it("a probe whose window rolls over is a TEST BUG, not a product finding", () => {
+    const early: Observation = { ...OK, headers: { "x-ratelimit-reset": String(NOW + 19) } };
+    const rolled = [
+      ...Array.from({ length: trpc.max - 1 }, () => early),
+      { ...OK, headers: { "x-ratelimit-reset": String(NOW + 19) } },
+      LIMITED(BODY_A, { "x-ratelimit-reset": String(NOW + 40) }),
+    ];
+    const verdict = judgeRoute(trpc, rolled, NOW);
+    assert.equal(verdict.verdict, "TEST BUG");
+    assert.match(verdict.findings[0] ?? "", /window rolled over/);
+  });
 });
