@@ -20,7 +20,7 @@ import { readSmokeReference } from "./smoke-baseline.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
-import { conservationStage } from "./med-conservation.ts";
+import { conservationStage, makeConservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
 import { calBurstStage, calStaleStage } from "./cal/invariant-stages.ts";
 import {
@@ -1305,6 +1305,15 @@ export const CAL_LOAD_006: LoadCase = {
   },
 };
 
+/**
+ * The soak's reconcile stages (D-B2): the audit, then the conservation judge with the stock-exhausted check off. The soak's stock is
+ * planned + 20 and never runs out by design; every other conservation check still runs. Exported for the test.
+ */
+export const MED_SOAK_RECONCILE_STAGES = [
+  reconcileStage,
+  makeConservationStage({ expectStockExhausted: false }),
+] as const;
+
 /** P6-MED-LOAD-005: the Medusa checkout soak (plan Phase 4b task 7 §6.3). Stock is planned + 20, never planned / 2 (finding M-F1). */
 export const MED_LOAD_005: LoadCase = {
   id: "P6-MED-LOAD-005",
@@ -1319,9 +1328,7 @@ export const MED_LOAD_005: LoadCase = {
   runs: () => [{ label: "main", script: "k6/cases/med-load-005.js", env: {} }],
   stages: {
     setup: makeMedusaSetup({ stockFor: (planned) => planned + 20 }),
-    // The soak's stock never runs out by design (planned + 20), so the conservation judge's stock-exhausted check does not apply here.
-    // The reconcile audit already checks orders <= stock, reservations, payments, balances and ghost orders.
-    reconcile: reconcileStage,
+    reconcile: composeStages([...MED_SOAK_RECONCILE_STAGES]),
     cleanup: medusaCleanup,
   },
 };
