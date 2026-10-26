@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MED_SOAK_RECONCILE_STAGES } from "../../src/load/cases.ts";
+import { MED_SOAK_CONSERVATION_STAGE, MED_SOAK_RECONCILE_STAGES } from "../../src/load/cases.ts";
+import { reconcileStage } from "../../src/load/reconcile/index.ts";
 import {
   conservationStage,
   judgeConservation,
@@ -59,9 +60,10 @@ describe("medusa soak conservation", () => {
     assert.equal(f[0]?.kind, "TEST BUG");
   });
 
-  it("composes the reconcile audit and the conservation judge for the medusa soak", () => {
+  it("composes the reconcile audit, then the soak conservation stage (the default stage is not used)", () => {
     assert.equal(MED_SOAK_RECONCILE_STAGES.length, 2);
-    assert.equal(MED_SOAK_RECONCILE_STAGES[0] === conservationStage, false);
-    assert.equal(typeof MED_SOAK_RECONCILE_STAGES[1], "function");
+    assert.equal(MED_SOAK_RECONCILE_STAGES[0], reconcileStage);
+    assert.equal(MED_SOAK_RECONCILE_STAGES[1], MED_SOAK_CONSERVATION_STAGE);
+    assert.notEqual(MED_SOAK_CONSERVATION_STAGE, conservationStage);
   });
 });

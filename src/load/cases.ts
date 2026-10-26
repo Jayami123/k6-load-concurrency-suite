@@ -1309,10 +1309,8 @@ export const CAL_LOAD_006: LoadCase = {
  * The soak's reconcile stages (D-B2): the audit, then the conservation judge with the stock-exhausted check off. The soak's stock is
  * planned + 20 and never runs out by design; every other conservation check still runs. Exported for the test.
  */
-export const MED_SOAK_RECONCILE_STAGES = [
-  reconcileStage,
-  makeConservationStage({ expectStockExhausted: false }),
-] as const;
+export const MED_SOAK_CONSERVATION_STAGE = makeConservationStage({ expectStockExhausted: false });
+export const MED_SOAK_RECONCILE_STAGES = [reconcileStage, MED_SOAK_CONSERVATION_STAGE] as const;
 
 /** P6-MED-LOAD-005: the Medusa checkout soak (plan Phase 4b task 7 §6.3). Stock is planned + 20, never planned / 2 (finding M-F1). */
 export const MED_LOAD_005: LoadCase = {
