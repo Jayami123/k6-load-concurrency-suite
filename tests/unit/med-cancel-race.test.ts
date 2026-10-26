@@ -61,6 +61,16 @@ describe("medusa terminal transition", () => {
     assert.equal(terminalTransitionVerdict([one, twoCancels], []).verdict, "FAIL (PRODUCT BUG)");
   });
 
+  it("does not count three cancels as X04: X04 is exactly two cancel entries", () => {
+    const threeCancels: OrderTerminal = {
+      orderId: "o9",
+      terminal: ["CANCELED", "CANCELED", "CANCELED"],
+      openFulfilment: false,
+      sideEffects: { refunds: 2, reservationsLive: 0 },
+    };
+    assert.equal(terminalTransitionVerdict([one, threeCancels], []).verdict, "FAIL (PRODUCT BUG)");
+  });
+
   it("is a test bug for an empty order list, and a product bug for an order with no terminal transition", () => {
     assert.equal(terminalTransitionVerdict([], []).verdict, "TEST BUG");
     const none: OrderTerminal = {

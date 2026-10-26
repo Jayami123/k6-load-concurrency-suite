@@ -36,7 +36,7 @@ export function terminalTransitionVerdict(
     if (o.terminal.length === 1) counts.singleTerminal++;
     if (o.terminal.length > 1) {
       // X04 is a double cancel: two cancel entries and more than one refund
-      if (cancels >= 2 && o.sideEffects.refunds > 1) counts.x04Double++;
+      if (o.terminal.length === 2 && cancels === 2 && o.sideEffects.refunds > 1) counts.x04Double++;
       else if (
         o.openFulfilment &&
         o.terminal.length === 2 &&
