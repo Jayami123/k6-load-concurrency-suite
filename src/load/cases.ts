@@ -424,6 +424,7 @@ export const DOC_LOAD_003: LoadCase = {
     pr: { rate: 2, durationSec: 10, maxLatencyMs: 12000 },
     full: { rate: 2, durationSec: 30, maxLatencyMs: 12000 },
   },
+  knownBugs: ["P6-OBS-DOC-002"],
   runs: () => [
     {
       label: "main",

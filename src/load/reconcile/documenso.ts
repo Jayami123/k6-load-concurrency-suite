@@ -80,29 +80,43 @@ export function evaluateDocumensoAudit(
     );
 
   const completed = s.envelopes.filter((e) => e.status === "COMPLETED");
-  // A case that declares P6-OBS-DOC-005 (the retry storm) counts its duplicates under that ID, not as violations or unexpected.
-  const declared = declaredBugs.includes("P6-OBS-DOC-005");
+  // A case that declares a known race counts its duplicates under that ID, not as violations or unexpected. P6-OBS-DOC-005 is the
+  // retry storm; P6-OBS-DOC-002 is the concurrent pair (two completions in one batch). The exactly-once stage of the same case
+  // (classifyExactlyOnce) still checks every sequential document exactly, so a sequential duplicate still fails the case there.
+  const knownDup = declaredBugs.includes("P6-OBS-DOC-005")
+    ? "P6-OBS-DOC-005"
+    : declaredBugs.includes("P6-OBS-DOC-002")
+      ? "P6-OBS-DOC-002"
+      : undefined;
+  // The pair race produces exactly two seal jobs and two completion audit rows (its two completions); more is a new bug.
+  const maxKnown = knownDup === "P6-OBS-DOC-002" ? 2 : Number.POSITIVE_INFINITY;
   for (const e of completed) {
     if (e.sealJobs === 0) bug("completed envelope never sealed");
-    if (e.completedAudit > 1 && declared) {
+    if (e.completedAudit > 1 && knownDup !== undefined && e.completedAudit <= maxKnown) {
       addFinding(result, {
         kind: "PRODUCT BUG",
         text: "duplicate completion audit row",
-        knownBugId: "P6-OBS-DOC-005",
+        knownBugId: knownDup,
       });
     } else if (e.completedAudit !== 1)
       bug(`completed envelope with ${e.completedAudit} completion audit row(s), expected 1`);
-    if (e.sealJobs > 1) {
+    if (e.sealJobs > maxKnown) bug(`${e.sealJobs} seal jobs, expected at most ${maxKnown}`);
+    else if (e.sealJobs > 1) {
       addFinding(result, {
         kind: "PRODUCT BUG",
         text: "double seal",
-        knownBugId: declared ? "P6-OBS-DOC-005" : "P6-OBS-DOC-002",
+        knownBugId: knownDup ?? "P6-OBS-DOC-002",
       });
-      if (s.sequentialCompletions && !declared)
+      if (s.sequentialCompletions && knownDup === undefined)
         result.unexpected.push("double seal with sequential completions");
     }
   }
-  const sealOnce = completed.every((e) => e.sealJobs <= 1 && e.completedAudit === 1);
+  const sealOnce = completed.every(
+    (e) =>
+      (e.sealJobs <= 1 || (knownDup !== undefined && e.sealJobs <= maxKnown)) &&
+      (e.completedAudit === 1 ||
+        (knownDup !== undefined && e.completedAudit > 1 && e.completedAudit <= maxKnown)),
+  );
   check("sealed-once", sealOnce, `${completed.length} completed envelope(s)`);
 
   if (s.clientCompleted !== undefined) {
