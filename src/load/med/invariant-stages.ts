@@ -91,7 +91,8 @@ export function makeInvariantSetup(opts: { promo: boolean }): Stage {
     const token = ctx.secrets.MEDUSA_ADMIN_TOKEN ?? (await seedAndLogin());
     const prefix = String(audit?.prefix ?? ctx.config.prefix);
     const c = ctx.config;
-    const limit = Math.ceil((Number(c.rate) * Number(c.durationSec)) / Number(c.timeUnitSec ?? 1));
+    // rate is starts per second (openModelScenario), so the planned iterations are rate times the duration
+    const limit = Math.ceil(Number(c.rate) * Number(c.durationSec));
     if (!Number.isFinite(limit) || limit < 1)
       return { ok: false, kind: "TEST BUG", reasons: ["promo setup: planned iterations unknown"] };
     const campaignId = await createCampaign(token, `${prefix}-campaign`, limit);

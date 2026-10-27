@@ -1401,8 +1401,9 @@ export const MED_LOAD_007: LoadCase = {
   product: "medusa",
   label: "functional load, not capacity",
   profiles: {
-    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
-    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+    // rate is per second: 0.7 is written as 7 per 10 s (openModelScenario). 7 here offered ten times the planned load (run 40476542059).
+    pr: { rate: 0.7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 0.7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
   },
   runs: () => [{ label: "main", script: "k6/cases/med-load-007.js", env: {} }],
   stages: {
@@ -1420,8 +1421,8 @@ export const MED_LOAD_008: LoadCase = {
   product: "medusa",
   label: "functional load, not capacity",
   profiles: {
-    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
-    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+    pr: { rate: 0.7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 0.7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
   },
   runs: () => [{ label: "main", script: "k6/cases/med-load-008.js", env: {} }],
   stages: {
@@ -1439,8 +1440,8 @@ export const MED_LOAD_009: LoadCase = {
   product: "medusa",
   label: "functional load, not capacity",
   profiles: {
-    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
-    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+    pr: { rate: 0.7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 0.7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
   },
   runs: () => [
     {
