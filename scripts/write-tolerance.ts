@@ -74,10 +74,17 @@ for (const pair of pairs) {
   }
   if (reasons.length > 0) console.error(`${product}: excluded ${reasons.join(" | ")}`);
 
-  const arms: AaArm[] = kept.map((f) => {
+  // The arm id is "<runId>-<attempt>-<armIndex>": the counted arms of one run, numbered from 1 by their start time.
+  const byStart = [...kept].sort((a, b) => a.meta.startedAt.localeCompare(b.meta.startedAt));
+  const armIndexOf = new Map<string, number>();
+  const arms: AaArm[] = byStart.map((f) => {
     const v = runValues(f);
+    const index = (armIndexOf.get(v.runId) ?? 0) + 1;
+    armIndexOf.set(v.runId, index);
     return {
       runId: v.runId,
+      armId: `${v.runId}-${f.meta.environment.attempt ?? 1}-${index}`,
+      utcDay: f.meta.startedAt.slice(0, 10),
       caseId: f.meta.caseId,
       profile: f.meta.profile,
       rate: f.meta.rate,
@@ -109,7 +116,15 @@ const file: ToleranceFile = {
   release,
   products,
 };
-const text = `${JSON.stringify(parseTolerance(file), null, 2)}\n`;
+// The committed file must pass parseTolerance: at least three counted arms, and runs on at least two UTC days (Q-TOLRULE).
+let checked: ToleranceFile;
+try {
+  checked = parseTolerance(file);
+} catch (err) {
+  console.error(`refusing to write: ${(err as Error).message}`);
+  process.exit(2);
+}
+const text = `${JSON.stringify(checked, null, 2)}\n`;
 const hits = findHits(text);
 if (hits.length > 0) {
   console.error(`refusing to write: secret-like text on line(s) ${hits.join(", ")}`);

@@ -5,18 +5,25 @@ import { medianOf } from "../medians.ts";
 export const AA_CASES = ["P6-CAL-LOAD-003", "P6-MED-LOAD-002"] as const;
 export type AaCaseId = (typeof AA_CASES)[number];
 
-/** One A/A arm: its run id, case, profile, rate and the run-level medians (the values of its whole-run k6 summary). */
+/**
+ * One A/A arm: its GitHub run id, its arm id "<runId>-<attempt>-<armIndex>" (unique per counted arm), its UTC day, case, profile,
+ * rate and the run-level medians (the values of its whole-run k6 summary).
+ */
 export interface AaArm {
   runId: string;
+  armId: string;
+  utcDay: string; // "YYYY-MM-DD", the UTC day of the arm's start
   caseId: string;
   profile: string;
   rate: number;
   medians: Record<string, number>;
 }
 
-/** The value of one arm for one metric. */
+/** The value of one arm for one metric, with the identity the tolerance cites. */
 export interface ArmMedian {
   runId: string;
+  armId: string;
+  utcDay: string;
   value: number;
 }
 
@@ -54,6 +61,6 @@ export function aaArmsFor(
         );
       const value = arm.medians[metric];
       if (value === undefined) throw new Error(`a/a noise: ${arm.runId} has no ${metric} value`);
-      return { runId: arm.runId, value };
+      return { runId: arm.runId, armId: arm.armId, utcDay: arm.utcDay, value };
     });
 }

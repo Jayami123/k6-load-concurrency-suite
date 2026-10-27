@@ -5,6 +5,8 @@ import { aaArmsFor, spreadOf, type AaArm } from "../../src/load/gate/aa-noise.ts
 function arm(runId: string, over: Partial<AaArm> = {}): AaArm {
   return {
     runId,
+    armId: `${runId}-1-1`,
+    utcDay: "2026-10-27",
     caseId: "P6-CAL-LOAD-003",
     profile: "steady",
     rate: 4,
@@ -34,8 +36,8 @@ describe("a/a arms of one case", () => {
       arm("3", { caseId: "P6-MED-LOAD-002", medians: { p95Ms: 999, p50Ms: 1, requestsPerSec: 1 } }),
     ];
     assert.deepEqual(aaArmsFor("P6-CAL-LOAD-003", arms, 4, "p95Ms"), [
-      { runId: "1", value: 80 },
-      { runId: "2", value: 90 },
+      { runId: "1", armId: "1-1-1", utcDay: "2026-10-27", value: 80 },
+      { runId: "2", armId: "2-1-1", utcDay: "2026-10-27", value: 90 },
     ]);
   });
 

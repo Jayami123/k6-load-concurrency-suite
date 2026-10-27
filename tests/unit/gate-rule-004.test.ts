@@ -33,7 +33,8 @@ describe("P6-RULE-004 tier 2: the tolerance file cites its A/A runs", () => {
       const file = parseTolerance(JSON.parse(readFileSync(TOLERANCE_URL, "utf8")));
       for (const [product, metrics] of Object.entries(file.products)) {
         for (const [metric, t] of Object.entries(metrics)) {
-          assert.ok(t!.arms >= 3, `${product} ${metric} has fewer than three A/A arms`);
+          assert.ok(t!.arms.length >= 3, `${product} ${metric} has fewer than three A/A arms`);
+          assert.ok(t!.runIds.length >= 2, `${product} ${metric} cites fewer than two runs`);
         }
       }
       for (const gate of gateWorkflowsNamingTolerance()) {

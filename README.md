@@ -888,7 +888,7 @@ node scripts/write-tolerance.ts --release p6-phase4b --out k6/thresholds/toleran
   cal=<dir>,<dir>,<dir> medusa=<dir>,<dir>,<dir>
 ```
 
-It exits 2 when a product has fewer than three VALID steady arms, and it writes nothing. The tolerance file is written and committed
+It exits 2 when a product has fewer than three VALID steady arms, or when its arms come from fewer than two GitHub runs on two UTC days, and it writes nothing. The tolerance file is written and committed
 by its own pull request after the A/A dispatches, with its run ids. Until that file exists, no gate may name a tolerance: the
 `P6-RULE-004` tests in `tests/unit/gate-rule-004.test.ts` fail if a workflow does.
 
