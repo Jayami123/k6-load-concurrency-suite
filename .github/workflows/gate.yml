@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 16
     outputs:
-      base_sha: ${{ steps.base.outputs.base_sha }}
+      base_sha: ${{ steps.detect.outputs.base_sha }}
       load_code: ${{ steps.detect.outputs.load_code }}
       cal_bump: ${{ steps.detect.outputs.cal_bump }}
       medusa_bump: ${{ steps.detect.outputs.medusa_bump }}
@@ -56,24 +56,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Base commit of the diff
-        id: base
-        timeout-minutes: 1
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          BEFORE: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            base="$PR_BASE"
-          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            base="$BEFORE"
-          else
-            base="$(git rev-parse HEAD~1)"
-          fi
-          echo "base_sha=${base}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         timeout-minutes: 1
@@ -92,7 +74,9 @@ jobs:
         id: detect
         timeout-minutes: 1
         env:
-          BASE_SHA: ${{ steps.base.outputs.base_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
         run: node scripts/load/gate-detect.ts
