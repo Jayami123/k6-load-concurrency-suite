@@ -18,7 +18,7 @@ import type { LoadContext, Stage, StageResult } from "../types.ts";
 import { terminalTransitionVerdict, type OrderTerminal } from "./cancel-race.ts";
 import { promoLedgerVerdict } from "./ledger.ts";
 import { classifySplit, type InstanceCount } from "./instance-split.ts";
-import { judgeLeak } from "./known-leak.ts";
+import { judgeLeakClause } from "./known-leak.ts";
 import { isRacedEmail, parseRaceLog, raceOfEmail, unconfirmedInjections } from "./raced-orders.ts";
 
 /** One row per run order: state, cancel effects, fulfilments, payments and the money of its payments. */
@@ -83,7 +83,7 @@ function counter(summary: unknown, name: string): number {
  * Setup of the Task 10 cases: the shared Medusa setup, then the second instance URL and the stock location (for -007 and -009),
  * and for -008 a campaign with a usage limit and a promotion on it. The limit is the planned iteration count (decision D43).
  */
-export function makeInvariantSetup(opts: { promo: boolean }): Stage {
+export function makeInvariantSetup(opts: { promo: boolean; knownLeakId?: string }): Stage {
   return async (ctx: LoadContext): Promise<StageResult> => {
     const base = await medusaSetup(ctx);
     if (!base.ok) return base;
@@ -91,6 +91,11 @@ export function makeInvariantSetup(opts: { promo: boolean }): Stage {
     const secondUrl = medusaSecondBaseUrlFromEnv();
     ctx.config.locationId = audit?.locationId;
     if (secondUrl !== undefined) ctx.config.secondBaseUrl = secondUrl;
+    // a case that declares a known leak names it in the config the reconcile and the cleanup read (owner decision, P6-OBS-MED-002)
+    if (opts.knownLeakId !== undefined) {
+      ctx.config.knownLeakId = opts.knownLeakId;
+      if (audit) audit.knownLeakId = opts.knownLeakId;
+    }
     if (!opts.promo) return base;
     const token = ctx.secrets.MEDUSA_ADMIN_TOKEN ?? (await seedAndLogin());
     const prefix = String(audit?.prefix ?? ctx.config.prefix);
@@ -308,9 +313,11 @@ export function makeCancelRaceStage(knownLeakId?: string): Stage {
         (v) => v.race === "double-cancel" && v.statuses.every((s) => s === 200),
       ).length;
       const verdictOk = verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)";
-      const leak = judgeLeak({
-        leaked: leaks.length,
-        otherFailing: !verdictOk || fulfilReasons.length > 0,
+      const leak = judgeLeakClause({
+        label: "cancel race",
+        leak: leaks.length,
+        observed: leaks.length,
+        onlyLeak: verdictOk && fulfilReasons.length === 0,
         ...(knownLeakId === undefined ? {} : { knownId: knownLeakId }),
       });
       const leakFailed = leak.status === "FAIL";

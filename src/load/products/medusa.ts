@@ -10,7 +10,13 @@ import {
   seedAndLogin,
   type MedusaCatalog,
 } from "../../medusa/admin.ts";
-import { LEAK_LIVE_ORDER_IDS_SQL, RUN_RESERVATIONS_SQL, leakCheck } from "../../medusa/oracle.ts";
+import {
+  LEAK_LIVE_ORDER_IDS_SQL,
+  RUN_RESERVATIONS_SQL,
+  RUN_RESERVATIONS_STATE_SQL,
+  leakCheck,
+} from "../../medusa/oracle.ts";
+import { judgeLeakClause } from "../med/known-leak.ts";
 import { likeLiteralPrefix, prefixedEmail } from "../../medusa/payloads.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
 import { closePool, createReadOnlyPool, selectRows } from "../../oracles/pg.ts";
@@ -192,12 +198,30 @@ export async function medusaSetupWith(
  */
 export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Promise<StageResult> {
   const reasons: string[] = [];
+  // KNOWN notes (P6-OBS-MED-002): they do not fail the stage, they are reported with it
+  const known: string[] = [];
   const pool = deps.openPool();
   try {
     const dataPrefix = caseDataPrefix(ctx.runPrefix, ctx.caseDef.id);
     const likePrefix = likeLiteralPrefix(dataPrefix);
     const token = ctx.secrets.MEDUSA_ADMIN_TOKEN;
     if (!token) throw new Error("no admin token: setup did not run");
+    // the reservations held before anything is cancelled: a reservation of an order that was live now is a finding (P6-OBS-MED-002)
+    const inventory = ctx.config.inventoryItemId;
+    const liveAtStart = new Set<string>();
+    let leakAtStart = 0;
+    if (typeof inventory === "string") {
+      const before = await selectRows<{ id: string; canceled: number }>(
+        pool,
+        RUN_RESERVATIONS_STATE_SQL,
+        [inventory, likePrefix],
+      );
+      for (const r of before) {
+        if (r.canceled === 1) leakAtStart += 1;
+        else liveAtStart.add(r.id);
+      }
+    }
+    const knownId = typeof ctx.config.knownLeakId === "string" ? ctx.config.knownLeakId : undefined;
     const orders = await selectRows<{ id: string }>(pool, LEAK_LIVE_ORDER_IDS_SQL, [likePrefix]);
     for (const order of orders) {
       try {
@@ -206,25 +230,37 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
         reasons.push(`TEST BUG: cleanup order ${order.id} failed: ${message(err)}`);
       }
     }
-    // Medusa refuses to delete a product whose inventory item still holds reservations. The leaked ones of this run's orders
-    // are recorded first (a PRODUCT BUG reason), then deleted one by one through the admin API, and only then the product.
-    const inventory = ctx.config.inventoryItemId;
+    // Medusa refuses to delete a product whose inventory item still holds reservations. This run's reservations are recorded
+    // first (ids named), then deleted one by one through the admin API, and only then the product. The deletion is judged by the
+    // shared known-leak check: covered only when every deleted reservation was on a canceled order and their count is the leak.
     if (typeof inventory === "string") {
-      const leaked = await selectRows<{ id: string; order_id: string }>(pool, RUN_RESERVATIONS_SQL, [
+      const held = await selectRows<{ id: string; order_id: string }>(pool, RUN_RESERVATIONS_SQL, [
         inventory,
         likePrefix,
       ]);
-      if (leaked.length > 0) {
-        reasons.push(
-          `PRODUCT BUG: ${leaked.length} reservation(s) of this run's orders held the inventory item at cleanup: ${leaked.map((r) => r.id).join(", ")}`,
-        );
-        for (const r of leaked) {
-          try {
-            await deps.deleteRunReservation(token, r.id);
-          } catch (err) {
-            reasons.push(`TEST BUG: cleanup reservation ${r.id} failed: ${message(err)}`);
-          }
+      const liveHeld = held.filter((r) => liveAtStart.has(r.id)).length;
+      const note = `${held.length} reservation(s) of this run's orders held the inventory item at cleanup (ids ${held.map((r) => r.id).join(", ")})`;
+      let deleteFailed = false;
+      for (const r of held) {
+        try {
+          await deps.deleteRunReservation(token, r.id);
+        } catch (err) {
+          deleteFailed = true;
+          reasons.push(`TEST BUG: cleanup reservation ${r.id} failed: ${message(err)}`);
         }
+      }
+      const clause = judgeLeakClause({
+        label: "cleanup reservations",
+        leak: leakAtStart,
+        observed: held.length,
+        onlyLeak: liveHeld === 0 && !deleteFailed,
+        ...(knownId === undefined ? {} : { knownId }),
+      });
+      if (clause.status === "KNOWN") known.push(`${clause.text}; ${note}`);
+      else if (clause.status === "FAIL") {
+        reasons.push(
+          `${clause.text}; ${note}${liveHeld > 0 ? `, ${liveHeld} of them on a live order` : ""}`,
+        );
       }
     }
     const productId = ctx.config.productId;
@@ -265,7 +301,7 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
   } finally {
     await closePool(pool);
   }
-  if (reasons.length === 0) return { ok: true, reasons: [] };
+  if (reasons.length === 0) return { ok: true, reasons: known };
   // a leak is a product finding; a failed cleanup call is a TEST BUG and outranks it
   const kind = reasons.some((r) => r.startsWith("TEST BUG")) ? "TEST BUG" : "PRODUCT BUG";
   return { ok: false, kind, reasons };

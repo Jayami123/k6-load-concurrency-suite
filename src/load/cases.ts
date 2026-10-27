@@ -23,6 +23,7 @@ import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.t
 import {
   cancelRaceStage,
   ledgerStage,
+  KNOWN_LEAK_ID,
   makeInvariantSetup,
   splitStage,
 } from "./med/invariant-stages.ts";
@@ -1452,7 +1453,7 @@ export const MED_LOAD_009: LoadCase = {
     },
   ],
   stages: {
-    setup: makeInvariantSetup({ promo: false }),
+    setup: makeInvariantSetup({ promo: false, knownLeakId: KNOWN_LEAK_ID }),
     reconcile: composeStages([reconcileStage, cancelRaceStage]),
     cleanup: medusaCleanup,
   },

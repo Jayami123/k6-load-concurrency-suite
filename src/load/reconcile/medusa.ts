@@ -8,6 +8,7 @@ import {
 } from "../../medusa/oracle.ts";
 import { selectRows } from "../../oracles/pg.ts";
 import { checkCaptureCap, checkRefundCap } from "../../medusa/invariants.ts";
+import { judgeLeakClause } from "../med/known-leak.ts";
 import { auditByIntent } from "../knee/intents.ts";
 import { MED_INTENT_ROWS_SQL, medRowsByIntent } from "../knee/med-intents.ts";
 import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
@@ -21,6 +22,8 @@ export interface MedusaVariantCounts {
   liveOrderQty: number;
   /** Canceled orders: reported as their own count, and they must hold no reservation (P6-MED-LOAD-009, invariant-stages). */
   canceledOrderCount: number;
+  /** Reservation quantity held by canceled orders (the known cancel-race leak, P6-OBS-MED-002). */
+  canceledHeldQty?: number;
   reservationQty: number;
   stocked: number;
   reserved: number;
@@ -49,7 +52,11 @@ export interface MedusaSnapshot {
  * The database holding more orders than the client got back is F-M2 (counted, not a failure). The client holding more than the
  * database is a PRODUCT BUG (lost orders), and so is a live-order count that differs from the database.
  */
-export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): AuditResult {
+export function evaluateMedusaAudit(
+  s: MedusaSnapshot,
+  prefixLike: string,
+  knownLeakId?: string,
+): AuditResult {
   const v = s.variant;
   const result: AuditResult = {
     schema: 1,
@@ -81,15 +88,22 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
   }
 
   const reservationsOk = v.reservationQty === v.liveOrderQty && v.reserved === v.reservationQty;
-  check(
-    "reservations",
-    reservationsOk,
-    `rows ${v.reservationQty}, live units ${v.liveOrderQty}, reserved ${v.reserved}`,
-  );
-  if (!reservationsOk) {
-    bug(
-      `reservation rows ${v.reservationQty}, live units ${v.liveOrderQty}, inventory_level.reserved ${v.reserved}`,
-    );
+  const leakClause = judgeLeakClause({
+    label: "reconcile reservations",
+    leak: v.canceledHeldQty ?? 0,
+    observed: v.reservationQty - v.liveOrderQty,
+    onlyLeak: v.reserved === v.reservationQty,
+    ...(knownLeakId === undefined ? {} : { knownId: knownLeakId }),
+  });
+  const detail = `rows ${v.reservationQty}, live units ${v.liveOrderQty}, reserved ${v.reserved}`;
+  const message = `reservation rows ${v.reservationQty}, live units ${v.liveOrderQty}, inventory_level.reserved ${v.reserved}`;
+  if (leakClause.status === "KNOWN") {
+    check("reservations", true, `${leakClause.text}; ${detail}`);
+  } else if (leakClause.status === "FAIL" || !reservationsOk) {
+    check("reservations", false, detail);
+    bug(leakClause.status === "FAIL" ? `${message} (${leakClause.text})` : message);
+  } else {
+    check("reservations", true, detail);
   }
   check(
     "canceled-orders",
@@ -229,5 +243,5 @@ export async function reconcileMedusa(
     ]);
     snapshot.intents = { counters: intents, ...medRowsByIntent(rows, cfg.prefix) };
   }
-  return evaluateMedusaAudit(snapshot, cfg.prefixLike);
+  return evaluateMedusaAudit(snapshot, cfg.prefixLike, cfg.knownLeakId);
 }

@@ -89,6 +89,18 @@ SELECT COUNT(*)::int AS n FROM reservation_item
 WHERE inventory_item_id = $1 AND deleted_at IS NULL
 `;
 
+/** Reservation quantity held by canceled orders of an inventory item: the rows the cancel race leaks (P6-OBS-MED-002). */
+export const CANCELED_HELD_QTY_SQL = `
+SELECT COALESCE(SUM(ri.quantity), 0)::text AS qty
+FROM reservation_item ri
+JOIN order_item oi ON oi.item_id = ri.line_item_id AND oi.deleted_at IS NULL
+JOIN "order" o ON o.id = oi.order_id AND oi.version = o.version
+WHERE ri.inventory_item_id = $1
+  AND ri.deleted_at IS NULL
+  AND o.deleted_at IS NULL
+  AND o.canceled_at IS NOT NULL
+`;
+
 export type OversellOracleSnapshot = {
   orderCount: number;
   orderQty: number;
@@ -96,6 +108,8 @@ export type OversellOracleSnapshot = {
   liveOrderCount: number;
   liveOrderQty: number;
   canceledOrderCount: number;
+  /** Reservation quantity held by canceled orders (the known cancel-race leak). */
+  canceledHeldQty?: number;
   reservationQty: number;
   stocked: number;
   reserved: number;
@@ -107,7 +121,7 @@ export async function readOversellSnapshot(
   inventoryItemId: string,
   locationId: string,
 ): Promise<OversellOracleSnapshot> {
-  const [orderRows, qtyRows, liveRows, liveQtyRows, canceledRows, resRows, invRows] =
+  const [orderRows, qtyRows, liveRows, liveQtyRows, canceledRows, resRows, invRows, heldRows] =
     await Promise.all([
       selectRows<{ n: number }>(pool, ORDERS_FOR_VARIANT_SQL, [variantId]),
       selectRows<{ qty: string }>(pool, ORDER_QTY_FOR_VARIANT_SQL, [variantId]),
@@ -119,6 +133,7 @@ export async function readOversellSnapshot(
         inventoryItemId,
         locationId,
       ]),
+      selectRows<{ qty: string }>(pool, CANCELED_HELD_QTY_SQL, [inventoryItemId]),
     ]);
   const stocked = Number(invRows[0]?.stocked ?? 0);
   const reserved = Number(invRows[0]?.reserved ?? 0);
@@ -128,6 +143,7 @@ export async function readOversellSnapshot(
     liveOrderCount: Number(liveRows[0]?.n ?? 0),
     liveOrderQty: Number(liveQtyRows[0]?.qty ?? 0),
     canceledOrderCount: Number(canceledRows[0]?.n ?? 0),
+    canceledHeldQty: Number(heldRows[0]?.qty ?? 0),
     reservationQty: Number(resRows[0]?.qty ?? 0),
     stocked,
     reserved,
@@ -198,6 +214,17 @@ SELECT
 
 /** Live orders of a case prefix, by id, so a reported stuck order can be told apart from a new leak (D41). */
 /** This run's reservations of an inventory item, through their order line items (cleanup deletes them before the product). */
+// This run's reservations with the state of their order: canceled (1) or not (0), read before the cleanup cancels anything.
+export const RUN_RESERVATIONS_STATE_SQL = `
+SELECT DISTINCT ri.id, (o.canceled_at IS NOT NULL)::int AS canceled
+FROM reservation_item ri
+JOIN order_item oi ON oi.item_id = ri.line_item_id AND oi.deleted_at IS NULL
+JOIN "order" o ON o.id = oi.order_id AND oi.version = o.version
+WHERE ri.inventory_item_id = $1
+  AND ri.deleted_at IS NULL
+  AND o.email LIKE $2
+`;
+
 // one row per reservation: order_item keeps a row per version, so the current version (o.version) is the only one counted
 export const RUN_RESERVATIONS_SQL = `
 SELECT DISTINCT ri.id, o.id AS order_id
