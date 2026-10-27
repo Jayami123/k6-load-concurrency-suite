@@ -296,7 +296,7 @@ export function makeCancelRaceStage(knownLeakId?: string): Stage {
       const leaks = rows.filter((r) => r.canceled === 1 && r.reservations_live > 0);
       const leakReasons = leaks.map(
         (r) =>
-          `canceled order ${r.id} holds ${r.reservations_live} live reservation(s) (race ${raceOfEmail(r.email) ?? "none"}, HTTP ${statusesOf(r.id)})`,
+          `canceled order ${r.id} holds ${r.reservations_live} undeleted reservation(s) (race ${raceOfEmail(r.email) ?? "none"}, HTTP ${statusesOf(r.id)})`,
       );
       // no order is both canceled and fulfilled except the counted X05
       const canceledFulfilled = rows.filter(
