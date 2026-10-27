@@ -5,7 +5,7 @@ import { runJourney } from "../lib/pure/journey.js";
 import { attendeeEmail } from "../lib/pure/prefix.js";
 import { slotFor, scheduleWindow } from "../lib/pure/cal-slots.js";
 import { recycleSlotIndex } from "../lib/pure/recycle.js";
-import { request, retried, retryCounters } from "../lib/http.js";
+import { request, retried, retryCounters, safeJson } from "../lib/http.js";
 export const acceptedCounter = new Counter("p6_bookings_accepted");
 export const cancelsOkCounter = new Counter("p6_cancels_ok");
 export const cancelsFailedCounter = new Counter("p6_cancels_failed");
@@ -162,6 +162,12 @@ export function runCalBook(cfg, opts = {}) {
         if (ok) {
           acceptedCounter.add(1);
           opts.onCommit?.();
+        } else {
+          // self-describing refusal: the status and the server's message, with e-mail addresses removed (no tokens, no PII)
+          const message = String(safeJson(r, "message") ?? "").replace(/\S+@\S+/g, "<email>");
+          console.warn(
+            `cal book refused: HTTP ${r.status} status=${safeJson(r, "status")} message=${message.slice(0, 120)}`,
+          );
         }
         // A failed cancel makes this iteration a FAIL in its intent line (plan Phase 4b task 7 §6.3).
         if (ok && cfg.recycle === true) return { ok: cancelRecycled(cfg, r.json("uid")) };
