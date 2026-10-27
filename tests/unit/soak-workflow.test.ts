@@ -31,14 +31,30 @@ function worstMinutes(value: string): number {
 }
 
 describe("soak workflow", () => {
-  it("is dispatch-only from main, with the three product jobs and their if guards", () => {
+  it("runs from main on dispatch and on the two crons, with the three product jobs and their if guards", () => {
     assert.match(TEXT, /^on:\n {2}workflow_dispatch:/m);
-    assert.doesNotMatch(TEXT, /^ {2}schedule:/m);
+    assert.match(
+      TEXT,
+      /^ {2}schedule:\n {4}- cron: "11 21 \* \* 1-6"\n {4}- cron: "29 19 \* \* 0"$/m,
+    );
     assert.match(TEXT, /must be dispatched from main/);
     const jobs = jobsOf(TEXT);
     assert.deepEqual([...jobs.keys()], JOB_NAMES);
-    for (const [name, body] of jobs)
+    for (const [name, body] of jobs) {
       assert.match(body, /^ {4}if: \$\{\{/m, `${name} has an if guard`);
+      assert.match(
+        body,
+        /^ {4}if: .*github\.event_name == 'schedule'/m,
+        `${name} runs on the schedule`,
+      );
+    }
+  });
+
+  it("maps the Sunday cron to 120 minutes and the nightly cron to 30, in every duration read", () => {
+    const mapping =
+      "(github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min)";
+    assert.equal(TEXT.split(mapping).length - 1, 12, "four duration reads per product job");
+    assert.doesNotMatch(TEXT.split(mapping).join(""), /inputs\.duration_min/);
   });
 
   it("gives every step a timeout, and each job's step caps leave at least 10 minutes", () => {

@@ -13,6 +13,11 @@ on:
         type: choice
         options: ["30", "120"]
         default: "30"
+  # 30-minute soak at 21:11 UTC Monday to Saturday (02:41 Asia/Colombo) and 2-hour soak at 19:29 UTC Sunday (00:59 Asia/Colombo Monday).
+  # Scheduled runs use product=all; the cron picks the duration in each job (see the duration expressions).
+  schedule:
+    - cron: "11 21 * * 1-6"
+    - cron: "29 19 * * 0"
 
 permissions:
   contents: read
@@ -33,11 +38,11 @@ env:
 jobs:
   cal-soak:
     name: cal-soak
-    if: ${{ inputs.product == 'cal' || inputs.product == 'all' }}
+    if: ${{ github.event_name == 'schedule' || inputs.product == 'cal' || inputs.product == 'all' }}
     runs-on: ubuntu-24.04
     # 120 min: setup steps 29 (copied from cal-knee, includes Start Cal 6) + soak 165 + summary 2 + scan 2 + upload 5 + stop 1
     # = 204, job 225, margin 21. 30 min: 29 + 45 + 10 = 84, job 105, margin 21.
-    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 225 || 105 }}
     env:
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
@@ -48,7 +53,7 @@ jobs:
       COREPACK_ENABLE_STRICT: "0"
       TURBO_TELEMETRY_DISABLED: "1"
       NEXT_TELEMETRY_DISABLED: "1"
-      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+      SOAK_DURATION_MIN: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
     steps:
       - name: Stop unless dispatched from main
         timeout-minutes: 1
@@ -198,7 +203,7 @@ jobs:
           echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
 
       - name: Soak P6-CAL-LOAD-008 (setup, run, audit and cleanup inside the step)
-        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: |
           set -euo pipefail
@@ -219,7 +224,7 @@ jobs:
         if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 5
         with:
-          name: soak-cal-${{ inputs.duration_min }}
+          name: soak-cal-${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
           if-no-files-found: error
           retention-days: 90
@@ -232,11 +237,11 @@ jobs:
   medusa-soak:
     name: medusa-soak
     needs: cal-soak
-    if: ${{ always() && (inputs.product == 'medusa' || (inputs.product == 'all' && needs.cal-soak.result == 'success')) }}
+    if: ${{ always() && (inputs.product == 'medusa' || ((github.event_name == 'schedule' || inputs.product == 'all') && needs.cal-soak.result == 'success')) }}
     runs-on: ubuntu-24.04
     # 120 min: setup steps 20 (copied from medusa-knee, includes Start Medusa 3) + soak 165 + summary 2 + scan 2 + upload 5
     # + stop 1 = 195, job 225, margin 30. 30 min: 20 + 45 + 10 = 75, job 105, margin 30.
-    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 225 || 105 }}
     env:
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
@@ -247,7 +252,7 @@ jobs:
       MEDUSA_SKIP_STOREFRONT: "1"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       COREPACK_ENABLE_STRICT: "0"
-      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+      SOAK_DURATION_MIN: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
     steps:
       - name: Stop unless dispatched from main
         timeout-minutes: 1
@@ -371,7 +376,7 @@ jobs:
           npm run up:medusa
           echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
       - name: Soak P6-MED-LOAD-005 (setup, run, audit and cleanup inside the step)
-        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: node scripts/load/run-load.ts --case P6-MED-LOAD-005 --profile soak
       - name: Token scan of the soak results
@@ -389,7 +394,7 @@ jobs:
         if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 5
         with:
-          name: soak-medusa-${{ inputs.duration_min }}
+          name: soak-medusa-${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
           if-no-files-found: error
           retention-days: 90
@@ -402,10 +407,10 @@ jobs:
   documenso-soak:
     name: documenso-soak
     needs: medusa-soak
-    if: ${{ always() && (inputs.product == 'documenso' || (inputs.product == 'all' && needs.medusa-soak.result == 'success')) }}
+    if: ${{ always() && (inputs.product == 'documenso' || ((github.event_name == 'schedule' || inputs.product == 'all') && needs.medusa-soak.result == 'success')) }}
     runs-on: ubuntu-24.04
     # Same arithmetic as cal-soak: 225 for 120 min, 105 for 30 min (the 2-h cleanup total is UNPROBED: confirm in the first dispatch).
-    timeout-minutes: ${{ inputs.duration_min == '120' && 225 || 105 }}
+    timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 225 || 105 }}
     env:
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
@@ -420,7 +425,7 @@ jobs:
       NEXT_PRIVATE_WEBHOOK_SSRF_BYPASS_HOSTS: p6-webhook.test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       COREPACK_ENABLE_STRICT: "0"
-      SOAK_DURATION_MIN: ${{ inputs.duration_min }}
+      SOAK_DURATION_MIN: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
     steps:
       - name: Stop unless dispatched from main
         timeout-minutes: 1
@@ -537,7 +542,7 @@ jobs:
           npm run up:documenso
           echo "HARNESS_UP_SECONDS=${SECONDS}" >> "$GITHUB_ENV"
       - name: Soak P6-DOC-LOAD-006 (setup, run, audit and cleanup inside the step)
-        timeout-minutes: ${{ inputs.duration_min == '120' && 165 || 45 }}
+        timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: node scripts/load/run-load.ts --case P6-DOC-LOAD-006 --profile soak
       - name: Token scan of the soak results
@@ -555,7 +560,7 @@ jobs:
         if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 5
         with:
-          name: soak-documenso-${{ inputs.duration_min }}
+          name: soak-documenso-${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
           path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
           if-no-files-found: error
           retention-days: 90
