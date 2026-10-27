@@ -869,6 +869,29 @@ per-second p95s of the points file. A window max can come from one slow second.
 | P6-CAL-LOAD-003 | 4             | 3    | 54.1 / 79.8 / 82.6          | 49.8 / 80.9 / 234.3 (33 windows)   | 0          | 8.0                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
 | P6-MED-LOAD-002 | 0.7           | 3    | 214.5 / 220.6 / 220.8       | 217.6 / 228.7 / 314.2 (15 windows) | 0          | 4.2                 | ubuntu24 20261023.334.3, 4 vCPU | 40242002499, 40242007346, 40242009224 |
 
+## A/A noise and the tolerance
+
+An A/A set measures how much a product's steady numbers move on the same runner with the same code. `gate.yml` (dispatch only, from
+`main`, input `product`: `cal`, `medusa` or `all`) runs one discarded warm-up arm and three counted arms per product, all on one
+stack, each the 120 s steady case (`P6-CAL-LOAD-003`, `P6-MED-LOAD-002`) at the rate of `steadyRateFor`. The results are the
+`aa-cal` and `aa-medusa` artifacts. An arm that is INVALID is shown in the job summary and is not counted.
+
+Per product and metric (`p50Ms`, `p95Ms`, `requestsPerSec`) the rule takes the run-level values of the three counted arms and
+computes the relative spread `S = (max − min) / median`. The tolerance is `T = max(0.10, 2 × S)`: the floor of 10 % stops a lucky
+set from making the gate hair-trigger, and the factor of 2 is the margin for the sampling error of a range of three. A regression
+is called only above `T`. Only the steady profile sets a tolerance; a knee arm or a wrong-rate arm is refused.
+
+`scripts/write-tolerance.ts` writes `k6/thresholds/tolerance.json` from the downloaded counted arm folders, one folder per arm:
+
+```text
+node scripts/write-tolerance.ts --release p6-phase4b --out k6/thresholds/tolerance.json \
+  cal=<dir>,<dir>,<dir> medusa=<dir>,<dir>,<dir>
+```
+
+It exits 2 when a product has fewer than three VALID steady arms, and it writes nothing. The tolerance file is written and committed
+by its own pull request after the A/A dispatches, with its run ids. Until that file exists, no gate may name a tolerance: the
+`P6-RULE-004` tests in `tests/unit/gate-rule-004.test.ts` fail if a workflow does.
+
 ## Soaks
 
 `soak.yml` runs the soak cases `P6-CAL-LOAD-008`, `P6-MED-LOAD-005` and `P6-DOC-LOAD-006` at the steady rate of each product's
