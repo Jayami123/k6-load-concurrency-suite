@@ -10,6 +10,16 @@ on:
         type: choice
         options: [cal, medusa, all]
         default: all
+      ab:
+        description: "Also run the A/B jobs (ab-cal, ab-medusa) and gate-selftest on this dispatch"
+        type: boolean
+        default: false
+  # D1 (plan Phase 4b task 12 §6.4): the self-test runs on load-code PRs and pushes to main; the A/B jobs run on a PR only when a
+  # product ref is bumped or the PR has the perf-gate label, and on a push to main when load code changed.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -27,6 +37,866 @@ env:
   MEDUSA_REF: f677db438f27294fc50e4c7c6612e71ff38eeff5 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh
 
 jobs:
+  detect:
+    name: detect
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    outputs:
+      base_sha: ${{ steps.base.outputs.base_sha }}
+      load_code: ${{ steps.detect.outputs.load_code }}
+      cal_bump: ${{ steps.detect.outputs.cal_bump }}
+      medusa_bump: ${{ steps.detect.outputs.medusa_bump }}
+      perf_gate_label: ${{ steps.detect.outputs.perf_gate_label }}
+      cal_ref_b: ${{ steps.refs.outputs.cal_ref_b }}
+      medusa_ref_b: ${{ steps.refs.outputs.medusa_ref_b }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Base commit of the diff
+        id: base
+        timeout-minutes: 1
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            base="$BEFORE"
+          else
+            base="$(git rev-parse HEAD~1)"
+          fi
+          echo "base_sha=${base}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version: "22"
+
+      - name: Candidate product refs (B, from the head perf.yml)
+        id: refs
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          echo "cal_ref_b=$(grep -oE '^ *CAL_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
+          echo "medusa_ref_b=$(grep -oE '^ *MEDUSA_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Decide the triggers (load code, ref bumps, perf-gate label)
+        id: detect
+        timeout-minutes: 1
+        env:
+          BASE_SHA: ${{ steps.base.outputs.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
+        run: node scripts/load/gate-detect.ts
+
+  gate-selftest:
+    name: gate-selftest
+    needs: detect
+    if: ${{ needs.detect.outputs.load_code == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ab) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+          path: p6
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version: "22"
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      # Nine arms of 30 s plus k6 start-up, and the classifier. The three stubs run in this process (P6-X-LOAD-008).
+      - name: Gate self-test, P6-X-LOAD-008 (fails the slowed stub, passes the unchanged one)
+        id: selftest
+        timeout-minutes: 6
+        working-directory: p6
+        run: node scripts/load/gate-selftest.ts --out results/gate-selftest
+
+      - name: Token scan of the self-test results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 1
+        working-directory: p6
+        run: node scripts/evidence-token-scan.mjs results/gate-selftest
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 1
+        with:
+          name: gate-selftest
+          path: p6/results/gate-selftest/
+          if-no-files-found: warn
+          retention-days: 90
+
+  ab-cal:
+    name: ab-cal
+    needs: detect
+    if: ${{ (github.event_name == 'push' && needs.detect.outputs.load_code == 'true') || (github.event_name == 'pull_request' && (needs.detect.outputs.cal_bump == 'true' || needs.detect.outputs.perf_gate_label == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.ab && (inputs.product == 'cal' || inputs.product == 'all')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      CAL_CHECKOUT_PATH: products/cal
+      CAL_BASE_URL: http://127.0.0.1:3000
+      # Fork trust-auth local DB (no password). Not a secret.
+      CAL_DB_URL: postgresql://postgres@127.0.0.1:5450/calendso
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+      TURBO_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: "Check out the candidate (B: the PR head, or the pushed commit)"
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: p6
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: "Check out the base (A: the PR base, or the commit before the push)"
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: p6-base
+          ref: ${{ needs.detect.outputs.base_sha }}
+
+      - name: Checkout Cal fork
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/cal
+          ref: ${{ env.CAL_REF }}
+          path: ${{ env.CAL_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Cal fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${CAL_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${CAL_REF}" ]; then
+            echo "::error::Cal HEAD ${head} does not match CAL_REF ${CAL_REF}"
+            exit 1
+          fi
+
+      - name: Verify CAL_REF matches bootstrap.sh
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          if ! grep -q "^CAL_REF=\"${CAL_REF}\"$" "${P6_WORKING_DIRECTORY}/scripts/bootstrap.sh"; then
+            echo "::error::CAL_REF in gate.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+          ln -s "${{ github.workspace }}/p6/node_modules" "${{ github.workspace }}/p6-base/node_modules"
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      # Corepack downloads the Yarn the Cal fork pins from repo.yarnpkg.com.
+      - name: Enable corepack
+        timeout-minutes: 1
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          corepack enable
+          version="$(yarn --version)"
+          if [ "$version" != "4.12.0" ]; then
+            echo "::error::yarn ${version} is not the 4.12.0 the Cal fork pins"
+            exit 1
+          fi
+
+      - name: Restore Cal Yarn cache
+        timeout-minutes: 1
+        id: cal_yarn
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/.yarn/cache
+          key: cal-yarn-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      - name: Restore Cal node_modules cache
+        timeout-minutes: 2
+        id: cal_nm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
+          key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+
+      # Always run: the node_modules cache holds only the root folder, not workspace-local node_modules.
+      - name: Install Cal dependencies
+        timeout-minutes: 3
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn install --immutable
+
+      - name: Generate Cal Prisma client
+        timeout-minutes: 1
+        working-directory: ${{ env.CAL_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          yarn workspace @calcom/prisma prisma generate
+
+      - name: Prepare Cal product .env and harness roots
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh cal
+
+      - name: Restore Cal build cache
+        timeout-minutes: 1
+        id: cal_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+
+      - name: Pull Cal images (3 tries, 15 s then 30 s)
+        id: cal_pull
+        timeout-minutes: 3
+        working-directory: ${{ env.PRODUCTS_ROOT }}/cal/packages/prisma
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-cal \
+            -f "${{ env.PRODUCTS_ROOT }}/cal/packages/prisma/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/cal.compose.yml"
+
+      - name: Start Cal (harness up)
+        id: cal_up
+        if: ${{ steps.cal_pull.outcome == 'success' }}
+        # 6 min: the slowest Cal start over 55 cal-smoke runs was 255 s (PRE-2 section 3.2); cap >= 1.25 x that.
+        timeout-minutes: 6
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run up:cal
+
+      - name: Check out the candidate Cal ref (B; only on a Cal ref bump)
+        id: cal_b
+        if: ${{ needs.detect.outputs.cal_bump == 'true' }}
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/cal
+          ref: ${{ needs.detect.outputs.cal_ref_b }}
+          path: products-b/cal
+          persist-credentials: false
+
+      - name: A/B switch 1 (A, cal; runs only on a ref bump)
+        id: sw1
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 1 (A, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab1
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw1.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-1" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 1 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 2 (B, cal; runs only on a ref bump)
+        id: sw2
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 2 (B, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab2
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw2.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-1" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 1 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 3 (A, cal; runs only on a ref bump)
+        id: sw3
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 3 (A, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab3
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw3.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-2" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 2 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 4 (B, cal; runs only on a ref bump)
+        id: sw4
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 4 (B, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab4
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw4.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-2" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 2 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 5 (A, cal; runs only on a ref bump)
+        id: sw5
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 5 (A, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab5
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw5.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-3" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 3 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 6 (B, cal; runs only on a ref bump)
+        id: sw6
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
+        timeout-minutes: 6
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+          npm run up:cal
+
+      - name: A/B arm 6 (B, P6-CAL-LOAD-003, steady, 120 s)
+        id: ab6
+        if: ${{ !cancelled() && steps.cal_up.outcome == 'success' && (needs.detect.outputs.cal_bump != 'true' || steps.sw6.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-CAL-LOAD-003 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-3" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B verdict (P6-CAL-LOAD-003; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+        id: verdict
+        if: ${{ !cancelled() }}
+        timeout-minutes: 1
+        working-directory: p6-base
+        run: |
+          set -euo pipefail
+          a=""
+          for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
+          b=""
+          for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
+          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product cal --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-cal.json"
+
+      - name: Job summary (LOAD table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/write-ci-job-summary.ts
+
+      - name: Token scan of the A/B results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: node scripts/evidence-token-scan.mjs results/ab
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 3
+        with:
+          name: ab-cal
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/ab/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Stop Cal (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:cal || true
+
+  ab-medusa:
+    name: ab-medusa
+    needs: detect
+    if: ${{ (github.event_name == 'push' && needs.detect.outputs.load_code == 'true') || (github.event_name == 'pull_request' && (needs.detect.outputs.medusa_bump == 'true' || needs.detect.outputs.perf_gate_label == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.ab && (inputs.product == 'medusa' || inputs.product == 'all')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      MEDUSA_CHECKOUT_PATH: products/medusa-dtc-starter
+      MEDUSA_BASE_URL: http://127.0.0.1:9000
+      # Public harness default database URL, not a secret.
+      MEDUSA_DB_URL: postgres://medusa:medusa@127.0.0.1:5433/medusa
+      MEDUSA_ADMIN_EMAIL: admin@qa.local
+      MEDUSA_SKIP_STOREFRONT: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+    steps:
+      - name: "Check out the candidate (B: the PR head, or the pushed commit)"
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: p6
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: "Check out the base (A: the PR base, or the commit before the push)"
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: p6-base
+          ref: ${{ needs.detect.outputs.base_sha }}
+
+      - name: Read the candidate product refs (B, from the head perf.yml)
+        timeout-minutes: 1
+        working-directory: p6
+        run: |
+          set -euo pipefail
+          echo "CAL_REF_B=$(grep -oE '^ *CAL_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_ENV"
+          echo "MEDUSA_REF_B=$(grep -oE '^ *MEDUSA_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_ENV"
+
+      - name: Checkout Medusa fork
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/medusa-dtc-starter
+          ref: ${{ env.MEDUSA_REF }}
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Medusa fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${MEDUSA_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${MEDUSA_REF}" ]; then
+            echo "::error::Medusa HEAD ${head} does not match MEDUSA_REF ${MEDUSA_REF}"
+            exit 1
+          fi
+
+      - name: Stub harness product roots
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRODUCTS_ROOT}/cal" "${PRODUCTS_ROOT}/documenso" "${PRODUCTS_ROOT}/twenty-CRM" "${{ github.workspace }}/products-b/cal" "${{ github.workspace }}/products-b/documenso" "${{ github.workspace }}/products-b/twenty-CRM"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+          ln -s "${{ github.workspace }}/p6/node_modules" "${{ github.workspace }}/p6-base/node_modules"
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      - name: Enable pnpm via corepack
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.11.1 --activate
+          version="$(pnpm --version)"
+          if [ "$version" != "10.11.1" ]; then
+            echo "::error::pnpm ${version} is not the 10.11.1 the Medusa fork pins"
+            exit 1
+          fi
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Restore pnpm store cache
+        timeout-minutes: 1
+        id: medusa_pnpm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
+
+      - name: Install Medusa dependencies
+        timeout-minutes: 1
+        working-directory: ${{ env.MEDUSA_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Restore Medusa build cache
+        timeout-minutes: 1
+        id: medusa_build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+
+      - name: Generate the CI admin password
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::${pw}"
+          echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 3
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
+      - name: Start Medusa (harness up)
+        timeout-minutes: 3
+        id: medusa_up
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run up:medusa
+
+      - name: Check out the candidate Medusa ref (B; only on a Medusa ref bump)
+        id: medusa_b
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' }}
+        timeout-minutes: 1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/medusa-dtc-starter
+          ref: ${{ needs.detect.outputs.medusa_ref_b }}
+          path: products-b/medusa-dtc-starter
+          persist-credentials: false
+
+      - name: A/B switch 1 (A, medusa; runs only on a ref bump)
+        id: sw1
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 1 (A, P6-MED-LOAD-002, steady, 120 s)
+        id: ab1
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw1.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-1" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 1 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 2 (B, medusa; runs only on a ref bump)
+        id: sw2
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 2 (B, P6-MED-LOAD-002, steady, 120 s)
+        id: ab2
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw2.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-1" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 1 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 3 (A, medusa; runs only on a ref bump)
+        id: sw3
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 3 (A, P6-MED-LOAD-002, steady, 120 s)
+        id: ab3
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw3.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-2" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 2 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 4 (B, medusa; runs only on a ref bump)
+        id: sw4
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 4 (B, P6-MED-LOAD-002, steady, 120 s)
+        id: ab4
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw4.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-2" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 2 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 5 (A, medusa; runs only on a ref bump)
+        id: sw5
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 5 (A, P6-MED-LOAD-002, steady, 120 s)
+        id: ab5
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw5.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6-base
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/a-3" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::A arm 3 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B switch 6 (B, medusa; runs only on a ref bump)
+        id: sw6
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+          npm run up:medusa
+
+      - name: A/B arm 6 (B, P6-MED-LOAD-002, steady, 120 s)
+        id: ab6
+        if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (needs.detect.outputs.medusa_bump != 'true' || steps.sw6.outcome == 'success') }}
+        timeout-minutes: 4
+        working-directory: p6
+        env:
+          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/load/run-load.ts --case P6-MED-LOAD-002 --profile steady --out "${{ github.workspace }}/p6/results/ab/b-3" || status=$?
+          # exit 3 is INVALID: not counted; the job stays green
+          if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
+          exit "$status"
+
+      - name: A/B verdict (P6-MED-LOAD-002; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+        id: verdict
+        if: ${{ !cancelled() }}
+        timeout-minutes: 1
+        working-directory: p6-base
+        run: |
+          set -euo pipefail
+          a=""
+          for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
+          b=""
+          for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
+          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product medusa --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-medusa.json"
+
+      - name: Job summary (LOAD table)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 1
+        working-directory: p6
+        run: node scripts/write-ci-job-summary.ts
+
+      - name: Token scan of the A/B results
+        id: token_scan
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: p6
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs results/ab
+          # The release scan (.gitleaks.toml) lets the publishable key through only in .../load-medusa/P6-MED-LOAD-nnn/<attempt>/k6-config.json:
+          # each arm keeps its case and attempt folders, and the arm label (a-1, b-2 ...) stays out of the artefact path.
+          mkdir -p stage/load-medusa/P6-MED-LOAD-002
+          for d in results/ab/*/P6-MED-LOAD-002/*; do
+            [ -d "$d" ] && cp -a "$d" stage/load-medusa/P6-MED-LOAD-002/
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 3
+        with:
+          name: ab-medusa
+          path: p6/stage/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Stop Medusa (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 1
+        working-directory: p6
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+
   aa-cal:
     name: aa-cal
     if: ${{ inputs.product == 'cal' || inputs.product == 'all' }}
