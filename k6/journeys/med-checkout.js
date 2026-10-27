@@ -33,8 +33,9 @@ const ADDRESS = {
  * opts.abandon(n) (task 6): an iteration n for which it returns true stops before "complete" and counts p6_abandoned.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
  * opts.instance (task 10): "primary" or "secondary", tagged on every request (the base URL is set by the caller in cfg).
+ * opts.onOrder(orderId, lineItemId) (task 10): called with the order and its first line item after a classified complete.
  * opts.promoCode (task 10): the promotion code applied to this cart before the line item; absent means no promotion.
- * @param {{ classify?: boolean, instance?: "primary" | "secondary", promoCode?: string, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
+ * @param {{ classify?: boolean, instance?: "primary" | "secondary", promoCode?: string, onOrder?: (orderId: string, lineItemId: string) => void, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
@@ -233,6 +234,10 @@ export function runMedCheckout(cfg, opts = {}) {
           if (r.status === 200 && safeJson(r, "type") === "order") {
             end(ordersCounter);
             opts.onCommit?.();
+            opts.onOrder?.(
+              /** @type {string} */ (safeJson(r, "order.id")),
+              /** @type {string} */ (safeJson(r, "order.items.0.id")),
+            );
             return { ok: true };
           }
           if (r.status >= 500) return { ok: false }; // p6_iter_failed
