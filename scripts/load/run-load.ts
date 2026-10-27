@@ -11,9 +11,11 @@ import { withSteadyProfile } from "../../src/load/steady.ts";
 import { soakDurationSec, withSoakProfile } from "../../src/load/soak/profile.ts";
 import { soakStatistics, type SoakTelemetry } from "../../src/load/soak/report.ts";
 import { soakVerdict } from "../../src/load/soak/verdict.ts";
+import { parseSoakBounds, thresholdsFor } from "../../src/load/soak/bounds.ts";
 import type { LoadCase, LoadProfileName } from "../../src/load/types.ts";
 
 const KNEE_BOUNDS_FILE = "k6/thresholds/knee-bounds.json";
+const SOAK_BOUNDS_FILE = "k6/thresholds/soak-bounds.json";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -76,7 +78,7 @@ if (profile === "steady" || profile === "soak") {
 
 loadRepoEnv();
 const result = await runLoad(caseDef, { profile, outRoot: arg("--out") });
-if (profile === "soak") writeSoakReport(result, soakSec);
+if (profile === "soak") writeSoakReport(result, soakSec, caseDef.product);
 console.log(`${caseDef.id} ${result.outcome} ${result.verdictPath}`);
 process.exit(result.exitCode);
 
@@ -84,6 +86,7 @@ process.exit(result.exitCode);
 function writeSoakReport(
   result: { verdictPath: string; ctx: LoadContext },
   durationSec: number,
+  product: string,
 ): void {
   const dir = path.dirname(result.verdictPath);
   const telemetryPath = path.join(dir, "telemetry-main.json");
@@ -119,7 +122,10 @@ function writeSoakReport(
     testBugReasons,
     slopeRpm: statistics.rssMb.slope,
     plateau: statistics.rssMb.plateau,
-    thresholds: null,
+    thresholds: thresholdsFor(
+      parseSoakBounds(JSON.parse(readFileSync(SOAK_BOUNDS_FILE, "utf8"))),
+      product,
+    ),
   });
   writeFileSync(
     path.join(dir, "soak.json"),
