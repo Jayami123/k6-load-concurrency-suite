@@ -12,6 +12,14 @@ function series(minutes: number, value: (m: number) => number): SoakPoint[] {
 }
 
 describe("D33 growth over the last 60 minutes", () => {
+  it("ignores points after the requested end of the run", () => {
+    // flat RSS to minute 120, then a late ramp that lies after the end passed to d33Growth
+    const pts = series(180, (m) => (m < 120 ? 1800 : 1800 + 10 * (m - 120)));
+    const r = d33Growth(pts, 120 * 60_000);
+    assert.equal(r.flag, false);
+    assert.equal(r.n, 3601);
+  });
+
   it("does not flag a flat RSS", () => {
     const r = d33Growth(series(120, () => 1800));
     assert.equal(r.flag, false);

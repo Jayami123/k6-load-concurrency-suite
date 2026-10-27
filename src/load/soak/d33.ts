@@ -33,7 +33,7 @@ export function d33Growth(points: SoakPoint[], endMs?: number): D33Result {
     };
   const runEndMs = endMs ?? Math.max(...points.map((p) => p.tMs));
   const windowStartMs = runEndMs - D33_WINDOW_MIN * 60_000;
-  const window = points.filter((p) => p.tMs >= windowStartMs);
+  const window = points.filter((p) => p.tMs >= windowStartMs && p.tMs <= runEndMs);
   const slope = soakSlope(window, windowStartMs, 0);
   const plateau = plateauRatio(window, windowStartMs, 0);
   const growing = slope.theilSenPerMin !== null && slope.theilSenPerMin >= D33_THEIL_SEN_PER_MIN;
