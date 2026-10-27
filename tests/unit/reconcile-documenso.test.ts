@@ -205,4 +205,29 @@ describe("documenso reconciliation: declared known bug P6-OBS-DOC-005", () => {
     const r = evaluateDocumensoAudit(s, SCOPE, DRAINED, ["P6-OBS-DOC-005"]);
     assert.ok(r.violations.some((v) => v.text.includes("completion audit row")));
   });
+  it("a concurrent pair race declared as P6-OBS-DOC-002 counts its double seal and audit rows as known, not violations", () => {
+    const s = clean();
+    s.envelopes[0] = { ...s.envelopes[0]!, sealJobs: 2, completedAudit: 2 };
+    const r = evaluateDocumensoAudit({ ...s, sequentialCompletions: true }, SCOPE, DRAINED, [
+      "P6-OBS-DOC-002",
+    ]);
+    assert.deepEqual(r.violations, []);
+    assert.deepEqual(r.unexpected, []);
+    assert.ok((r.knownBugs["P6-OBS-DOC-002"] ?? 0) > 0);
+    assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, true);
+  });
+
+  it("a completed envelope with no completion audit row is still a PRODUCT BUG under the pair race declaration", () => {
+    const s = clean();
+    s.envelopes[0] = { ...s.envelopes[0]!, completedAudit: 0 };
+    const r = evaluateDocumensoAudit(s, SCOPE, DRAINED, ["P6-OBS-DOC-002"]);
+    assert.ok(
+      r.violations.some(
+        (v) =>
+          v.kind === "PRODUCT BUG" &&
+          v.text === "completed envelope with 0 completion audit row(s), expected 1",
+      ),
+    );
+    assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, false);
+  });
 });
