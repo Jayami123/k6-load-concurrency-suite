@@ -1,14 +1,24 @@
 import type pg from "pg";
 import { caseDataPrefix } from "../../../k6/lib/pure/prefix.js";
 import { cancelBooking, getFreeSlots } from "../../cal/api.ts";
-import { caseLiveBookings, leakCheck, resolveHostSetup } from "../../cal/oracle.ts";
+import {
+  caseLiveBookings,
+  leakCheck,
+  readHostOverlaps,
+  resolveHostSetup,
+} from "../../cal/oracle.ts";
 import { hostPasswordFromProducts, loginAsHost } from "../../cal/session.ts";
 import { privateLinkId, setPrivateLinks, type PrivateLinkInput } from "../../cal/private-link.ts";
 import { readEventLinks } from "../../cal/state-oracle.ts";
 import { likeLiteralPrefix } from "../../medusa/payloads.ts";
 import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
 import { calBaseUrlFromEnv, calDatabaseUrlFromEnv } from "../../races/env.ts";
-import { pickSlotStarts, slotsNeeded, supplyWindowDays } from "../knee/cal-supply.ts";
+import {
+  freeOfHostBookings,
+  pickSlotStarts,
+  slotsNeeded,
+  supplyWindowDays,
+} from "../knee/cal-supply.ts";
 import { kneePlanFor } from "../knee/plan-input.ts";
 import { readSmokeReference } from "../smoke-baseline.ts";
 import { loadRepoEnv } from "../env.ts";
@@ -128,6 +138,8 @@ const DAY_MS = 86_400_000;
 async function setupKneeSupply(
   ctx: LoadContext,
   deps: CalDeps,
+  pool: pg.Pool,
+  userId: number,
   eventTypeId: number,
 ): Promise<void> {
   const plan = kneePlanFor(ctx);
@@ -141,30 +153,48 @@ async function setupKneeSupply(
   // The same first day as createSlotAllocator: 00:00 UTC of the day after tomorrow.
   const from = Math.floor(Date.now() / DAY_MS) * DAY_MS + 2 * DAY_MS;
   const to = from + supplyWindowDays(count) * DAY_MS;
-  const offered = await (deps.freeSlots ?? getFreeSlots)(
-    new Date(from).toISOString(),
-    new Date(to).toISOString(),
-    eventTypeId,
+  ctx.config.slotStarts = pickSlotStarts(
+    await freeSupply(deps, pool, userId, eventTypeId, from, to),
+    count,
   );
-  ctx.config.slotStarts = pickSlotStarts(offered, count);
   Object.assign(ctx.config, plan, { windowDays: 28, smokeP95Ms });
+}
+
+/**
+ * The free slots of the supply window: getSchedule's offers minus every start a host booking overlaps (exact ms, the predicate of
+ * HOST_OVERLAP_SQL). getSchedule offers a start whose 30-minute slot is busy against an unrounded booking (seed bookings at
+ * 09:01:10), so the offers alone can be refused by the booking path (a 409 in steady).
+ */
+async function freeSupply(
+  deps: CalDeps,
+  pool: pg.Pool,
+  userId: number,
+  eventTypeId: number,
+  from: number,
+  to: number,
+): Promise<string[]> {
+  const fromIso = new Date(from).toISOString();
+  const toIso = new Date(to).toISOString();
+  const offered = await (deps.freeSlots ?? getFreeSlots)(fromIso, toIso, eventTypeId);
+  const busy = await readHostOverlaps(pool, userId, fromIso, toIso);
+  return freeOfHostBookings(offered, busy);
 }
 
 /** The steady case's supply: `count` slots from the free slots of the supply window, the same reads as the knee's (plan task 2 §6.4). */
 async function setupSteadySupply(
   ctx: LoadContext,
   deps: CalDeps,
+  pool: pg.Pool,
+  userId: number,
   eventTypeId: number,
   count: number,
 ): Promise<void> {
   const from = Math.floor(Date.now() / DAY_MS) * DAY_MS + 2 * DAY_MS;
   const to = from + supplyWindowDays(count) * DAY_MS;
-  const offered = await (deps.freeSlots ?? getFreeSlots)(
-    new Date(from).toISOString(),
-    new Date(to).toISOString(),
-    eventTypeId,
+  ctx.config.slotStarts = pickSlotStarts(
+    await freeSupply(deps, pool, userId, eventTypeId, from, to),
+    count,
   );
-  ctx.config.slotStarts = pickSlotStarts(offered, count);
   ctx.config.windowDays = 28;
 }
 
@@ -202,10 +232,10 @@ export async function calSetupWith(
       prefix: dataPrefix,
     };
     if (opts.knee === true) {
-      await setupKneeSupply(ctx, deps, eventTypeId);
+      await setupKneeSupply(ctx, deps, pool, userId, eventTypeId);
     }
     if (opts.slots !== undefined) {
-      await setupSteadySupply(ctx, deps, eventTypeId, opts.slots.count);
+      await setupSteadySupply(ctx, deps, pool, userId, eventTypeId, opts.slots.count);
     }
     if (opts.privateLinks === true) {
       await setupPrivateLinks(ctx, pool, deps.links ?? defaultLinks, {

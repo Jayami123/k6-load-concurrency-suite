@@ -55,7 +55,7 @@ describe("cal product setup and cleanup", () => {
 
   it("the config holds no secret and the secrets map stays empty", async () => {
     const ctx = fakeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     const deps: CalDeps = { openPool: () => pool, cancel: async () => {} };
     const out = await calSetupWith(ctx, deps);
     assert.equal(out.ok, true);
@@ -130,7 +130,7 @@ describe("cal private-link setup and restore", () => {
 
   it("the setup sets planned + 2 cap-1 links with unique lower-case ids", async () => {
     const ctx = fakeCtx(); // rate 2 x 30 s = 60 planned, so 62 links
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     const { deps, set } = linkDeps();
     const out = await calSetupWith(
       ctx,
@@ -149,7 +149,7 @@ describe("cal private-link setup and restore", () => {
 
   it("the host cookie is in ctx.secrets and never in ctx.config", async () => {
     const ctx = fakeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     const { deps } = linkDeps();
     await calSetupWith(
       ctx,
@@ -182,7 +182,7 @@ describe("cal private-link setup and restore", () => {
 describe("cal private-link setup refuses saved links with an expiry", () => {
   it("setup fails as a TEST BUG and sets no link when a saved link has an expiry", async () => {
     const ctx = fakeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     const set: PrivateLinkInput[][] = [];
     const deps: CalLinkDeps = {
       password: () => "pw-not-logged",
@@ -251,7 +251,8 @@ describe("cal knee setup", () => {
 
   it("the knee setup writes one slot start per iteration, the plan fields and a 28-day window", async () => {
     const ctx = kneeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    // the first query is the host lookup, the second the host's overlapping bookings (none here)
+    const { pool } = fakePool([[HOST_ROW], []]);
     const deps: CalDeps = {
       openPool: () => pool,
       cancel: async () => {},
@@ -271,7 +272,7 @@ describe("cal knee setup", () => {
 
   it("a supply shorter than the plan is a TEST BUG before any load", async () => {
     const ctx = kneeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     const deps: CalDeps = {
       openPool: () => pool,
       cancel: async () => {},
@@ -287,7 +288,7 @@ describe("cal knee setup", () => {
 
   it("an unreadable smoke reference is an ENV failure with its own reason, and no slots are read", async () => {
     const ctx = kneeCtx();
-    const { pool } = fakePool([[HOST_ROW]]);
+    const { pool } = fakePool([[HOST_ROW], []]);
     let read = false;
     const deps: CalDeps = {
       openPool: () => pool,
