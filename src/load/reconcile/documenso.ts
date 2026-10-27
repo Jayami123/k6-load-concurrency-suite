@@ -88,9 +88,11 @@ export function evaluateDocumensoAudit(
     : declaredBugs.includes("P6-OBS-DOC-002")
       ? "P6-OBS-DOC-002"
       : undefined;
+  // The pair race produces exactly two seal jobs and two completion audit rows (its two completions); more is a new bug.
+  const maxKnown = knownDup === "P6-OBS-DOC-002" ? 2 : Number.POSITIVE_INFINITY;
   for (const e of completed) {
     if (e.sealJobs === 0) bug("completed envelope never sealed");
-    if (e.completedAudit > 1 && knownDup !== undefined) {
+    if (e.completedAudit > 1 && knownDup !== undefined && e.completedAudit <= maxKnown) {
       addFinding(result, {
         kind: "PRODUCT BUG",
         text: "duplicate completion audit row",
@@ -98,7 +100,8 @@ export function evaluateDocumensoAudit(
       });
     } else if (e.completedAudit !== 1)
       bug(`completed envelope with ${e.completedAudit} completion audit row(s), expected 1`);
-    if (e.sealJobs > 1) {
+    if (e.sealJobs > maxKnown) bug(`${e.sealJobs} seal jobs, expected at most ${maxKnown}`);
+    else if (e.sealJobs > 1) {
       addFinding(result, {
         kind: "PRODUCT BUG",
         text: "double seal",
@@ -110,8 +113,9 @@ export function evaluateDocumensoAudit(
   }
   const sealOnce = completed.every(
     (e) =>
-      (e.sealJobs <= 1 || knownDup !== undefined) &&
-      (e.completedAudit === 1 || (knownDup !== undefined && e.completedAudit > 1)),
+      (e.sealJobs <= 1 || (knownDup !== undefined && e.sealJobs <= maxKnown)) &&
+      (e.completedAudit === 1 ||
+        (knownDup !== undefined && e.completedAudit > 1 && e.completedAudit <= maxKnown)),
   );
   check("sealed-once", sealOnce, `${completed.length} completed envelope(s)`);
 

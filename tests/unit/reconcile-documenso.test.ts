@@ -217,6 +217,14 @@ describe("documenso reconciliation: declared known bug P6-OBS-DOC-005", () => {
     assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, true);
   });
 
+  it("a pair race with three completion audit rows is a PRODUCT BUG even under the pair race declaration", () => {
+    const s = clean();
+    s.envelopes[0] = { ...s.envelopes[0]!, sealJobs: 2, completedAudit: 3 };
+    const r = evaluateDocumensoAudit(s, SCOPE, DRAINED, ["P6-OBS-DOC-002"]);
+    assert.ok(r.violations.some((v) => v.kind === "PRODUCT BUG"));
+    assert.equal(r.checks.find((c) => c.name === "sealed-once")?.ok, false);
+  });
+
   it("a completed envelope with no completion audit row is still a PRODUCT BUG under the pair race declaration", () => {
     const s = clean();
     s.envelopes[0] = { ...s.envelopes[0]!, completedAudit: 0 };
