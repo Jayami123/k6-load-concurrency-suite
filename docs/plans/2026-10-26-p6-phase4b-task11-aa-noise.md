@@ -95,13 +95,14 @@ export interface Tolerance {
   metric: "p95Ms" | "p50Ms" | "requestsPerSec";
   spread: number; // (max - min) / median of the arms; 0 when the median is 0 (never a divide by zero, L7)
   tolerance: number; // max(FLOOR, K * spread)
-  runIds: string[]; // the arm run IDs, ascending, unique, digits only (D13)
-  arms: number; // >= 3
+  runIds: string[]; // the distinct GitHub Actions run IDs the arms came from, ascending, digits only (D13); >= 2, on >= 2 UTC days
+  utcDays: string[]; // the distinct UTC days (YYYY-MM-DD) of those runs, ascending; >= 2 (Q-TOLRULE, owner decision T11-D-2)
+  arms: string[]; // the counted arm IDs "<runId>-<attempt>-<armIndex>", ascending, unique (warm-up excluded); >= 3
 }
 export const K = 2;
 export const FLOOR = 0.1;
 /** The tolerance of one metric from its A/A arms. Throws when fewer than three arms or any value is not finite and > 0. */
-export function toleranceOf(metric: Tolerance["metric"], arms: ArmMedian[]): Tolerance;
+export function toleranceOf(metric: Tolerance["metric"], arms: ArmMedian[]): Tolerance; // rejects duplicate arm IDs, not duplicate run IDs
 /**
  * Parses k6/thresholds/tolerance.json. The root shape is the one of knee-bounds.json: `{ schema: 1, metric, unit, release,
  * products: { cal: { "p95Ms": Tolerance, ... }, medusa: { ... } } }`. Every consumer (write-tolerance.ts, the gate, the
@@ -175,7 +176,7 @@ The `aa-cal` and `aa-medusa` jobs follow Task 7 §6.6 (the same setup steps, cop
 `tests/unit/gate-rule-004.test.ts` asserts, from the repo files, in two tiers so that step 2 is green without the tolerance file:
 
 - **Tier 1 (always, no file needed):** no gate configuration references a tolerance. The rule is "no A/B config without a cited A/A set", so a gate config that names `tolerance.json` or a `--tolerance` flag while the file is absent fails. The A/A workflow of step 3 names neither, so the test passes with the file absent ("no A/A set yet").
-- **Tier 2 (only when `k6/thresholds/tolerance.json` exists):** (a) it parses; (b) every product in it cites at least three run IDs; (c) every gate config (`.github/workflows/gate.yml`, `src/load/gate/ab-gate.ts` once Task 12 lands, and any file that names `--gate`) cites a product present in the tolerance file; (d) its case IDs are the steady cases (L3).
+- **Tier 2 (only when `k6/thresholds/tolerance.json` exists):** (a) it parses; (b) every product in it has at least three counted arms (arm IDs) and cites at least two distinct run IDs on at least two UTC days (T11-D-2); (c) every gate config (`.github/workflows/gate.yml`, `src/load/gate/ab-gate.ts` once Task 12 lands, and any file that names `--gate`) cites a product present in the tolerance file; (d) its case IDs are the steady cases (L3).
 
 Tier 2 starts to bind when the tolerance-file PR (§12) adds the file.
 
