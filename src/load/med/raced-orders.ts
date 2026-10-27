@@ -12,3 +12,11 @@ export function isRacedEmail(email: string): boolean {
   const i = iterationOfEmail(email);
   return i !== null && raceFor(i) !== null;
 }
+
+/**
+ * Race-selected orders whose race was never sent: the completion response was lost, so the order is stored but no request
+ * reached http.batch. Such an order is an unconfirmed injection, not a product failure.
+ */
+export function unconfirmedInjections(racedOrders: number, racesSent: number): number {
+  return Math.max(0, racedOrders - racesSent);
+}

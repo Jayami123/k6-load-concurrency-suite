@@ -18,7 +18,7 @@ import type { LoadContext, Stage, StageResult } from "../types.ts";
 import { terminalTransitionVerdict, type OrderTerminal } from "./cancel-race.ts";
 import { promoLedgerVerdict } from "./ledger.ts";
 import { classifySplit, type InstanceCount } from "./instance-split.ts";
-import { isRacedEmail } from "./raced-orders.ts";
+import { isRacedEmail, unconfirmedInjections } from "./raced-orders.ts";
 
 /** One row per run order: state, cancel effects, fulfilments, payments and the money of its payments. */
 export const RUN_ORDER_ROWS_SQL = `
@@ -255,10 +255,15 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
         sideEffects: { refunds: r.refund_rows, reservationsLive: 0 },
       };
     });
-    const verdict = terminalTransitionVerdict(
-      orders,
-      dropped > 0 ? [`${dropped} dropped iteration(s)`] : [],
-    );
+    // a race-selected order without a sent race is an unconfirmed injection: INVALID, never a product failure
+    const unconfirmed = unconfirmedInjections(raced.length, counter(summary, "p6_races_sent"));
+    const invalidReasons = [
+      ...(dropped > 0 ? [`${dropped} dropped iteration(s)`] : []),
+      ...(unconfirmed > 0
+        ? [`${unconfirmed} race-selected order(s) without a sent race (completion response lost)`]
+        : []),
+    ];
+    const verdict = terminalTransitionVerdict(orders, invalidReasons);
     return {
       ok: verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)",
       kind:

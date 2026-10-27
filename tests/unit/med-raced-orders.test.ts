@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isRacedEmail, iterationOfEmail } from "../../src/load/med/raced-orders.ts";
+import {
+  isRacedEmail,
+  iterationOfEmail,
+  unconfirmedInjections,
+} from "../../src/load/med/raced-orders.ts";
 
 describe("medusa raced orders", () => {
   it("reads the iteration index from the run email", () => {
@@ -19,5 +23,11 @@ describe("medusa raced orders", () => {
     assert.equal(isRacedEmail(`${prefix}-i8@qa.local`), false);
     assert.equal(isRacedEmail(`${prefix}-i0@qa.local`), false);
     assert.equal(isRacedEmail("someone@example.com"), false);
+  });
+
+  it("counts a race-selected order without a sent race as unconfirmed, never negative", () => {
+    assert.equal(unconfirmedInjections(5, 5), 0);
+    assert.equal(unconfirmedInjections(5, 3), 2); // a completion response was lost twice
+    assert.equal(unconfirmedInjections(3, 5), 0);
   });
 });

@@ -4,6 +4,7 @@
 //   MEDUSA_ADMIN_TOKEN=... P6_LOAD_CONFIG=k6/cases/med-load-009.example.json k6 run k6/cases/med-load-009.js
 import http from "k6/http";
 import exec from "k6/execution";
+import { Counter } from "k6/metrics";
 import { loadLoadConfig } from "../lib/config.js";
 import { openModelScenario, standardOptions } from "../lib/pure/options.js";
 import { raceFor } from "../lib/pure/race.js";
@@ -27,6 +28,8 @@ const cfg = {
 };
 
 const tags = { case: "P6-MED-LOAD-009", journey: "med-checkout" };
+// the races actually sent: an order whose completion response was lost has no order id here, so it gets no race (decided by the stage)
+const racesSent = new Counter("p6_races_sent");
 const ADMIN_TOKEN = __ENV.MEDUSA_ADMIN_TOKEN || "";
 
 export const options = standardOptions({
@@ -83,4 +86,5 @@ export function checkout() {
         }
       : cancel;
   http.batch([cancel, second]);
+  racesSent.add(1);
 }
