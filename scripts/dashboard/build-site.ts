@@ -12,77 +12,58 @@ import {
 import path from "node:path";
 import {
   buildSiteModel,
-  escapeLabel,
-  type SiteModel,
+  SOAK_CASE_IDS,
   type VerdictInput,
 } from "../../src/dashboard/site-model.ts";
-import { SHOWCASE_TITLES, showcaseNotes } from "./showcases.ts";
 import { parsePendingFile, type PendingFile } from "../../src/dashboard/release-plan.ts";
+import {
+  DEFAULT_CONTEXT,
+  renderSite,
+  runUrl,
+  type KneeProduct,
+  type PageContext,
+} from "../../src/dashboard/render/page.ts";
 
-const REPO = "https://github.com/Jayami123/k6-load-concurrency-suite";
+export { renderSite, runUrl };
 
-/** The GitHub Actions run page of an evidence run (the workflow run the artefact came from). */
-export function runUrl(githubRunId: string): string {
-  return `${REPO}/actions/runs/${githubRunId}`;
+/** The knee bounds of each product (k6/thresholds/knee-bounds.json), or undefined when the file is absent. */
+export function readKnee(file: string): PageContext["knee"] {
+  if (!existsSync(file)) return undefined;
+  const j = JSON.parse(readFileSync(file, "utf8"));
+  const products: KneeProduct[] = Object.entries(j.products ?? {}).map(([product, p]) => {
+    const e = p as Record<string, unknown>;
+    return {
+      product,
+      lower: Number(e.lowerBoundRate),
+      upper: Number(e.upperBoundRate),
+      unit: String(j.unit ?? "iterations per second"),
+      runIds: ((e.runIds as unknown[]) ?? []).map(String),
+    };
+  });
+  return { release: String(j.release ?? "unknown"), products };
 }
 
-/**
- * Renders the one page. `runs` maps each P6 run id to the GitHub run it came from; `charts` maps a run id to the path of its copied
- * chart, relative to the page, so each ready run links its chart as well as its GitHub run.
- */
-/** The cited runs whose zip is not in a release yet (docs/evidence/pending-release.json): listed with their reason, never plotted. */
-function pendingSection(pending: PendingFile | undefined): string {
-  if (!pending || pending.pending.length === 0) return "";
-  const items = pending.pending
-    .map((p) => `<li><code>${escapeLabel(p.runId)}</code>: ${escapeLabel(p.reason)}</li>`)
-    .join("\n");
-  return `<section id="pending"><h2>Pending release ${escapeLabel(pending.release)}</h2><ul>${items}</ul><p>${pending.pending.length} run(s) waiting for their evidence zip.</p></section>`;
+/** The soak thresholds calibrated so far, against the soak cases the site expects (SOAK_CASE_IDS). */
+export function readSoak(file: string): PageContext["soak"] {
+  if (!existsSync(file)) return undefined;
+  const j = JSON.parse(readFileSync(file, "utf8"));
+  return {
+    release: String(j.release ?? "unknown"),
+    calibrated: Object.keys(j.products ?? {}).length,
+    products: SOAK_CASE_IDS.length,
+  };
 }
 
-export function renderSite(
-  model: SiteModel,
-  runs: Map<string, string>,
-  charts: Map<string, string> = new Map(),
-  pending?: PendingFile,
-): string {
-  const link = (runId: string) => {
-    const gh = runs.get(runId);
-    return gh === undefined
-      ? `<code>${escapeLabel(runId)}</code>`
-      : `<a href="${runUrl(gh)}">${escapeLabel(runId)}</a>`;
-  };
-  const runEntry = (runId: string) => {
-    const chart = charts.get(runId);
-    return chart === undefined
-      ? link(runId)
-      : `${link(runId)} (<a href="${escapeLabel(chart)}">chart</a>)`;
-  };
-  const notes = new Map(showcaseNotes().map((n) => [n.id, n.note]));
-  const showcases = model.showcases
-    .map((s) => {
-      const body =
-        s.status === "ready"
-          ? `<p>Runs: ${s.runLinks.map((id) => runEntry(id)).join(", ") || "none"}</p>`
-          : `<p class="pending">Pending: ${escapeLabel(s.pending ?? "no data")}</p>`;
-      return `<section id="${s.id}"><h2>${escapeLabel(SHOWCASE_TITLES[s.id])}</h2><p>${escapeLabel(notes.get(s.id) ?? s.note)}</p>${body}</section>`;
-    })
-    .join("\n");
-  const invalid = model.invalidRuns
-    .map(
-      (r) =>
-        `<li>${escapeLabel(r.caseId)} ${link(r.runId)}: ${r.reasons.map(escapeLabel).join("; ") || "INVALID"}</li>`,
-    )
-    .join("\n");
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>P6 load evidence</title></head>
-<body>
-<h1>P6 load evidence</h1>
-${showcases}
-<section id="invalid"><h2>INVALID runs (listed, not plotted)</h2><ul>${invalid}</ul><p>${model.invalidRuns.length} run(s) not used.</p></section>
-<section id="sources"><h2>Runs the site is built from</h2><p>${model.generatedFrom.map(link).join(", ") || "none"}</p></section>
-${pendingSection(pending)}
-</body></html>
-`;
+/** The product observations: the first heading of each docs/observations/*.md, read at build time. */
+export function readObservations(dir: string): PageContext["observations"] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .sort()
+    .flatMap((file) => {
+      const m = /^# (P6-OBS-[A-Z0-9-]+): (.*)$/m.exec(readFileSync(path.join(dir, file), "utf8"));
+      return m ? [{ id: m[1] ?? "", title: (m[2] ?? "").trim(), file }] : [];
+    });
 }
 
 function walkVerdicts(root: string): Array<{ dir: string; verdict: VerdictInput }> {
@@ -111,6 +92,11 @@ function walkVerdicts(root: string): Array<{ dir: string; verdict: VerdictInput 
   return out;
 }
 
+/** The build time as "YYYY-MM-DD HH:MM UTC". The clock is read here, never inside the renderer. */
+function utcStamp(date: Date): string {
+  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 /** Usage: build-site.ts <outDir> <artefactDir>=<githubRunId> ... (each artefact folder with its GitHub run) */
 function main(argv: string[]): void {
   const [outDir, ...sources] = argv;
@@ -137,17 +123,25 @@ function main(argv: string[]): void {
   const model = buildSiteModel({ verdicts });
   mkdirSync(outDir, { recursive: true });
   const pendingFile = path.join("docs", "evidence", "pending-release.json");
-  const pending = existsSync(pendingFile)
+  const pending: PendingFile | undefined = existsSync(pendingFile)
     ? parsePendingFile(JSON.parse(readFileSync(pendingFile, "utf8")))
     : undefined;
-  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending));
+  const context: PageContext = {
+    ...DEFAULT_CONTEXT,
+    sha: process.env.GITHUB_SHA ?? "unknown",
+    builtAt: utcStamp(new Date()),
+    knee: readKnee(path.join("k6", "thresholds", "knee-bounds.json")),
+    soak: readSoak(path.join("k6", "thresholds", "soak-bounds.json")),
+    observations: readObservations(path.join("docs", "observations")),
+  };
+  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending, context));
   for (const c of chartCopies) {
     const to = path.join(outDir, c.to);
     mkdirSync(path.dirname(to), { recursive: true });
     copyFileSync(c.from, to);
   }
   console.log(
-    `dashboard: site/index.html 1 page, runs ${verdicts.length}, invalid listed ${model.invalidRuns.length}, showcases ready ${model.showcases.filter((s) => s.status === "ready").length}, pending ${model.showcases.filter((s) => s.status === "pending").length}`,
+    `dashboard: site/index.html 1 page, runs ${verdicts.length}, invalid listed ${model.invalidRuns.length}, observations ${context.observations.length}`,
   );
 }
 

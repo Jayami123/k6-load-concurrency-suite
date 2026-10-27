@@ -14,6 +14,7 @@ export interface SiteModel {
   generatedFrom: string[]; // the run IDs the site was built from
   showcases: ShowcaseState[];
   invalidRuns: Array<{ runId: string; caseId: string; reasons: string[] }>; // listed, never plotted
+  verdicts: VerdictInput[]; // every verdict the page is computed from (the cards read these, nothing else)
 }
 
 export interface VerdictInput {
@@ -105,5 +106,5 @@ export function buildSiteModel(input: { verdicts: VerdictInput[] }): SiteModel {
     .sort((a, b) => a.caseId.localeCompare(b.caseId) || a.runId.localeCompare(b.runId))
     .map((v) => ({ runId: v.runId, caseId: v.caseId, reasons: v.reasons }));
   const generatedFrom = [...new Set(verdicts.map((v) => v.runId))].sort();
-  return { generatedFrom, showcases, invalidRuns };
+  return { generatedFrom, showcases, invalidRuns, verdicts };
 }
