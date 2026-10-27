@@ -32,9 +32,14 @@ export async function sweepCustomersByPrefix(
   const wanted = prefix.toLowerCase();
   let deleted = 0;
   let offset = 0;
-  for (let page = 0; page < maxPages; page += 1) {
+  for (let page = 0; ; page += 1) {
     const customers = await port.list(offset, pageSize);
     if (customers.length === 0) return deleted;
+    // a page beyond the bound that still lists customers means the sweep is truncated
+    if (page === maxPages)
+      throw new Error(
+        `TEST BUG: customer sweep stopped after ${maxPages} pages with customers still listed for ${prefix}`,
+      );
     let kept = 0;
     for (const customer of customers) {
       if (customer.id && customer.email?.toLowerCase().startsWith(wanted)) {
@@ -49,7 +54,4 @@ export async function sweepCustomersByPrefix(
     // deleted customers leave the list, so only the kept ones move the offset
     offset += kept;
   }
-  throw new Error(
-    `TEST BUG: customer sweep stopped after ${maxPages} pages with customers still listed for ${prefix}`,
-  );
 }

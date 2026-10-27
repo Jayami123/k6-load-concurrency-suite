@@ -49,6 +49,17 @@ describe("medusa customer sweep", () => {
     );
   });
 
+  it("returns the count when the last allowed page is full and holds the final matches", async () => {
+    const rows = matching(4);
+    const server = fakeServer(rows);
+    const deleted = await sweepCustomersByPrefix(server.port, "p6-qa-run-x", {
+      pageSize: 2,
+      maxPages: 2,
+    });
+    assert.equal(deleted, 4);
+    assert.equal(rows.length, 0);
+  });
+
   it("throws a TEST BUG when the page bound is reached with matches still listed", async () => {
     const rows = matching(10);
     const server = fakeServer(rows);
