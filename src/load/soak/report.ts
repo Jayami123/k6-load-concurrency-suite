@@ -1,3 +1,4 @@
+import { d33Growth, type D33Result } from "./d33.ts";
 import { plateauRatio, type PlateauResult } from "./plateau.ts";
 import { soakSlope, warmupSecFor, type SlopeResult, type SoakPoint } from "./slope.ts";
 
@@ -17,6 +18,8 @@ export interface SoakStatistics {
   rssMb: SoakMetricStats;
   fds: SoakMetricStats;
   dbConnections: SoakMetricStats;
+  /** D33 (owner decision): the growth check of RSS over the last 60 minutes only. A flag is an investigation, not a verdict. */
+  rssD33: D33Result;
 }
 
 /** The (time, value) points of the samples that have a numeric value for the picked metric. */
@@ -52,5 +55,9 @@ export function soakStatistics(
     rssMb: stats(pointsOf(telemetry.samples, (s) => s.proc?.rssMb)),
     fds: stats(pointsOf(telemetry.samples, (s) => s.proc?.fds)),
     dbConnections: stats(pointsOf(telemetry.samples, (s) => s.db?.total)),
+    rssD33: d33Growth(
+      pointsOf(telemetry.samples, (s) => s.proc?.rssMb),
+      Math.max(...telemetry.samples.map((s) => s.t)),
+    ),
   };
 }
