@@ -915,6 +915,29 @@ Any dropped iteration, a missing iteration row, or an unmatched completion token
 case, which reconciles with the pipeline check of `P6-DOC-LOAD-002` until the reads that feed the verdict are wired. Until then the job
 does not report an exactly-once verdict, and the pair counts are not in its summary.
 
+## Medusa invariants under load
+
+Three Medusa cases check the invariants of the steady checkout stream at 0.7 orders per second (`rate` 7 per 10 s, the
+`timeUnitSec: 10` form of the open model). Each one is a k6 script with a config file; the verdicts are written by the runner.
+
+- `P6-MED-LOAD-007` (`k6/cases/med-load-007.js`): two Medusa instances on one database and one Redis lock. Checkouts alternate between
+  the two by iteration parity (`k6/lib/pure/instance.js`), and every request carries an `instance` tag. The conservation audit reads
+  the database, not the instances: orders at most stock, one order per cart, reservations equal live orders, one payment per order, and
+  both instances served requests. A zero count for one instance is a TEST BUG.
+- `P6-MED-LOAD-008` (`k6/cases/med-load-008.js`): a promotion on a deterministic share of carts (`promoShare`, 0.5, by `shareHit`). The
+  ledger clauses are redemptions within the budget, balances at zero or more, and debits equal the balance change. The gift-card clause
+  stays PENDING (no route at the pinned Medusa ref).
+- `P6-MED-LOAD-009` (`k6/cases/med-load-009.js`): every 10th order gets a second cancel and every 20th a cancel and a fulfilment at the
+  same moment, both sent with `http.batch` (`raceFor`). Exactly one terminal transition per order is expected. The known double-terminal
+  states are counted as X04 (a double cancel with more than one cancel effect) and X05 (a cancel against an open fulfilment), and any
+  other double terminal state is a FAIL (PRODUCT BUG).
+
+The admin token for `-009` arrives in the environment (`MEDUSA_ADMIN_TOKEN`), never in the config file.
+
+Status: the three cases are registered in `src/load/cases.ts` with their verdict stages (`src/load/med/invariant-stages.ts`). They run
+in the `medusa-invariants` job of `perf.yml` (schedule and full dispatch only). The stages read the stored state after the drain and
+judge it with the pure checks. The first live dispatch is the probe of record for their SQL (decisions D40 to D43 in the progress log).
+
 ## How to read a knee
 
 A knee run (`P6-X-LOAD-*` with a `knee` plan) holds a set of steps. Step i runs at a fixed rate for a fixed hold, with a short ramp

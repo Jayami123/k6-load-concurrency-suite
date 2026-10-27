@@ -6,7 +6,7 @@ export interface LedgerInput {
   promoLimit: number; // the promotion's usage limit from setup
   balances: number[]; // the money balances after the run
   debitsSum: number; // the sum of the debits from the orders
-  balanceChange: number; // the change of the balance from the start to the end of the run (a debit lowers it, so it equals minus the debits)
+  balanceChange: number | null; // the change of the balance from the start to the end of the run (a debit lowers it, so it equals minus the debits); null when no source independent of the debits exists
 }
 
 export interface LedgerVerdict {
@@ -38,12 +38,21 @@ export function promoLedgerVerdict(input: LedgerInput): LedgerVerdict {
     status: minBalance >= 0 ? "PASS" : "FAIL (PRODUCT BUG)",
     detail: `lowest balance ${minBalance}`,
   });
-  const reconciled = input.debitsSum === -input.balanceChange;
-  clauses.push({
-    name: "debits-equal-change",
-    status: reconciled ? "PASS" : "FAIL (PRODUCT BUG)",
-    detail: `debits ${input.debitsSum}, balance change ${input.balanceChange}`,
-  });
+  if (input.balanceChange === null)
+    // a balance change derived from the same debits would always agree with them, so the clause is not checked
+    clauses.push({
+      name: "debits-equal-change",
+      status: "PENDING",
+      detail: `debits ${input.debitsSum}, no independent balance change at the pinned ref`,
+    });
+  else {
+    const reconciled = input.debitsSum === -input.balanceChange;
+    clauses.push({
+      name: "debits-equal-change",
+      status: reconciled ? "PASS" : "FAIL (PRODUCT BUG)",
+      detail: `debits ${input.debitsSum}, balance change ${input.balanceChange}`,
+    });
+  }
   clauses.push({
     name: "gift-card",
     status: "PENDING",

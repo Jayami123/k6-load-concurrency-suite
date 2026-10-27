@@ -16,7 +16,10 @@ const refusedGhost = new Counter("p6_refused_ghost");
 const refusedOther = new Counter("p6_refused_other");
 const iterFailed = new Counter("p6_iter_failed");
 const status5xx = new Counter("p6_status_5xx");
-const abandoned = new Counter("p6_abandoned"); // P6-MED-LOAD-010: carts that stop before "complete" (Task 6 §6.4)
+const abandoned = new Counter("p6_abandoned");
+// P6-MED-LOAD-007 (D42): requests per instance, read from the summary by the split verdict
+const primaryRequests = new Counter("p6_requests_primary");
+const secondaryRequests = new Counter("p6_requests_secondary"); // P6-MED-LOAD-010: carts that stop before "complete" (Task 6 §6.4)
 
 const ADDRESS = {
   first_name: "P6",
@@ -32,7 +35,10 @@ const ADDRESS = {
  * opts.classify (task 8): refusals are classified (clean, ghost, other) and every iteration ends in exactly one counter.
  * opts.abandon(n) (task 6): an iteration n for which it returns true stops before "complete" and counts p6_abandoned.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
- * @param {{ classify?: boolean, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
+ * opts.instance (task 10): "primary" or "secondary", tagged on every request (the base URL is set by the caller in cfg).
+ * opts.onOrder(orderId, lineItemId) (task 10): called with the order and its first line item after a classified complete.
+ * opts.promoCode (task 10): the promotion code applied to this cart before the line item; absent means no promotion.
+ * @param {{ classify?: boolean, instance?: "primary" | "secondary", promoCode?: string, onOrder?: (orderId: string, lineItemId: string) => void, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
@@ -47,11 +53,14 @@ export function runMedCheckout(cfg, opts = {}) {
     terminal = true;
     counter.add(1);
   };
+  const instance = opts.instance ?? "primary"; // P6-MED-LOAD-007: the instance that serves this iteration, tagged on each request
   /** @type {(method: string, path: string, body: unknown, name: string) => any} */
   const call = (method, path, body, name) => {
+    (instance === "primary" ? primaryRequests : secondaryRequests).add(1);
     const r = request(method, `${cfg.baseUrl}/store${path}`, name, body, {
       headers: H,
       timeout: "30s",
+      tags: { instance },
     });
     if (r.status >= 500) status5xx.add(1);
     return r;
@@ -75,6 +84,20 @@ export function runMedCheckout(cfg, opts = {}) {
           "POST /store/carts",
         );
         return { ok: r.status === 200, data: { cartId: safeJson(r, "cart.id") } };
+      },
+    },
+    {
+      // P6-MED-LOAD-008: the promotion is applied only to the carts that opts.promoCode names (a share of the stream, shareHit)
+      name: "promotion",
+      run: (/** @type {Record<string, any>} */ s) => {
+        if (!opts.promoCode) return { ok: true };
+        const r = call(
+          "POST",
+          `/carts/${s.cartId}/promotions`,
+          { promo_codes: [opts.promoCode] },
+          "POST /store/carts/:id/promotions",
+        );
+        return { ok: r.status === 200 };
       },
     },
     {
@@ -188,7 +211,7 @@ export function runMedCheckout(cfg, opts = {}) {
             `${cfg.baseUrl}/store/carts/${s.cartId}/complete`,
             "POST /store/carts/:id/complete",
             undefined,
-            { headers: H, timeout: "30s" },
+            { headers: H, timeout: "30s", tags: { instance } },
             // an order is an answer with type "order"; a 200 with another type is not done
             (r) => r.status === 200 && safeJson(r, "type") === "order",
           );
@@ -215,6 +238,10 @@ export function runMedCheckout(cfg, opts = {}) {
           if (r.status === 200 && safeJson(r, "type") === "order") {
             end(ordersCounter);
             opts.onCommit?.();
+            opts.onOrder?.(
+              /** @type {string} */ (safeJson(r, "order.id")),
+              /** @type {string} */ (safeJson(r, "order.items.0.id")),
+            );
             return { ok: true };
           }
           if (r.status >= 500) return { ok: false }; // p6_iter_failed

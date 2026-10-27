@@ -28,4 +28,10 @@ describe("medusa promo ledger", () => {
     );
     assert.equal(promoLedgerVerdict({ ...clean, debitsSum: 50 }).verdict, "FAIL (PRODUCT BUG)");
   });
+
+  it("reports the debits clause PENDING, never PASS, when no independent balance change exists", () => {
+    const v = promoLedgerVerdict({ ...clean, balanceChange: null });
+    assert.equal(v.clauses.find((c) => c.name === "debits-equal-change")?.status, "PENDING");
+    assert.equal(v.verdict, "PASS (gift-card pending)");
+  });
 });
