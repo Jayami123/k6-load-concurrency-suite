@@ -44,7 +44,16 @@ describe("medusa abandoned carts", () => {
 });
 
 describe("medusa abandoned-cart verdict wiring", () => {
-  const snapshot = { orderCount: 75, orderQty: 75, reservationQty: 75, stocked: 200, reserved: 75 };
+  const snapshot = {
+    orderCount: 75,
+    liveOrderCount: 75,
+    orderQty: 75,
+    liveOrderQty: 75,
+    canceledOrderCount: 0,
+    reservationQty: 75,
+    stocked: 200,
+    reserved: 75,
+  };
 
   it("passes a spike run whose reservations match its orders and whose probe purchase succeeds", () => {
     const v = medusaAbandonVerdict({ abandoned: 25, snapshot, stock: 200, probeStatus: 200 });

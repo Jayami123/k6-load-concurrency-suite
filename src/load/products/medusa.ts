@@ -5,11 +5,12 @@ import {
   createStockedVariant,
   deleteCustomersByPrefix,
   deleteProduct,
+  deleteRunReservation,
   loadCatalog,
   seedAndLogin,
   type MedusaCatalog,
 } from "../../medusa/admin.ts";
-import { LEAK_LIVE_ORDER_IDS_SQL, leakCheck } from "../../medusa/oracle.ts";
+import { LEAK_LIVE_ORDER_IDS_SQL, RUN_RESERVATIONS_SQL, leakCheck } from "../../medusa/oracle.ts";
 import { likeLiteralPrefix, prefixedEmail } from "../../medusa/payloads.ts";
 import { completeCart, prepareReadyCart } from "../../medusa/store.ts";
 import { closePool, createReadOnlyPool, selectRows } from "../../oracles/pg.ts";
@@ -26,6 +27,7 @@ export interface MedusaDeps {
   stock: typeof createStockedVariant;
   cancelAndArchive: (token: string, orderId: string) => Promise<void>;
   deleteProduct: (token: string, productId: string) => Promise<void>;
+  deleteRunReservation: (token: string, reservationId: string) => Promise<void>;
   deleteCustomersByPrefix: (token: string, prefix: string) => Promise<number>;
   /** The storm probe's cart and complete calls; the store helpers when absent. */
   prepareCart?: typeof prepareReadyCart;
@@ -41,6 +43,7 @@ const defaultDeps: MedusaDeps = {
   stock: createStockedVariant,
   cancelAndArchive,
   deleteProduct,
+  deleteRunReservation,
   deleteCustomersByPrefix,
 };
 
@@ -203,6 +206,27 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
         reasons.push(`TEST BUG: cleanup order ${order.id} failed: ${message(err)}`);
       }
     }
+    // Medusa refuses to delete a product whose inventory item still holds reservations. The leaked ones of this run's orders
+    // are recorded first (a PRODUCT BUG reason), then deleted one by one through the admin API, and only then the product.
+    const inventory = ctx.config.inventoryItemId;
+    if (typeof inventory === "string") {
+      const leaked = await selectRows<{ id: string; order_id: string }>(pool, RUN_RESERVATIONS_SQL, [
+        inventory,
+        likePrefix,
+      ]);
+      if (leaked.length > 0) {
+        reasons.push(
+          `PRODUCT BUG: ${leaked.length} reservation(s) of this run's orders held the inventory item at cleanup: ${leaked.map((r) => r.id).join(", ")}`,
+        );
+        for (const r of leaked) {
+          try {
+            await deps.deleteRunReservation(token, r.id);
+          } catch (err) {
+            reasons.push(`TEST BUG: cleanup reservation ${r.id} failed: ${message(err)}`);
+          }
+        }
+      }
+    }
     const productId = ctx.config.productId;
     if (typeof productId === "string") {
       try {
@@ -241,7 +265,10 @@ export async function medusaCleanupWith(ctx: LoadContext, deps: MedusaDeps): Pro
   } finally {
     await closePool(pool);
   }
-  return reasons.length === 0 ? { ok: true, reasons: [] } : { ok: false, kind: "TEST BUG", reasons };
+  if (reasons.length === 0) return { ok: true, reasons: [] };
+  // a leak is a product finding; a failed cleanup call is a TEST BUG and outranks it
+  const kind = reasons.some((r) => r.startsWith("TEST BUG")) ? "TEST BUG" : "PRODUCT BUG";
+  return { ok: false, kind, reasons };
 }
 
 /**

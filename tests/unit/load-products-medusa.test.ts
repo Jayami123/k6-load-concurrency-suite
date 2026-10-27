@@ -35,6 +35,7 @@ function fakePool(orders: Array<{ id: string }>): { pool: pg.Pool; params: unkno
   const params: unknown[][] = [];
   const query = async (sql: string, values: unknown[]) => {
     params.push(values);
+    if (sql.includes("reservation_item")) return { rows: [] }; // no leaked reservation in these cases
     return { rows: sql.includes('FROM "order"') ? orders : [{ n: 0 }] };
   };
   return { pool: { query, end: async () => {} } as unknown as pg.Pool, params };
@@ -53,6 +54,7 @@ function deps(overrides: Partial<MedusaDeps>): MedusaDeps {
     }),
     cancelAndArchive: async () => {},
     deleteProduct: async () => {},
+    deleteRunReservation: async () => {},
     deleteCustomersByPrefix: async () => 0,
     ...overrides,
   };

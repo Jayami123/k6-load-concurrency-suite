@@ -24,6 +24,9 @@ const counters = (over: Partial<ConservationCounters> = {}): ConservationCounter
 const snap = (orderCount: number) => ({
   orderCount,
   orderQty: orderCount,
+  liveOrderCount: orderCount,
+  liveOrderQty: orderCount,
+  canceledOrderCount: 0,
   reservationQty: orderCount,
   stocked: STOCK,
   reserved: orderCount,

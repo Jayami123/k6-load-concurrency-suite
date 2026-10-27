@@ -24,7 +24,16 @@ const input = (over: Partial<MedusaRetryInput> = {}): MedusaRetryInput => ({
   intents: 10,
   ordersPerIntent: ordersPerIntent(),
   paymentsPerOrder: Array.from({ length: 10 }, () => 1),
-  snapshot: { orderCount: 10, orderQty: 10, reservationQty: 10, stocked: 100, reserved: 10 },
+  snapshot: {
+    orderCount: 10,
+    liveOrderCount: 10,
+    orderQty: 10,
+    liveOrderQty: 10,
+    canceledOrderCount: 0,
+    reservationQty: 10,
+    stocked: 100,
+    reserved: 10,
+  },
   counters: counters(),
   ...over,
 });
@@ -56,7 +65,16 @@ describe("retry audit: medusa", () => {
   it("reserved stock that differs from the orders is a PRODUCT BUG", () => {
     const r = judgeMedusaRetries(
       input({
-        snapshot: { orderCount: 10, orderQty: 10, reservationQty: 10, stocked: 100, reserved: 9 },
+        snapshot: {
+          orderCount: 10,
+          liveOrderCount: 10,
+          orderQty: 10,
+          liveOrderQty: 10,
+          canceledOrderCount: 0,
+          reservationQty: 10,
+          stocked: 100,
+          reserved: 9,
+        },
       }),
     );
     const f = r.findings.find((x) => x.check === "reserved-equals-orders");

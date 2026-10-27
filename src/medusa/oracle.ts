@@ -2,10 +2,11 @@ import type pg from "pg";
 import { selectRows, waitForStable } from "../oracles/pg.ts";
 import { parseWholeAmount } from "./money.ts";
 
+// order_item keeps one row per version of an order; only the current version (o.version) is the order's items.
 export const ORDERS_FOR_VARIANT_SQL = `
 SELECT COUNT(DISTINCT o.id)::int AS n
 FROM "order" o
-JOIN order_item oi ON oi.order_id = o.id AND oi.deleted_at IS NULL
+JOIN order_item oi ON oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL
 JOIN order_line_item oli ON oli.id = oi.item_id AND oli.deleted_at IS NULL
 WHERE oli.variant_id = $1
   AND o.deleted_at IS NULL
@@ -14,10 +15,42 @@ WHERE oli.variant_id = $1
 export const ORDER_QTY_FOR_VARIANT_SQL = `
 SELECT COALESCE(SUM(oi.quantity), 0)::text AS qty
 FROM "order" o
-JOIN order_item oi ON oi.order_id = o.id AND oi.deleted_at IS NULL
+JOIN order_item oi ON oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL
 JOIN order_line_item oli ON oli.id = oi.item_id AND oli.deleted_at IS NULL
 WHERE oli.variant_id = $1
   AND o.deleted_at IS NULL
+`;
+
+/** The orders that hold stock: not canceled, not archived (the same filter as LEAK_LIVE_ORDERS_SQL). */
+export const LIVE_ORDERS_FOR_VARIANT_SQL = `
+SELECT COUNT(DISTINCT o.id)::int AS n
+FROM "order" o
+JOIN order_item oi ON oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL
+JOIN order_line_item oli ON oli.id = oi.item_id AND oli.deleted_at IS NULL
+WHERE oli.variant_id = $1
+  AND o.deleted_at IS NULL
+  AND o.status NOT IN ('canceled', 'archived')
+`;
+
+export const LIVE_ORDER_QTY_FOR_VARIANT_SQL = `
+SELECT COALESCE(SUM(oi.quantity), 0)::text AS qty
+FROM "order" o
+JOIN order_item oi ON oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL
+JOIN order_line_item oli ON oli.id = oi.item_id AND oli.deleted_at IS NULL
+WHERE oli.variant_id = $1
+  AND o.deleted_at IS NULL
+  AND o.status NOT IN ('canceled', 'archived')
+`;
+
+/** Orders of the variant that are canceled: their reservations must be gone (P6-MED-LOAD-009). */
+export const CANCELED_ORDERS_FOR_VARIANT_SQL = `
+SELECT COUNT(DISTINCT o.id)::int AS n
+FROM "order" o
+JOIN order_item oi ON oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL
+JOIN order_line_item oli ON oli.id = oi.item_id AND oli.deleted_at IS NULL
+WHERE oli.variant_id = $1
+  AND o.deleted_at IS NULL
+  AND o.status = 'canceled'
 `;
 
 export const RESERVATION_QTY_SQL = `
@@ -59,6 +92,10 @@ WHERE inventory_item_id = $1 AND deleted_at IS NULL
 export type OversellOracleSnapshot = {
   orderCount: number;
   orderQty: number;
+  /** Non-canceled, non-archived orders and their units: what holds stock (reservations and reserved are compared with these). */
+  liveOrderCount: number;
+  liveOrderQty: number;
+  canceledOrderCount: number;
   reservationQty: number;
   stocked: number;
   reserved: number;
@@ -70,20 +107,27 @@ export async function readOversellSnapshot(
   inventoryItemId: string,
   locationId: string,
 ): Promise<OversellOracleSnapshot> {
-  const [orderRows, qtyRows, resRows, invRows] = await Promise.all([
-    selectRows<{ n: number }>(pool, ORDERS_FOR_VARIANT_SQL, [variantId]),
-    selectRows<{ qty: string }>(pool, ORDER_QTY_FOR_VARIANT_SQL, [variantId]),
-    selectRows<{ qty: string }>(pool, RESERVATION_QTY_SQL, [inventoryItemId]),
-    selectRows<{ stocked: string; reserved: string }>(pool, INVENTORY_LEVEL_SQL, [
-      inventoryItemId,
-      locationId,
-    ]),
-  ]);
+  const [orderRows, qtyRows, liveRows, liveQtyRows, canceledRows, resRows, invRows] =
+    await Promise.all([
+      selectRows<{ n: number }>(pool, ORDERS_FOR_VARIANT_SQL, [variantId]),
+      selectRows<{ qty: string }>(pool, ORDER_QTY_FOR_VARIANT_SQL, [variantId]),
+      selectRows<{ n: number }>(pool, LIVE_ORDERS_FOR_VARIANT_SQL, [variantId]),
+      selectRows<{ qty: string }>(pool, LIVE_ORDER_QTY_FOR_VARIANT_SQL, [variantId]),
+      selectRows<{ n: number }>(pool, CANCELED_ORDERS_FOR_VARIANT_SQL, [variantId]),
+      selectRows<{ qty: string }>(pool, RESERVATION_QTY_SQL, [inventoryItemId]),
+      selectRows<{ stocked: string; reserved: string }>(pool, INVENTORY_LEVEL_SQL, [
+        inventoryItemId,
+        locationId,
+      ]),
+    ]);
   const stocked = Number(invRows[0]?.stocked ?? 0);
   const reserved = Number(invRows[0]?.reserved ?? 0);
   return {
     orderCount: Number(orderRows[0]?.n ?? 0),
     orderQty: Number(qtyRows[0]?.qty ?? 0),
+    liveOrderCount: Number(liveRows[0]?.n ?? 0),
+    liveOrderQty: Number(liveQtyRows[0]?.qty ?? 0),
+    canceledOrderCount: Number(canceledRows[0]?.n ?? 0),
     reservationQty: Number(resRows[0]?.qty ?? 0),
     stocked,
     reserved,
@@ -153,6 +197,17 @@ SELECT
 `;
 
 /** Live orders of a case prefix, by id, so a reported stuck order can be told apart from a new leak (D41). */
+/** This run's reservations of an inventory item, through their order line items (cleanup deletes them before the product). */
+export const RUN_RESERVATIONS_SQL = `
+SELECT ri.id, oi.order_id
+FROM reservation_item ri
+JOIN order_item oi ON oi.item_id = ri.line_item_id AND oi.deleted_at IS NULL
+JOIN "order" o ON o.id = oi.order_id
+WHERE ri.inventory_item_id = $1
+  AND ri.deleted_at IS NULL
+  AND o.email LIKE $2
+`;
+
 export const LEAK_LIVE_ORDER_IDS_SQL = `
 SELECT id FROM "order"
 WHERE email LIKE $1 AND deleted_at IS NULL AND status <> 'archived' AND status <> 'canceled'

@@ -28,6 +28,9 @@ function clean(over: Partial<ConservationCounters> = {}): ConservationCounters {
 const snap = (orderCount: number, orderQty: number, reservationQty: number, reserved: number) => ({
   orderCount,
   orderQty,
+  liveOrderCount: orderCount,
+  liveOrderQty: orderQty,
+  canceledOrderCount: 0,
   reservationQty,
   stocked: S,
   reserved,
