@@ -82,6 +82,22 @@ export const CARD_SPECS: readonly CardSpec[] = [
     pendingReason: "no VALID invariant run in a release yet",
   },
   {
+    id: "invariants-load",
+    title: "Invariants under load (Cal, Documenso, Medusa)",
+    proves:
+      "It proves that the race invariants still hold while the flows run under load: one booking per slot, one signature per envelope, and the Medusa order and reservation counts. The Medusa cancel-race leak is a known failure (P6-OBS-MED-002).",
+    caseIds: [
+      "P6-CAL-LOAD-002",
+      "P6-CAL-LOAD-006",
+      "P6-DOC-LOAD-003",
+      "P6-MED-LOAD-007",
+      "P6-MED-LOAD-008",
+      "P6-MED-LOAD-009",
+    ],
+    knownFail: { caseIds: ["P6-MED-LOAD-009"], obs: "P6-OBS-MED-002" },
+    pendingReason: "no VALID invariant-under-load run in a release yet",
+  },
+  {
     id: "aa-noise",
     title: "A/A noise and tolerance",
     proves:
