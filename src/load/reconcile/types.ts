@@ -65,6 +65,8 @@ export type AuditStageConfig =
       inventoryItemId: string;
       locationId: string;
       stock?: number;
+      /** The observation id of the known cancel-race leak, when the case declares it (P6-MED-LOAD-009). */
+      knownLeakId?: string;
     }
   | {
       product: "documenso";

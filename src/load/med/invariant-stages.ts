@@ -18,6 +18,7 @@ import type { LoadContext, Stage, StageResult } from "../types.ts";
 import { terminalTransitionVerdict, type OrderTerminal } from "./cancel-race.ts";
 import { promoLedgerVerdict } from "./ledger.ts";
 import { classifySplit, type InstanceCount } from "./instance-split.ts";
+import { judgeLeakClause } from "./known-leak.ts";
 import { isRacedEmail, parseRaceLog, raceOfEmail, unconfirmedInjections } from "./raced-orders.ts";
 
 /** One row per run order: state, cancel effects, fulfilments, payments and the money of its payments. */
@@ -82,7 +83,7 @@ function counter(summary: unknown, name: string): number {
  * Setup of the Task 10 cases: the shared Medusa setup, then the second instance URL and the stock location (for -007 and -009),
  * and for -008 a campaign with a usage limit and a promotion on it. The limit is the planned iteration count (decision D43).
  */
-export function makeInvariantSetup(opts: { promo: boolean }): Stage {
+export function makeInvariantSetup(opts: { promo: boolean; knownLeakId?: string }): Stage {
   return async (ctx: LoadContext): Promise<StageResult> => {
     const base = await medusaSetup(ctx);
     if (!base.ok) return base;
@@ -90,6 +91,11 @@ export function makeInvariantSetup(opts: { promo: boolean }): Stage {
     const secondUrl = medusaSecondBaseUrlFromEnv();
     ctx.config.locationId = audit?.locationId;
     if (secondUrl !== undefined) ctx.config.secondBaseUrl = secondUrl;
+    // a case that declares a known leak names it in the config the reconcile and the cleanup read (owner decision, P6-OBS-MED-002)
+    if (opts.knownLeakId !== undefined) {
+      ctx.config.knownLeakId = opts.knownLeakId;
+      if (audit) audit.knownLeakId = opts.knownLeakId;
+    }
     if (!opts.promo) return base;
     const token = ctx.secrets.MEDUSA_ADMIN_TOKEN ?? (await seedAndLogin());
     const prefix = String(audit?.prefix ?? ctx.config.prefix);
@@ -236,95 +242,118 @@ function readRaceLog(stdoutPath: string) {
 }
 
 /** P6-MED-LOAD-009: the terminal transition verdict (terminalTransitionVerdict). Terminal states come from stored records (D41). */
-export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageResult> => {
-  const main = mainRun(ctx);
-  const audit = auditOf(ctx);
-  if (!main || !audit)
-    return {
-      ok: false,
-      kind: "TEST BUG",
-      reasons: ["cancel race: no main run or no audit config"],
-    };
-  const summary = JSON.parse(readFileSync(main.summaryPath, "utf8"));
-  const dropped = parseK6Summary(summary).dropped;
-  const pool = createReadOnlyPool();
-  try {
-    const rows = await selectRows<RunOrderRow>(pool, RUN_ORDER_ROWS_SQL, [
-      String(audit.prefixLike),
-    ]);
-    // only the orders a race was injected into have a terminal transition to judge; the others are plain checkouts
-    const raced = rows.filter((r) => isRacedEmail(r.email));
-    const raceLog = readRaceLog(main.stdoutPath);
-    const statusesOf = (id: string) => raceLog.get(id)?.statuses.join(",") ?? "not logged";
-    const orders: OrderTerminal[] = raced.map((r) => {
-      const cancels = Math.max(r.cancel_changes, r.canceled);
-      // the race creates a fulfilment and never ships it, so a live fulfilment is the fulfilment (X05 needs FULFILLED)
-      const terminal = [
-        ...Array.from({ length: cancels }, () => "CANCELED"),
-        ...(r.live_fulfilments > 0 ? ["FULFILLED"] : []),
-      ];
+/** The observation that names the cancel-race leak as a known failure of P6-MED-LOAD-009 (owner decision; see known-leak.ts). */
+export const KNOWN_LEAK_ID = "P6-OBS-MED-002";
+
+export const cancelRaceStage: Stage = makeCancelRaceStage(KNOWN_LEAK_ID);
+
+/** The cancel-race stage. With a knownLeakId the leak is judged by judgeLeak; without one a leaked reservation is a PRODUCT BUG. */
+export function makeCancelRaceStage(knownLeakId?: string): Stage {
+  return async (ctx: LoadContext): Promise<StageResult> => {
+    const main = mainRun(ctx);
+    const audit = auditOf(ctx);
+    if (!main || !audit)
       return {
-        orderId: r.id,
-        terminal,
-        openFulfilment: r.canceled === 1 && r.live_fulfilments > 0,
-        sideEffects: { refunds: r.refund_rows, reservationsLive: r.reservations_live },
+        ok: false,
+        kind: "TEST BUG",
+        reasons: ["cancel race: no main run or no audit config"],
       };
-    });
-    // a race-selected order without a sent race is an unconfirmed injection: INVALID, never a product failure
-    const unconfirmed = unconfirmedInjections(raced.length, counter(summary, "p6_races_sent"));
-    const invalidReasons = [
-      ...(dropped > 0 ? [`${dropped} dropped iteration(s)`] : []),
-      ...(unconfirmed > 0
-        ? [`${unconfirmed} race-selected order(s) without a sent race (completion response lost)`]
-        : []),
-    ];
-    const verdict = terminalTransitionVerdict(orders, invalidReasons);
-    // a canceled order must hold no reservation (the cancel releases its stock); each leak is named with its race and statuses
-    const leaks = rows.filter((r) => r.canceled === 1 && r.reservations_live > 0);
-    const leakReasons = leaks.map(
-      (r) =>
-        `canceled order ${r.id} holds ${r.reservations_live} live reservation(s) (race ${raceOfEmail(r.email) ?? "none"}, HTTP ${statusesOf(r.id)})`,
-    );
-    // no order is both canceled and fulfilled except the counted X05
-    const canceledFulfilled = rows.filter((r) => r.canceled === 1 && r.live_fulfilments > 0).length;
-    const fulfilReasons =
-      canceledFulfilled === verdict.x05CancelFulfil
-        ? []
-        : [
-            `${canceledFulfilled} canceled order(s) with a live fulfilment, ${verdict.x05CancelFulfil} counted as X05`,
-          ];
-    // the double-cancel responses in HTTP next to the stored X04 count (D41): a double 200 is reported, not hidden
-    const doubleOk = [...raceLog.values()].filter(
-      (v) => v.race === "double-cancel" && v.statuses.every((s) => s === 200),
-    ).length;
-    const structural = [...leakReasons, ...fulfilReasons];
-    const productBug = structural.length > 0 || verdict.verdict === "FAIL (PRODUCT BUG)";
-    const verdictOk = verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)";
-    return {
-      ok: verdictOk && structural.length === 0,
-      // TEST BUG and INVALID outrank PRODUCT BUG (the verdict precedence of cancel-race.ts)
-      kind:
-        verdict.verdict === "TEST BUG"
-          ? "TEST BUG"
-          : verdict.verdict === "INVALID"
-            ? "INVALID"
-            : productBug
-              ? "PRODUCT BUG"
-              : undefined,
-      reasons: [
-        ...structural,
-        ...(verdict.reasons.length > 0 ? verdict.reasons : [`cancel race: ${verdict.verdict}`]),
-      ],
-      data: {
-        verdict: verdict.verdict,
-        orders: raced.length,
-        x04Double: verdict.x04Double,
-        x04DoubleHttp200: doubleOk,
-        x05CancelFulfil: verdict.x05CancelFulfil,
-        leakedCanceledOrders: leaks.length,
-      },
-    };
-  } finally {
-    await closePool(pool);
-  }
-};
+    const summary = JSON.parse(readFileSync(main.summaryPath, "utf8"));
+    const dropped = parseK6Summary(summary).dropped;
+    const pool = createReadOnlyPool();
+    try {
+      const rows = await selectRows<RunOrderRow>(pool, RUN_ORDER_ROWS_SQL, [
+        String(audit.prefixLike),
+      ]);
+      // only the orders a race was injected into have a terminal transition to judge; the others are plain checkouts
+      const raced = rows.filter((r) => isRacedEmail(r.email));
+      const raceLog = readRaceLog(main.stdoutPath);
+      const statusesOf = (id: string) => raceLog.get(id)?.statuses.join(",") ?? "not logged";
+      const orders: OrderTerminal[] = raced.map((r) => {
+        const cancels = Math.max(r.cancel_changes, r.canceled);
+        // the race creates a fulfilment and never ships it, so a live fulfilment is the fulfilment (X05 needs FULFILLED)
+        const terminal = [
+          ...Array.from({ length: cancels }, () => "CANCELED"),
+          ...(r.live_fulfilments > 0 ? ["FULFILLED"] : []),
+        ];
+        return {
+          orderId: r.id,
+          terminal,
+          openFulfilment: r.canceled === 1 && r.live_fulfilments > 0,
+          sideEffects: { refunds: r.refund_rows, reservationsLive: r.reservations_live },
+        };
+      });
+      // a race-selected order without a sent race is an unconfirmed injection: INVALID, never a product failure
+      const unconfirmed = unconfirmedInjections(raced.length, counter(summary, "p6_races_sent"));
+      const invalidReasons = [
+        ...(dropped > 0 ? [`${dropped} dropped iteration(s)`] : []),
+        ...(unconfirmed > 0
+          ? [`${unconfirmed} race-selected order(s) without a sent race (completion response lost)`]
+          : []),
+      ];
+      const verdict = terminalTransitionVerdict(orders, invalidReasons);
+      // a canceled order must hold no reservation (the cancel releases its stock); each leak is named with its race and statuses
+      const leaks = rows.filter((r) => r.canceled === 1 && r.reservations_live > 0);
+      const leakReasons = leaks.map(
+        (r) =>
+          `canceled order ${r.id} holds ${r.reservations_live} live reservation(s) (race ${raceOfEmail(r.email) ?? "none"}, HTTP ${statusesOf(r.id)})`,
+      );
+      // no order is both canceled and fulfilled except the counted X05
+      const canceledFulfilled = rows.filter(
+        (r) => r.canceled === 1 && r.live_fulfilments > 0,
+      ).length;
+      const fulfilReasons =
+        canceledFulfilled === verdict.x05CancelFulfil
+          ? []
+          : [
+              `${canceledFulfilled} canceled order(s) with a live fulfilment, ${verdict.x05CancelFulfil} counted as X05`,
+            ];
+      // the double-cancel responses in HTTP next to the stored X04 count (D41): a double 200 is reported, not hidden
+      const doubleOk = [...raceLog.values()].filter(
+        (v) => v.race === "double-cancel" && v.statuses.every((s) => s === 200),
+      ).length;
+      const verdictOk = verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)";
+      const leak = judgeLeakClause({
+        label: "cancel race",
+        leak: leaks.length,
+        observed: leaks.length,
+        onlyLeak: verdictOk && fulfilReasons.length === 0,
+        ...(knownLeakId === undefined ? {} : { knownId: knownLeakId }),
+      });
+      const leakFailed = leak.status === "FAIL";
+      const structural = [...(leakFailed ? [leak.text] : []), ...fulfilReasons];
+      const productBug = structural.length > 0 || verdict.verdict === "FAIL (PRODUCT BUG)";
+      return {
+        ok: verdictOk && structural.length === 0,
+        // TEST BUG and INVALID outrank PRODUCT BUG (the verdict precedence of cancel-race.ts)
+        kind:
+          verdict.verdict === "TEST BUG"
+            ? "TEST BUG"
+            : verdict.verdict === "INVALID"
+              ? "INVALID"
+              : productBug
+                ? "PRODUCT BUG"
+                : undefined,
+        reasons: [
+          ...structural,
+          ...(leak.status === "KNOWN" ? [leak.text] : []),
+          ...leakReasons,
+          ...(verdict.reasons.length > 0 ? verdict.reasons : [`cancel race: ${verdict.verdict}`]),
+        ],
+        data: {
+          verdict: verdict.verdict,
+          orders: raced.length,
+          x04Double: verdict.x04Double,
+          x04DoubleHttp200: doubleOk,
+          x05CancelFulfil: verdict.x05CancelFulfil,
+          leakedCanceledOrders: leaks.length,
+          ...(leak.status === "KNOWN" && knownLeakId !== undefined
+            ? { knownFail: knownLeakId }
+            : {}),
+        },
+      };
+    } finally {
+      await closePool(pool);
+    }
+  };
+}
