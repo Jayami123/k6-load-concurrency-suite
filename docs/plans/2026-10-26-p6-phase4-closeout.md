@@ -8,7 +8,7 @@ Phase 4b finished the soak evidence, the soak schedule, the invariant evidence a
 
 ## 2. Models used
 
-Claude (Haiku 5.5 configured for the session; the serving model is not recorded here).
+Recorded in the session log, not in the repository.
 
 ## 3. Tasks
 
