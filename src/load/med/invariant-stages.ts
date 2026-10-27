@@ -18,6 +18,7 @@ import type { LoadContext, Stage, StageResult } from "../types.ts";
 import { terminalTransitionVerdict, type OrderTerminal } from "./cancel-race.ts";
 import { promoLedgerVerdict } from "./ledger.ts";
 import { classifySplit, type InstanceCount } from "./instance-split.ts";
+import { isRacedEmail } from "./raced-orders.ts";
 
 /** One row per run order: state, cancel effects, fulfilments, payments and the money of its payments. */
 export const RUN_ORDER_ROWS_SQL = `
@@ -198,7 +199,8 @@ export const ledgerStage: Stage = async (ctx: LoadContext): Promise<StageResult>
       promoLimit: limit === null || limit === undefined ? Number.NaN : Number(limit),
       balances: rows.map((r) => Number(r.captured) - Number(r.refunded)),
       debitsSum: rows.reduce((n, r) => n + (Number(r.captured) - Number(r.refunded)), 0),
-      balanceChange: -rows.reduce((n, r) => n + (Number(r.captured) - Number(r.refunded)), 0),
+      // the balances and the debits come from the same rows, so no balance change is independent of them: the clause is PENDING
+      balanceChange: null,
     });
     const failed = result.clauses.filter((c) => c.status === "FAIL (PRODUCT BUG)");
     return {
@@ -237,11 +239,14 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
     const rows = await selectRows<RunOrderRow>(pool, RUN_ORDER_ROWS_SQL, [
       String(audit.prefixLike),
     ]);
-    const orders: OrderTerminal[] = rows.map((r) => {
+    // only the orders a race was injected into have a terminal transition to judge; the others are plain checkouts
+    const raced = rows.filter((r) => isRacedEmail(r.email));
+    const orders: OrderTerminal[] = raced.map((r) => {
       const cancels = Math.max(r.cancel_changes, r.canceled);
+      // the race creates a fulfilment and never ships it, so a live fulfilment is the fulfilment (X05 needs FULFILLED)
       const terminal = [
         ...Array.from({ length: cancels }, () => "CANCELED"),
-        ...(r.shipped_fulfilments > 0 ? ["FULFILLED"] : []),
+        ...(r.live_fulfilments > 0 ? ["FULFILLED"] : []),
       ];
       return {
         orderId: r.id,
@@ -267,7 +272,7 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
       reasons: verdict.reasons.length > 0 ? verdict.reasons : [`cancel race: ${verdict.verdict}`],
       data: {
         verdict: verdict.verdict,
-        orders: rows.length,
+        orders: raced.length,
         x04Double: verdict.x04Double,
         x05CancelFulfil: verdict.x05CancelFulfil,
       },
