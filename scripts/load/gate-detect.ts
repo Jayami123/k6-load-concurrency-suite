@@ -16,7 +16,8 @@ const files = git(["diff", "--name-only", `${base}...${head}`])
 const refs = changedRefs(
   git(["diff", `${base}...${head}`, "--", ".github/workflows/perf.yml", "scripts/bootstrap.sh"]),
 );
-const labels = JSON.parse(process.env.LABELS_JSON || "[]") as Array<{ name: string }>;
+// On a push there is no pull request, so the workflow passes "null" here: an empty list.
+const labels = (JSON.parse(process.env.LABELS_JSON || "[]") ?? []) as Array<{ name: string }>;
 
 const outputs = {
   load_code: String(touchesLoadCode(files)),
