@@ -892,6 +892,24 @@ It exits 2 when a product has fewer than three VALID steady arms, or when its ar
 by its own pull request after the A/A dispatches, with its run ids. Until that file exists, no gate may name a tolerance: the
 `P6-RULE-004` tests in `tests/unit/gate-rule-004.test.ts` fail if a workflow does.
 
+## How the gate works
+
+The A/B gate (`P6-X-LOAD-003`) compares a candidate with the base on the same runner, in one job. Each product runs six steady arms in
+the order A B A B A B (A = the base, B = the candidate), each 120 s at the steady rate. A is the base checkout (`p6-base`); B is the PR
+head or the pushed commit. The verdict is `PASS`, `FAIL (REGRESSION)`, `FAIL (PRODUCT BUG)`, `INVALID` or `TEST BUG`.
+
+The rule: the gate fails for a regression only when every B arm's p95 is above `(1 + T) x` the median of the A arms, where `T` is the
+product's p95 tolerance in `k6/thresholds/tolerance.json` (the A/A tolerance). One noisy B arm never fails the gate. Without that file
+the verdict is `INVALID` (`no_reference`), never `PASS`. A failed audit is `FAIL (PRODUCT BUG)`, never a regression.
+
+Triggers (`gate.yml`): `gate-selftest` runs on a PR that changes load code (`k6/`, `scripts/load/`, `src/load/`) and on a push to
+`main` that does. `ab-cal` and `ab-medusa` run on a PR only when that product's `*_REF` is bumped in `perf.yml` or `scripts/bootstrap.sh`,
+or the PR has the `perf-gate` label; on a push to `main` when load code changed; and on a dispatch with `ab` set. There is no schedule.
+
+The self-test (`P6-X-LOAD-008`) starts three stubs on ports 18080 (A), 18081 (slowed by 60 ms) and 18082 (unchanged) and runs three
+rounds of each. It passes only when the slowed stub fails as a regression and the unchanged stub passes, with a fixed test tolerance of
+0.20 (a labelled test constant, not a product tolerance).
+
 ## Soaks
 
 `soak.yml` runs the soak cases `P6-CAL-LOAD-008`, `P6-MED-LOAD-005` and `P6-DOC-LOAD-006` at the steady rate of each product's

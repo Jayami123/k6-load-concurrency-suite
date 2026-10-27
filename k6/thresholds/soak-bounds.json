@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "metric": "soak RSS growth thresholds",
+  "unit": "slopePerMin in MB per minute; plateauRatio is a ratio of the last third to the middle third",
+  "release": "p6-phase4b",
+  "products": {},
+  "notes": [
+    "Empty by design (D5, Q-SOAKTHR). No product meets the calibration rule yet: Cal, Documenso and Medusa each have a positive RSS growth in their 30-min soaks (docs/observations/2026-10-27-soak-bounds-not-calibrated.md).",
+    "A product with no entry reports NO THRESHOLD YET. Only a calibration PR adds an entry, from three VALID 30-min soaks per product, and never to absorb growth."
+  ]
+}
