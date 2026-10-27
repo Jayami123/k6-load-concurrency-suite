@@ -32,7 +32,9 @@ const ADDRESS = {
  * opts.classify (task 8): refusals are classified (clean, ghost, other) and every iteration ends in exactly one counter.
  * opts.abandon(n) (task 6): an iteration n for which it returns true stops before "complete" and counts p6_abandoned.
  * @param {{ baseUrl: string, publishableKey: string, regionId: string, salesChannelId: string, variantId: string, prefix: string }} cfg
- * @param {{ classify?: boolean, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
+ * opts.instance (task 10): "primary" or "secondary", tagged on every request (the base URL is set by the caller in cfg).
+ * opts.promoCode (task 10): the promotion code applied to this cart before the line item; absent means no promotion.
+ * @param {{ classify?: boolean, instance?: "primary" | "secondary", promoCode?: string, abandon?: (n: number) => boolean, retryPlan?: Array<{ timeoutMs: number, delayMs: number, parallel: number }>, onCommit?: () => void }} [opts]
  *   opts.retryPlan (plan task 10 §6.2): only the complete request is sent through the plan; one order per intent is counted.
  */
 export function runMedCheckout(cfg, opts = {}) {
@@ -47,11 +49,13 @@ export function runMedCheckout(cfg, opts = {}) {
     terminal = true;
     counter.add(1);
   };
+  const instance = opts.instance ?? "primary"; // P6-MED-LOAD-007: the instance that serves this iteration, tagged on each request
   /** @type {(method: string, path: string, body: unknown, name: string) => any} */
   const call = (method, path, body, name) => {
     const r = request(method, `${cfg.baseUrl}/store${path}`, name, body, {
       headers: H,
       timeout: "30s",
+      tags: { instance },
     });
     if (r.status >= 500) status5xx.add(1);
     return r;
@@ -75,6 +79,20 @@ export function runMedCheckout(cfg, opts = {}) {
           "POST /store/carts",
         );
         return { ok: r.status === 200, data: { cartId: safeJson(r, "cart.id") } };
+      },
+    },
+    {
+      // P6-MED-LOAD-008: the promotion is applied only to the carts that opts.promoCode names (a share of the stream, shareHit)
+      name: "promotion",
+      run: (/** @type {Record<string, any>} */ s) => {
+        if (!opts.promoCode) return { ok: true };
+        const r = call(
+          "POST",
+          `/carts/${s.cartId}/promotions`,
+          { promo_codes: [opts.promoCode] },
+          "POST /store/carts/:id/promotions",
+        );
+        return { ok: r.status === 200 };
       },
     },
     {
@@ -188,7 +206,7 @@ export function runMedCheckout(cfg, opts = {}) {
             `${cfg.baseUrl}/store/carts/${s.cartId}/complete`,
             "POST /store/carts/:id/complete",
             undefined,
-            { headers: H, timeout: "30s" },
+            { headers: H, timeout: "30s", tags: { instance } },
             // an order is an answer with type "order"; a 200 with another type is not done
             (r) => r.status === 200 && safeJson(r, "type") === "order",
           );
