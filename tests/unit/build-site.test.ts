@@ -19,7 +19,7 @@ const verdicts = [
     reasons: ["dropped iterations"],
   },
 ];
-const model = buildSiteModel({ verdicts, hasSoakData: false, hasInvariantData: false });
+const model = buildSiteModel({ verdicts });
 const runs = new Map([
   ["20261026T175734Z-aa", "40473743598"],
   ["20261027T000001Z-bb", "40487849160"],
@@ -65,5 +65,16 @@ describe("dashboard site build", () => {
     const soak = html.slice(html.indexOf('id="soak"'), html.indexOf('id="two-instance"'));
     assert.match(soak, /Pending: waiting for the soak data \(Task 7\)/);
     assert.doesNotMatch(soak, /\d{3,}/);
+  });
+
+  it("each ready run links its chart next to its GitHub run", () => {
+    const charts = new Map([
+      ["20261026T175734Z-aa", "runs/P6-CAL-LOAD-005/20261026T175734Z-aa/chart-main.html"],
+    ]);
+    const page = renderSite(model, runs, charts);
+    assert.match(
+      page,
+      /<a href="runs\/P6-CAL-LOAD-005\/20261026T175734Z-aa\/chart-main\.html">chart<\/a>/,
+    );
   });
 });

@@ -25,20 +25,33 @@ export function runUrl(githubRunId: string): string {
   return `${REPO}/actions/runs/${githubRunId}`;
 }
 
-/** Renders the one page. `runs` maps each P6 run id to the GitHub run it came from. */
-export function renderSite(model: SiteModel, runs: Map<string, string>): string {
+/**
+ * Renders the one page. `runs` maps each P6 run id to the GitHub run it came from; `charts` maps a run id to the path of its copied
+ * chart, relative to the page, so each ready run links its chart as well as its GitHub run.
+ */
+export function renderSite(
+  model: SiteModel,
+  runs: Map<string, string>,
+  charts: Map<string, string> = new Map(),
+): string {
   const link = (runId: string) => {
     const gh = runs.get(runId);
     return gh === undefined
       ? `<code>${escapeLabel(runId)}</code>`
       : `<a href="${runUrl(gh)}">${escapeLabel(runId)}</a>`;
   };
+  const runEntry = (runId: string) => {
+    const chart = charts.get(runId);
+    return chart === undefined
+      ? link(runId)
+      : `${link(runId)} (<a href="${escapeLabel(chart)}">chart</a>)`;
+  };
   const notes = new Map(showcaseNotes().map((n) => [n.id, n.note]));
   const showcases = model.showcases
     .map((s) => {
       const body =
         s.status === "ready"
-          ? `<p>Runs: ${s.runLinks.map(link).join(", ") || "none"}</p>`
+          ? `<p>Runs: ${s.runLinks.map((id) => runEntry(id)).join(", ") || "none"}</p>`
           : `<p class="pending">Pending: ${escapeLabel(s.pending ?? "no data")}</p>`;
       return `<section id="${s.id}"><h2>${escapeLabel(SHOWCASE_TITLES[s.id])}</h2><p>${escapeLabel(notes.get(s.id) ?? s.note)}</p>${body}</section>`;
     })
@@ -94,6 +107,7 @@ function main(argv: string[]): void {
   const runs = new Map<string, string>();
   const verdicts: VerdictInput[] = [];
   const chartCopies: Array<{ from: string; to: string }> = [];
+  const charts = new Map<string, string>();
   for (const source of sources) {
     const [dir = "", githubRunId = ""] = source.split("=");
     if (!existsSync(dir)) throw new Error(`TEST BUG: artefact folder ${dir} missing`);
@@ -102,22 +116,15 @@ function main(argv: string[]): void {
       runs.set(verdict.runId, githubRunId);
       const chart = path.join(runDir, "chart-main.html");
       if (existsSync(chart)) {
-        chartCopies.push({
-          from: chart,
-          to: path.join("runs", verdict.caseId, verdict.runId, "chart-main.html"),
-        });
+        const href = path.posix.join("runs", verdict.caseId, verdict.runId, "chart-main.html");
+        chartCopies.push({ from: chart, to: href });
+        charts.set(verdict.runId, href);
       }
     }
   }
-  const model = buildSiteModel({
-    verdicts,
-    hasSoakData: verdicts.some((v) => /SOAK/.test(v.caseId) && v.validity === "VALID"),
-    hasInvariantData: verdicts.some(
-      (v) => /MED-LOAD-00[789]/.test(v.caseId) && v.validity === "VALID",
-    ),
-  });
+  const model = buildSiteModel({ verdicts });
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs));
+  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts));
   for (const c of chartCopies) {
     const to = path.join(outDir, c.to);
     mkdirSync(path.dirname(to), { recursive: true });

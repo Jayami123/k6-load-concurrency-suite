@@ -46,43 +46,64 @@ export function escapeLabel(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** The harness's knee case ids (the knee runs of Cal, Medusa and Documenso). */
+export const KNEE_CASE_IDS: readonly string[] = [
+  "P6-CAL-LOAD-005",
+  "P6-MED-LOAD-004",
+  "P6-DOC-LOAD-005",
+];
+/** The soak case ids the soak workflow runs (soak.yml). */
+export const SOAK_CASE_IDS: readonly string[] = [
+  "P6-CAL-LOAD-008",
+  "P6-MED-LOAD-005",
+  "P6-DOC-LOAD-006",
+];
+/** The cases the two-instance note cites: conservation under two instances, and the race under the lock. */
+export const TWO_INSTANCE_CASE_IDS: readonly string[] = ["P6-MED-RACE-002", "P6-MED-LOAD-007"];
+
+/** The valid runs of the given cases, in the order of the verdicts. */
+function validRuns(verdicts: VerdictInput[], caseIds: readonly string[]): string[] {
+  return verdicts
+    .filter((v) => caseIds.includes(v.caseId) && v.validity === "VALID")
+    .map((v) => v.runId);
+}
+
 /**
- * Builds the model from the verdicts of the artefacts. A showcase without its data is pending with its reason. The INVALID list is
- * sorted by case then run, so the page is stable between builds.
+ * Builds the model from the verdicts of the artefacts. Each showcase lists the valid runs of its own cases as its evidence; a
+ * showcase with none is pending with its reason. The INVALID list is sorted by case then run, so the page is stable.
  */
-export function buildSiteModel(input: {
-  verdicts: VerdictInput[];
-  hasSoakData: boolean;
-  hasInvariantData: boolean;
-}): SiteModel {
-  const knee = input.verdicts.filter((v) => /KNEE/.test(v.caseId) && v.validity === "VALID");
+export function buildSiteModel(input: { verdicts: VerdictInput[] }): SiteModel {
+  const { verdicts } = input;
+  const knee = validRuns(verdicts, KNEE_CASE_IDS);
+  const soak = validRuns(verdicts, SOAK_CASE_IDS);
+  const twoInstance = validRuns(verdicts, TWO_INSTANCE_CASE_IDS);
   const showcases: ShowcaseState[] = [
     {
       id: "knee",
       status: knee.length > 0 ? "ready" : "pending",
       ...(knee.length > 0 ? {} : { pending: "no valid knee run in the artefacts yet" }),
       note: NOTES.knee,
-      runLinks: knee.map((v) => v.runId),
+      runLinks: knee,
     },
     {
       id: "soak",
-      status: input.hasSoakData ? "ready" : "pending",
-      ...(input.hasSoakData ? {} : { pending: "waiting for the soak data (Task 7)" }),
+      status: soak.length > 0 ? "ready" : "pending",
+      ...(soak.length > 0 ? {} : { pending: "waiting for the soak data (Task 7)" }),
       note: NOTES.soak,
-      runLinks: [],
+      runLinks: soak,
     },
     {
       id: "two-instance",
-      status: input.hasInvariantData ? "ready" : "pending",
-      ...(input.hasInvariantData ? {} : { pending: "waiting for the invariant data (Task 10)" }),
+      status: twoInstance.length > 0 ? "ready" : "pending",
+      ...(twoInstance.length > 0 ? {} : { pending: "waiting for the invariant data (Task 10)" }),
       note: NOTES["two-instance"],
-      runLinks: [],
+      runLinks: twoInstance,
     },
   ];
-  const invalidRuns = input.verdicts
+  const invalidRuns = verdicts
     .filter((v) => v.validity === "INVALID")
     .sort((a, b) => a.caseId.localeCompare(b.caseId) || a.runId.localeCompare(b.runId))
     .map((v) => ({ runId: v.runId, caseId: v.caseId, reasons: v.reasons }));
-  const generatedFrom = [...new Set(input.verdicts.map((v) => v.runId))].sort();
+  const generatedFrom = [...new Set(verdicts.map((v) => v.runId))].sort();
   return { generatedFrom, showcases, invalidRuns };
 }
