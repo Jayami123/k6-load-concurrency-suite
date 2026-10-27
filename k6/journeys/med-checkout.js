@@ -16,7 +16,10 @@ const refusedGhost = new Counter("p6_refused_ghost");
 const refusedOther = new Counter("p6_refused_other");
 const iterFailed = new Counter("p6_iter_failed");
 const status5xx = new Counter("p6_status_5xx");
-const abandoned = new Counter("p6_abandoned"); // P6-MED-LOAD-010: carts that stop before "complete" (Task 6 §6.4)
+const abandoned = new Counter("p6_abandoned");
+// P6-MED-LOAD-007 (D42): requests per instance, read from the summary by the split verdict
+const primaryRequests = new Counter("p6_requests_primary");
+const secondaryRequests = new Counter("p6_requests_secondary"); // P6-MED-LOAD-010: carts that stop before "complete" (Task 6 §6.4)
 
 const ADDRESS = {
   first_name: "P6",
@@ -53,6 +56,7 @@ export function runMedCheckout(cfg, opts = {}) {
   const instance = opts.instance ?? "primary"; // P6-MED-LOAD-007: the instance that serves this iteration, tagged on each request
   /** @type {(method: string, path: string, body: unknown, name: string) => any} */
   const call = (method, path, body, name) => {
+    (instance === "primary" ? primaryRequests : secondaryRequests).add(1);
     const r = request(method, `${cfg.baseUrl}/store${path}`, name, body, {
       headers: H,
       timeout: "30s",

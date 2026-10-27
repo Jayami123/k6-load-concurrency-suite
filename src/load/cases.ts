@@ -20,6 +20,12 @@ import { readSmokeReference } from "./smoke-baseline.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
+import {
+  cancelRaceStage,
+  ledgerStage,
+  makeInvariantSetup,
+  splitStage,
+} from "./med/invariant-stages.ts";
 import { conservationStage, makeConservationStage } from "./med-conservation.ts";
 import { composeStages, reconcileStage, summaryCounter } from "./reconcile/index.ts";
 import { calBurstStage, calStaleStage } from "./cal/invariant-stages.ts";
@@ -1386,6 +1392,70 @@ export const DOC_LOAD_006: LoadCase = {
   },
 };
 
+/** P6-MED-LOAD-007: two-instance conservation under steady load (plan Phase 4b task 10 §6.2). The second backend is the harness's MEDUSA_SECOND_BASE_URL. */
+export const MED_LOAD_007: LoadCase = {
+  id: "P6-MED-LOAD-007",
+  telemetry: { product: "medusa" },
+  title: "Medusa two-instance conservation under steady load",
+  product: "medusa",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/med-load-007.js", env: {} }],
+  stages: {
+    setup: makeInvariantSetup({ promo: false }),
+    reconcile: composeStages([reconcileStage, splitStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/** P6-MED-LOAD-008: the promo ledger under steady load (plan Phase 4b task 10 §6.3). Gift-card clause stays PENDING (D34). */
+export const MED_LOAD_008: LoadCase = {
+  id: "P6-MED-LOAD-008",
+  telemetry: { product: "medusa" },
+  title: "Medusa promo ledger under steady load",
+  product: "medusa",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+  },
+  runs: () => [{ label: "main", script: "k6/cases/med-load-008.js", env: {} }],
+  stages: {
+    setup: makeInvariantSetup({ promo: true }),
+    reconcile: composeStages([reconcileStage, ledgerStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
+/** P6-MED-LOAD-009: double cancel and cancel-vs-fulfil inside steady load (plan Phase 4b task 10 §6.4). The admin token is a secret env. */
+export const MED_LOAD_009: LoadCase = {
+  id: "P6-MED-LOAD-009",
+  telemetry: { product: "medusa" },
+  title: "Medusa double cancel and cancel-vs-fulfil under steady load",
+  product: "medusa",
+  label: "functional load, not capacity",
+  profiles: {
+    pr: { rate: 7, timeUnitSec: 10, durationSec: 10, maxLatencyMs: 5000 },
+    full: { rate: 7, timeUnitSec: 10, durationSec: 120, maxLatencyMs: 5000 },
+  },
+  runs: () => [
+    {
+      label: "main",
+      script: "k6/cases/med-load-009.js",
+      env: {},
+      secretEnv: ["MEDUSA_ADMIN_TOKEN"],
+    },
+  ],
+  stages: {
+    setup: makeInvariantSetup({ promo: false }),
+    reconcile: composeStages([reconcileStage, cancelRaceStage]),
+    cleanup: medusaCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1404,6 +1474,9 @@ export const CASES: Record<string, LoadCase> = {
   [CAL_LOAD_002.id]: CAL_LOAD_002,
   [CAL_LOAD_006.id]: CAL_LOAD_006,
   [MED_LOAD_005.id]: MED_LOAD_005,
+  [MED_LOAD_007.id]: MED_LOAD_007,
+  [MED_LOAD_008.id]: MED_LOAD_008,
+  [MED_LOAD_009.id]: MED_LOAD_009,
   [DOC_LOAD_006.id]: DOC_LOAD_006,
   [CAL_LOAD_005.id]: CAL_LOAD_005,
   [CAL_LOAD_004.id]: CAL_LOAD_004,
