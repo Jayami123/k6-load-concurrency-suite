@@ -934,9 +934,9 @@ Three Medusa cases check the invariants of the steady checkout stream at 0.7 ord
 
 The admin token for `-009` arrives in the environment (`MEDUSA_ADMIN_TOKEN`), never in the config file.
 
-Status: the k6 cases and the pure checks (`classifySplit`, `promoLedgerVerdict`, `terminalTransitionVerdict`) are on the Task 10 branch.
-The verdict stages that read the database for these cases and the `medusa-invariants` job in `perf.yml` are not registered yet, so no
-run of these cases is a verdict until they are.
+Status: the three cases are registered in `src/load/cases.ts` with their verdict stages (`src/load/med/invariant-stages.ts`). They run
+in the `medusa-invariants` job of `perf.yml` (schedule and full dispatch only). The stages read the stored state after the drain and
+judge it with the pure checks. The first live dispatch is the probe of record for their SQL (decisions D40 to D43 in the progress log).
 
 ## How to read a knee
 
