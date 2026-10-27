@@ -55,6 +55,9 @@ export function soakStatistics(
     rssMb: stats(pointsOf(telemetry.samples, (s) => s.proc?.rssMb)),
     fds: stats(pointsOf(telemetry.samples, (s) => s.proc?.fds)),
     dbConnections: stats(pointsOf(telemetry.samples, (s) => s.db?.total)),
-    rssD33: d33Growth(pointsOf(telemetry.samples, (s) => s.proc?.rssMb)),
+    rssD33: d33Growth(
+      pointsOf(telemetry.samples, (s) => s.proc?.rssMb),
+      Math.max(...telemetry.samples.map((s) => s.t)),
+    ),
   };
 }

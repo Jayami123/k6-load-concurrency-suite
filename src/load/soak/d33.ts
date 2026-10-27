@@ -17,10 +17,11 @@ export interface D33Result {
 }
 
 /**
- * The D33 growth check of one metric (RSS in MB) over the last 60 minutes of the points. The window ends at the last point, so a run
- * that stops early is judged on its own last hour. A flag is "investigate", never a product verdict on its own.
+ * The D33 growth check of one metric (RSS in MB) over the last 60 minutes of the run. The window ends at endMs, the end of the run
+ * (the last telemetry sample, not the last RSS reading: a failed process read near the end must not shift the window). Without
+ * endMs it ends at the last point. A flag is "investigate", never a product verdict on its own.
  */
-export function d33Growth(points: SoakPoint[]): D33Result {
+export function d33Growth(points: SoakPoint[], endMs?: number): D33Result {
   if (points.length === 0)
     return {
       windowStartMs: 0,
@@ -30,8 +31,8 @@ export function d33Growth(points: SoakPoint[]): D33Result {
       plateauRatio: null,
       flag: false,
     };
-  const endMs = Math.max(...points.map((p) => p.tMs));
-  const windowStartMs = endMs - D33_WINDOW_MIN * 60_000;
+  const runEndMs = endMs ?? Math.max(...points.map((p) => p.tMs));
+  const windowStartMs = runEndMs - D33_WINDOW_MIN * 60_000;
   const window = points.filter((p) => p.tMs >= windowStartMs);
   const slope = soakSlope(window, windowStartMs, 0);
   const plateau = plateauRatio(window, windowStartMs, 0);

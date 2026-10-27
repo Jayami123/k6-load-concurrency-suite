@@ -26,6 +26,16 @@ describe("soak report carries the D33 check", () => {
     assert.equal(stats.durationSec, 7200);
   });
 
+  it("anchors the window to the run end when the process reading stops early", () => {
+    // RSS grows in the first hour only, then the process reading is missing for the last 30 minutes of the run
+    const base = telemetry((m) => (m < 60 ? 1500 + 10 * m : 2100));
+    const withoutEnd = {
+      samples: base.samples.map((s, i) => (i >= 5401 ? { ...s, proc: undefined } : s)),
+    };
+    const stats = soakStatistics(withoutEnd, 1_000_000, 7200);
+    assert.equal(stats.rssD33.flag, false);
+  });
+
   it("does not flag a flat RSS", () => {
     const stats = soakStatistics(
       telemetry(() => 1800),
