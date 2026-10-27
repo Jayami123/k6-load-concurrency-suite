@@ -348,7 +348,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.cal_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
@@ -402,7 +402,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.cal_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
@@ -456,7 +456,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.cal_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
@@ -713,7 +713,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.medusa_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
@@ -767,7 +767,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.medusa_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
@@ -821,7 +821,7 @@ jobs:
         timeout-minutes: 4
         working-directory: p6
         env:
-          PRODUCTS_ROOT: ${{ github.workspace }}/products-b
+          PRODUCTS_ROOT: ${{ needs.detect.outputs.medusa_bump == 'true' && format('{0}/products-b', github.workspace) || format('{0}/products', github.workspace) }}
         run: |
           set -euo pipefail
           status=0
