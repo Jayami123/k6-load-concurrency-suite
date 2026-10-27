@@ -17,6 +17,7 @@ import {
   type VerdictInput,
 } from "../../src/dashboard/site-model.ts";
 import { SHOWCASE_TITLES, showcaseNotes } from "./showcases.ts";
+import { parsePendingFile, type PendingFile } from "../../src/dashboard/release-plan.ts";
 
 const REPO = "https://github.com/Jayami123/k6-load-concurrency-suite";
 
@@ -29,10 +30,20 @@ export function runUrl(githubRunId: string): string {
  * Renders the one page. `runs` maps each P6 run id to the GitHub run it came from; `charts` maps a run id to the path of its copied
  * chart, relative to the page, so each ready run links its chart as well as its GitHub run.
  */
+/** The cited runs whose zip is not in a release yet (docs/evidence/pending-release.json): listed with their reason, never plotted. */
+function pendingSection(pending: PendingFile | undefined): string {
+  if (!pending || pending.pending.length === 0) return "";
+  const items = pending.pending
+    .map((p) => `<li><code>${escapeLabel(p.runId)}</code>: ${escapeLabel(p.reason)}</li>`)
+    .join("\n");
+  return `<section id="pending"><h2>Pending release ${escapeLabel(pending.release)}</h2><ul>${items}</ul><p>${pending.pending.length} run(s) waiting for their evidence zip.</p></section>`;
+}
+
 export function renderSite(
   model: SiteModel,
   runs: Map<string, string>,
   charts: Map<string, string> = new Map(),
+  pending?: PendingFile,
 ): string {
   const link = (runId: string) => {
     const gh = runs.get(runId);
@@ -69,6 +80,7 @@ export function renderSite(
 ${showcases}
 <section id="invalid"><h2>INVALID runs (listed, not plotted)</h2><ul>${invalid}</ul><p>${model.invalidRuns.length} run(s) not used.</p></section>
 <section id="sources"><h2>Runs the site is built from</h2><p>${model.generatedFrom.map(link).join(", ") || "none"}</p></section>
+${pendingSection(pending)}
 </body></html>
 `;
 }
@@ -124,7 +136,11 @@ function main(argv: string[]): void {
   }
   const model = buildSiteModel({ verdicts });
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts));
+  const pendingFile = path.join("docs", "evidence", "pending-release.json");
+  const pending = existsSync(pendingFile)
+    ? parsePendingFile(JSON.parse(readFileSync(pendingFile, "utf8")))
+    : undefined;
+  writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending));
   for (const c of chartCopies) {
     const to = path.join(outDir, c.to);
     mkdirSync(path.dirname(to), { recursive: true });

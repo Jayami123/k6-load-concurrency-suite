@@ -67,31 +67,37 @@ jobs:
             git merge-base --is-ancestor "$head" "$GITHUB_SHA" || { echo "::error::run $id headSha is not an ancestor of this commit"; exit 1; }
           done < "$RUNNER_TEMP/run-ids.txt"
 
-      - name: Fetch the evidence zips of the release and check their sums
+      - name: List the p6 releases and plan where each cited run is
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[]' \
+            | jq -s '[.[] | select(.tag_name | startswith("p6-"))]' > "$RUNNER_TEMP/releases.json"
+          node scripts/dashboard/plan-release.ts "$RUNNER_TEMP/run-ids.txt" "$RUNNER_TEMP/releases.json" \
+            docs/evidence/pending-release.json "$RUNNER_TEMP/plan.json"
+
+      - name: Fetch the planned zips and check each one's sum
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/release"
-          gh release download "$EVIDENCE_RELEASE" --dir "$RUNNER_TEMP/release" --pattern 'SHA256SUMS.txt' --pattern '*.zip'
-          (cd "$RUNNER_TEMP/release" && sha256sum -c SHA256SUMS.txt)
-          while read -r id; do
-            zip=""
-            for f in "$RUNNER_TEMP/release"/*"$id"*.zip; do
-              [[ -e "$f" ]] && zip=$(basename "$f") && break
-            done
-            [[ -n "$zip" ]] || { echo "::error::no release asset for run $id"; exit 1; }
-            mkdir -p "$RUNNER_TEMP/evidence/$id"
-            unzip -q "$RUNNER_TEMP/release/$zip" -d "$RUNNER_TEMP/evidence/$id"
-          done < "$RUNNER_TEMP/run-ids.txt"
+          while read -r id tag zip; do
+            dir="$RUNNER_TEMP/release/$tag"
+            mkdir -p "$dir" "$RUNNER_TEMP/evidence/$id"
+            gh release download "$tag" --dir "$dir" --pattern 'SHA256SUMS.txt' --pattern "$zip" --clobber
+            (cd "$dir" && grep -F " $zip" SHA256SUMS.txt | sha256sum -c -)
+            unzip -q "$dir/$zip" -d "$RUNNER_TEMP/evidence/$id"
+          done < <(jq -r '.fetch[] | "\(.runId) \(.tag) \(.zip)"' "$RUNNER_TEMP/plan.json")
 
       - name: Build the site
         timeout-minutes: 2
         run: |
           set -euo pipefail
           sources=()
-          while read -r id; do sources+=("$RUNNER_TEMP/evidence/$id=$id"); done < "$RUNNER_TEMP/run-ids.txt"
+          while read -r id; do sources+=("$RUNNER_TEMP/evidence/$id=$id"); done < <(jq -r '.fetch[].runId' "$RUNNER_TEMP/plan.json")
           node scripts/dashboard/build-site.ts site "${sources[@]}"
 
       - name: Token scan of the site
