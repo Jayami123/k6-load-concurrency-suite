@@ -7,7 +7,11 @@ export const FLOOR = 0.1;
 export const TOLERANCE_METRICS = ["p50Ms", "p95Ms", "requestsPerSec"] as const;
 export type ToleranceMetric = (typeof TOLERANCE_METRICS)[number];
 
-/** The tolerance of one metric of one product, from its A/A arms. runIds are ascending, unique and digits only. */
+/**
+ * The tolerance of one metric of one product, from its A/A arms. runIds are the GitHub Actions run ids that the arms came from
+ * (ascending, unique, digits only: the citation). Several arms can share one run id (the arms of one dispatch), so arms counts the
+ * arms, and it is the minimum of three that the rule needs.
+ */
 export interface Tolerance {
   metric: ToleranceMetric;
   spread: number; // (max - min) / median of the arm values
@@ -26,27 +30,25 @@ export interface ToleranceFile {
 
 /**
  * The tolerance of one metric from its A/A arms (one ArmMedian per arm). Throws with fewer than three arms, with a value that is not
- * finite and above 0, or with two arms that share a run id.
+ * finite and above 0, or with a run id that is not digits only.
  */
 export function toleranceOf(metric: ToleranceMetric, arms: ArmMedian[]): Tolerance {
   const spread = spreadOf(arms.map((a) => a.value));
-  const ids = arms.map((a) => a.runId);
-  if (new Set(ids).size !== ids.length)
-    throw new Error(`a/a tolerance: ${metric} has two arms with the same run id`);
+  const ids = [...new Set(arms.map((a) => a.runId))];
   if (!ids.every((id) => /^\d+$/.test(id)))
     throw new Error(`a/a tolerance: ${metric} has a run id that is not digits only`);
   return {
     metric,
     spread,
     tolerance: Math.max(FLOOR, K * spread),
-    runIds: [...ids].sort((a, b) => Number(a) - Number(b)),
+    runIds: ids.sort((a, b) => Number(a) - Number(b)),
     arms: arms.length,
   };
 }
 
 /**
- * Validates a parsed tolerance file: schema 1, the metric and unit, per entry a known metric, n = runIds.length ≥ 3, unique digit-only
- * ascending run ids, a finite spread ≥ 0, and a tolerance equal to max(FLOOR, K x spread).
+ * Validates a parsed tolerance file: schema 1, the metric and unit, per entry a known metric, at least three arms, unique digit-only
+ * ascending run ids (at least one), a finite spread ≥ 0, and a tolerance equal to max(FLOOR, K x spread).
  */
 export function parseTolerance(value: unknown): ToleranceFile {
   const t = value as ToleranceFile;
@@ -57,9 +59,9 @@ export function parseTolerance(value: unknown): ToleranceFile {
     for (const [metric, c] of Object.entries(metrics)) {
       if (!(TOLERANCE_METRICS as readonly string[]).includes(metric) || c.metric !== metric)
         throw new Error(`a/a tolerance: ${product} has an unknown metric ${metric}`);
-      if (c.arms !== c.runIds.length || c.arms < 3)
+      if (c.arms < 3 || c.runIds.length === 0)
         throw new Error(
-          `a/a tolerance: ${product} ${metric} has ${c.arms} arms for ${c.runIds.length} run ids`,
+          `a/a tolerance: ${product} ${metric} has ${c.arms} arms and ${c.runIds.length} run ids`,
         );
       if (new Set(c.runIds).size !== c.runIds.length || !c.runIds.every((id) => /^\d+$/.test(id)))
         throw new Error(`a/a tolerance: ${product} ${metric} has duplicate or non-numeric run ids`);

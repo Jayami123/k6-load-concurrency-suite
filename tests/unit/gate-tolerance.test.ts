@@ -20,17 +20,16 @@ describe("a/a tolerance rule", () => {
     assert.ok(Math.abs(t.tolerance - K * t.spread) < 1e-12);
   });
 
-  it("refuses fewer than three arms and two arms with the same run id", () => {
+  it("refuses fewer than three arms and cites the arms of one dispatch once", () => {
     assert.throws(() => toleranceOf("p50Ms", arms([10, 11])), /need at least 3/);
-    assert.throws(
-      () =>
-        toleranceOf("p50Ms", [
-          { runId: "7", value: 10 },
-          { runId: "7", value: 11 },
-          { runId: "8", value: 12 },
-        ]),
-      /same run id/,
-    );
+    // three arms of one GitHub run: one citation, three arms
+    const t = toleranceOf("p50Ms", [
+      { runId: "7", value: 10 },
+      { runId: "7", value: 11 },
+      { runId: "7", value: 12 },
+    ]);
+    assert.deepEqual(t.runIds, ["7"]);
+    assert.equal(t.arms, 3);
   });
 
   it("parses a file whose tolerances follow the rule and refuses one whose tolerance does not", () => {

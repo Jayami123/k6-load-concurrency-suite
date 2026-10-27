@@ -27,13 +27,13 @@ describe("P6-RULE-004 tier 1: no A/B configuration without a cited A/A set", () 
 
 describe("P6-RULE-004 tier 2: the tolerance file cites its A/A runs", () => {
   it(
-    "parses, cites at least three run ids per product and metric, and each gate names a steady A/A case",
+    "parses, has at least three A/A arms per product and metric, and each gate names a steady A/A case",
     { skip: existsSync(TOLERANCE_URL) ? false : "no A/A set yet: the tolerance file is absent" },
     () => {
       const file = parseTolerance(JSON.parse(readFileSync(TOLERANCE_URL, "utf8")));
       for (const [product, metrics] of Object.entries(file.products)) {
         for (const [metric, t] of Object.entries(metrics)) {
-          assert.ok(t!.runIds.length >= 3, `${product} ${metric} cites fewer than three runs`);
+          assert.ok(t!.arms >= 3, `${product} ${metric} has fewer than three A/A arms`);
         }
       }
       for (const gate of gateWorkflowsNamingTolerance()) {
