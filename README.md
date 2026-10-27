@@ -977,6 +977,16 @@ The self-test runs three k6 processes against two stubs (a 5 ms CPU-bound stub a
 generator (INVALID with `dropped_iterations`) and a plan without a stop (INVALID with `no_knee`). Its expected range is the measured
 one in `src/load/cases.ts` (`expect`), with the reasoning in the Task 1 plan, section 9A.
 
+## Dashboard
+
+The evidence is shown on a static page built from the release artefacts (`scripts/dashboard/build-site.ts`, published by `.github/workflows/pages.yml` after each evidence release). Each showcase states what it proves.
+
+- **Knee chart with the first saturated resource.** This shows where each product's knee range sits and which resource gave first (rule in src/load/knee/first-saturated.ts). It proves the stop rule finds a range, not a single maximum: the range and the run IDs are the evidence, and the label is 'knee range, environment-bound'.
+- **Soak leak check.** This shows the RSS, fds and connection slope after warm-up and the plateau verdict, with the DB growth reported separately. It proves that growth which does not plateau is flagged and that data growth is not read as a leak.
+- **Two-instance Medusa conservation.** This shows that two Medusa backends on one database and one Redis lock sell no more units than stock, and that no cart becomes two orders (P6-MED-RACE-002 and P6-MED-LOAD-007). It proves the lock holds under two instances.
+
+A showcase without its data is shown as pending, with the reason. INVALID runs are listed and never plotted.
+
 ## Rule for numbers
 
 Published performance numbers come only from CI runs (GitHub Actions or a dedicated machine),
