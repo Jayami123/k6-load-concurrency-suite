@@ -748,6 +748,52 @@ watch period in run 1, then 140 and 169. `P6-DOC-LOAD-009` passes in all three r
 The knee stop rule is a property of the run's environment, not a gate on the product. Limitations (fast stop, first saturated
 resource before the stop, the 5 s spike start guard, and harness state under `results/harness`) are listed in the release notes.
 
+## Phase 4 results
+
+Phase 4 adds the soak, invariant and dashboard evidence to the Phase 4a knee ranges. Every number here comes from a VALID run on `main`, cited by run ID. The full closeout is in [docs/plans/2026-10-26-p6-phase4-closeout.md](docs/plans/2026-10-26-p6-phase4-closeout.md), and the release notes are in [docs/releases/p6-phase4.md](docs/releases/p6-phase4.md).
+
+### Soaks (P6-CAL-LOAD-008, P6-MED-LOAD-005, P6-DOC-LOAD-006)
+
+- No product is calibrated yet: each has growth in its 30-minute soaks, so `k6/thresholds/soak-bounds.json` stays empty. Slopes and plateaus are in [docs/observations/2026-10-27-soak-bounds-not-calibrated.md](docs/observations/2026-10-27-soak-bounds-not-calibrated.md).
+- Two-hour soaks are VALID for every product (runs `40373021384` Cal, `40373634603` Documenso, `40455577906` Medusa). Cal and Documenso show RSS growth (P6-OBS-CAL-005, P6-OBS-DOC-007), recorded as PRODUCT BUG (SUSPECTED).
+- The soak workflow now runs nightly for 30 minutes and on Sundays for 120 minutes.
+
+### Invariants under load
+
+| Job                  | VALID runs | Runs                                        |
+| -------------------- | ---------- | ------------------------------------------- |
+| cal-invariants       | 3          | `40498902575`, `40465973379`, `40469597860` |
+| documenso-invariants | 3          | `40498902575`, `40465973379`, `40469597860` |
+| medusa-invariants    | 3          | `40498902575`, `40524237209`, `40526041971` |
+
+Run `40498902575` carries the KNOWN FAIL marker P6-OBS-MED-002 (cancel race: the leak is 4 reservations on 85 orders). The cancel-order race leaves reservations on canceled orders; the upstream draft is not filed.
+
+### A/A noise and the gate (P6-RULE-004)
+
+Not met yet. The A/A tolerance and the A/B gate evidence are produced by a separate task and are not on `main` at this point. This section is updated when they are.
+
+### Dashboard
+
+The evidence site is built from committed data by `pages.yml`. It shows the soak, invariant and Phase 4 data and lists the runs that are not in a release yet.
+
+### INVALID runs (listed, not used)
+
+- `40380234236` (Medusa 120-minute soak): FAIL on a cleanup TEST BUG, fixed by #99.
+- `40351015461`, `40352615775`, `40354188739` (Medusa 30-minute soaks): FAIL on a reconcile TEST BUG (stock exhausted), fixed by #93.
+
+### Rule status
+
+| Rule        | Status              |
+| ----------- | ------------------- |
+| P6-RULE-001 | met with a gap      |
+| P6-RULE-002 | met                 |
+| P6-RULE-003 | met with a gap      |
+| P6-RULE-004 | not met (see above) |
+| P6-RULE-005 | met with a gap      |
+| P6-RULE-006 | met with a gap      |
+
+The gaps are listed in the closeout record and in the release notes.
+
 ## How to read a LOAD run
 
 A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<label>-summary.json`, one `k6-<label>.json.gz`
