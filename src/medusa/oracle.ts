@@ -198,11 +198,12 @@ SELECT
 
 /** Live orders of a case prefix, by id, so a reported stuck order can be told apart from a new leak (D41). */
 /** This run's reservations of an inventory item, through their order line items (cleanup deletes them before the product). */
+// one row per reservation: order_item keeps a row per version, so the current version (o.version) is the only one counted
 export const RUN_RESERVATIONS_SQL = `
-SELECT ri.id, oi.order_id
+SELECT DISTINCT ri.id, o.id AS order_id
 FROM reservation_item ri
 JOIN order_item oi ON oi.item_id = ri.line_item_id AND oi.deleted_at IS NULL
-JOIN "order" o ON o.id = oi.order_id
+JOIN "order" o ON o.id = oi.order_id AND oi.version = o.version
 WHERE ri.inventory_item_id = $1
   AND ri.deleted_at IS NULL
   AND o.email LIKE $2
