@@ -40,6 +40,7 @@ async function stormTimeoutFor(completeMs: number[]): Promise<{ timeout: number;
     },
     cancelAndArchive: async () => {},
     deleteProduct: async () => {},
+    deleteRunReservation: async () => {},
     deleteCustomersByPrefix: async () => 0,
     prepareCart: async () => ({
       cartId: "cart_1",

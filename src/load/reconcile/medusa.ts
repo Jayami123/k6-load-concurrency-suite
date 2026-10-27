@@ -16,6 +16,11 @@ import { addFinding } from "./types.ts";
 export interface MedusaVariantCounts {
   orderCount: number;
   orderQty: number;
+  /** Orders and units that hold stock: not canceled, not archived. Reservations and reserved are compared with these. */
+  liveOrderCount: number;
+  liveOrderQty: number;
+  /** Canceled orders: reported as their own count, and they must hold no reservation (P6-MED-LOAD-009, invariant-stages). */
+  canceledOrderCount: number;
   reservationQty: number;
   stocked: number;
   reserved: number;
@@ -75,17 +80,22 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
     if (!ok) bug(`oversold, ${v.orderCount} orders for stock ${s.stock}`);
   }
 
-  const reservationsOk = v.reservationQty === v.orderQty && v.reserved === v.reservationQty;
+  const reservationsOk = v.reservationQty === v.liveOrderQty && v.reserved === v.reservationQty;
   check(
     "reservations",
     reservationsOk,
-    `rows ${v.reservationQty}, units ${v.orderQty}, reserved ${v.reserved}`,
+    `rows ${v.reservationQty}, live units ${v.liveOrderQty}, reserved ${v.reserved}`,
   );
   if (!reservationsOk) {
     bug(
-      `reservation rows ${v.reservationQty}, orders ${v.orderQty}, inventory_level.reserved ${v.reserved}`,
+      `reservation rows ${v.reservationQty}, live units ${v.liveOrderQty}, inventory_level.reserved ${v.reserved}`,
     );
   }
+  check(
+    "canceled-orders",
+    true,
+    `${v.canceledOrderCount} canceled order(s), reported as their own count`,
+  );
 
   const available = v.stocked - v.reserved;
   check("available", available >= 0, `available ${available}`);
@@ -130,7 +140,7 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
     const difference = v.orderCount - s.clientOrders;
     check(
       "no-ghost-orders",
-      s.liveOrdersByEmail === v.orderCount && difference === 0,
+      s.liveOrdersByEmail === v.liveOrderCount && difference === 0,
       `database ${v.orderCount}, client ${s.clientOrders}`,
     );
     if (difference > 0) {
@@ -150,10 +160,10 @@ export function evaluateMedusaAudit(s: MedusaSnapshot, prefixLike: string): Audi
         text: `client got ${s.clientOrders} orders, database has ${v.orderCount} (lost orders)`,
       });
   }
-  if (s.liveOrdersByEmail !== v.orderCount)
+  if (s.liveOrdersByEmail !== v.liveOrderCount)
     addFinding(result, {
       kind: "PRODUCT BUG",
-      text: `live orders by email ${s.liveOrdersByEmail} differ from database orders ${v.orderCount}`,
+      text: `live orders by email ${s.liveOrdersByEmail} differ from database live orders ${v.liveOrderCount}`,
     });
   return result;
 }

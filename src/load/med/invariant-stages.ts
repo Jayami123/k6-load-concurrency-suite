@@ -18,7 +18,7 @@ import type { LoadContext, Stage, StageResult } from "../types.ts";
 import { terminalTransitionVerdict, type OrderTerminal } from "./cancel-race.ts";
 import { promoLedgerVerdict } from "./ledger.ts";
 import { classifySplit, type InstanceCount } from "./instance-split.ts";
-import { isRacedEmail, unconfirmedInjections } from "./raced-orders.ts";
+import { isRacedEmail, parseRaceLog, raceOfEmail, unconfirmedInjections } from "./raced-orders.ts";
 
 /** One row per run order: state, cancel effects, fulfilments, payments and the money of its payments. */
 export const RUN_ORDER_ROWS_SQL = `
@@ -36,7 +36,9 @@ SELECT o.id, o.email, o.status,
   (SELECT COALESCE(SUM(r.amount), 0)::text FROM order_payment_collection opc JOIN payment p ON p.payment_collection_id = opc.payment_collection_id
      JOIN refund r ON r.payment_id = p.id WHERE opc.order_id = o.id AND r.deleted_at IS NULL) AS refunded,
   (SELECT COUNT(*) FROM order_payment_collection opc JOIN payment p ON p.payment_collection_id = opc.payment_collection_id
-     JOIN refund r ON r.payment_id = p.id WHERE opc.order_id = o.id AND r.deleted_at IS NULL)::int AS refund_rows
+     JOIN refund r ON r.payment_id = p.id WHERE opc.order_id = o.id AND r.deleted_at IS NULL)::int AS refund_rows,
+  (SELECT COUNT(*) FROM reservation_item ri JOIN order_item oi ON oi.item_id = ri.line_item_id
+     WHERE oi.order_id = o.id AND oi.version = o.version AND oi.deleted_at IS NULL AND ri.deleted_at IS NULL)::int AS reservations_live
 FROM "order" o
 WHERE o.email LIKE $1 AND o.deleted_at IS NULL
 `;
@@ -60,6 +62,7 @@ type RunOrderRow = {
   captured: string;
   refunded: string;
   refund_rows: number;
+  reservations_live: number;
 };
 
 function mainRun(ctx: LoadContext) {
@@ -223,6 +226,15 @@ export const ledgerStage: Stage = async (ctx: LoadContext): Promise<StageResult>
   }
 };
 
+/** The k6 race lines of the main run (empty when the log is missing: the statuses then read "not logged"). */
+function readRaceLog(stdoutPath: string) {
+  try {
+    return parseRaceLog(readFileSync(stdoutPath, "utf8"));
+  } catch {
+    return new Map<string, { race: string; statuses: number[] }>();
+  }
+}
+
 /** P6-MED-LOAD-009: the terminal transition verdict (terminalTransitionVerdict). Terminal states come from stored records (D41). */
 export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageResult> => {
   const main = mainRun(ctx);
@@ -242,6 +254,8 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
     ]);
     // only the orders a race was injected into have a terminal transition to judge; the others are plain checkouts
     const raced = rows.filter((r) => isRacedEmail(r.email));
+    const raceLog = readRaceLog(main.stdoutPath);
+    const statusesOf = (id: string) => raceLog.get(id)?.statuses.join(",") ?? "not logged";
     const orders: OrderTerminal[] = raced.map((r) => {
       const cancels = Math.max(r.cancel_changes, r.canceled);
       // the race creates a fulfilment and never ships it, so a live fulfilment is the fulfilment (X05 needs FULFILLED)
@@ -253,7 +267,7 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
         orderId: r.id,
         terminal,
         openFulfilment: r.canceled === 1 && r.live_fulfilments > 0,
-        sideEffects: { refunds: r.refund_rows, reservationsLive: 0 },
+        sideEffects: { refunds: r.refund_rows, reservationsLive: r.reservations_live },
       };
     });
     // a race-selected order without a sent race is an unconfirmed injection: INVALID, never a product failure
@@ -265,22 +279,49 @@ export const cancelRaceStage: Stage = async (ctx: LoadContext): Promise<StageRes
         : []),
     ];
     const verdict = terminalTransitionVerdict(orders, invalidReasons);
+    // a canceled order must hold no reservation (the cancel releases its stock); each leak is named with its race and statuses
+    const leaks = rows.filter((r) => r.canceled === 1 && r.reservations_live > 0);
+    const leakReasons = leaks.map(
+      (r) =>
+        `canceled order ${r.id} holds ${r.reservations_live} live reservation(s) (race ${raceOfEmail(r.email) ?? "none"}, HTTP ${statusesOf(r.id)})`,
+    );
+    // no order is both canceled and fulfilled except the counted X05
+    const canceledFulfilled = rows.filter((r) => r.canceled === 1 && r.live_fulfilments > 0).length;
+    const fulfilReasons =
+      canceledFulfilled === verdict.x05CancelFulfil
+        ? []
+        : [
+            `${canceledFulfilled} canceled order(s) with a live fulfilment, ${verdict.x05CancelFulfil} counted as X05`,
+          ];
+    // the double-cancel responses in HTTP next to the stored X04 count (D41): a double 200 is reported, not hidden
+    const doubleOk = [...raceLog.values()].filter(
+      (v) => v.race === "double-cancel" && v.statuses.every((s) => s === 200),
+    ).length;
+    const structural = [...leakReasons, ...fulfilReasons];
+    const productBug = structural.length > 0 || verdict.verdict === "FAIL (PRODUCT BUG)";
+    const verdictOk = verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)";
     return {
-      ok: verdict.verdict === "PASS" || verdict.verdict === "PASS (X04/X05 counted)",
+      ok: verdictOk && structural.length === 0,
+      // TEST BUG and INVALID outrank PRODUCT BUG (the verdict precedence of cancel-race.ts)
       kind:
-        verdict.verdict === "FAIL (PRODUCT BUG)"
-          ? "PRODUCT BUG"
+        verdict.verdict === "TEST BUG"
+          ? "TEST BUG"
           : verdict.verdict === "INVALID"
             ? "INVALID"
-            : verdict.verdict === "TEST BUG"
-              ? "TEST BUG"
+            : productBug
+              ? "PRODUCT BUG"
               : undefined,
-      reasons: verdict.reasons.length > 0 ? verdict.reasons : [`cancel race: ${verdict.verdict}`],
+      reasons: [
+        ...structural,
+        ...(verdict.reasons.length > 0 ? verdict.reasons : [`cancel race: ${verdict.verdict}`]),
+      ],
       data: {
         verdict: verdict.verdict,
         orders: raced.length,
         x04Double: verdict.x04Double,
+        x04DoubleHttp200: doubleOk,
         x05CancelFulfil: verdict.x05CancelFulfil,
+        leakedCanceledOrders: leaks.length,
       },
     };
   } finally {

@@ -4,7 +4,16 @@ import { evaluateMedusaAudit, type MedusaSnapshot } from "../../src/load/reconci
 
 const SCOPE = "p6-qa-20261024t010203z-3fa9c0d1-med-load-001-%";
 const clean = (): MedusaSnapshot => ({
-  variant: { orderCount: 3, orderQty: 3, reservationQty: 3, stocked: 3, reserved: 3 },
+  variant: {
+    orderCount: 3,
+    liveOrderCount: 3,
+    orderQty: 3,
+    liveOrderQty: 3,
+    canceledOrderCount: 0,
+    reservationQty: 3,
+    stocked: 3,
+    reserved: 3,
+  },
   liveOrdersByEmail: 3,
   payments: [
     { amount: 10, captured: 10, refunded: 0 },
@@ -25,7 +34,16 @@ describe("medusa reconciliation", () => {
 
   it("more orders than stock is oversold (PRODUCT BUG)", () => {
     const s = clean();
-    s.variant = { ...s.variant, orderCount: 4, orderQty: 4, reservationQty: 4, reserved: 4 };
+    s.variant = {
+      ...s.variant,
+      orderCount: 4,
+      liveOrderCount: 4,
+      orderQty: 4,
+      liveOrderQty: 4,
+      canceledOrderCount: 0,
+      reservationQty: 4,
+      reserved: 4,
+    };
     s.payments.push({ amount: 10, captured: 10, refunded: 0 });
     s.liveOrdersByEmail = 4;
     s.clientOrders = 4;
@@ -37,7 +55,7 @@ describe("medusa reconciliation", () => {
     const s = clean();
     s.variant = { ...s.variant, reservationQty: 2 };
     const r = evaluateMedusaAudit(s, SCOPE);
-    assert.ok(r.violations.some((v) => /reservation rows 2, orders 3/.test(v.text)));
+    assert.ok(r.violations.some((v) => /reservation rows 2, live units 3/.test(v.text)));
   });
 
   it("inventory_level.reserved that differs from the reservations is a PRODUCT BUG", () => {

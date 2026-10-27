@@ -20,3 +20,22 @@ export function isRacedEmail(email: string): boolean {
 export function unconfirmedInjections(racedOrders: number, racesSent: number): number {
   return Math.max(0, racedOrders - racesSent);
 }
+
+/** The race an email's iteration was given by raceFor, or null for a plain checkout. */
+export function raceOfEmail(email: string): "cancel-fulfil" | "double-cancel" | null {
+  const i = iterationOfEmail(email);
+  return i === null ? null : raceFor(i);
+}
+
+/**
+ * The per-order race lines the k6 case logs (`P6-MED-LOAD-009 race <race> order <id> statuses <s1,s2>`): the HTTP status of each
+ * race request, keyed by order id. Other lines are ignored.
+ */
+export function parseRaceLog(text: string): Map<string, { race: string; statuses: number[] }> {
+  const out = new Map<string, { race: string; statuses: number[] }>();
+  for (const m of text.matchAll(/P6-MED-LOAD-009 race (\S+) order (\S+) statuses ([0-9,]+)/g)) {
+    const [, race = "", order = "", statuses = ""] = m;
+    out.set(order, { race, statuses: statuses.split(",").map(Number) });
+  }
+  return out;
+}

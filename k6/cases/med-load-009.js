@@ -30,6 +30,23 @@ const cfg = {
 const tags = { case: "P6-MED-LOAD-009", journey: "med-checkout" };
 // the races actually sent: an order whose completion response was lost has no order id here, so it gets no race (decided by the stage)
 const racesSent = new Counter("p6_races_sent");
+// double cancels where both HTTP answers were 200 (P6-MED-RACE-008 X04 next to the stored count, D41)
+const doubleCancelOk = new Counter("p6_double_cancel_http_200");
+
+// a non-2xx answer: its status, and the server's error type and message with e-mail addresses removed (no tokens, no PII)
+/** @param {any} r */
+function refusal(r) {
+  let type = "";
+  let message = "";
+  try {
+    const body = r.json();
+    type = String(body.type ?? "");
+    message = String(body.message ?? "");
+  } catch (_) {
+    // not JSON: the status alone
+  }
+  return `HTTP ${r.status} type=${type} message=${message.replace(/\S+@\S+/g, "<email>").slice(0, 120)}`;
+}
 const ADMIN_TOKEN = __ENV.MEDUSA_ADMIN_TOKEN || "";
 
 export const options = standardOptions({
@@ -85,6 +102,14 @@ export function checkout() {
           params: { headers: H, tags: { name: "POST /admin/orders/:id/fulfillments", race } },
         }
       : cancel;
-  http.batch([cancel, second]);
+  const answers = http.batch([cancel, second]);
   racesSent.add(1);
+  const statuses = answers.map((/** @type {any} */ r) => r.status);
+  // one line per raced order: the race and the HTTP status of each race request (read back by the invariant stage)
+  console.log(`P6-MED-LOAD-009 race ${race} order ${order.orderId} statuses ${statuses.join(",")}`);
+  if (race === "double-cancel" && statuses.every((s) => s === 200)) doubleCancelOk.add(1);
+  for (const r of answers) {
+    if (r.status < 200 || r.status >= 300)
+      console.warn(`P6-MED-LOAD-009 race ${race} order ${order.orderId} ${refusal(r)}`);
+  }
 }

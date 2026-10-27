@@ -228,10 +228,27 @@ export async function cancelAndArchive(token: string, orderId: string): Promise<
   }
 }
 
+/** A non-2xx admin answer: its status, and the server's error type and message with e-mail addresses removed (no tokens, no PII). */
+export function answerNote(res: { status: number; json: unknown }): string {
+  const body = (res.json ?? {}) as { type?: unknown; message?: unknown };
+  const text = String(body.message ?? "")
+    .replace(/\S+@\S+/g, "<email>")
+    .slice(0, 120);
+  return `HTTP ${res.status} type=${String(body.type ?? "")} message=${text}`;
+}
+
 export async function deleteProduct(token: string, productId: string): Promise<void> {
   const res = await adminJson(`/products/${productId}`, token, { method: "DELETE" });
   if (res.status !== 200) {
-    throw new Error(`TEST BUG: DELETE product ${productId} HTTP ${res.status}`);
+    throw new Error(`TEST BUG: DELETE product ${productId} ${answerNote(res)}`);
+  }
+}
+
+/** One leaked reservation of this run (the admin reservations API), with the answer's error when it is not 200. */
+export async function deleteRunReservation(token: string, reservationId: string): Promise<void> {
+  const res = await adminJson(`/reservations/${reservationId}`, token, { method: "DELETE" });
+  if (res.status !== 200) {
+    throw new Error(`TEST BUG: DELETE reservation ${reservationId} ${answerNote(res)}`);
   }
 }
 
