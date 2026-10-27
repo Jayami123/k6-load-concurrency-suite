@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildSiteModel } from "../../src/dashboard/site-model.ts";
 import { renderSite } from "../../scripts/dashboard/build-site.ts";
+import { parsePendingFile } from "../../src/dashboard/release-plan.ts";
 
 const verdicts = [
   {
@@ -76,5 +77,24 @@ describe("dashboard site build", () => {
       page,
       /<a href="runs\/P6-CAL-LOAD-005\/20261026T175734Z-aa\/chart-main\.html">chart<\/a>/,
     );
+  });
+});
+
+describe("pending runs on the site", () => {
+  it("a pending run is listed under its release with its reason, and no run is plotted for it", () => {
+    const model = buildSiteModel({ verdicts: [] });
+    const pending = parsePendingFile({
+      schema: 1,
+      release: "p6-phase4",
+      pending: [{ runId: "40242002499", reason: "baseline run waiting for its zip" }],
+    });
+    const html = renderSite(model, new Map(), new Map(), pending);
+    assert.match(html, /<section id="pending"><h2>Pending release p6-phase4<\/h2>/);
+    assert.match(html, /40242002499<\/code>: baseline run waiting for its zip/);
+  });
+
+  it("without pending runs the site has no pending section", () => {
+    const html = renderSite(buildSiteModel({ verdicts: [] }), new Map());
+    assert.doesNotMatch(html, /id="pending"/);
   });
 });
