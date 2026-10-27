@@ -46,25 +46,24 @@ describe("dashboard site build", () => {
     );
   });
 
-  it("has no script, stylesheet or external URL except the run links", () => {
+  it("has no script, stylesheet, image or font, and every external link is a link to the repository", () => {
     assert.doesNotMatch(html, /<script/i);
     assert.doesNotMatch(html, /<link[^>]+href=/i);
+    assert.doesNotMatch(html, /\ssrc=/i);
+    assert.doesNotMatch(html, /@import|url\(/i);
     const external = html.match(/https?:\/\/[^\s"<]+/g) ?? [];
     for (const url of external)
-      assert.match(
-        url,
-        /^https:\/\/github\.com\/Jayami123\/k6-load-concurrency-suite\/actions\/runs\//,
-        url,
-      );
+      assert.match(url, /^https:\/\/github\.com\/Jayami123\/k6-load-concurrency-suite(\/|$)/, url);
   });
 
   it("the bare word capacity is absent from the page", () => {
     assert.doesNotMatch(html, /capacity/i);
   });
 
-  it("a pending showcase shows its reason and no number", () => {
+  it("a pending card shows PENDING with its reason and no number", () => {
     const soak = html.slice(html.indexOf('id="soak"'), html.indexOf('id="two-instance"'));
-    assert.match(soak, /Pending: waiting for the soak data \(Task 7\)/);
+    assert.match(soak, /PENDING/);
+    assert.match(soak, /no VALID 30-minute soak run in a release yet/);
     assert.doesNotMatch(soak, /\d{3,}/);
   });
 
@@ -89,12 +88,14 @@ describe("pending runs on the site", () => {
       pending: [{ runId: "40242002499", reason: "baseline run waiting for its zip" }],
     });
     const html = renderSite(model, new Map(), new Map(), pending);
-    assert.match(html, /<section id="pending"><h2>Pending release p6-phase4<\/h2>/);
-    assert.match(html, /40242002499<\/code>: baseline run waiting for its zip/);
+    assert.match(html, /<caption>Pending release p6-phase4<\/caption>/);
+    assert.match(html, /<code>40242002499<\/code><\/td><td>baseline run waiting for its zip<\/td>/);
   });
 
-  it("without pending runs the site has no pending section", () => {
+  it("without pending runs the provenance table says none", () => {
     const html = renderSite(buildSiteModel({ verdicts: [] }), new Map());
-    assert.doesNotMatch(html, /id="pending"/);
+    assert.doesNotMatch(html, /p6-phase4/);
+    assert.match(html, /<caption>Pending release<\/caption>/);
+    assert.match(html, /colspan="2" class="muted">none</);
   });
 });
