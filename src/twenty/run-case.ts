@@ -134,6 +134,8 @@ export async function runTwentyTrials(opts: {
     const results = await runTrials(trials, (trial) => runner.runTrial(trial, () => burst(trial)));
     runner.applyTo(histogram);
     if (opts.leakCheck) Object.assign(histogram.oracle, await opts.leakCheck());
+    const trialsOk = results.every((t) => t.ok);
+    histogram.verdict = trialsOk && histogram.invariantViolations.length === 0 ? "pass" : "fail";
     return { histogram, trials: results };
   } finally {
     await writeHistogram(histogram);
