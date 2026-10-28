@@ -36,6 +36,18 @@ write "$work/own-lines" "$medusa" "{
   \"apiKey\": \"zQ7mK2pX9vB4nR8tY1wL6sD3fG5hJ0cQ\"
 }"
 
+# The soak layout as gh run download writes it: <artefact name>/P6-MED-LOAD-005/<attempt>/.
+soak_medusa="soak-medusa-120/P6-MED-LOAD-005/20261027T053030Z-ba00cb53"
+soak_cal="soak-cal-120/P6-MED-LOAD-005/20261027T053030Z-ba00cb53"
+soak_other_id="soak-medusa-120/P6-MED-LOAD-001/20261027T053030Z-ba00cb53"
+no_prefix="P6-MED-LOAD-005/20261027T053030Z-ba00cb53"
+
+write "$work/soak-ok" "$soak_medusa" "{ \"baseUrl\": \"http://127.0.0.1:9000\", \"publishableKey\": \"$key\" }"
+write "$work/soak-planted-field" "$soak_medusa" "{ \"publishableKey\": \"$key\", \"apiKey\": \"zQ7mK2pX9vB4nR8tY1wL6sD3fG5hJ0cQ\" }"
+write "$work/soak-cal-folder" "$soak_cal" "{ \"publishableKey\": \"$key\" }"
+write "$work/soak-other-id" "$soak_other_id" "{ \"publishableKey\": \"$key\" }"
+write "$work/soak-no-prefix" "$no_prefix" "{ \"publishableKey\": \"$key\" }"
+
 # expect <name> <dir> <pass|fail>
 expect() {
   local code=0
@@ -55,5 +67,10 @@ expect "non-pk value in publishableKey" "$work/bad-value" fail
 expect "publishable key outside Medusa LOAD" "$work/wrong-path" fail
 expect "publishable key in a prefixed directory name" "$work/prefixed-dir" fail
 expect "planted secret on its own line beside a valid key" "$work/own-lines" fail
+expect "publishable key in a Medusa soak attempt" "$work/soak-ok" pass
+expect "planted secret beside the key in a Medusa soak attempt" "$work/soak-planted-field" fail
+expect "publishable key in a Cal soak attempt" "$work/soak-cal-folder" fail
+expect "publishable key in a Medusa soak case other than P6-MED-LOAD-005" "$work/soak-other-id" fail
+expect "publishable key at the soak case folder with no artefact prefix" "$work/soak-no-prefix" fail
 
 exit "$fail"
