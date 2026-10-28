@@ -25,12 +25,30 @@ describe("card state from the verdicts", () => {
     assert.equal(state.runs.length, 0);
   });
 
-  it("a card with no case ids is always PENDING: A/A and A/B have no committed tolerance yet", () => {
-    for (const id of ["aa-noise", "ab-gate"]) {
-      const state = computeCard(spec(id), [run("20261026T175734Z-aa", "P6-CAL-LOAD-005", "PASS")]);
-      assert.equal(state.status, "PENDING", id);
-      assert.match(state.reason, /tolerance/);
-    }
+  it("promo card caseIds are P6-MED-RACE-005 and P6-MED-RACE-012", () => {
+    assert.deepEqual([...spec("promo").caseIds], ["P6-MED-RACE-005", "P6-MED-RACE-012"]);
+  });
+
+  it("cancel card caseIds include P6-MED-RACE-008 and P6-MED-RACE-009", () => {
+    const ids = spec("cancel").caseIds;
+    assert.ok(ids.includes("P6-MED-RACE-008"));
+    assert.ok(ids.includes("P6-MED-RACE-009"));
+  });
+
+  it("invariants card knownFail lists P6-CAL-RACE-003 and P6-DOC-RACE-001 with joined obs ids", () => {
+    const kf = spec("invariants").knownFail;
+    assert.ok(kf);
+    assert.deepEqual([...kf.caseIds].sort(), ["P6-CAL-RACE-003", "P6-DOC-RACE-001"]);
+    assert.equal(kf.obs, "P6-OBS-CAL-002 / P6-OBS-DOC-002");
+  });
+
+  it("A/A card is no longer pending when VALID aa verdicts exist", () => {
+    const state = computeCard(spec("aa-noise"), [
+      run("20261026T175734Z-aa", "P6-CAL-LOAD-003", "PASS"),
+      run("20261027T000001Z-bb", "P6-MED-LOAD-002", "PASS"),
+    ]);
+    assert.equal(state.status, "PASS");
+    assert.equal(state.reason, "");
   });
 
   it("the under-load invariant card counts the Medusa load cases and marks the known leak", () => {
@@ -44,7 +62,7 @@ describe("card state from the verdicts", () => {
 
   it("a VALID PASS run makes the card PASS and its run is listed", () => {
     const state = computeCard(spec("promo"), [
-      run("20261026T175734Z-aa", "P6-MED-RACE-008", "PASS"),
+      run("20261026T175734Z-aa", "P6-MED-RACE-005", "PASS"),
     ]);
     assert.equal(state.status, "PASS");
     assert.equal(state.runs.length, 1);
@@ -52,7 +70,7 @@ describe("card state from the verdicts", () => {
 
   it("only INVALID runs make the card INVALID, and they never decide a PASS", () => {
     const state = computeCard(spec("promo"), [
-      run("20261026T175734Z-aa", "P6-MED-RACE-008", "PASS", "INVALID"),
+      run("20261026T175734Z-aa", "P6-MED-RACE-005", "PASS", "INVALID"),
     ]);
     assert.equal(state.status, "INVALID");
     assert.match(state.reason, /1 run\(s\), none VALID/);
@@ -68,7 +86,7 @@ describe("card state from the verdicts", () => {
 
   it("a VALID FAIL on a card with no known failure is FAIL", () => {
     const state = computeCard(spec("promo"), [
-      run("20261026T175734Z-aa", "P6-MED-RACE-008", "FAIL"),
+      run("20261026T175734Z-aa", "P6-MED-RACE-005", "FAIL"),
     ]);
     assert.equal(state.status, "FAIL");
     assert.equal(state.obs, "");
