@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "P6 findings file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "rows"],
+  "properties": {
+    "schema": { "const": 1 },
+    "rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/findingRow" }
+    }
+  },
+  "$defs": {
+    "findingRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "aliases",
+        "product",
+        "label",
+        "severity",
+        "upstream",
+        "tests",
+        "evidence",
+        "provenance"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "product": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "minLength": 1 },
+        "upstream": { "type": "string", "minLength": 1 },
+        "tests": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["release", "runIds", "files"],
+          "properties": {
+            "release": { "enum": ["p6-phase1", "p6-phase4"] },
+            "runIds": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[0-9]+$" }
+            },
+            "files": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "provenance": { "const": "docs/findings.json" }
+      }
+    }
+  }
+}

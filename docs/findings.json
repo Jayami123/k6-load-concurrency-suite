@@ -1,0 +1,373 @@
+{
+  "schema": 1,
+  "rows": [
+    {
+      "id": "P6-OBS-CAL-001",
+      "aliases": [],
+      "product": "cal",
+      "label": "PRODUCT BUG",
+      "severity": "low",
+      "upstream": "filed: calcom/cal.diy#30375",
+      "tests": ["`cal-race-001-identical-slot.spec.ts`: `test.fail()` on the loser contract"],
+      "evidence": {
+        "release": "p6-phase1",
+        "runIds": ["39561220290"],
+        "files": ["race-histograms-cal/P6-CAL-RACE-001.json", "extra-loser-contract.json"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-CAL-002",
+      "aliases": [],
+      "product": "cal",
+      "label": "PRODUCT BUG",
+      "severity": "high",
+      "upstream": "filed: calcom/cal.diy#30374",
+      "tests": ["`cal-race-003-overlap.spec.ts`: `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase1",
+        "runIds": ["39563393657"],
+        "files": ["race-histograms-cal/P6-CAL-RACE-003.json"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-CAL-003",
+      "aliases": [],
+      "product": "cal",
+      "label": "PRODUCT BUG",
+      "severity": "low",
+      "upstream": "filed: calcom/cal.diy#30376",
+      "tests": ["none (no `test.fail()`)"],
+      "evidence": {
+        "release": "p6-phase1",
+        "runIds": ["39563393657"],
+        "files": ["cal-web-log/cal-web.log", "race-histograms-cal/P6-CAL-RACE-003.json"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-001",
+      "aliases": [],
+      "product": "documenso",
+      "label": "PRODUCT BUG",
+      "severity": "low",
+      "upstream": "not filed (draft: Task 9 plan Appendix E)",
+      "tests": [
+        "`tests/documenso/api/doc-obs-001-signin-errors.spec.ts`: `test.fail()` on both negative tests"
+      ],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39956188035", "39959840802", "39961527451", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-002",
+      "aliases": [],
+      "product": "documenso",
+      "label": "PRODUCT BUG",
+      "severity": "medium",
+      "upstream": "filed: documenso/documenso#3187 (existing report, our repro is the linked comment)",
+      "tests": ["`doc-race-001-last-recipients.spec.ts`: `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase1",
+        "runIds": ["39563393657"],
+        "files": ["race-histograms-documenso/P6-DOC-RACE-001.json"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-005",
+      "aliases": [],
+      "product": "documenso",
+      "label": "PRODUCT BUG",
+      "severity": "medium",
+      "upstream": "not filed (draft below)",
+      "tests": [
+        "`P6-DOC-LOAD-007` (`knownBugs` in `src/load/cases.ts`; gate in `src/load/known-bug-gate.ts`)"
+      ],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40134262533", "40135722015", "40137277800"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-MED-RACE-011",
+      "aliases": ["F-M1"],
+      "product": "medusa",
+      "label": "suspected (D40)",
+      "severity": "suspected (D40)",
+      "upstream": "not filed",
+      "tests": ["`med-race-011-partial-refunds.spec.ts`: annotation only (no `test.fail()`)"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": [],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-MED-RACE-008",
+      "aliases": ["X04"],
+      "product": "medusa",
+      "label": "PRODUCT BUG",
+      "severity": "medium (proposed)",
+      "upstream": "not filed (draft: Task 9 plan Appendix B1)",
+      "tests": ["`med-race-008-double-cancel.spec.ts`: `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39843267008", "39845815035", "39848223959", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-MED-RACE-009",
+      "aliases": ["X05"],
+      "product": "medusa",
+      "label": "PRODUCT BUG",
+      "severity": "high (proposed)",
+      "upstream": "not filed (draft: Task 9 plan Appendix B2)",
+      "tests": ["`med-race-009-cancel-vs-fulfil.spec.ts`: `test.fail()` (13 PR trials)"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39843267008", "39845815035", "39848223959", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "F-M3",
+      "aliases": ["P6-MED-RACE-008", "P6-MED-RACE-009"],
+      "product": "medusa",
+      "label": "PRODUCT BUG",
+      "severity": "medium (proposed)",
+      "upstream": "not filed (draft: Task 9 plan Appendix B1)",
+      "tests": ["`-008` and `-009`: `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39843267008", "39845815035", "39848223959"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "F-M2",
+      "aliases": ["P6-MED-RACE-012", "P6-MED-RACE-005"],
+      "product": "medusa",
+      "label": "PRODUCT BUG",
+      "severity": "medium (proposed)",
+      "upstream": "not filed (draft: Task 9 plan Appendix B3)",
+      "tests": ["annotation only (`product-bug`); no `test.fail()` (plan D70, `docs/BACKLOG.md`)"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39843267008", "39845815035", "39848223959"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "F-M4",
+      "aliases": ["P6-MED-RACE-014"],
+      "product": "medusa",
+      "label": "PRODUCT BUG",
+      "severity": "PRODUCT BUG, medium (owner label 2026-10-23)",
+      "upstream": "not filed (draft: Task 9 plan Appendix B1)",
+      "tests": [
+        "`med-race-014-captured-cancels.spec.ts`: annotation; `test.fail()` in a follow-up PR (5 PR trials)"
+      ],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-CAL-RACE-006",
+      "aliases": ["F-C1"],
+      "product": "cal",
+      "label": "PRODUCT BUG (owner label, O6)",
+      "severity": "PRODUCT BUG (owner label, O6)",
+      "upstream": "existing issue; our comment not posted (calcom/cal.diy#29815)",
+      "tests": ["`cal-race-006-private-link.spec.ts`: known-bug test under `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39932990882", "39935674101", "39938126238", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-CAL-RACE-008",
+      "aliases": ["F-C1"],
+      "product": "cal",
+      "label": "PRODUCT BUG (owner label, O6)",
+      "severity": "PRODUCT BUG (owner label, O6)",
+      "upstream": "existing issue; our comment not posted (calcom/cal.diy#29815)",
+      "tests": ["`cal-race-008-private-link-cap.spec.ts`: known-bug test under `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39932990882", "39935674101", "39938126238", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-CAL-RACE-007",
+      "aliases": ["F-C2"],
+      "product": "cal",
+      "label": "PRODUCT BUG (owner label, O6)",
+      "severity": "PRODUCT BUG (owner label, O6)",
+      "upstream": "not filed (draft: Task 9 plan Appendix C2)",
+      "tests": ["`cal-race-007-confirm-vs-cancel.spec.ts`: known-bug test under `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39932990882", "39935674101", "39938126238", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-CAL-RACE-009",
+      "aliases": ["F-C3"],
+      "product": "cal",
+      "label": "PRODUCT BUG (owner label, O6)",
+      "severity": "PRODUCT BUG (owner label, O6)",
+      "upstream": "not filed (draft: Task 9 plan Appendix C3)",
+      "tests": ["`cal-race-009-double-confirm.spec.ts`: known-bug test under `test.fail()`"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["39932990882", "39935674101", "39938126238", "40037355173", "40039351021"],
+        "files": []
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-TW-001",
+      "aliases": [],
+      "product": "twenty",
+      "label": "PRODUCT BUG (owner label)",
+      "severity": "PRODUCT BUG (owner label)",
+      "upstream": "not filed publicly: private security report",
+      "tests": [
+        "`tw-obs-001-empty-body-hang.spec.ts`: 8 tests under `test.fail()` after the guards; `tw-obs-001-hung-requests-resource.spec.ts`: resource check"
+      ],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40037355173", "40039351021"],
+        "files": ["docs/plans/2026-10-24-p6-x8-twenty-empty-body.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-TW-RACE-004",
+      "aliases": [],
+      "product": "twenty",
+      "label": "PRODUCT BUG (owner label)",
+      "severity": "PRODUCT BUG (owner label)",
+      "upstream": "not filed publicly: private security report",
+      "tests": ["`tw-race-004-reset-token.spec.ts`: `test.fail()` after the guards"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40037355173", "40039351021"],
+        "files": ["docs/plans/2026-10-23-p6-phase2-task7-twenty-races.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-MED-001",
+      "aliases": [],
+      "product": "medusa",
+      "label": "PRODUCT BUG, suspected root cause",
+      "severity": "product",
+      "upstream": "not filed",
+      "tests": ["docs/observations/2026-10-27-med-cancel-keeps-reservations.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40487849160"],
+        "files": ["docs/observations/2026-10-27-med-cancel-keeps-reservations.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-MED-002",
+      "aliases": [],
+      "product": "medusa",
+      "label": "PRODUCT BUG (SUSPECTED)",
+      "severity": "PRODUCT BUG (SUSPECTED)",
+      "upstream": "not filed",
+      "tests": ["docs/observations/2026-10-27-med-cancel-race-reservations.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40487849160", "40491885325"],
+        "files": ["docs/observations/2026-10-27-med-cancel-race-reservations.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-CAL-005",
+      "aliases": [],
+      "product": "cal",
+      "label": "PRODUCT BUG (SUSPECTED)",
+      "severity": "PRODUCT BUG (SUSPECTED)",
+      "upstream": "not filed",
+      "tests": ["docs/observations/2026-10-27-rss-growth-120.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40373021384"],
+        "files": ["docs/observations/2026-10-27-rss-growth-120.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-007",
+      "aliases": [],
+      "product": "documenso",
+      "label": "PRODUCT BUG (SUSPECTED)",
+      "severity": "PRODUCT BUG (SUSPECTED)",
+      "upstream": "not filed",
+      "tests": ["docs/observations/2026-10-27-rss-growth-120.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": ["40373634603"],
+        "files": ["docs/observations/2026-10-27-rss-growth-120.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-003",
+      "aliases": [],
+      "product": "documenso",
+      "label": "finding",
+      "severity": "low",
+      "upstream": "not filed (Task 9 plan Appendix F private draft)",
+      "tests": ["docs/BACKLOG.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": [],
+        "files": ["docs/BACKLOG.md"]
+      },
+      "provenance": "docs/findings.json"
+    },
+    {
+      "id": "P6-OBS-DOC-006",
+      "aliases": [],
+      "product": "documenso",
+      "label": "suspected",
+      "severity": "suspected",
+      "upstream": "not filed",
+      "tests": ["docs/BACKLOG.md"],
+      "evidence": {
+        "release": "p6-phase4",
+        "runIds": [],
+        "files": ["docs/BACKLOG.md"]
+      },
+      "provenance": "docs/findings.json"
+    }
+  ]
+}
