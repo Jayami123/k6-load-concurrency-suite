@@ -41,11 +41,13 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Collect the run ids the thresholds cite
+      - name: Collect the run ids the thresholds cite and the published phase 4 release lists
         timeout-minutes: 1
         run: |
           set -euo pipefail
-          jq -r '.. | objects | .runIds? // empty | .[]' k6/thresholds/*.json | sort -u > "$RUNNER_TEMP/run-ids.txt"
+          # The thresholds cite the knee, baseline, tolerance and gate runs. The release notes list every run the
+          # p6-phase4 release publishes (soak and invariant runs included), so the site reads those zips too.
+          { jq -r '.. | objects | .runIds? // empty | .[]' k6/thresholds/*.json; grep -oE 'actions/runs/[0-9]+' docs/releases/p6-phase4.md | sed 's#actions/runs/##'; } | sort -u > "$RUNNER_TEMP/run-ids.txt"
           [[ -s "$RUNNER_TEMP/run-ids.txt" ]] || { echo "::error::no run ids in k6/thresholds"; exit 1; }
           cat "$RUNNER_TEMP/run-ids.txt"
 
