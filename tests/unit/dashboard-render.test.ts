@@ -159,7 +159,7 @@ describe("the page", () => {
     const summary = html.slice(html.indexOf('id="summary"'), html.indexOf('id="evidence"'));
     assert.match(summary, /cal 8 to 14; medusa 1.5 to 2.5/);
     assert.match(summary, /1 open observation\(s\)/);
-    assert.match(summary, /A\/A tolerance pending/);
+    assert.match(summary, /A\/A tolerance committed; runs pending release/);
   });
 
   it("a KNOWN FAIL card links the observation document", () => {

@@ -133,10 +133,12 @@ function summaryStrip(
     { value: escapeLabel(soakValue), label: "soak thresholds", src: soakSrc },
     {
       value: escapeLabel(
-        aa?.status === "PENDING" ? "A/A tolerance pending" : `A/A ${aa?.status ?? "pending"}`,
+        aa?.status === "PENDING"
+          ? "A/A tolerance committed; runs pending release"
+          : `A/A ${aa?.status ?? "pending"}`,
       ),
       label: "A/A noise and tolerance",
-      src: escapeLabel(aa?.reason || "k6/thresholds/aa-tolerance.json"),
+      src: escapeLabel(aa?.reason || "k6/thresholds/tolerance.json"),
     },
     {
       value: escapeLabel(`${ctx.observations.length} open observation(s)`),
