@@ -20,6 +20,7 @@ import {
   type ReleasePlan,
 } from "../../src/dashboard/release-plan.ts";
 import { collectFromArtefactDir, type CollectedEvidence } from "../../src/dashboard/collect.ts";
+import { preferReleasedAb } from "../../src/dashboard/gate/read-ab.ts";
 import { walkVerdicts } from "../../src/dashboard/verdicts.ts";
 import {
   DEFAULT_CONTEXT,
@@ -145,7 +146,7 @@ function main(argv: string[]): void {
     soakTrends,
     releasePlan,
     aa,
-    ab,
+    ab: preferReleasedAb(ab),
     races,
   };
   writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending, context));

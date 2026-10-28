@@ -1,0 +1,27 @@
+{
+  "_source": {
+    "fixture": "labelled-ab-run",
+    "githubRunId": "40900000000",
+    "file": "gate-selftest/selftest.json"
+  },
+  "p95": {
+    "a": [25, 25, 25],
+    "slow": [100, 100, 100],
+    "same": [25, 25, 25]
+  },
+  "slowed": {
+    "verdict": "FAIL (REGRESSION)",
+    "ratios": [4, 4, 4],
+    "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel",
+    "reasons": ["every B arm is above 1.20 x the A median"]
+  },
+  "unchanged": {
+    "verdict": "PASS",
+    "ratios": [1, 1, 1],
+    "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel"
+  },
+  "check": {
+    "ok": true,
+    "reasons": []
+  }
+}

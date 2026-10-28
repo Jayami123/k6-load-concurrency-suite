@@ -1,0 +1,18 @@
+{
+  "_source": {
+    "fixture": "labelled-ab-run",
+    "githubRunId": "40900000000",
+    "file": "ab-cal/gate-verdict-cal.json"
+  },
+  "product": "cal",
+  "caseId": "P6-CAL-LOAD-003",
+  "a": [80, 81, 82],
+  "b": [88, 97.2, 106.6],
+  "ratios": [1.1, 1.2, 1.3],
+  "verdict": "PASS",
+  "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel",
+  "tolerance": {
+    "metric": "p95Ms",
+    "tolerance": 0.5630181754033532
+  }
+}

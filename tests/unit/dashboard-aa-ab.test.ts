@@ -11,6 +11,7 @@ import { FLOOR } from "../../src/load/gate/tolerance.ts";
 const AA_DAY1 = "tests/fixtures/dashboard/aa/40497029348";
 const AA_DAY2 = "tests/fixtures/dashboard/aa/40605925118";
 const AB_DIR = "tests/fixtures/dashboard/ab/40636843578";
+const AB_NEW_DIR = "tests/fixtures/dashboard/ab-labelled/40900000000";
 
 function allAa(): AaSeries[] {
   return [...readAaSeries(AA_DAY1, "40497029348"), ...readAaSeries(AA_DAY2, "40605925118")];
@@ -125,5 +126,31 @@ describe("dashboard a/a and a/b", () => {
       assert.equal(svgs.includes(label), false, `SVG must not contain released label ${label}`);
       assert.equal(html.includes(label), false, `chart must not present ${label} as released`);
     }
+  });
+
+  it("old and new gate runs keep one labelled row per product and drop the pending medusa row", () => {
+    const rows = [...readAbGate(AB_DIR, "40636843578"), ...readAbGate(AB_NEW_DIR, "40900000000")];
+    const html = renderAbChart(rows);
+    assert.equal((html.match(/<figure>/g) ?? []).length, 3);
+    assert.doesNotMatch(html, /verdict file not in release/);
+    assert.doesNotMatch(html, /0\.99807/);
+    assert.match(html, /1\.10000/);
+    assert.match(html, /1\.01000/);
+    assert.match(html, />4\.00000</);
+  });
+
+  it("new-only labelled medusa has a verdict and ratios, not pending", () => {
+    const rows = readAbGate(AB_NEW_DIR, "40900000000");
+    const med = rows.find((g) => g.product === "medusa");
+    assert.ok(med);
+    assert.equal(med.source, "gate-verdict-medusa.json");
+    assert.equal(med.verdict, "PASS");
+    assert.deepEqual(
+      (med.ratios ?? []).map((r) => r.toFixed(5)),
+      ["1.01000", "1.02000", "1.03000"],
+    );
+    const html = renderAbChart(rows);
+    assert.match(html, /medusa A\/B ratios \(verdict PASS\)/);
+    assert.doesNotMatch(html, /verdict file not in release/);
   });
 });

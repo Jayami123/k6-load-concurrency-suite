@@ -1,0 +1,18 @@
+{
+  "_source": {
+    "fixture": "labelled-ab-run",
+    "githubRunId": "40900000000",
+    "file": "ab-medusa/gate-verdict-medusa.json"
+  },
+  "product": "medusa",
+  "caseId": "P6-MED-LOAD-002",
+  "a": [200, 201, 202],
+  "b": [202, 204.02, 208.06],
+  "ratios": [1.01, 1.02, 1.03],
+  "verdict": "PASS",
+  "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel",
+  "tolerance": {
+    "metric": "p95Ms",
+    "tolerance": 0.1
+  }
+}
