@@ -1,0 +1,264 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40469597860",
+    "file": "race-histograms-medusa-budget/P6-MED-RACE-005.json"
+  },
+  "caseId": "P6-MED-RACE-005",
+  "title": "N=10 carts with a usage-budget K=3 promotion complete in parallel \u2192 usage \u2264 K",
+  "product": "medusa",
+  "verdict": "pass",
+  "invariantViolations": [],
+  "attempts": [
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {}
+    }
+  ]
+}

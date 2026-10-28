@@ -1,0 +1,20 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40498902575",
+    "file": "medusa-invariants/P6-MED-LOAD-009/20261027T115442Z-0b12a9c1/verdict.json"
+  },
+  "outcome": "PASS",
+  "reasons": [],
+  "validity": {
+    "verdict": "VALID"
+  },
+  "stages": {
+    "reconcile": {
+      "data": {
+        "knownFail": "P6-OBS-MED-002",
+        "leakedCanceledOrders": 4
+      }
+    }
+  }
+}

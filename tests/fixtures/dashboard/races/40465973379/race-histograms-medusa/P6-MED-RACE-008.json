@@ -1,0 +1,364 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40465973379",
+    "file": "race-histograms-medusa/P6-MED-RACE-008.json"
+  },
+  "caseId": "P6-MED-RACE-008",
+  "title": "two parallel cancels of one order \u2192 one takes effect",
+  "product": "medusa",
+  "verdict": "pass",
+  "invariantViolations": [],
+  "attempts": [
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    },
+    {
+      "valid": true,
+      "invariantViolations": [],
+      "oracle": {
+        "suspectedBug": "F-M2"
+      }
+    }
+  ]
+}
