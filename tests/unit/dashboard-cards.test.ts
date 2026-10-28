@@ -33,6 +33,15 @@ describe("card state from the verdicts", () => {
     }
   });
 
+  it("the under-load invariant card counts the Medusa load cases and marks the known leak", () => {
+    const s = spec("invariants-load");
+    assert.ok(s.caseIds.includes("P6-MED-LOAD-007"));
+    assert.ok(s.caseIds.includes("P6-CAL-LOAD-002"));
+    assert.equal(s.knownFail?.obs, "P6-OBS-MED-002");
+    const state = computeCard(s, [run("20261027T145154Z-27ce6b31", "P6-MED-LOAD-007", "PASS")]);
+    assert.equal(state.status, "PASS");
+  });
+
   it("a VALID PASS run makes the card PASS and its run is listed", () => {
     const state = computeCard(spec("promo"), [
       run("20261026T175734Z-aa", "P6-MED-RACE-008", "PASS"),
