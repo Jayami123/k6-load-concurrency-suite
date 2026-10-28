@@ -8,8 +8,8 @@ Roadmap: Phase 5 presentation of the Phase 4 evidence. Written on `plan/2026-10-
 - **Base SHA:** `85a9302` (re-fetched 2026-10-28 18:23 Asia/Colombo; newer wins).
 - **B0:** **1336** unit tests pass, 0 fail, 329 suites. `npm run check` exit 0. Node v22.23.3 (`package.json` engines `>=22.22.0`).
 - **Build branch pattern:** `feat/<build date>-p6-dashboard-v2-<slug>` per PR (Asia/Colombo date of the build session). Plan branch stays `plan/2026-10-28-p6-dashboard-v2` and is not a build branch.
-- **Unit-test delta:** **+54 against B0 1336**, expected **1390** after PR-I. Per PR: A +0, B +0, C +9, D +9, E +6, F +6, G +9, H +9, I +6, J +0.
-- **Stop for owner review: yes.** This session is plan-only. The build changes `pages.yml` and `gate.yml` (CI), publishes a redesigned public site, and labels PRODUCT BUG (SUSPECTED) rows in a committed findings file. No build starts until the owner says so.
+- **Unit-test delta:** **+55 against B0 1336**, expected **1391** after PR-I. Per PR: T +2, A +0, B +0, C +9, D +9, E +6, F +6, G +9, H +9, I +5, J +0.
+- **Stop for owner review: yes.** This session is plan-only. The build changes `pages.yml` (new `scan` job) and `gate.yml` (CI), publishes a redesigned public site, and labels PRODUCT BUG (SUSPECTED) rows in a committed findings file. No build starts until the owner says so.
 
 ## 2. What it proves
 
@@ -51,7 +51,7 @@ Commands below were run 2026-10-28 18:23–18:55 Asia/Colombo. Trimmed outputs q
 | A/B Cal        | 40636843578 `ab-cal/gate-verdict-cal.json`                                                                                         | Keys `product, caseId, a[3], b[3], tolerance, verdict, ratios, rule, reasons, excluded, exitCode`. a 86.645, 83.022, 83.484; b 83.323, 82.273, 85.542; ratios 0.99807, 0.98549, 1.02465; `verdict` `PASS`; `rule` `repeated regression: every B arm's ratio is above 1 + toleranceRel`.                                                                                                                                                                                                                                                                                                                                                                                                                                            | Cal chart from this file.                                                       |
 | A/B Medusa     | 40636843578 `ab-medusa/load-medusa/P6-MED-LOAD-002/`                                                                               | 6 VALID PASS, no `gate-verdict-medusa.json`, no `arm` in run-meta. Recomputed from start order (a, b alternating): a 224.543, 215.298, 215.187; b 218.632, 217.043, 214.772; ratios 1.01549, 1.0081, 0.99756. **INFERENCE (Q-3).**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Do not draw labelled A/B until a post-PR-B release.                             |
 | Selftest       | `gate-selftest/selftest.json`                                                                                                      | `p95{a, slow, same}`, `slowed{verdict: "FAIL (REGRESSION)", ratios, rule, reasons}`, `unchanged{verdict: PASS, ratios}`, `check{ok: true}`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Gate proof chart.                                                               |
-| Races          | 5 perf runs 40465973379, 40469597860, 40498902575, 40524237209, 40526041971                                                        | Histogram keys: `caseId, title, product, commitSha, startedAt, finishedAt, trialsRequested, concurrency, statusCounts, trials, attempts, warmup, dispatchSpreadMs, invalidDispatchSpreadMs, invalidTrials, reruns, spreadPolicy, invariantViolations, verdict, oracle`. Tally matches the prompt (CAL-001 50/0, 51/0, 51/0, 50/0, 51/0 with 1 invalid attempt in runs 2, 3, 5; CAL-003 fail 30/29..; DOC-001 fail 50/50 ×5; DOC-002 pass 50/0 ×5; MED-008 suspectedBug 50 ×5; -009 13, 20, 16, 12, 9; -011 37, 34, 37, 36, 35; -005 4, 0, 6, 0, 1; -012 22, 14, 14, 14, 18; MED-001/007/010 0). CAL-006..009 pass, 0 violations in **all five** runs. TW-\* `verdict` `fail`, 0 `invariantViolations`, `oracle.companyRowsLeft` 0. | Race charts. Twenty out of PASS/FAIL cards (Q-5).                               |
+| Races          | 5 perf runs 40465973379, 40469597860, 40498902575, 40524237209, 40526041971                                                        | Histogram keys: `caseId, title, product, commitSha, startedAt, finishedAt, trialsRequested, concurrency, statusCounts, trials, attempts, warmup, dispatchSpreadMs, invalidDispatchSpreadMs, invalidTrials, reruns, spreadPolicy, invariantViolations, verdict, oracle`. Tally matches the prompt (CAL-001 50/0, 51/0, 51/0, 50/0, 51/0 with 1 invalid attempt in runs 2, 3, 5; CAL-003 fail 30/29..; DOC-001 fail 50/50 ×5; DOC-002 pass 50/0 ×5; MED-008 suspectedBug 50 ×5; -009 13, 20, 16, 12, 9; -011 37, 34, 37, 36, 35; -005 4, 0, 6, 0, 1; -012 22, 14, 14, 14, 18; MED-001/007/010 0). CAL-006..009 pass, 0 violations in **all five** runs. TW-\* `verdict` `fail`, 0 `invariantViolations`, `oracle.companyRowsLeft` 0. | Race charts. Twenty card PENDING until a post-PR-T release (Q-5).               |
 | Invariants     | `burst.json`, `stale.json`, `exactly-once.json`, LOAD-009 `verdict.json`                                                           | burst keys `accepted, attempts, histogram, knownBugs, reasons, verdict`. stale keys `contract, staleCount, pollsExpected, pollsDone, timeToDisappearMs, observation, verdict, reasons`. exactly-once keys `sequentialDocs, sequentialExact, pairDocs, pairKnownDuplicates, verdict, reasons, sequentialDocsRead`.                                                                                                                                                                                                                                                                                                                                                                                                                  | Under-load card still uses `verdict.json`; extra files are evidence links only. |
 | Findings 5.4   | README.md:539–563; public issue API; `docs/observations/`; `docs/BACKLOG.md:117, :127`                                             | Upstream issues 30375, 30374, 30376, 3187 open. Comment 6318151560 exists. #29815 has 3 comments, none from the owner's account → `existing issue; our comment not posted`. P6-OBS-CAL-004 and P6-OBS-DOC-004 have **no definition on main**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `docs/findings.json` rows in §6.6.                                              |
 | Site v1        | GET the live Pages URL; `wc -c`                                                                                                    | 80589 bytes. Tiles as in the prompt. Built from `3c9d164` on 2026-10-28 08:54 UTC (14:24 Asia/Colombo start).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Size budget baseline ~80.6 KB.                                                  |
@@ -65,8 +65,7 @@ Commands below were run 2026-10-28 18:23–18:55 Asia/Colombo. Trimmed outputs q
 
 1. **p6-phase4b as a GitHub Release:** does not exist. Confirm at build time it is still absent; do not fetch it.
 2. **Numeric WCAG contrast of every colour token pair:** not measured in this session. PR-I's contrast unit test is the check.
-3. **Playwright screenshot capture in this cloud image:** not run (plan-only). Confirm at PR-I with the script in §6.11.
-4. **P6-OBS-CAL-004 and P6-OBS-DOC-004 definitions:** UNVERIFIED, no definition on main. Do not invent rows.
+3. **P6-OBS-CAL-004 and P6-OBS-DOC-004 definitions:** UNVERIFIED, no definition on main. Do not invent rows. Hand-made screenshot PNGs are out of scope (Q-7).
 
 ## 4. Depends on
 
@@ -110,8 +109,10 @@ Main at `85a9302` (verified):
 ### 6.1 File tree
 
 ```text
-.github/workflows/pages.yml                         CHANGED  PR-A (push trigger, caps, dead env); PR-I does not touch it
+.github/workflows/pages.yml                         CHANGED  PR-A (push trigger, split scan job, dead env); PR-I does not touch it
 .github/workflows/gate.yml                          CHANGED  PR-B only (stage verdict + arm map; comment 998-999 intact)
+src/twenty/run-case.ts                              CHANGED  PR-T (assign histogram.verdict)
+tests/unit/twenty-histogram-verdict.test.ts         NEW      PR-T
 docs/findings.json                                  NEW      PR-C  machine-readable findings
 docs/findings.schema.json                           NEW      PR-C
 src/dashboard/findings.ts                           NEW      PR-C  load + types
@@ -134,11 +135,6 @@ src/dashboard/render/page.ts                        CHANGED  PR-D (one-line sect
 src/dashboard/render/style.ts                       CHANGED  PR-I (remove transitions; D4)
 src/dashboard/site-model.ts                         CHANGED  PR-D (PageContext extras live in collect types, not here unless needed)
 scripts/dashboard/build-site.ts                     CHANGED  PR-D (call collectFromArtefactDir)
-scripts/dashboard/screenshot.mts                    NEW      PR-I (hand / local)
-docs/dashboard/v2/1280-light.png                    NEW      PR-I
-docs/dashboard/v2/1280-dark.png                     NEW      PR-I
-docs/dashboard/v2/375-light.png                     NEW      PR-I
-docs/dashboard/v2/375-dark.png                      NEW      PR-I
 tests/fixtures/dashboard/                           NEW      trimmed JSON, `_source` header
 tests/unit/findings-schema.test.ts                  NEW      PR-C
 tests/unit/dashboard-fixtures-scan.test.ts          NEW      PR-C
@@ -487,7 +483,13 @@ function chartBody(id: string, ctx: PageContext): string {
   if (id === "soak") return renderSoakTrends(ctx.soakTrends ?? []);
   if (id === "aa-noise") return renderAaChart(ctx.aa ?? []);
   if (id === "ab-gate") return renderAbChart(ctx.ab ?? []);
-  if (id === "promo" || id === "cancel" || id === "invariants" || id === "two-instance")
+  if (
+    id === "promo" ||
+    id === "cancel" ||
+    id === "invariants" ||
+    id === "two-instance" ||
+    id === "twenty"
+  )
     return renderRaceChart((ctx.races ?? []).filter((r) => /* card's caseIds */ true));
   return "";
 }
@@ -874,10 +876,12 @@ export function readRaceTallies(dir: string, githubRunId: string): RaceTally[] {
 }
 
 export function raceVerdictInputs(tallies: RaceTally[]): VerdictInput[] {
-  // Twenty (product === "twenty"): omit from card verdicts (Q-5)
-  // others: outcome = histogram.verdict === "fail" && attemptsWithViolation > 0 ? "FAIL"
-  //                  : histogram.verdict === "fail" && attemptsWithViolation === 0 ? "PASS" with reason "histogram verdict is the default fail; 0 violations" — still omit twenty
-  //                  : "PASS"
+  // After PR-T, runTwentyTrials assigns verdict like Cal. p6-phase4 TW histograms still have
+  // the default fail (0 violations). Do not map that pair to FAIL.
+  // outcome = histogram.verdict === "fail" && attemptsWithViolation > 0 ? "FAIL"
+  //         : histogram.verdict === "fail" && attemptsWithViolation === 0 && product === "twenty"
+  //             ? skip this tally (no VerdictInput; the Twenty card stays PENDING)
+  //         : "PASS"
   // suspectedBugCount = attemptsWithSuspectedBug
   // validity = "VALID" unless the file is unreadable
 }
@@ -912,6 +916,14 @@ export function raceVerdictInputs(tallies: RaceTally[]): VerdictInput[] {
   caseIds: ["P6-CAL-LOAD-003"], // Cal only until a released Medusa verdict exists (Q-3). Do not add P6-MED-LOAD-002: those dirs are unlabelled.
   pendingReason: "no VALID A/B gate verdict in a published release yet",
 },
+{
+  id: "twenty",
+  title: "Twenty races (P6-TW-RACE-001–006)",
+  proves: "It proves the Twenty race histograms carry an assigned pass or fail, not the createHistogram default.",
+  caseIds: ["P6-TW-RACE-001", "P6-TW-RACE-002", "P6-TW-RACE-003", "P6-TW-RACE-004", "P6-TW-RACE-005", "P6-TW-RACE-006"],
+  knownFail: { caseIds: ["P6-TW-RACE-004"], obs: "P6-OBS-TW-001" }, // only after a post-PR-T release assigns fail for real
+  pendingReason: "p6-phase4 histograms still have the default fail; waiting for a release after PR-T",
+},
 ```
 
 Also add `knownFail` on the Cal/Documenso invariants card:
@@ -942,7 +954,7 @@ function isKnownFail(v: VerdictInput, spec: CardSpec): boolean {
 
 Q-4 evidence: `src/medusa/run-order-case.ts:76-77` "they never change the verdict (D54)" and `:265-266` "suspected lines never reach invariantViolations". Promo (`-005`/`-012`) has **no** `spec.knownFail`, so the card stays **PASS with a suspected-bug count on the chart**. Cancel `-009` and load `-009` are **KNOWN FAIL** because `spec.knownFail` matches. Never map `pass` + `suspectedBug` to **FAIL**.
 
-Q-5 evidence: `src/races/histogram.ts:53` default `"fail"`; `src/twenty/run-case.ts:95-140` `runTwentyTrials` never assigns `verdict`; `docs/BACKLOG.md:108-111`. Twenty races stay off the evidence cards. They remain in the findings table. Out of scope extra: `fix(twenty): set the race histogram verdict`.
+Q-5: PR-T (Wave 1) is the fix. Evidence: `src/races/histogram.ts:53` default `"fail"`; `src/twenty/run-case.ts:95-140` `runTwentyTrials` never assigns `verdict`; `docs/BACKLOG.md:108-111`. Leave the default (unfinished histograms stay fail; `tests/unit/histogram.test.ts` keeps `assert.equal(typed.verdict, "fail")`). Assign in `runTwentyTrials` the same way Cal does (`src/cal/run-case.ts:267-268`) **before** `writeHistogram`. p6-phase4 zips still carry the default, so the Twenty card is **PENDING** until a post-PR-T release. Findings table still lists `P6-TW-RACE-004`.
 
 Race SVG: grouped bars per run, two marks (solid bar = attempts, hollow bar = attempts with violation or suspectedBug), text labels of the two numbers. viewBox 0 0 720 200. Table: run, attempts, with violation, with suspectedBug, histogram verdict.
 
@@ -953,14 +965,14 @@ Tests (`tests/unit/dashboard-races.test.ts` + updates to `dashboard-cards.test.t
 3. `cancel card caseIds include P6-MED-RACE-008 and P6-MED-RACE-009`
 4. `KNOWN FAIL when knownFail is P6-OBS-MED-002 even if outcome is PASS` (LOAD-009 fixtures, leak 4/5/6)
 5. `A/A card is no longer pending when VALID aa verdicts exist`
-6. `Twenty histograms are not mapped to FAIL`
+6. `Twenty card is PENDING on p6-phase4 histograms that still have the default fail`
 7. `Medusa pass with suspectedBug stays PASS on the promo card and counts 4, 0, 6, 0, 1 for -005`
 8. `the old test title a card with no case ids is always PENDING is replaced` (this is a test update, not a weakened assertion: the v1 test encoded the bug)
 9. `MED-RACE-008 title two parallel cancels is not on the promo card`
 
 Existing test `a card with no case ids is always PENDING: A/A and A/B have no committed tolerance yet` is **deleted and replaced**, not skipped. The replacement asserts the released arms make the A/A card PASS.
 
-### 6.9 Findings table, CSP, size, screenshots (PR-I) — V4, D3, D4, D6
+### 6.9 Findings table, CSP, size (PR-I) — V4, D3, D4, D6
 
 `findingsSection` in `page.ts` reads `loadFindings("docs/findings.json")` at build (committed file). Columns: ID, aliases, product, label, severity, upstream, tests, evidence (release + run ids + file), provenance `source: docs/findings.json, commit <sha>` where `<sha>` is `ctx.sha`. Link run ids as `<repo>/actions/runs/<id>` and observation files as relative `docs/observations/<file>`. Do not add a new `github.com/<owner>/...` URL; `page.ts` already has `REPO` for v1 observation links — PR-I stops using `REPO` for the findings table (relative paths + the run-id form). The observation strip in the summary still lists heading-regex files until PR-I switches that count to `findings.json.length` or drops it; **switch the summary observation count to the findings row count** so the tile is 24, not 2.
 
@@ -991,7 +1003,7 @@ it("index.html is at most MAX_SITE_BYTES", () => {
 
 Do not publish the VM timing as a performance number. The budget is a size cap.
 
-Screenshots (Q-7): `scripts/dashboard/screenshot.mts` uses Playwright (already in `package.json`) against a `file://` path of `site/index.html` at 1280×800 and 375×812, `color-scheme: light` and `dark` (emulate `prefers-color-scheme`). Writes `docs/dashboard/v2/{1280,375}-{light,dark}.png`. **Not a pages.yml job** (the existing build job has no 10-minute margin; a new job would be allowed but is extra X-CI-SHOT, out of scope). Test `tests/unit/dashboard-screenshots.test.ts` is **not** added under `tests/unit/*.test.ts` if it needs a browser. Instead PR-I's size/findings tests stay pure. The PNGs are committed; a unit test checks each file exists and is larger than 1024 bytes (`tests/unit/dashboard-findings-page.test.ts` last case).
+Screenshots (Q-7, dropped): no committed PNGs, no `screenshot.mts`, no Chromium install. Hand-made images drift from the live site. PR-J points the README at the GitHub Pages site of this repository (the README has no `github.io` URL today; write that phrase, do not add a new URL that contains the owner's account name). Contrast is the WCAG unit test, not a screenshot.
 
 Contrast test (`tests/unit/dashboard-contrast.test.ts`): relative luminance of `--fg` on `--bg`, `--pass` on `--card`, `--fail` on `--card`, light and dark, each ≥ 4.5:1 (WCAG 2.2 1.4.3). Helper `contrastRatio(a, b)` in the test file.
 
@@ -1002,7 +1014,6 @@ PR-I tests:
 3. `every svg[role=img] has title, desc, and a table of the same numbers`
 4. `index.html has a Content-Security-Policy meta with script-src 'none'`
 5. `PAGE_CSS has no transition or animation`
-6. `the four screenshot PNGs exist and are larger than 1024 bytes`
 
 ### 6.10 pages.yml (PR-A) — V3, Q-1
 
@@ -1027,7 +1038,7 @@ on:
       - .github/workflows/pages.yml
 ```
 
-`if:` on `build` becomes:
+The same `if:` goes on **both** `build` and the new `scan` job:
 
 ```yaml
 if: >-
@@ -1036,37 +1047,128 @@ if: >-
   (github.event_name == 'push' && github.ref == 'refs/heads/main')
 ```
 
-Delete env `EVIDENCE_RELEASE: "p6-phase4a"` (lines 21–24 keep `EVIDENCE_WORKFLOW_IDS` and the gitleaks pins).
+Delete env `EVIDENCE_RELEASE: "p6-phase4a"` (lines 21–24 keep `EVIDENCE_WORKFLOW_IDS` and the gitleaks pins; `scan` still reads those).
 
-Every step gets `timeout-minutes`. Proposed caps (measured → cap). **Never raise the job timeout of 20.**
+**Q-1 (c):** move token scan, gitleaks install, gitleaks, `configure-pages` and `upload-pages-artifact` out of `build` into a new job `scan` that `needs: build`. `build` uploads the `site/` tree as a regular artefact. `scan` downloads it, scans it, and only then uploads the Pages artefact. `deploy` changes `needs: build` to `needs: scan`. Never raise any job timeout.
 
-| Step                         | Measured on 40660111756 | Today        | After              |
-| ---------------------------- | ----------------------- | ------------ | ------------------ |
-| checkout                     | 1 s                     | (none)       | 2                  |
-| setup-node                   | 3 s                     | (none)       | 2                  |
-| Collect the run ids…         | 0 s                     | 1            | 1                  |
-| Validate each evidence run…  | 9 s                     | 3            | 2                  |
-| List the p6 releases…        | 1 s                     | 3            | 1                  |
-| Fetch the planned zips…      | 22 s                    | 5            | 3                  |
-| Build the site               | 1 s                     | 2            | 1                  |
-| Token scan of the site       | 0 s                     | 2            | 1                  |
-| Install gitleaks…            | 0 s                     | 1            | 1                  |
-| gitleaks over the built site | 1 s                     | 2            | 1                  |
-| configure-pages              | 1 s                     | 1            | 1                  |
-| upload-pages-artifact        | 1 s                     | 2            | 1                  |
-| **sum**                      | ~45 s                   | 22 + missing | **17**             |
-| job timeout                  |                         | 20           | **20** (unchanged) |
-| margin                       |                         | −2           | **3**              |
+`build` after (timeout **20** unchanged). Every remaining step gets `timeout-minutes`.
 
-R11 10-minute margin cannot be met: 12 steps × 1 minute minimum = 12 > 10, so even all-ones sums to 12 with 8 minutes of margin, but checkout+setup+fetch need 2+2+3. This is an **existing job**. Record the gap as exception X-PAGES-MARGIN. Do not merge scan steps (token scan and gitleaks are different tools). Do not split scans into a new job in this PR (extra, X-PAGES-SCANJOB).
+| Step                                                   | Measured on 40660111756 | Today        | After              |
+| ------------------------------------------------------ | ----------------------- | ------------ | ------------------ |
+| checkout                                               | 1 s                     | (none)       | 1                  |
+| setup-node                                             | 3 s                     | (none)       | 1                  |
+| Collect the run ids…                                   | 0 s                     | 1            | 1                  |
+| Validate each evidence run…                            | 9 s                     | 3            | 1                  |
+| List the p6 releases…                                  | 1 s                     | 3            | 1                  |
+| Fetch the planned zips…                                | 22 s                    | 5            | 2                  |
+| Build the site                                         | 1 s                     | 2            | 1                  |
+| Upload the site artefact                               | (new)                   | —            | 1                  |
+| Token scan / gitleaks / configure-pages / upload-pages | moved to `scan`         | 2+1+2+1+2    | —                  |
+| **sum**                                                |                         | 22 + missing | **9**              |
+| job timeout                                            |                         | 20           | **20** (unchanged) |
+| margin                                                 |                         | −2           | **11**             |
 
-R12's 80% stop rule applies to **new** jobs. Do not add a new stop inside the existing fetch script (that would be extra X-PAGES-STOP). Fetch measured 22 s vs a 3-minute cap (≈12% of the cap on run 40660111756). If a later release grows the zip set and fetch hits the cap, lower another step or restore fetch to 4 (sum would be 18, still ≤ 20) — never raise the job timeout.
+New `build` step (after **Build the site**, before the job ends):
 
-Add `if: ${{ !cancelled() }}` on Token scan, Install gitleaks, gitleaks, configure-pages, upload. Do not add a summary step (existing job; extra X-PAGES-SUMMARY).
+```yaml
+- uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  if: ${{ !cancelled() }}
+  timeout-minutes: 1
+  with:
+    name: site
+    path: site
+    retention-days: 90
+    if-no-files-found: error
+```
 
-Deploy job: unchanged timeout 10, deploy step 5.
+Delete from `build`: **Token scan of the site**, **Install gitleaks (pinned version, pinned sha256)**, **gitleaks over the built site**, `configure-pages`, `upload-pages-artifact`.
 
-Industry source: GitHub Docs, Workflow syntax `timeout-minutes` and `on.push.paths`; `if` guards.
+New job `scan` (timeout **20**, new so R11/R12 apply in full). Pin `actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0` (not yet in this repo; pairs with the existing `upload-artifact` v7.0.2 pin). Checkout is required so `scripts/evidence-token-scan.mjs` and `.gitleaks.toml` are present.
+
+```yaml
+scan:
+  name: scan the built site
+  needs: build
+  runs-on: ubuntu-latest
+  timeout-minutes: 20
+  if: >-
+    (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success') ||
+    (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+    (github.event_name == 'push' && github.ref == 'refs/heads/main')
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      timeout-minutes: 1
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      timeout-minutes: 1
+      with:
+        node-version-file: .nvmrc
+
+    - name: Download the built site
+      timeout-minutes: 1
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        name: site
+        path: site
+
+    - name: Token scan of the site
+      if: ${{ !cancelled() }}
+      timeout-minutes: 1
+      run: node scripts/evidence-token-scan.mjs site
+
+    - name: Install gitleaks (pinned version, pinned sha256)
+      if: ${{ !cancelled() }}
+      timeout-minutes: 1
+      run: |
+        set -euo pipefail
+        archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        curl -sSfL -o "$RUNNER_TEMP/$archive" \
+          "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+        echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+        tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+        sudo install "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+
+    - name: gitleaks over the built site
+      if: ${{ !cancelled() }}
+      timeout-minutes: 1
+      run: gitleaks dir site --no-banner --redact --exit-code 1
+
+    - name: Job summary
+      if: ${{ !cancelled() }}
+      timeout-minutes: 1
+      run: echo "token scan and gitleaks over site/" >> "$GITHUB_STEP_SUMMARY"
+
+    - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      if: ${{ success() && !cancelled() }}
+      timeout-minutes: 1
+
+    - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      if: ${{ success() && !cancelled() }}
+      timeout-minutes: 1
+      with:
+        path: site
+```
+
+| `scan` step                  | Measured (same steps on 40660111756) | Cap    |
+| ---------------------------- | ------------------------------------ | ------ |
+| checkout                     | 1 s                                  | 1      |
+| setup-node                   | 3 s                                  | 1      |
+| Download the built site      | (new; zip of ~80 KB)                 | 1      |
+| Token scan of the site       | 0 s                                  | 1      |
+| Install gitleaks…            | 0 s                                  | 1      |
+| gitleaks over the built site | 1 s                                  | 1      |
+| Job summary                  | (new)                                | 1      |
+| configure-pages              | 1 s                                  | 1      |
+| upload-pages-artifact        | 1 s                                  | 1      |
+| **sum**                      |                                      | **9**  |
+| job timeout                  |                                      | **20** |
+| margin                       |                                      | **11** |
+
+No 80% stop: every `scan` step is seconds, well under 80% of a 1-minute cap. Fetch stays on `build` (existing job); do not add a new stop inside that script (X-PAGES-STOP). If a later release grows the zip set past 2 minutes, lower another `build` cap rather than raise 20.
+
+`deploy`: `needs: scan`. Timeout **10** and deploy step **5** unchanged. A 10-minute job cannot have a 10-minute step-cap margin (one step × 1 minute minimum leaves 9). That gap is pre-existing. Do not raise 10 (H4). Record as X-PAGES-DEPLOY-MARGIN.
+
+Industry source: GitHub Docs, Workflow syntax `timeout-minutes`, `needs`, `on.push.paths`, and "Deploying with GitHub Actions" (upload Pages artefact from the job that `deploy` needs).
 
 ### 6.11 gate.yml (PR-B) — V9
 
@@ -1104,43 +1206,26 @@ The inline module writes **field names and run-folder names only**. No publishab
 
 The **next** released gate run after this PR then carries labels. Until that release exists, the site uses Q-3 (pending). Do not edit a published release (O3).
 
-### 6.12 Screenshot script (PR-I)
+### 6.12 Twenty histogram verdict (PR-T) — Q-5
+
+Wave 1, disjoint from A–D (`src/twenty/run-case.ts` + one unit test). Does not edit `src/races/histogram.ts`: the default `"fail"` at line 53 stays so an unfinished histogram is never a silent pass. `tests/unit/histogram.test.ts` keeps `assert.equal(typed.verdict, "fail")` (H3: do not weaken it).
 
 ```ts
-// scripts/dashboard/screenshot.mts
-// Usage: node --experimental-strip-types scripts/dashboard/screenshot.mts site/index.html docs/dashboard/v2
-import { chromium } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-
-const html = process.argv[2];
-const outDir = process.argv[3];
-if (!html || !outDir) throw new Error("usage: screenshot.mts <index.html> <outDir>");
-mkdirSync(outDir, { recursive: true });
-const browser = await chromium.launch();
-for (const [width, height, name] of [
-  [1280, 800, "1280"],
-  [375, 812, "375"],
-] as const) {
-  for (const colorScheme of ["light", "dark"] as const) {
-    const page = await browser.newPage({
-      viewport: { width, height },
-      colorScheme,
-    });
-    await page.goto(`file://${path.resolve(html)}`, { waitUntil: "load" });
-    await page.screenshot({
-      path: path.join(outDir, `${name}-${colorScheme}.png`),
-      fullPage: true,
-    });
-    await page.close();
-  }
-}
-await browser.close();
+// src/twenty/run-case.ts  (inside runTwentyTrials, after runner.applyTo and leakCheck, before the return)
+const trialsOk = results.every((t) => t.ok);
+histogram.verdict = trialsOk && histogram.invariantViolations.length === 0 ? "pass" : "fail";
 ```
 
-No network. If Chromium is missing, the script throws; do not skip the PNG test. Owner to-do: install Chromium (section 11).
+That is the same assignment as `src/cal/run-case.ts:267-268`. Put it in the `try` after `const results = await runTrials(...)` and `runner.applyTo(histogram)`, before the `return`. The existing `finally` still calls `writeHistogram`. If `attempt` throws before `results` is set, the default `fail` is correct.
 
-Owner to-do (both clouds): `npx playwright install chromium` once per machine. Not automatic from `npm ci`.
+Tests (`tests/unit/twenty-histogram-verdict.test.ts`):
+
+1. `runTwentyTrials sets verdict pass when every trial is ok and invariantViolations is empty`
+2. `runTwentyTrials sets verdict fail when a trial throws`
+
+Fixture: a fake `attempt` that returns empty `requests` and `oracle: { companyRowsLeft: 0 }`. `concurrency: 1`. Stub leakCheck omitted. Change cwd to a temp dir so `writeHistogram` does not touch the repo. Expected: after PR-T, `# pass 1338`.
+
+The next `twenty-races` job on `main` after this PR writes real verdicts. Do not edit a published release (O3). The dashboard Twenty card stays PENDING until that later zip is in a new evidence-release.
 
 ## 7. Oracles
 
@@ -1153,7 +1238,7 @@ Owner to-do (both clouds): `npx playwright install chromium` once per machine. N
 | A/B Cal            | `gate-verdict-cal.json.verdict === "PASS"`       | that file `FAIL`                                 | —                                                                                                       | file absent                   | —                                         | —                                                           |
 | A/B Medusa         | only if `gate-verdict-medusa.json` is in the zip | that file                                        | —                                                                                                       | `verdict file not in release` | —                                         | —                                                           |
 | Race tally         | histogram `pass`                                 | histogram `fail` **and** attemptsWithViolation>0 | cancel/invariants as spec.knownFail                                                                     | no histogram                  | —                                         | —                                                           |
-| Twenty races       | not on cards                                     | not on cards                                     | findings table only                                                                                     | —                             | —                                         | —                                                           |
+| Twenty races       | assigned `pass` in a post-PR-T zip               | assigned `fail` with violations                  | TW-004 via spec.knownFail after that zip                                                                | p6-phase4 default fail        | —                                         | —                                                           |
 | V8 LOAD-009        | outcome PASS is ignored for known-fail           | —                                                | `stages.reconcile.data.knownFail === "P6-OBS-MED-002"`                                                  | —                             | —                                         | —                                                           |
 
 A missing source always renders the string `pending: <reason>`, never a guessed number.
@@ -1170,13 +1255,17 @@ A missing source always renders the string `pending: <reason>`, never a guessed 
 
 ### 9.1 pages `build` (existing job)
 
-See §6.10. Job timeout **20** unchanged. Step-cap sum **22 → 17**. Measured total ~45 s on run 40660111756 (14:24–14:25 Asia/Colombo). Exception: 10-minute R11 margin not achievable on this existing 12-step job (X-PAGES-MARGIN). Deploy job unchanged (timeout 10, step 5; deploy 7 s measured).
+See §6.10. Job timeout **20** unchanged. Step-cap sum **22 → 9** (scans moved out). Margin **11**. Measured total ~45 s on run 40660111756 (14:24–14:25 Asia/Colombo). Fetch cap 2 (measured 22 s).
 
-### 9.2 pages `deploy`
+### 9.2 pages `scan` (NEW job, PR-A)
 
-Unchanged.
+Timeout **20**. Step-cap sum **9**. Margin **11**. `needs: build`. Downloads artefact `site`, token-scans, gitleaks, summary, then uploads the Pages artefact. `if:` same as `build`. Retention 90 on the `site` artefact from `build`.
 
-### 9.3 gate.yml job `ab-medusa` (existing job, PR-B)
+### 9.3 pages `deploy`
+
+`needs: scan`. Timeout **10**, deploy step **5** unchanged (measured 7 s). Pre-existing X-PAGES-DEPLOY-MARGIN: a 10-minute job cannot hold a 10-minute step-cap margin. Do not raise 10.
+
+### 9.4 gate.yml job `ab-medusa` (existing job, PR-B)
 
 Job timeout **75** unchanged. No new step, no raised cap. Token-scan step stays 2 minutes. Measured on released run 40636843578 (10:44–10:59 Asia/Colombo): six 120 s arms, verdict+scan+upload ~2 s. Latest main gate run 40662432850 skipped this job (docs-only push); do not use it for timings.
 
@@ -1192,12 +1281,12 @@ All matched files use Prettier code style!
 > actionlint
 > tsc --noEmit && tsc --noEmit -p tsconfig.races.json
 > node scripts/k6-inspect.mjs
-# tests 1390
-# pass 1390
+# tests 1391
+# pass 1391
 # fail 0
 ```
 
-(Exact count = B0 + the deltas actually landed. If a PR adds one extra test, record it in DECISIONS and keep the assertion; do not delete a test to hit 1390.)
+(Exact count = B0 + the deltas actually landed. If a PR adds one extra test, record it in DECISIONS and keep the assertion; do not delete a test to hit 1391.)
 
 Build (pages job **Build the site**):
 
@@ -1234,11 +1323,13 @@ Card sketches (text, not numbers):
 [cancel] KNOWN FAIL (P6-OBS-MED-002)
 [invariants] KNOWN FAIL (P6-OBS-CAL-002 / P6-OBS-DOC-002)
 [invariants-load] KNOWN FAIL (P6-OBS-MED-002), leak N = 4, 5, 6
+[twenty] PENDING
+  p6-phase4 histograms still have the default fail; waiting for a release after PR-T
 ```
 
-Expected summary tiles after the final PR, rebuilt from the current releases (nine cards: knee, soak, two-instance, promo, cancel, invariants, invariants-load, aa-noise, ab-gate):
+Expected summary tiles after the final PR, rebuilt from the current releases (ten cards: knee, soak, two-instance, promo, cancel, invariants, invariants-load, aa-noise, ab-gate, twenty):
 
-- evidence cards: **PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 0, INVALID 0** (PASS: knee, soak, two-instance, promo, aa-noise, ab-gate; KNOWN FAIL: cancel, invariants, invariants-load). ab-gate is PASS when `gate-verdict-cal.json` is in the zip; Medusa stays a caption `pending: verdict file not in release`, not a PENDING card.
+- evidence cards: **PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 1, INVALID 0** (PASS: knee, soak, two-instance, promo, aa-noise, ab-gate; KNOWN FAIL: cancel, invariants, invariants-load; PENDING: twenty). ab-gate is PASS when `gate-verdict-cal.json` is in the zip; Medusa stays a caption `pending: verdict file not in release`, not a PENDING card.
 - soak thresholds: `0 of 3 products calibrated` (unchanged)
 - A/A: `A/A PASS` (no longer "runs pending release")
 - findings: 24 rows
@@ -1248,22 +1339,13 @@ If a count differs from this forecast, follow the evidence and record it; do not
 
 ## 11. Environment changes
 
-**none** for the unit-test path (`npm ci`, `npm run check`).
-
-Screenshot script (PR-I only):
-
-| Cloud             | Automatic from the repo                                                          | Pasted by hand                                                           |
-| ----------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Cursor cloud      | `npm ci` (`.cursor/environment.json` `install`) already pulls `@playwright/test` | `npx playwright install chromium` once. Not in `environment.json` today. |
-| Claude Code cloud | `npm ci` from the pasted setup / `session-start.sh` does not install browsers    | `npx playwright install chromium` once. Keep `/usr/local/bin` first.     |
-
-Do not add hosts entries, secrets, or packages silently. The screenshot tool is an environment change for PR-I, recorded here as an owner to-do.
+**none.** Q-7 drops the screenshot script, so neither cloud installs Chromium.
 
 `unzip` was missing in the planning image; Python `zipfile` was used. The GitHub-hosted runner already has `unzip` (pages.yml). No repo change.
 
 ## 12. Build order
 
-Wave 1 PRs are parallel-safe (disjoint files). Wave 2 after PR-D, parallel among themselves. Wave 3 after all of the above.
+Wave 1 PRs are parallel-safe (disjoint files: T, A, B, C, D). Wave 2 after PR-D, parallel among themselves. Wave 3 after all of the above.
 
 Per-PR loop (every build PR):
 
@@ -1280,87 +1362,95 @@ Per-PR loop (every build PR):
 
 ### Wave 1
 
-**PR-A** `fix(pages): rebuild the site on main pushes and fit the step caps` — `pages.yml` only. Parallel-safe with B, C, D.
+**PR-T** `fix(twenty): set the race histogram verdict` — `src/twenty/run-case.ts` + unit test only. Parallel-safe with A, B, C, D.
 
-| Step | Commit                                                              | Files                         | Tests after         |
-| ---- | ------------------------------------------------------------------- | ----------------------------- | ------------------- |
-| 1    | `fix(pages): rebuild the site on main pushes and fit the step caps` | `.github/workflows/pages.yml` | 1336 + lint:actions |
+| Step | Commit                                              | Files                                         | Tests after |
+| ---- | --------------------------------------------------- | --------------------------------------------- | ----------- |
+| 1    | `test(twenty): assert runTwentyTrials sets verdict` | `tests/unit/twenty-histogram-verdict.test.ts` | red         |
+| 2    | `fix(twenty): set the race histogram verdict`       | `src/twenty/run-case.ts`                      | **1338**    |
 
-**PR-B** `fix(gate): release the medusa a/b verdict and arm map` — `gate.yml` only. Parallel-safe with A, C, D. After merge, the **next** evidence-release of a gate run carries labels. Do not dispatch evidence-release from the dashboard session unless the owner sets that later.
+**PR-A** `fix(pages): rebuild the site on main pushes and split the scan job` — `pages.yml` only. Parallel-safe with T, B, C, D.
+
+| Step | Commit                                                               | Files                         | Tests after         |
+| ---- | -------------------------------------------------------------------- | ----------------------------- | ------------------- |
+| 1    | `fix(pages): rebuild the site on main pushes and split the scan job` | `.github/workflows/pages.yml` | 1336 + lint:actions |
+
+**PR-B** `fix(gate): release the medusa a/b verdict and arm map` — `gate.yml` only. Parallel-safe with T, A, C, D. After merge, the **next** evidence-release of a gate run carries labels. Do not dispatch evidence-release from the dashboard session unless the owner sets that later.
 
 | Step | Commit                                                  | Files                        | Tests after |
 | ---- | ------------------------------------------------------- | ---------------------------- | ----------- |
 | 1    | `fix(gate): release the medusa a/b verdict and arm map` | `.github/workflows/gate.yml` | 1336        |
 
-**PR-C** `feat(dashboard): add the findings data file and its schema test`. Parallel-safe with A, B, D.
+**PR-C** `feat(dashboard): add the findings data file and its schema test`. Parallel-safe with T, A, B, D.
 
 | Step | Commit                                                                 | Files                                                                                                           | Tests after      |
 | ---- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------- |
 | 1    | `test(dashboard): add the findings schema fixtures and the drift test` | `tests/unit/findings-schema.test.ts`, `tests/unit/dashboard-fixtures-scan.test.ts`, `docs/findings.schema.json` | 1336+2 red, then |
-| 2    | `feat(dashboard): add findings.json and the loader`                    | `docs/findings.json`, `src/dashboard/findings.ts`                                                               | **1345**         |
+| 2    | `feat(dashboard): add findings.json and the loader`                    | `docs/findings.json`, `src/dashboard/findings.ts`                                                               | **1347**         |
 
-**PR-D** `feat(dashboard): add the svg chart primitives`. Parallel-safe with A, B, C. **Wave 2 waits on D.**
+**PR-D** `feat(dashboard): add the svg chart primitives`. Parallel-safe with T, A, B, C. **Wave 2 waits on D.**
 
 | Step | Commit                                                          | Files                                                                                                                                                                                                                              | Tests after |
 | ---- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | 1    | `test(dashboard): add svg primitive tests`                      | `tests/unit/dashboard-charts.test.ts`, `tests/unit/dashboard-collect.test.ts`                                                                                                                                                      | red         |
-| 2    | `feat(dashboard): add svg primitives, collect, and chart stubs` | `src/dashboard/render/charts.ts`, `src/dashboard/verdicts.ts`, `src/dashboard/collect.ts`, stub modules, `scripts/dashboard/build-site.ts`, `src/dashboard/render/page.ts` (hooks only), `src/dashboard/site-model.ts` (re-export) | **1354**    |
+| 2    | `feat(dashboard): add svg primitives, collect, and chart stubs` | `src/dashboard/render/charts.ts`, `src/dashboard/verdicts.ts`, `src/dashboard/collect.ts`, stub modules, `scripts/dashboard/build-site.ts`, `src/dashboard/render/page.ts` (hooks only), `src/dashboard/site-model.ts` (re-export) | **1356**    |
 
 ### Wave 2 (after PR-D; parallel among themselves)
+
+Counts below assume PR-T is on `main` (+2 → 1338). A Wave 1 PR that merges first records the B0 it actually sees.
 
 **PR-E** `feat(dashboard): read the knee curves and mark the saturated resource` — files in §6.1 PR-E only. Parallel-safe with F, G, H.
 
 | Step | Commit                                                               | Tests after |
 | ---- | -------------------------------------------------------------------- | ----------- |
 | 1    | `test(dashboard): add knee curve fixtures and assertions`            | red         |
-| 2    | `feat(dashboard): plot knee curves and the first saturated resource` | **1360**    |
+| 2    | `feat(dashboard): plot knee curves and the first saturated resource` | **1362**    |
 
 **PR-F** `feat(dashboard): add the soak trend lines and slope verdicts`. Parallel-safe with E, G, H.
 
 | Step | Commit                                                                         | Tests after |
 | ---- | ------------------------------------------------------------------------------ | ----------- |
 | 1    | `test(dashboard): add soak downsample fixtures`                                | red         |
-| 2    | `feat(dashboard): downsample soak telemetry and print theilSen from soak.json` | **1366**    |
+| 2    | `feat(dashboard): downsample soak telemetry and print theilSen from soak.json` | **1368**    |
 
 **PR-G** `feat(dashboard): chart the a/a noise and the a/b gate ratios`. Parallel-safe with E, F, H.
 
 | Step | Commit                                                            | Tests after |
 | ---- | ----------------------------------------------------------------- | ----------- |
 | 1    | `test(dashboard): add a/a and a/b fixtures from the release zips` | red         |
-| 2    | `feat(dashboard): chart a/a noise and a/b ratios`                 | **1375**    |
+| 2    | `feat(dashboard): chart a/a noise and a/b ratios`                 | **1377**    |
 
-**PR-H** `feat(dashboard): read the race tallies and fix the race card labels`. Parallel-safe with E, F, G (`cards.ts` only here).
+**PR-H** `feat(dashboard): read the race tallies and fix the race card labels`. Parallel-safe with E, F, G (`cards.ts` only here). Adds the Twenty card as PENDING on current zips (Q-5). After a post-PR-T evidence-release, a follow-up can flip it; do not wait for that zip in this PR.
 
 | Step | Commit                                                                                 | Tests after |
 | ---- | -------------------------------------------------------------------------------------- | ----------- |
 | 1    | `test(dashboard): add race tally fixtures and card tests for knownFail`                | red         |
-| 2    | `feat(dashboard): walk race histograms and fix promo, cancel, knownFail, a/a case ids` | **1384**    |
+| 2    | `feat(dashboard): walk race histograms and fix promo, cancel, knownFail, a/a case ids` | **1386**    |
 
-### Wave 3 (after E–H and A–D)
+### Wave 3 (after E–H and A–D and T)
 
 **PR-I** `feat(dashboard): render the findings table and the size budget`
 
-| Step | Commit                                                              | Tests after         |
-| ---- | ------------------------------------------------------------------- | ------------------- |
-| 1    | `test(dashboard): add findings table, contrast, csp and size tests` | red                 |
-| 2    | `feat(dashboard): render the findings table, csp, and size budget`  | **1390**            |
-| 3    | `chore(dashboard): add v2 screenshots at 1280 and 375`              | 1390 (PNG + script) |
+| Step | Commit                                                              | Tests after |
+| ---- | ------------------------------------------------------------------- | ----------- |
+| 1    | `test(dashboard): add findings table, contrast, csp and size tests` | red         |
+| 2    | `feat(dashboard): render the findings table, csp, and size budget`  | **1391**    |
 
 **PR-J** `docs(readme): describe dashboard v2 and link the findings data file` — README only.
 
 | Step | Commit                                                                | Tests after |
 | ---- | --------------------------------------------------------------------- | ----------- |
-| 1    | `docs(readme): describe dashboard v2 and link the findings data file` | **1390**    |
+| 1    | `docs(readme): describe dashboard v2 and link the findings data file` | **1391**    |
 
-README changes: replace the dashboard subsection (~line 775) with a pointer to the site, to `docs/findings.json`, and to the five chart families. Keep the Known product bugs table as the human view. Do not add the bare word `capacity`. Do not add new URLs that contain the owner's account name; link the site relatively if the README already has the Pages URL, otherwise write `the GitHub Pages site of this repository`.
+README changes: replace the Dashboard subsection (`README.md:1067-1075`) with a pointer to the GitHub Pages site of this repository, to `docs/findings.json`, and to the five chart families. The README has no `github.io` URL today; write that phrase, do not add a new URL that contains the owner's account name. No screenshot PNGs (Q-7). Keep the Known product bugs table as the human view. Do not add the bare word `capacity`.
 
 ## 13. Risks / open decisions
 
-### Q-1 Pages step caps — **recommend (a)**
+### Q-1 Pages step caps — **recommend (c)**
 
-Options: (a) lower caps so the sum is at most 20 and record the margin gap; (b) merge the scan steps; (c) move scans to their own job.
+Options: (a) lower caps so the sum is at most 20 and record the margin gap; (b) merge the scan steps; (c) move token scan and gitleaks into their own job `scan` (`needs: build`) that receives the built site as an artefact.
 
-Arithmetic: 12 steps, job 20. R11 wants sum ≤ 10. Impossible without dropping steps. (b) mixes two scanners. (c) is a new job (allowed) but more surface. (a) sum=17, margin=3, exception X-PAGES-MARGIN on an **existing** job. Never raise 20.
+(a) sum=17, margin=3, needs exception X-PAGES-MARGIN — rejected. R11 wants ≥10 minutes of margin; 3 is not enough. (b) mixes two scanners. (c) `build` sum=9 margin=11, `scan` sum=9 margin=11, no timeout raised. Deploy stays 10/5 (pre-existing X-PAGES-DEPLOY-MARGIN; a 10-minute job cannot hold a 10-minute margin). Never raise 20 or 10.
 
 ### Q-2 Findings source — **recommend (a)**
 
@@ -1378,26 +1468,23 @@ Evidence: no `gate-verdict-medusa.json` in 40636843578; labels were stripped by 
 
 Evidence: `run-order-case.ts:76-77, 265-266` (D54). KNOWN FAIL only via `spec.knownFail` / `stages.reconcile.data.knownFail`. Never map to FAIL.
 
-### Q-5 Twenty fail + 0 violations — **out of card scope**
+### Q-5 Twenty fail + 0 violations — **Wave 1 PR-T, then a PENDING card**
 
-Evidence: `histogram.ts:53`, `runTwentyTrials` never sets `verdict`, BACKLOG.md:108-111 (TEST BUG in reporting). Findings table still lists `P6-TW-RACE-004`. Extra (out of scope): `fix(twenty): set the race histogram verdict`.
+Evidence: `histogram.ts:53` default `"fail"`, `runTwentyTrials` never sets `verdict`, BACKLOG.md:108-111 (TEST BUG in reporting). Fix in PR-T: assign verdict like Cal (`src/cal/run-case.ts:267-268`). Keep the default for unfinished histograms. PR-H shows a Twenty card as PENDING until a post-PR-T release. Findings table still lists `P6-TW-RACE-004`.
 
 ### Q-6 Downsampling — **1-minute min/mean/max**
 
 LTTB (Steinarsson 2013) set aside. Source: probed `intervalMs=1000`; Grafana/Prometheus fixed-step min/mean/max. Slopes stay on `soak.json`.
 
-### Q-7 Screenshots — **by hand in PR-I, committed PNGs**
+### Q-7 Screenshots — **drop the PNGs**
 
-CI job set aside (pages build has no 10-minute margin; extra X-CI-SHOT). Playwright script + four PNGs + existence test. Environment: `npx playwright install chromium` (owner to-do, both clouds).
+Hand-made PNGs drift from the live site and cannot be reproduced. A pinned `npm run screenshots` script with dated output under `docs/img/` would need Chromium on both clouds. Drop the PNGs. PR-J links the GitHub Pages site of this repository from the README (no new owner-account URL). No Chromium environment change.
 
 ### Proposed extras (out of scope)
 
-- X-PAGES-MARGIN: document only, no PR.
-- X-PAGES-STOP: 80% stop on the existing fetch step; not added (R12 is for new jobs).
-- X-PAGES-SUMMARY: `ci(pages): write a job summary after the token scan`
-- X-PAGES-SCANJOB: `ci(pages): move the site scans to their own job`
-- X-CI-SHOT: `ci(pages): screenshot the site in a new job`
-- X-TW-VERDICT: `fix(twenty): set the race histogram verdict`
+- X-PAGES-DEPLOY-MARGIN: deploy job timeout 10 cannot hold a 10-minute step-cap margin; do not raise 10.
+- X-PAGES-STOP: 80% stop on the existing fetch step; not added (fetch stays on the existing `build` job).
+- X-CI-SHOT: `ci(pages): screenshot the site in a new job` (Q-7 dropped PNGs).
 - X-OBS-HEADINGS: `docs(observations): give CAL-005 and DOC-007 a P6-OBS heading` (findings.json already lists them)
 
 ## 14. Done when
@@ -1408,13 +1495,14 @@ Measurable, each with the file and test that proves it:
 | --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | V1  | `knee-chart.ts` marks `app_cpu at step n`                        | `the SVG contains the text app_cpu at step 5`                                   |
 | V2  | `soak-chart.ts` prints theilSen and `NO THRESHOLD YET`           | soak tests 1–3                                                                  |
-| V3  | `pages.yml` push + caps + no `EVIDENCE_RELEASE`                  | `lint:actions`; grep the env is gone                                            |
+| V3  | `pages.yml` push + `scan` job + no `EVIDENCE_RELEASE`            | `lint:actions`; grep the env is gone; `scan` `needs: build`                     |
 | V4  | `docs/findings.json` 24 rows rendered                            | findings table has 24 data rows                                                 |
 | V5  | `aa-noise` / `ab-gate` caseIds set                               | A/A card is no longer pending                                                   |
 | V6  | `readRaceTallies`                                                | CAL-RACE-001 tally test                                                         |
 | V7  | promo/cancel caseIds                                             | promo/cancel card tests                                                         |
 | V8  | `knownFail` field in `computeCard`                               | LOAD-009 KNOWN FAIL with leak 4, 5, 6                                           |
 | V9  | `gate.yml` stages verdict + arm map; site pending until released | Medusa A/B pending test; after the next release, a follow-up can flip the chart |
+| Q-5 | PR-T assigns `histogram.verdict` in `runTwentyTrials`            | twenty-histogram-verdict tests 1–2; Twenty card PENDING on p6-phase4            |
 
 Live site after the final PR (pages rebuild on the new push trigger, or an owner dispatch): tiles in §10, each naming its source runs from §3. Size of `index.html` ≤ the budget locked in PR-I. Token scan and gitleaks clean.
 
@@ -1422,8 +1510,8 @@ Live site after the final PR (pages rebuild on the new push trigger, or an owner
 
 Industry practice (one line each):
 
-- Workflow `on.push.paths` and `timeout-minutes`: GitHub Docs, Workflow syntax for `on` and `jobs.<job_id>.timeout-minutes` / `jobs.<job_id>.steps[*].timeout-minutes`.
-- Existing-job cap sum 17 < 20 with a recorded R11 margin gap: **non-standard vs R11's 10-minute margin**, flagged X-PAGES-MARGIN, never a timeout raise.
+- Workflow `on.push.paths`, `needs`, and `timeout-minutes`: GitHub Docs, Workflow syntax for `on` and `jobs.<job_id>.timeout-minutes` / `jobs.<job_id>.steps[*].timeout-minutes`; "Deploying with GitHub Actions" for uploading the Pages artefact from the job that `deploy` needs.
+- Q-1 (c): `build` and `scan` each sum 9 under timeout 20 (margin 11). Deploy timeout 10 is pre-existing X-PAGES-DEPLOY-MARGIN; never a timeout raise.
 - SVG charts: W3C WCAG 2.2 Success Criterion 1.1.1 and 1.4.3; WAI-ARIA Graphics `role="img"` with `aria-labelledby` pointing at `<title>` and `<desc>`.
 - Colour not the only signal: WCAG 2.2 1.4.1. Shape + dash + text.
 - JSON Schema as the findings contract: json-schema.org 2020-12; README as the human view (docs-as-code).
@@ -1443,10 +1531,10 @@ Rules in section 0 of the prompt:
 - R8/H3: no assertion weakened; the A/A pending test is replaced because it encoded V5.
 - R9: PRODUCT BUG (SUSPECTED) / TEST BUG labelled in findings and Q-5.
 - R10: "knee range", never "capacity".
-- R11/H4: no `perf.yml` edit, no timeout raise, no Cal cap raise. New jobs: none in the recommended path.
-- R12: PR-A adds `timeout-minutes` on checkout/setup-node and `if: ${{ !cancelled() }}` on scan/upload. No new job. 80% stop not added on the existing fetch step (X-PAGES-STOP).
+- R11/H4: no `perf.yml` edit, no timeout raise, no Cal cap raise. New job: `scan` (timeout 20, step sum 9, margin 11, `if:`, artefact retention 90, pinned SHAs, `if: ${{ !cancelled() }}` on scan/summary, summary after token scan).
+- R12: new `scan` job follows R12 in full. 80% stop not added on the existing fetch step (X-PAGES-STOP).
 - R13: extras stay extras.
-- R14: screenshot browser install is an owner to-do for both clouds.
+- R14: no environment change (Q-7 dropped Chromium).
 - R15: times in this file are Asia/Colombo.
 - R16: names in the file tree are exact.
 - O3: no edit of published releases.
@@ -1455,4 +1543,4 @@ Rules in section 0 of the prompt:
 - O7: merge title `<conventional title> (#n)`, one-sentence body.
 - O8: this session's steps were S0–S7.
 
-Non-standard choices (flagged): X-PAGES-MARGIN; inline `node --input-type=module` in gate.yml instead of a new script (to keep PR-B `gate.yml` only); screenshot PNGs committed rather than CI-generated; Medusa A/B unlabelled values listed without arm letters; D-COLLECT moves `walkVerdicts` into `src/dashboard/verdicts.ts` so `src/` never imports the build CLI.
+Non-standard choices (flagged): X-PAGES-DEPLOY-MARGIN (pre-existing 10-minute deploy job); inline `node --input-type=module` in gate.yml instead of a new script (to keep PR-B `gate.yml` only); Medusa A/B unlabelled values listed without arm letters; D-COLLECT moves `walkVerdicts` into `src/dashboard/verdicts.ts` so `src/` never imports the build CLI; download-artifact v7.0.0 is a new pin (not yet in this repo).
