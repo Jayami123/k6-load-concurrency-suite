@@ -11,7 +11,7 @@ import { FLOOR } from "../../src/load/gate/tolerance.ts";
 const AA_DAY1 = "tests/fixtures/dashboard/aa/40497029348";
 const AA_DAY2 = "tests/fixtures/dashboard/aa/40605925118";
 const AB_DIR = "tests/fixtures/dashboard/ab/40636843578";
-const AB_NEW_DIR = "tests/fixtures/dashboard/ab/40900000000";
+const AB_NEW_DIR = "tests/fixtures/dashboard/ab-labelled/40900000000";
 
 function allAa(): AaSeries[] {
   return [...readAaSeries(AA_DAY1, "40497029348"), ...readAaSeries(AA_DAY2, "40605925118")];
