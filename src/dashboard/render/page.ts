@@ -97,6 +97,26 @@ function cardHtml(
   return `<section id="${state.spec.id}" class="card"><header class="card-head"><h2>${escapeLabel(state.spec.title)}</h2>${pill(state)}</header><p>${escapeLabel(state.spec.proves)}</p>${reason}${body}<p class="muted">${valid} VALID and ${invalid} INVALID run(s).</p>${evidenceTable(state, runs, charts)}</section>`;
 }
 
+const NO_SATURATED = "no saturated resource reported by the knee run";
+
+/** One clause per bounds product, from that product's knee curves. A null or missing curve says so. */
+function kneeSaturation(products: string[], curves: KneeCurve[]): string {
+  return products
+    .map((product) => {
+      const rows = curves.filter((c) => c.product === product);
+      if (rows.length === 0) return `${escapeLabel(product)}: ${NO_SATURATED}`;
+      return rows
+        .map((row) => {
+          const sat = row.firstSaturated;
+          const run = escapeLabel(row.runId);
+          if (sat === null) return `${escapeLabel(product)} run ${run}: ${NO_SATURATED}`;
+          return `${escapeLabel(product)}: ${escapeLabel(sat.resource)} at step ${sat.step}, run ${run}`;
+        })
+        .join("; ");
+    })
+    .join(". ");
+}
+
 function kneeBody(ctx: PageContext): string {
   const knee = ctx.knee;
   if (!knee || knee.products.length === 0) return "";
@@ -107,7 +127,11 @@ function kneeBody(ctx: PageContext): string {
   const sources = knee.products.flatMap((p) =>
     p.runIds.map((id) => `<a href="${runUrl(id)}">${escapeLabel(id)}</a>`),
   );
-  return `<figure>${svg}<figcaption>Knee range per product from <code>k6/thresholds/knee-bounds.json</code>, release ${escapeLabel(knee.release)}. Bars run from the lower to the upper bound. Runs: ${[...new Set(sources)].join(", ")}. The first saturated resource is not in the committed bounds yet.</figcaption></figure>`;
+  const saturated = kneeSaturation(
+    knee.products.map((p) => p.product),
+    ctx.kneeCurves ?? [],
+  );
+  return `<figure>${svg}<figcaption>Knee range per product from <code>k6/thresholds/knee-bounds.json</code>, release ${escapeLabel(knee.release)}. Bars run from the lower to the upper bound. Runs: ${[...new Set(sources)].join(", ")}. ${saturated}.</figcaption></figure>`;
 }
 
 function raceCaseId(row: RaceTally): string | undefined {
