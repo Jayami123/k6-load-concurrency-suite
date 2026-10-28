@@ -6,10 +6,10 @@
 
 The Cal steady p95 of the A/A arms moved between the two UTC days, while the arms within each day agree:
 
-| Day | Gate run | Counted arm p95 (ms) | Spread within the day |
-| --- | --- | --- | --- |
-| 2026-10-27 | `40497029348` | 77.36 / 77.52 / 76.21 | 1.7 % |
-| 2026-10-28 | `40605925118` | 60.06 / 59.51 / 58.34 | 2.9 % |
+| Day        | Gate run      | Counted arm p95 (ms)  | Spread within the day |
+| ---------- | ------------- | --------------------- | --------------------- |
+| 2026-10-27 | `40497029348` | 77.36 / 77.52 / 76.21 | 1.7 %                 |
+| 2026-10-28 | `40605925118` | 60.06 / 59.51 / 58.34 | 2.9 %                 |
 
 Pooled over both days, the spread is S = 28.15 %, so T = max(0.10, 2 × S) = 56.30 %. The pooled tolerance is wide because of the shift between the days, not because of noise within a day.
 
