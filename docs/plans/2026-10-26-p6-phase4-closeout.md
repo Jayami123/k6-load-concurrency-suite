@@ -40,7 +40,7 @@ Two dispatches of `gate.yml` on `main`, each with a discarded warm-up arm and th
 | 1   | 40497029348 | `9640e8b`    | 3 PASS             | 3 PASS                |
 | 2   | 40605925118 | `4db5975`    | 3 PASS             | 3 PASS                |
 
-- The tolerance (PR #128, `c8bb445`) pools the six counted arms per product. Gate run 40610528621 on `c8bb445` is `success`.
+- The tolerance (PR #128, `c8bb445`) pools the six counted arms per product.
 - Committed values in `k6/thresholds/tolerance.json`: K = 2, FLOOR = 0.10. Cal: p95 56.30 %, p50 80.83 %, rps 10 %. Medusa: p95 10 %, p50 42.38 %, rps 10 %.
 - Known issue (PR #130): the Cal p95 tolerance is wide because the p95 moved between days (about 77 ms on day 1, about 59 ms on day 2; within-day spread under 3 %). The tolerance is not changed for this (section 7).
 
@@ -113,6 +113,7 @@ Each run's case verdicts are VALID and PASS. Run 40498902575 holds the P6-OBS-ME
 - The release `p6-phase4` is dispatched by the session (`RELEASE_DISPATCH_BY_SESSION=yes`), with the inputs in the release notes (#125). Owner to-do if that dispatch fails.
 - The README "Phase 4 results" PR (#126) merges after the release exists.
 - The remote branch deletes listed in section 7 (HTTP 403).
+- Pages run 40526023077 is cited for Task 13 but is not a release input: `pages.yml` is not in the release workflow's ids (`EVIDENCE_WORKFLOW_IDS`).
 
 ## 11. Backlog and next phase
 
