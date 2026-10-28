@@ -23,7 +23,7 @@ h1 { font-size: 1.75rem; margin: 0 0 8px; }
 h2 { font-size: 1.125rem; margin: 0; }
 h3 { font-size: 1rem; margin: 24px 0 8px; }
 p { margin: 8px 0; }
-a { color: var(--accent); text-underline-offset: 2px; transition: color 150ms; }
+a { color: var(--accent); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 code, .mono { font-family: var(--mono); font-size: 0.875em; }
@@ -50,7 +50,7 @@ figure { margin: 16px 0 0; }
 figure svg { display: block; width: 100%; height: auto; }
 figcaption { color: var(--muted); font-size: 0.875rem; margin-top: 8px; }
 details { margin-top: 12px; }
-summary { cursor: pointer; color: var(--accent); transition: color 150ms; }
+summary { cursor: pointer; color: var(--accent); }
 summary:hover { text-decoration: underline; }
 .table-wrap { overflow-x: auto; margin-top: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
@@ -58,7 +58,6 @@ caption { text-align: left; color: var(--muted); padding: 8px 0; }
 th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
 th { font-weight: 600; }
 td code { overflow-wrap: anywhere; }
-tbody tr { transition: background-color 150ms; }
 tbody tr:hover { background: var(--bar-fill); }
 footer { max-width: 1100px; margin: 32px auto 0; padding: 16px 16px 32px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.875rem; }
 @media (max-width: 480px) { h1 { font-size: 1.5rem; } th, td { padding: 6px; } }

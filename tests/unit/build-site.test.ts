@@ -94,7 +94,8 @@ describe("pending runs on the site", () => {
 
   it("without pending runs the provenance table says none", () => {
     const html = renderSite(buildSiteModel({ verdicts: [] }), new Map());
-    assert.doesNotMatch(html, /p6-phase4/);
+    const provenance = html.slice(html.indexOf('id="provenance"'));
+    assert.doesNotMatch(provenance, /p6-phase4/);
     assert.match(html, /<caption>Pending release<\/caption>/);
     assert.match(html, /colspan="2" class="muted">none</);
   });

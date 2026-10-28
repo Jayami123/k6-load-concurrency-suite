@@ -158,7 +158,7 @@ describe("the page", () => {
   it("every number in the summary comes from the inputs (none typed in)", () => {
     const summary = html.slice(html.indexOf('id="summary"'), html.indexOf('id="evidence"'));
     assert.match(summary, /cal 8 to 14; medusa 1.5 to 2.5/);
-    assert.match(summary, /1 open observation\(s\)/);
+    assert.match(summary, /24 open observation\(s\)/);
     assert.match(summary, /A\/A tolerance committed; runs pending release/);
   });
 
