@@ -2,6 +2,7 @@
 // remote asset. Order: header, summary strip, evidence cards, findings, provenance (collapsed). Empty data reads as PENDING.
 import { escapeLabel, type SiteModel } from "../site-model.ts";
 import type { PendingFile } from "../release-plan.ts";
+import { loadFindings, type FindingRow, type FindingsFile } from "../findings.ts";
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
 import type { KneeCurve } from "../knee/read-curves.ts";
 import type { SoakTrend } from "../soak/read-trends.ts";
@@ -138,6 +139,7 @@ function summaryStrip(
   cards: CardState[],
   ctx: PageContext,
   pending: PendingFile | undefined,
+  findings: FindingsFile,
 ): string {
   const count = (s: CardStatus) => cards.filter((c) => c.status === s).length;
   const statusLine = STATUS_ORDER.map((s) => `${s} ${count(s)}`).join(", ");
@@ -157,7 +159,6 @@ function summaryStrip(
   const soakSrc = ctx.soak
     ? `k6/thresholds/soak-bounds.json, release ${escapeLabel(ctx.soak.release)}`
     : "k6/thresholds/soak-bounds.json not read";
-  const obsIds = ctx.observations.map((o) => o.id).join(", ");
   const facts = [
     {
       value: escapeLabel(kneeValue),
@@ -180,9 +181,9 @@ function summaryStrip(
       src: escapeLabel(aa?.reason || "k6/thresholds/tolerance.json"),
     },
     {
-      value: escapeLabel(`${ctx.observations.length} open observation(s)`),
+      value: escapeLabel(`${findings.rows.length} open observation(s)`),
       label: "product observations",
-      src: escapeLabel(obsIds || "no docs/observations/*.md found"),
+      src: escapeLabel("docs/findings.json"),
     },
     {
       value: escapeLabel(pending ? `${pending.pending.length} run(s) waiting` : "none waiting"),
@@ -199,17 +200,37 @@ function summaryStrip(
   return `<section id="summary" class="block" aria-labelledby="summary-title"><h2 id="summary-title">Summary</h2><ul class="strip">${items}</ul></section>`;
 }
 
-function findingsSection(ctx: PageContext): string {
-  const rows = ctx.observations
-    .map(
-      (o) =>
-        `<tr><td><code>${escapeLabel(o.id)}</code></td><td>${escapeLabel(o.title)}</td><td><a href="${REPO}/blob/main/docs/observations/${escapeLabel(o.file)}">docs/observations/${escapeLabel(o.file)}</a></td></tr>`,
-    )
+function evidenceFileLink(file: string): string {
+  const href = file.startsWith("docs/") ? file : undefined;
+  const label = escapeLabel(href ?? file);
+  return href === undefined
+    ? `<code>${label}</code>`
+    : `<a href="${escapeLabel(href)}">${label}</a>`;
+}
+
+function evidenceCell(row: FindingRow): string {
+  const runs = row.evidence.runIds
+    .map((id) => `<a href="${runUrl(id)}"><code>${escapeLabel(id)}</code></a>`)
+    .join(", ");
+  const files = row.evidence.files.map(evidenceFileLink).join(", ");
+  return [`<code>${escapeLabel(row.evidence.release)}</code>`, runs, files]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function findingsSection(ctx: PageContext, findings: FindingsFile): string {
+  const rows = findings.rows
+    .map((row) => {
+      const aliases = row.aliases.map((a) => escapeLabel(a)).join(", ");
+      const tests = row.tests.map((t) => escapeLabel(t)).join("; ");
+      const provenance = `source: ${escapeLabel(row.provenance)}, commit ${escapeLabel(ctx.sha)}`;
+      return `<tr><td><code>${escapeLabel(row.id)}</code></td><td>${aliases}</td><td>${escapeLabel(row.product)}</td><td>${escapeLabel(row.label)}</td><td>${escapeLabel(row.severity)}</td><td>${escapeLabel(row.upstream)}</td><td>${tests}</td><td>${evidenceCell(row)}</td><td>${provenance}</td></tr>`;
+    })
     .join("");
   const body =
-    ctx.observations.length === 0
-      ? `<p class="muted">No observation documents found.</p>`
-      : `<div class="table-wrap"><table><caption>Product observations (P6-OBS-*)</caption><thead><tr><th scope="col">Label</th><th scope="col">Finding</th><th scope="col">Document</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    findings.rows.length === 0
+      ? `<p class="muted">No findings in docs/findings.json.</p>`
+      : `<div class="table-wrap"><table><caption>Findings from docs/findings.json</caption><thead><tr><th scope="col">ID</th><th scope="col">aliases</th><th scope="col">product</th><th scope="col">label</th><th scope="col">severity</th><th scope="col">upstream</th><th scope="col">tests</th><th scope="col">evidence</th><th scope="col">provenance</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   return `<section id="findings" class="block" aria-labelledby="findings-title"><h2 id="findings-title">Findings</h2>${body}</section>`;
 }
 
@@ -256,6 +277,7 @@ export function renderSite(
   pending?: PendingFile,
   ctx: PageContext = DEFAULT_CONTEXT,
 ): string {
+  const findings = loadFindings("docs/findings.json");
   const cards = CARD_SPECS.map((spec) => computeCard(spec, model.verdicts));
   const cardBlocks = cards
     .map((c) => cardHtml(c, runs, charts, chartBody(c.spec.id, ctx)))
@@ -270,6 +292,7 @@ export function renderSite(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'none'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'" />
 <title>P6 load and concurrency evidence</title>
 <style>${PAGE_CSS}</style>
 </head>
@@ -281,9 +304,9 @@ export function renderSite(
 <nav aria-label="Evidence areas"><ul>${nav}<li><a href="#findings">Findings</a></li><li><a href="#provenance">Provenance</a></li></ul></nav>
 </header>
 <main>
-${summaryStrip(cards, ctx, pending)}
+${summaryStrip(cards, ctx, pending, findings)}
 <section id="evidence" class="block" aria-labelledby="evidence-title"><h2 id="evidence-title">Evidence</h2><div class="cards">${cardBlocks}</div></section>
-${findingsSection(ctx)}
+${findingsSection(ctx, findings)}
 ${provenanceSection(model, runs, charts, pending)}
 </main>
 <footer>Source: <a href="${REPO}">${REPO.replace("https://", "")}</a>, built from main commit <code>${sha}</code>. Charts link their run's chart file.</footer>
