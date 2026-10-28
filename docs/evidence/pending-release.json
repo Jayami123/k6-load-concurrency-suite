@@ -25,6 +25,14 @@
     {
       "runId": "40237156783",
       "reason": "P6 knee bound run for Cal (k6/thresholds/knee-bounds.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
+    },
+    {
+      "runId": "40497029348",
+      "reason": "P6 A/A gate run (tolerance cited by k6/thresholds/tolerance.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
+    },
+    {
+      "runId": "40605925118",
+      "reason": "P6 A/A gate run (tolerance cited by k6/thresholds/tolerance.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
     }
   ]
 }
