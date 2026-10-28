@@ -80,7 +80,7 @@ Main at `85a9302` (verified):
 - `src/dashboard/render/svg.ts:24` `kneeRangeSvg` (kept for the bounds bar; v2 adds curve charts beside it).
 - `src/dashboard/render/style.ts` (palette, 1100 px max, `prefers-color-scheme`).
 - `src/dashboard/site-model.ts` (`KNEE_CASE_IDS:51`, `SOAK_CASE_IDS:57`, `escapeLabel:41`).
-- `src/load/baseline-band.ts:68–79`, `src/load/gate/aa-noise.ts:31–38`, `src/load/gate/ratio.ts:10–22`, `scripts/write-tolerance.ts:77–93`.
+- `src/load/baseline-band.ts:68–79`, `src/load/gate/aa-noise.ts:31–41` (`spreadOf`; JSDoc starts at line 31, the function at line 34), `src/load/gate/ratio.ts:10–22`, `scripts/write-tolerance.ts:77–93`.
 - `src/races/histogram.ts:53` default `verdict: "fail"`. `src/twenty/run-case.ts:95` `runTwentyTrials` never assigns `histogram.verdict`. `src/medusa/run-order-case.ts:76–77, 265–266` suspected lines never change the histogram verdict.
 - `k6/thresholds/tolerance.json` (release name `p6-phase4b`, utcDays `2026-10-27`, `2026-10-28`), `k6/thresholds/soak-bounds.json` (`products: {}`), `k6/thresholds/knee-bounds.json` (release `p6-phase4a`).
 - `docs/releases/p6-phase4.md`, `docs/evidence/pending-release.json` (`pending: []`), `README.md:539–563` and `:750–775`.
@@ -92,7 +92,7 @@ Main at `85a9302` (verified):
 
 | #   | Check                          | Exact command                                                                                  | Expected                                                                                                    | If it differs                                                                                                      |
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| 1   | origin/main SHA                | `git fetch origin main && git rev-parse origin/main`                                           | `85a9302` or newer                                                                                          | rebase the build branch with `git merge --no-ff origin/main`; never rebase or force-push                           |
+| 1   | origin/main SHA                | `git fetch origin main && git rev-parse origin/main`                                           | `85a9302` or newer                                                                                          | `git merge --no-ff origin/main` on the build branch; never rebase or force-push                                    |
 | 2   | B0                             | `export PATH="/usr/local/bin:$PATH"; npm ci; npm run check`                                    | exit 0, `# pass 1336` or the new main's count                                                               | stop and record the new B0; do not edit expected counts to match a red run                                         |
 | 3   | p6-phase4a sums                | repeat pages.yml step **Fetch the planned zips and check each one's sum** for tag `p6-phase4a` | every zip OK                                                                                                | do not build from a zip that fails                                                                                 |
 | 4   | p6-phase4 sums                 | same for tag `p6-phase4`                                                                       | every zip OK                                                                                                | same                                                                                                               |
@@ -115,6 +115,7 @@ Main at `85a9302` (verified):
 docs/findings.json                                  NEW      PR-C  machine-readable findings
 docs/findings.schema.json                           NEW      PR-C
 src/dashboard/findings.ts                           NEW      PR-C  load + types
+src/dashboard/verdicts.ts                           NEW      PR-D  walkVerdicts (moved out of build-site.ts)
 src/dashboard/collect.ts                            NEW      PR-D  one registration point
 src/dashboard/render/charts.ts                      NEW      PR-D  SVG primitives
 src/dashboard/knee/read-curves.ts                   NEW      PR-D stub, PR-E fills
@@ -158,42 +159,13 @@ README.md                                           CHANGED  PR-J
 
 ### 6.2 Collect (PR-D)
 
-```ts
-// src/dashboard/collect.ts
-import { walkVerdicts } from "../../scripts/dashboard/build-site.ts"; // or move walkVerdicts here in PR-D; if moved, export it from collect and re-export from build-site
-import { readKneeCurves, type KneeCurve } from "./knee/read-curves.ts";
-import { readSoakTrends, type SoakTrend } from "./soak/read-trends.ts";
-import { readAaSeries, type AaSeries } from "./gate/read-aa.ts";
-import { readAbGate, type AbGate } from "./gate/read-ab.ts";
-import { readRaceTallies, type RaceTally } from "./races/read-tallies.ts";
-import type { VerdictInput } from "./site-model.ts";
-
-export interface CollectedEvidence {
-  verdicts: VerdictInput[];
-  kneeCurves: KneeCurve[];
-  soakTrends: SoakTrend[];
-  aa: AaSeries[];
-  ab: AbGate[];
-  races: RaceTally[];
-}
-
-/** Walks one unzipped evidence dir. Stubs return empty arrays until their PR fills them. */
-export function collectFromArtefactDir(dir: string, githubRunId: string): CollectedEvidence {
-  return {
-    verdicts: walkVerdicts(dir).map(({ verdict }) => verdict),
-    kneeCurves: readKneeCurves(dir, githubRunId),
-    soakTrends: readSoakTrends(dir, githubRunId),
-    aa: readAaSeries(dir, githubRunId),
-    ab: readAbGate(dir, githubRunId),
-    races: readRaceTallies(dir, githubRunId),
-  };
-}
-```
-
-If moving `walkVerdicts` out of `build-site.ts` would make the PR larger, keep it in `build-site.ts` and have `collectFromArtefactDir` call it from there. Log the choice as D-COLLECT. Preferred: move `walkVerdicts` into `src/dashboard/verdicts.ts` (NEW, PR-D) so `build-site.ts` stays a thin CLI.
+D-COLLECT (decided): move `walkVerdicts` into `src/dashboard/verdicts.ts` (NEW, PR-D). `build-site.ts` imports it. Do not import `scripts/dashboard/build-site.ts` from `src/` (that cycle would load the CLI `main`). Keep `{ dir, verdict }` so the existing `chart-main.html` copy in `build-site.ts:115–120` still finds the file next to `verdict.json`.
 
 ```ts
 // src/dashboard/verdicts.ts  (NEW, PR-D)
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+
 export interface VerdictInput {
   runId: string;
   caseId: string;
@@ -206,22 +178,115 @@ export interface VerdictInput {
   githubRunId: string;
 }
 
-/** Recursively finds verdict.json. caseId = grandparent dir, runId = parent dir. Also reads knownFail. */
-export function walkVerdicts(root: string, githubRunId: string): VerdictInput[];
-```
+export interface WalkedVerdict {
+  dir: string; // parent of verdict.json; chart-main.html lives here when present
+  verdict: VerdictInput;
+}
 
-Skeleton body of `walkVerdicts`: same loop as `build-site.ts:69–92`, plus:
+/** Recursively finds verdict.json. caseId = grandparent dir, runId = parent dir. Also reads knownFail. */
+export function walkVerdicts(root: string, githubRunId: string): WalkedVerdict[] {
+  const out: WalkedVerdict[] = [];
+  const visit = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (statSync(p).isDirectory()) visit(p);
+      else if (name === "verdict.json") {
+        const v = JSON.parse(readFileSync(p, "utf8"));
+        const knownFail =
+          typeof v.stages?.reconcile?.data?.knownFail === "string"
+            ? v.stages.reconcile.data.knownFail
+            : undefined;
+        const leaked =
+          typeof v.stages?.reconcile?.data?.leakedCanceledOrders === "number"
+            ? v.stages.reconcile.data.leakedCanceledOrders
+            : undefined;
+        out.push({
+          dir: path.dirname(p),
+          verdict: {
+            runId: path.basename(path.dirname(p)),
+            caseId: path.basename(path.dirname(path.dirname(p))),
+            outcome: String(v.outcome ?? ""),
+            validity: String(v.validity?.verdict ?? "INVALID"),
+            reasons: (v.reasons ?? []).map(String),
+            knownFail,
+            leakedCanceledOrders: leaked,
+            githubRunId,
+          },
+        });
+      }
+    }
+  };
+  if (existsSync(root)) visit(root);
+  return out;
+}
+```
 
 ```ts
-const knownFail =
-  typeof v.stages?.reconcile?.data?.knownFail === "string"
-    ? v.stages.reconcile.data.knownFail
-    : undefined;
-const leaked =
-  typeof v.stages?.reconcile?.data?.leakedCanceledOrders === "number"
-    ? v.stages.reconcile.data.leakedCanceledOrders
-    : undefined;
+// src/dashboard/collect.ts
+import { walkVerdicts, type VerdictInput } from "./verdicts.ts";
+import { readKneeCurves, type KneeCurve } from "./knee/read-curves.ts";
+import { readSoakTrends, type SoakTrend } from "./soak/read-trends.ts";
+import { readAaSeries, type AaSeries } from "./gate/read-aa.ts";
+import { readAbGate, type AbGate } from "./gate/read-ab.ts";
+import { readRaceTallies, raceVerdictInputs, type RaceTally } from "./races/read-tallies.ts";
+
+export interface CollectedEvidence {
+  verdicts: VerdictInput[];
+  kneeCurves: KneeCurve[];
+  soakTrends: SoakTrend[];
+  aa: AaSeries[];
+  ab: AbGate[];
+  races: RaceTally[];
+}
+
+/** Walks one unzipped evidence dir. Stubs return empty arrays until their PR fills them. */
+export function collectFromArtefactDir(dir: string, githubRunId: string): CollectedEvidence {
+  const races = readRaceTallies(dir, githubRunId);
+  return {
+    // Race histograms have no verdict.json (V6). PR-D stub raceVerdictInputs returns [].
+    // PR-H fills it so computeCard sees promo/cancel/invariants cases.
+    verdicts: [
+      ...walkVerdicts(dir, githubRunId).map((w) => w.verdict),
+      ...raceVerdictInputs(races),
+    ],
+    kneeCurves: readKneeCurves(dir, githubRunId),
+    soakTrends: readSoakTrends(dir, githubRunId),
+    aa: readAaSeries(dir, githubRunId),
+    ab: readAbGate(dir, githubRunId),
+    races,
+  };
+}
 ```
+
+`site-model.ts` keeps exporting `VerdictInput` in PR-D by re-exporting from `verdicts.ts` so existing tests compile. Extra fields are optional, so `tests/unit/dashboard-cards.test.ts` still typechecks.
+
+`build-site.ts` `main` (PR-D): replace the local `walkVerdicts` with the import. One walk per artefact dir; still copy `chart-main.html`. Concatenate collected arrays onto `PageContext`.
+
+```ts
+// scripts/dashboard/build-site.ts  (changed lines of main only)
+import { collectFromArtefactDir } from "../../src/dashboard/collect.ts";
+import { walkVerdicts } from "../../src/dashboard/verdicts.ts";
+
+// inside the sources loop, instead of the local walkVerdicts:
+const collected = collectFromArtefactDir(dir, githubRunId);
+verdicts.push(...collected.verdicts);
+kneeCurves.push(...collected.kneeCurves);
+soakTrends.push(...collected.soakTrends);
+aa.push(...collected.aa);
+ab.push(...collected.ab);
+races.push(...collected.races);
+for (const { dir: runDir, verdict } of walkVerdicts(dir, githubRunId)) {
+  runs.set(verdict.runId, githubRunId);
+  const chart = path.join(runDir, "chart-main.html");
+  if (existsSync(chart)) {
+    const href = path.posix.join("runs", verdict.caseId, verdict.runId, "chart-main.html");
+    chartCopies.push({ from: chart, to: href });
+    charts.set(verdict.runId, href);
+  }
+}
+```
+
+The second `walkVerdicts` is the same walk as collect (cheap). Do not drop the chart copy: v1 links `chart-main.html` (`build-site.ts:115–120`).
 
 ### 6.3 SVG primitives (PR-D) — `src/dashboard/render/charts.ts`
 
@@ -232,6 +297,8 @@ export const VIEW = { width: 720, height: 280, left: 56, right: 16, top: 24, bot
 ```
 
 ```ts
+import { escapeLabel } from "../site-model.ts";
+
 /** Purpose: one SVG document with title, desc, role="img", aria-labelledby. No external CSS. */
 export function svgDoc(opts: {
   id: string;
@@ -248,11 +315,17 @@ export function svgDoc(opts: {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" role="img" aria-labelledby="${titleId} ${descId}"><title id="${titleId}">${escapeLabel(opts.title)}</title><desc id="${descId}">${escapeLabel(opts.desc)}</desc>${opts.body}</svg>`;
 }
 
-/** Purpose: x/y linear scale. Domain must be finite. */
+/** Purpose: x/y linear scale. Domain must be finite. Throws TEST BUG on a zero-width domain. */
 export function scaleLinear(
   domain: [number, number],
   range: [number, number],
-): (v: number) => number;
+): (v: number) => number {
+  const [d0, d1] = domain;
+  const [r0, r1] = range;
+  if (!Number.isFinite(d0) || !Number.isFinite(d1) || d0 === d1)
+    throw new Error("TEST BUG: scale domain must be finite and non-zero");
+  return (v) => r0 + ((v - d0) / (d1 - d0)) * (r1 - r0);
+}
 
 /** Purpose: polyline `d` attribute from already-scaled points. */
 export function polylinePath(points: Array<{ x: number; y: number }>): string {
@@ -265,27 +338,57 @@ export function polylinePath(points: Array<{ x: number; y: number }>): string {
 }
 
 /** Purpose: vertical band (knee range, A/B tolerance). */
-export function bandRect(x0: number, x1: number, y0: number, y1: number, extra = ""): string;
+export function bandRect(x0: number, x1: number, y0: number, y1: number, extra = ""): string {
+  const x = Math.min(x0, x1);
+  const w = Math.max(1, Math.abs(x1 - x0));
+  return `<rect x="${x.toFixed(1)}" y="${y0.toFixed(1)}" width="${w.toFixed(1)}" height="${(y1 - y0).toFixed(1)}" fill="var(--bar-fill)" fill-opacity="0.5" ${extra}/>`;
+}
 
-/** Purpose: axis line + tick labels. Ticks are numbers, formatted with the mono font. */
+/** Purpose: x and y axis lines + tick labels. Ticks are numbers, formatted with the mono font. */
 export function axis(opts: {
   x0: number;
   x1: number;
   y0: number;
   y1: number;
   ticks: Array<{ v: number; x: number; y: number; label: string; axis: "x" | "y" }>;
-}): string;
+}): string {
+  const xLine = `<line x1="${opts.x0}" y1="${opts.y1}" x2="${opts.x1}" y2="${opts.y1}" stroke="currentColor" stroke-opacity="0.4"/>`;
+  const yLine = `<line x1="${opts.x0}" y1="${opts.y0}" x2="${opts.x0}" y2="${opts.y1}" stroke="currentColor" stroke-opacity="0.4"/>`;
+  const ticks = opts.ticks
+    .map((t) => {
+      const anchor = t.axis === "y" ? "end" : "middle";
+      const dx = t.axis === "y" ? " dx='-4'" : "";
+      const dy = t.axis === "x" ? " dy='12'" : " dy='4'";
+      return `<text x="${t.x.toFixed(1)}" y="${t.y.toFixed(1)}" font-size="11" font-family="var(--mono, monospace)" text-anchor="${anchor}" fill="currentColor"${dx}${dy}>${escapeLabel(t.label)}</text>`;
+    })
+    .join("");
+  return xLine + yLine + ticks;
+}
 
 export type MarkShape = "circle" | "square" | "triangle" | "hollow-circle";
 
 /** Purpose: one mark. Colour is never the only signal: shape + optional dash must differ. */
-export function mark(shape: MarkShape, x: number, y: number, label?: string): string;
+export function mark(shape: MarkShape, x: number, y: number, label?: string): string {
+  const core =
+    shape === "square"
+      ? `<rect x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="8" height="8" fill="currentColor"/>`
+      : shape === "triangle"
+        ? `<polygon points="${x.toFixed(1)},${(y - 5).toFixed(1)} ${(x + 5).toFixed(1)},${(y + 4).toFixed(1)} ${(x - 5).toFixed(1)},${(y + 4).toFixed(1)}" fill="currentColor"/>`
+        : shape === "hollow-circle"
+          ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="none" stroke="currentColor"/>`
+          : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="currentColor"/>`;
+  return label ? core + svgText(x + 8, y + 4, label) : core;
+}
 
 /** Purpose: dashed stroke for a series index (0 solid, 1 dash, 2 dash-dot, 3 long-dash). */
-export function dashFor(index: number): string;
+export function dashFor(index: number): string {
+  return ["none", "6 4", "2 3 6 3", "12 4"][index % 4] ?? "none";
+}
 
 /** Purpose: a text label, escaped. */
-export function svgText(x: number, y: number, text: string, extra = ""): string;
+export function svgText(x: number, y: number, text: string, extra = ""): string {
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="12" fill="currentColor" ${extra}>${escapeLabel(text)}</text>`;
+}
 ```
 
 Stubs for Wave 2 (PR-D bodies `return []` / `return ""`):
@@ -324,10 +427,14 @@ export function readAbGate(_dir: string, _githubRunId: string): AbGate[] {
 }
 
 // src/dashboard/races/read-tallies.ts
+import type { VerdictInput } from "../verdicts.ts";
 export interface RaceTally {
   /* PR-H */
 }
 export function readRaceTallies(_dir: string, _githubRunId: string): RaceTally[] {
+  return [];
+}
+export function raceVerdictInputs(_tallies: RaceTally[]): VerdictInput[] {
   return [];
 }
 
@@ -349,17 +456,44 @@ export function renderRaceChart(_rows: RaceTally[]): string {
 }
 ```
 
-`page.ts` (PR-D, the only Wave-1 edit of this file): inside `cardHtml` / `kneeBody` callers, add beside the existing bar chart:
+`page.ts` (PR-D, the only Wave-1 edit of this file). Extend `PageContext` (optional so existing tests compile):
 
 ```ts
-${renderKneeCurves(ctx.kneeCurves ?? [])}
-${renderSoakTrends(ctx.soakTrends ?? [])}
-${renderAaChart(ctx.aa ?? [])}
-${renderAbChart(ctx.ab ?? [])}
-${renderRaceChart(ctx.races ?? [])}
+import type { KneeCurve } from "../knee/read-curves.ts";
+import type { SoakTrend } from "../soak/read-trends.ts";
+import type { AaSeries } from "../gate/read-aa.ts";
+import type { AbGate } from "../gate/read-ab.ts";
+import type { RaceTally } from "../races/read-tallies.ts";
+
+export interface PageContext {
+  sha: string;
+  builtAt: string;
+  knee?: { release: string; products: KneeProduct[] };
+  soak?: { release: string; calibrated: number; products: number };
+  observations: Array<{ id: string; title: string; file: string }>;
+  kneeCurves?: KneeCurve[];
+  soakTrends?: SoakTrend[];
+  aa?: AaSeries[];
+  ab?: AbGate[];
+  races?: RaceTally[];
+}
 ```
 
-Each is empty until its PR. Put the call inside the matching card (`id === "knee"` etc.), not globally.
+In `renderSite`, pick the body by card id (keep today's `kneeBody` bar; v2 curves sit beside it):
+
+```ts
+function chartBody(id: string, ctx: PageContext): string {
+  if (id === "knee") return kneeBody(ctx) + renderKneeCurves(ctx.kneeCurves ?? []);
+  if (id === "soak") return renderSoakTrends(ctx.soakTrends ?? []);
+  if (id === "aa-noise") return renderAaChart(ctx.aa ?? []);
+  if (id === "ab-gate") return renderAbChart(ctx.ab ?? []);
+  if (id === "promo" || id === "cancel" || id === "invariants" || id === "two-instance")
+    return renderRaceChart((ctx.races ?? []).filter((r) => /* card's caseIds */ true));
+  return "";
+}
+```
+
+Filter races by `CARD_SPECS.find(s => s.id === id).caseIds` (do not dump every race onto every race card). Each renderer returns `""` until its PR.
 
 PR-D tests (`tests/unit/dashboard-charts.test.ts`):
 
@@ -567,10 +701,16 @@ Rows (24). Severity copied as written. Upstream text exactly:
 
 Do **not** add P6-OBS-CAL-004 or P6-OBS-DOC-004.
 
-Evidence field: `{ "release": "p6-phase4", "runIds": ["..."], "files": ["..."] }` using `<repo>/actions/runs/<id>` in the rendered table, never a new URL that contains the owner's account name.
+Fill the other required fields (not in the table above, to keep it readable):
+
+- `tests`: copy the README **Test** column as a string array (one entry). Observation-only rows use the observation file as the single entry, e.g. `["docs/observations/2026-10-27-med-cancel-keeps-reservations.md"]`.
+- `evidence`: `{ "release": "p6-phase4" or "p6-phase1" matching the README Evidence cell, "runIds": ["...numeric ids only..."], "files": ["path/inside/the/zip/or/docs/..."] }`. Rendered as `<repo>/actions/runs/<id>` (the same relative form `docs/releases/p6-phase4.md` already uses). Never a new URL that contains the owner's account name.
+- `provenance`: the string `docs/findings.json` on every row. The renderer appends `, commit <sha>` from `PageContext.sha` (D2). Do not store a commit SHA in the JSON (it would drift on every merge).
 
 ```ts
 // src/dashboard/findings.ts
+import { readFileSync } from "node:fs";
+
 export interface FindingRow {
   id: string;
   aliases: string[];
@@ -580,6 +720,7 @@ export interface FindingRow {
   upstream: string;
   tests: string[];
   evidence: { release: string; runIds: string[]; files: string[] };
+  provenance: string; // always "docs/findings.json"; commit sha is appended at render
 }
 export interface FindingsFile {
   schema: 1;
@@ -587,7 +728,29 @@ export interface FindingsFile {
 }
 
 /** Purpose: load and validate the committed findings file. Throws TEST BUG on schema miss. */
-export function loadFindings(file: string): FindingsFile;
+export function loadFindings(file: string): FindingsFile {
+  const j = JSON.parse(readFileSync(file, "utf8")) as FindingsFile;
+  if (j.schema !== 1 || !Array.isArray(j.rows))
+    throw new Error("TEST BUG: findings.json schema is not 1 or rows is missing");
+  for (const row of j.rows) {
+    for (const key of [
+      "id",
+      "aliases",
+      "product",
+      "label",
+      "severity",
+      "upstream",
+      "tests",
+      "evidence",
+      "provenance",
+    ] as const) {
+      if (row[key] === undefined) throw new Error(`TEST BUG: findings row missing ${key}`);
+    }
+    if (row.provenance !== "docs/findings.json")
+      throw new Error("TEST BUG: findings row provenance must be docs/findings.json");
+  }
+  return j;
+}
 ```
 
 Tests (`tests/unit/findings-schema.test.ts`):
@@ -605,7 +768,7 @@ Plus `tests/unit/dashboard-fixtures-scan.test.ts`:
 
 9. `node scripts/evidence-token-scan.mjs tests/fixtures/dashboard` exits 0 (and `docs/findings.json`)
 
-Parse the README table the way `readme-rules.test.ts` walks lines starting with `|`. Drift risk: a new README row without a JSON row fails this test. That is the point (Q-2). Industry source: JSON Schema (json-schema.org, 2020-12) as the machine-readable contract; the README stays the human view (Write the Docs / docs-as-code). Flag: two sources can drift; the unit test is the guard, not a human checklist.
+Parse the README table the way `readme-rules.test.ts` walks lines starting with `|`. The ID cell looks like `` `P6-MED-RACE-011` (F-M1) `` or `F-M3 (\`-008\`, \`-009\`)`: take the first `` P6-… `` token when present, otherwise the `F-M*`/`F-C*`token. Compare those ids to`findings.json` `id`values (aliases live in`aliases`, not as a second id). Drift risk: a new README row without a JSON row fails this test. That is the point (Q-2). Industry source: JSON Schema (json-schema.org, 2020-12) as the machine-readable contract; the README stays the human view (Write the Docs / docs-as-code). Flag: two sources can drift; the unit test is the guard, not a human checklist.
 
 ### 6.7 A/A and A/B (PR-G) — V5, Q-3
 
@@ -634,7 +797,15 @@ export interface AaSeries {
  * Spread is not recomputed for the tile: the tile prints tolerance.json.
  * The chart may recompute spread with spreadOf() as a check; if it differs from the file, print both and mark TEST BUG in the page? No: print the file, assert equality in the unit test.
  */
-export function readAaSeries(dir: string, githubRunId: string): AaSeries[];
+export function readAaSeries(dir: string, githubRunId: string): AaSeries[] {
+  // walk aa-cal/** and aa-medusa/** for run-meta.json sitting next to k6-main-summary.json
+  // p95Ms = summary.metrics.http_req_duration["p(95)"] (baseline-band.ts:68-79)
+  // startedAt from run-meta.json (ISO string); skip a dir that has no startedAt (pending: no startedAt)
+  // group by product (path prefix aa-cal → cal, aa-medusa → medusa)
+  // warmup = the unique earliest startedAt per githubRunId per product
+  // spread and tolerance: read k6/thresholds/tolerance.json; do not call spreadOf for the tile
+  // return [] when neither aa-cal nor aa-medusa exists
+}
 ```
 
 ```ts
@@ -762,12 +933,14 @@ function isKnownFail(v: VerdictInput, spec: CardSpec): boolean {
   if (!kf || !kf.caseIds.includes(v.caseId)) return false;
   if (v.outcome === "FAIL") return true;
   if (v.knownFail && kf.obs.split(" / ").includes(v.knownFail)) return true;
-  if ((v.suspectedBugCount ?? 0) > 0 && v.outcome === "PASS") return true; // labelled suspected, D54
+  // Cancel -009 histograms are verdict "pass" with suspectedBug set (Q-4). That is KNOWN FAIL
+  // only because spec.knownFail.caseIds lists them. Never use this branch to map a case to FAIL.
+  if ((v.suspectedBugCount ?? 0) > 0 && v.outcome === "PASS") return true;
   return false;
 }
 ```
 
-Q-4 evidence: `src/medusa/run-order-case.ts:76-77` "they never change the verdict (D54)" and `:265-266` "suspected lines never reach invariantViolations". Card shows **PASS with a suspected-bug count on the chart**, and **KNOWN FAIL** only when `spec.knownFail` matches (cancel `-009`, load `-009`). Never map `pass` + `suspectedBug` to FAIL.
+Q-4 evidence: `src/medusa/run-order-case.ts:76-77` "they never change the verdict (D54)" and `:265-266` "suspected lines never reach invariantViolations". Promo (`-005`/`-012`) has **no** `spec.knownFail`, so the card stays **PASS with a suspected-bug count on the chart**. Cancel `-009` and load `-009` are **KNOWN FAIL** because `spec.knownFail` matches. Never map `pass` + `suspectedBug` to **FAIL**.
 
 Q-5 evidence: `src/races/histogram.ts:53` default `"fail"`; `src/twenty/run-case.ts:95-140` `runTwentyTrials` never assigns `verdict`; `docs/BACKLOG.md:108-111`. Twenty races stay off the evidence cards. They remain in the findings table. Out of scope extra: `fix(twenty): set the race histogram verdict`.
 
@@ -789,7 +962,7 @@ Existing test `a card with no case ids is always PENDING: A/A and A/B have no co
 
 ### 6.9 Findings table, CSP, size, screenshots (PR-I) — V4, D3, D4, D6
 
-`findingsSection` in `page.ts` reads `loadFindings("docs/findings.json")` at build (committed file). Columns: ID, aliases, product, label, severity, upstream, tests, evidence (release + run ids + file), provenance `source: docs/findings.json, commit <sha>`.
+`findingsSection` in `page.ts` reads `loadFindings("docs/findings.json")` at build (committed file). Columns: ID, aliases, product, label, severity, upstream, tests, evidence (release + run ids + file), provenance `source: docs/findings.json, commit <sha>` where `<sha>` is `ctx.sha`. Link run ids as `<repo>/actions/runs/<id>` and observation files as relative `docs/observations/<file>`. Do not add a new `github.com/<owner>/...` URL; `page.ts` already has `REPO` for v1 observation links — PR-I stops using `REPO` for the findings table (relative paths + the run-id form). The observation strip in the summary still lists heading-regex files until PR-I switches that count to `findings.json.length` or drops it; **switch the summary observation count to the findings row count** so the tile is 24, not 2.
 
 Add CSP in `renderSite`:
 
@@ -887,6 +1060,8 @@ Every step gets `timeout-minutes`. Proposed caps (measured → cap). **Never rai
 
 R11 10-minute margin cannot be met: 12 steps × 1 minute minimum = 12 > 10, so even all-ones sums to 12 with 8 minutes of margin, but checkout+setup+fetch need 2+2+3. This is an **existing job**. Record the gap as exception X-PAGES-MARGIN. Do not merge scan steps (token scan and gitleaks are different tools). Do not split scans into a new job in this PR (extra, X-PAGES-SCANJOB).
 
+R12's 80% stop rule applies to **new** jobs. Do not add a new stop inside the existing fetch script (that would be extra X-PAGES-STOP). Fetch measured 22 s vs a 3-minute cap (≈12% of the cap on run 40660111756). If a later release grows the zip set and fetch hits the cap, lower another step or restore fetch to 4 (sum would be 18, still ≤ 20) — never raise the job timeout.
+
 Add `if: ${{ !cancelled() }}` on Token scan, Install gitleaks, gitleaks, configure-pages, upload. Do not add a summary step (existing job; extra X-PAGES-SUMMARY).
 
 Deploy job: unchanged timeout 10, deploy step 5.
@@ -934,8 +1109,36 @@ The **next** released gate run after this PR then carries labels. Until that rel
 ```ts
 // scripts/dashboard/screenshot.mts
 // Usage: node --experimental-strip-types scripts/dashboard/screenshot.mts site/index.html docs/dashboard/v2
-// Launches Chromium (Playwright). Four PNGs. No network.
+import { chromium } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
+const html = process.argv[2];
+const outDir = process.argv[3];
+if (!html || !outDir) throw new Error("usage: screenshot.mts <index.html> <outDir>");
+mkdirSync(outDir, { recursive: true });
+const browser = await chromium.launch();
+for (const [width, height, name] of [
+  [1280, 800, "1280"],
+  [375, 812, "375"],
+] as const) {
+  for (const colorScheme of ["light", "dark"] as const) {
+    const page = await browser.newPage({
+      viewport: { width, height },
+      colorScheme,
+    });
+    await page.goto(`file://${path.resolve(html)}`, { waitUntil: "load" });
+    await page.screenshot({
+      path: path.join(outDir, `${name}-${colorScheme}.png`),
+      fullPage: true,
+    });
+    await page.close();
+  }
+}
+await browser.close();
 ```
+
+No network. If Chromium is missing, the script throws; do not skip the PNG test. Owner to-do: install Chromium (section 11).
 
 Owner to-do (both clouds): `npx playwright install chromium` once per machine. Not automatic from `npm ci`.
 
@@ -981,9 +1184,14 @@ Do not edit any `perf.yml` job (H4). Do not raise the Cal 6-minute cap.
 
 ## 10. Expected output
 
-`npm run check` after the last PR-I commit:
+`npm run check` after the last PR-I commit (format:check, lint:actions, typecheck, k6:inspect, then unit tests):
 
 ```text
+> prettier --check .
+All matched files use Prettier code style!
+> actionlint
+> tsc --noEmit && tsc --noEmit -p tsconfig.races.json
+> node scripts/k6-inspect.mjs
 # tests 1390
 # pass 1390
 # fail 0
@@ -1019,15 +1227,18 @@ Card sketches (text, not numbers):
   Medusa: pending: verdict file not in release
   self-test slowed: FAIL (REGRESSION)
 
+[two-instance] PASS
+  source: P6-MED-RACE-002 histograms and P6-MED-LOAD-007 verdicts in the perf zips
+
 [promo] PASS with suspected-bug counts for -005 / -012
 [cancel] KNOWN FAIL (P6-OBS-MED-002)
 [invariants] KNOWN FAIL (P6-OBS-CAL-002 / P6-OBS-DOC-002)
 [invariants-load] KNOWN FAIL (P6-OBS-MED-002), leak N = 4, 5, 6
 ```
 
-Expected summary tiles after the final PR, rebuilt from the current releases:
+Expected summary tiles after the final PR, rebuilt from the current releases (nine cards: knee, soak, two-instance, promo, cancel, invariants, invariants-load, aa-noise, ab-gate):
 
-- evidence cards: **PASS 5, FAIL 0, KNOWN FAIL 3, PENDING 1, INVALID 0** if A/B Medusa stays pending (ab-gate PASS on Cal only still counts as PASS → then PENDING 0). Decide: ab-gate is PASS when Cal's verdict file exists. **PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 0, INVALID 0.**
+- evidence cards: **PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 0, INVALID 0** (PASS: knee, soak, two-instance, promo, aa-noise, ab-gate; KNOWN FAIL: cancel, invariants, invariants-load). ab-gate is PASS when `gate-verdict-cal.json` is in the zip; Medusa stays a caption `pending: verdict file not in release`, not a PENDING card.
 - soak thresholds: `0 of 3 products calibrated` (unchanged)
 - A/A: `A/A PASS` (no longer "runs pending release")
 - findings: 24 rows
@@ -1090,10 +1301,10 @@ Per-PR loop (every build PR):
 
 **PR-D** `feat(dashboard): add the svg chart primitives`. Parallel-safe with A, B, C. **Wave 2 waits on D.**
 
-| Step | Commit                                                          | Files                                                                                                                                                      | Tests after |
-| ---- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1    | `test(dashboard): add svg primitive tests`                      | `tests/unit/dashboard-charts.test.ts`, `tests/unit/dashboard-collect.test.ts`                                                                              | red         |
-| 2    | `feat(dashboard): add svg primitives, collect, and chart stubs` | `src/dashboard/render/charts.ts`, `src/dashboard/collect.ts`, stub modules, `scripts/dashboard/build-site.ts`, `src/dashboard/render/page.ts` (hooks only) | **1354**    |
+| Step | Commit                                                          | Files                                                                                                                                                                                                                              | Tests after |
+| ---- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1    | `test(dashboard): add svg primitive tests`                      | `tests/unit/dashboard-charts.test.ts`, `tests/unit/dashboard-collect.test.ts`                                                                                                                                                      | red         |
+| 2    | `feat(dashboard): add svg primitives, collect, and chart stubs` | `src/dashboard/render/charts.ts`, `src/dashboard/verdicts.ts`, `src/dashboard/collect.ts`, stub modules, `scripts/dashboard/build-site.ts`, `src/dashboard/render/page.ts` (hooks only), `src/dashboard/site-model.ts` (re-export) | **1354**    |
 
 ### Wave 2 (after PR-D; parallel among themselves)
 
@@ -1182,6 +1393,7 @@ CI job set aside (pages build has no 10-minute margin; extra X-CI-SHOT). Playwri
 ### Proposed extras (out of scope)
 
 - X-PAGES-MARGIN: document only, no PR.
+- X-PAGES-STOP: 80% stop on the existing fetch step; not added (R12 is for new jobs).
 - X-PAGES-SUMMARY: `ci(pages): write a job summary after the token scan`
 - X-PAGES-SCANJOB: `ci(pages): move the site scans to their own job`
 - X-CI-SHOT: `ci(pages): screenshot the site in a new job`
@@ -1232,7 +1444,7 @@ Rules in section 0 of the prompt:
 - R9: PRODUCT BUG (SUSPECTED) / TEST BUG labelled in findings and Q-5.
 - R10: "knee range", never "capacity".
 - R11/H4: no `perf.yml` edit, no timeout raise, no Cal cap raise. New jobs: none in the recommended path.
-- R12: PR-A adds `timeout-minutes` on checkout/setup-node and `if: ${{ !cancelled() }}` on scan/upload. No new job.
+- R12: PR-A adds `timeout-minutes` on checkout/setup-node and `if: ${{ !cancelled() }}` on scan/upload. No new job. 80% stop not added on the existing fetch step (X-PAGES-STOP).
 - R13: extras stay extras.
 - R14: screenshot browser install is an owner to-do for both clouds.
 - R15: times in this file are Asia/Colombo.
@@ -1243,4 +1455,4 @@ Rules in section 0 of the prompt:
 - O7: merge title `<conventional title> (#n)`, one-sentence body.
 - O8: this session's steps were S0–S7.
 
-Non-standard choices (flagged): X-PAGES-MARGIN; inline `node --input-type=module` in gate.yml instead of a new script (to keep PR-B `gate.yml` only); screenshot PNGs committed rather than CI-generated; Medusa A/B unlabelled values listed without arm letters.
+Non-standard choices (flagged): X-PAGES-MARGIN; inline `node --input-type=module` in gate.yml instead of a new script (to keep PR-B `gate.yml` only); screenshot PNGs committed rather than CI-generated; Medusa A/B unlabelled values listed without arm letters; D-COLLECT moves `walkVerdicts` into `src/dashboard/verdicts.ts` so `src/` never imports the build CLI.
