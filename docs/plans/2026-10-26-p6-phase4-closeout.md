@@ -110,7 +110,7 @@ Each run's case verdicts are VALID and PASS. Run 40498902575 holds the P6-OBS-ME
 
 ## 10. Open items for the owner
 
-- The release `p6-phase4` is dispatched by the session (`RELEASE_DISPATCH_BY_SESSION=yes`), with the inputs in the release notes (#125). Owner to-do if that dispatch fails.
+- The release `p6-phase4` was dispatched by the session (`RELEASE_DISPATCH_BY_SESSION=yes`) with the inputs in the release notes (#125). The first dispatch (run 40649572867, target `e1bdb2c`) failed at the gitleaks scan on two Medusa soak artefacts. PR #139 (`d888a3a`) fixed the root cause for future soaks and added an anchored allowlist path for the three soak runs already published. The second dispatch (run 40655575365, rerun after one HTTP 503 from artefact egress, target `d888a3a`) published tag `p6-phase4` with 22 evidence zips.
 - The README "Phase 4 results" PR (#126) merges after the release exists.
 - The remote branch deletes listed in section 7 (HTTP 403).
 - Pages run 40526023077 is cited for Task 13 but is not a release input: `pages.yml` is not in the release workflow's ids (`EVIDENCE_WORKFLOW_IDS`).
