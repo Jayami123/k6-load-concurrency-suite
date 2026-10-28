@@ -1,5 +1,7 @@
 # Draft: Documenso seals one envelope twice under a retried completion
 
+> **Superseded** by [`2026-10-29-documenso-duplicate-seal-comment-3187.md`](2026-10-29-documenso-duplicate-seal-comment-3187.md) (2026-10-29). Kept for history; do not file from this file.
+
 Draft for the Documenso bug-report form (`.github/ISSUE_TEMPLATE/bug-report.yml`). Not filed. The owner files it.
 
 ## Issue Description

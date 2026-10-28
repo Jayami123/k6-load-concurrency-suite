@@ -1,5 +1,7 @@
 # Draft: Cal private link usage count is one higher than the bookings that used it
 
+> **Superseded** by [`2026-10-29-cal-link-usage-mismatch.md`](2026-10-29-cal-link-usage-mismatch.md) (2026-10-29). Kept for history; do not file from this file.
+
 Draft for the Cal bug report (`.github/ISSUE_TEMPLATE/bug_report.md`). Not filed. The owner files it.
 
 ### Issue Summary
