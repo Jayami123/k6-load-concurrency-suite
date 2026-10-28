@@ -28,7 +28,7 @@ export interface ToleranceFile {
   schema: 1;
   metric: "A/A tolerance";
   unit: "fraction of the median (relative)";
-  release: string; // "p6-phase4b"
+  release: string; // "p6-phase4"
   products: Record<string, Partial<Record<ToleranceMetric, Tolerance>>>;
 }
 

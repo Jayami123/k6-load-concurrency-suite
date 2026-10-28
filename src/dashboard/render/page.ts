@@ -1,7 +1,7 @@
 // Renders the evidence site as one report page (plan Phase 4b task 13). Pure: every value comes from the inputs, no script and no
 // remote asset. Order: header, summary strip, evidence cards, findings, provenance (collapsed). Empty data reads as PENDING.
 import { escapeLabel, type SiteModel } from "../site-model.ts";
-import type { PendingFile } from "../release-plan.ts";
+import type { PendingFile, ReleasePlan } from "../release-plan.ts";
 import { loadFindings, type FindingRow, type FindingsFile } from "../findings.ts";
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
 import type { KneeCurve } from "../knee/read-curves.ts";
@@ -40,6 +40,8 @@ export interface PageContext {
   observations: Array<{ id: string; title: string; file: string }>; // docs/observations/*.md, read at build time
   kneeCurves?: KneeCurve[];
   soakTrends?: SoakTrend[];
+  /** Where each cited zip was fetched from. The soak tile reads this; it does not invent a tag. */
+  releasePlan?: ReleasePlan;
   aa?: AaSeries[];
   ab?: AbGate[];
   races?: RaceTally[];
@@ -158,6 +160,33 @@ function chartBody(id: string, ctx: PageContext): string {
   return "";
 }
 
+/** Groups soak trends by the zip's GitHub run and names the release the plan fetched that zip from. */
+function soakTrendProvenance(ctx: PageContext): string {
+  const groups = new Map<string, string[]>();
+  for (const trend of ctx.soakTrends ?? []) {
+    const ids = groups.get(trend.githubRunId) ?? [];
+    ids.push(trend.runId);
+    groups.set(trend.githubRunId, ids);
+  }
+  if (groups.size === 0) return "";
+  const bits = [...groups.entries()].map(([githubRunId, runIds]) => {
+    const tag = ctx.releasePlan?.fetch.find((row) => row.runId === githubRunId)?.tag;
+    const from = tag === undefined ? "not in the release plan" : escapeLabel(tag);
+    return `${escapeLabel(githubRunId)} (${runIds.map((id) => escapeLabel(id)).join(", ")}) from ${from}`;
+  });
+  return `Soak trend runs: ${bits.join("; ")}`;
+}
+
+function soakSource(ctx: PageContext): string {
+  if (!ctx.soak) return "k6/thresholds/soak-bounds.json not read";
+  const bounds =
+    ctx.soak.calibrated === 0
+      ? "k6/thresholds/soak-bounds.json has no calibrated product"
+      : `k6/thresholds/soak-bounds.json, release ${escapeLabel(ctx.soak.release)}`;
+  const trends = soakTrendProvenance(ctx);
+  return trends === "" ? bounds : `${bounds}. ${trends}`;
+}
+
 /** The summary strip: each fact is read from a file or a card at build time; an unread source reads "pending". */
 function summaryStrip(
   cards: CardState[],
@@ -180,9 +209,7 @@ function summaryStrip(
   const soakValue = ctx.soak
     ? `${ctx.soak.calibrated} of ${ctx.soak.products} products calibrated`
     : "pending";
-  const soakSrc = ctx.soak
-    ? `k6/thresholds/soak-bounds.json, release ${escapeLabel(ctx.soak.release)}`
-    : "k6/thresholds/soak-bounds.json not read";
+  const soakSrc = soakSource(ctx);
   const facts = [
     {
       value: escapeLabel(kneeValue),
