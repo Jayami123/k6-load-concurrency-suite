@@ -1,0 +1,128 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40234172872",
+    "file": "knee-cal/P6-CAL-LOAD-005/20261025T211249Z-930402a3/knee-report-main.json"
+  },
+  "schema": 1,
+  "ruleId": "P6-RULE-006",
+  "caseId": "P6-CAL-LOAD-005",
+  "runId": "20261025T211249Z-930402a3",
+  "verdict": "KNEE",
+  "range": {
+    "lowerStep": 5,
+    "upperStep": 6,
+    "lowerRate": 12,
+    "upperRate": 14
+  },
+  "stop": {
+    "step": 6,
+    "rate": 14,
+    "reasons": ["p95"]
+  },
+  "firstSaturated": {
+    "resource": "app_cpu",
+    "step": 5
+  },
+  "limitation": "the first saturated resource is taken from step 5, before the stop at step 6",
+  "steps": [
+    {
+      "index": 0,
+      "rate": 2,
+      "p95Ms": 77.61164785,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 120,
+      "reached": true,
+      "plannedIterations": 60,
+      "startedIterations": 60
+    },
+    {
+      "index": 1,
+      "rate": 4,
+      "p95Ms": 65.1490887,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 240,
+      "reached": true,
+      "plannedIterations": 120,
+      "startedIterations": 120
+    },
+    {
+      "index": 2,
+      "rate": 6,
+      "p95Ms": 98.38345145000001,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 360,
+      "reached": true,
+      "plannedIterations": 180,
+      "startedIterations": 180
+    },
+    {
+      "index": 3,
+      "rate": 8,
+      "p95Ms": 72.46798894999998,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 480,
+      "reached": true,
+      "plannedIterations": 240,
+      "startedIterations": 240
+    },
+    {
+      "index": 4,
+      "rate": 10,
+      "p95Ms": 97.6762564,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 600,
+      "reached": true,
+      "plannedIterations": 300,
+      "startedIterations": 300
+    },
+    {
+      "index": 5,
+      "rate": 12,
+      "p95Ms": 189.92592084999995,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 720,
+      "reached": true,
+      "plannedIterations": 360,
+      "startedIterations": 360
+    },
+    {
+      "index": 6,
+      "rate": 14,
+      "p95Ms": 922.0945121000001,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 87,
+      "reached": true,
+      "plannedIterations": 420,
+      "startedIterations": 55
+    },
+    {
+      "index": 7,
+      "rate": 16,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 0,
+      "reached": false,
+      "plannedIterations": 480,
+      "startedIterations": 0
+    },
+    {
+      "index": 8,
+      "rate": 18,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 0,
+      "reached": false,
+      "plannedIterations": 540,
+      "startedIterations": 0
+    }
+  ],
+  "invalid": []
+}

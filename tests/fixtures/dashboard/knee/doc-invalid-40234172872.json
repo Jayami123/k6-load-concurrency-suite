@@ -1,0 +1,121 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40234172872",
+    "file": "knee-documenso/P6-DOC-LOAD-005/20261025T211144Z-2d4c30cb/knee-report-main.json"
+  },
+  "schema": 1,
+  "ruleId": "P6-RULE-006",
+  "caseId": "P6-DOC-LOAD-005",
+  "runId": "20261025T211144Z-2d4c30cb",
+  "verdict": "INVALID",
+  "range": {
+    "lowerStep": 3,
+    "upperStep": 4,
+    "lowerRate": 4,
+    "upperRate": 5
+  },
+  "stop": {
+    "step": 4,
+    "rate": 5,
+    "reasons": ["p95"]
+  },
+  "firstSaturated": {
+    "resource": "app_cpu",
+    "step": 2
+  },
+  "limitation": "the first saturated resource is taken from step 2, before the stop at step 4",
+  "steps": [
+    {
+      "index": 0,
+      "rate": 1,
+      "p95Ms": 235.69479975,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 270,
+      "reached": true,
+      "plannedIterations": 30,
+      "startedIterations": 30
+    },
+    {
+      "index": 1,
+      "rate": 2,
+      "p95Ms": 244.9689195,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 540,
+      "reached": true,
+      "plannedIterations": 60,
+      "startedIterations": 60
+    },
+    {
+      "index": 2,
+      "rate": 3,
+      "p95Ms": 358.4625231,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 810,
+      "reached": true,
+      "plannedIterations": 90,
+      "startedIterations": 90
+    },
+    {
+      "index": 3,
+      "rate": 4,
+      "p95Ms": 1323.1412376,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 1017,
+      "reached": true,
+      "plannedIterations": 120,
+      "startedIterations": 113
+    },
+    {
+      "index": 4,
+      "rate": 5,
+      "p95Ms": 2345.92502525,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 740,
+      "reached": true,
+      "plannedIterations": 150,
+      "startedIterations": 106
+    },
+    {
+      "index": 5,
+      "rate": 6,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 0,
+      "reached": false,
+      "plannedIterations": 180,
+      "startedIterations": 0
+    },
+    {
+      "index": 6,
+      "rate": 7,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 0,
+      "reached": false,
+      "plannedIterations": 210,
+      "startedIterations": 0
+    },
+    {
+      "index": 7,
+      "rate": 8,
+      "errors": 0,
+      "errorRate": 0,
+      "requests": 0,
+      "reached": false,
+      "plannedIterations": 240,
+      "startedIterations": 0
+    }
+  ],
+  "invalid": [
+    {
+      "code": "dropped_iterations",
+      "detail": "step 3: 113 of 120 planned iterations started (allowance 3)"
+    }
+  ]
+}
