@@ -1,6 +1,6 @@
 // Renders the evidence site as one report page (plan Phase 4b task 13). Pure: every value comes from the inputs, no script and no
 // remote asset. Order: header, summary strip, evidence cards, findings, provenance (collapsed). Empty data reads as PENDING.
-import { escapeLabel, type SiteModel } from "../site-model.ts";
+import { escapeLabel, type SiteModel, type VerdictInput } from "../site-model.ts";
 import type { PendingFile, ReleasePlan } from "../release-plan.ts";
 import { loadFindings, type FindingRow, type FindingsFile } from "../findings.ts";
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
@@ -71,6 +71,13 @@ function runLink(runs: Map<string, string>, charts: Map<string, string>, runId: 
   return chart === undefined ? id : `${id} (<a href="${escapeLabel(chart)}">chart</a>)`;
 }
 
+function evidenceVerdict(r: VerdictInput): string {
+  const base = `${r.outcome} / ${r.validity}`;
+  if (r.caseId === "P6-MED-LOAD-009" && typeof r.leakedCanceledOrders === "number")
+    return `${base}; leaked canceled orders ${r.leakedCanceledOrders}`;
+  return base;
+}
+
 function evidenceTable(
   state: CardState,
   runs: Map<string, string>,
@@ -81,7 +88,7 @@ function evidenceTable(
   const rows = state.runs
     .map(
       (r) =>
-        `<tr><td>${runLink(runs, charts, r.runId)}</td><td><code>${escapeLabel(r.caseId)}</code></td><td>${utcOf(r.runId)}</td><td>${escapeLabel(`${r.outcome} / ${r.validity}`)}</td></tr>`,
+        `<tr><td>${runLink(runs, charts, r.runId)}</td><td><code>${escapeLabel(r.caseId)}</code></td><td>${utcOf(r.runId)}</td><td>${escapeLabel(evidenceVerdict(r))}</td></tr>`,
     )
     .join("");
   return `<details><summary>Evidence runs (${state.runs.length})</summary><div class="table-wrap"><table><caption>Evidence runs: ${escapeLabel(state.spec.title)}</caption><thead><tr><th scope="col">Run</th><th scope="col">Case</th><th scope="col">UTC time</th><th scope="col">Verdict</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;

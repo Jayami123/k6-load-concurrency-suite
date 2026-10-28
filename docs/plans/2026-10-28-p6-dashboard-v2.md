@@ -1010,10 +1010,10 @@ The check rendered an empty model. With `tests/fixtures/dashboard/size-budget.js
 Recorded after the knee caption and the soak provenance text (2026-10-29 00:55 Asia/Colombo for the published page; the fixture render is from this branch):
 
 - Published page: 393822 bytes. `curl` reported `size_download=393822` and `content-length: 393822`, and `wc -c` reported 393822. HTTP 200. Last-Modified `Wed, 28 Oct 2026 18:57:41 GMT` (00:27 Asia/Colombo on 29 Oct 2026).
-- Fixture page: 69916 bytes. `renderSite` of `tests/fixtures/dashboard/{aa,ab,knee,races,soak}` plus six verdict rows, so the summary is the published card states `PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 1, INVALID 0`. The fixtures are trimmed: one Cal knee report, one invalid Documenso report, a 180-sample soak head, and a subset of histograms. The published page is 393822 bytes because it includes every released run.
-- On the fixture page the style is 3868 bytes, the findings block is 16739 bytes, the knee card is 7541 bytes, and the twelve charts sum to 23293 bytes. The smallest chart is 702 bytes. A typical chart is about 2.0–2.6 KB.
-- Headroom: 4096 bytes, which is `4096 / 69916` = 5.86% of the fixture page. That covers a caption or a short table. A second knee card is 7541 bytes, past this headroom.
-- Budget: 74012 bytes (`69916 + 4096`).
+- Fixture page: 69994 bytes. `renderSite` of `tests/fixtures/dashboard/{aa,ab,knee,races,soak}` plus six verdict rows, so the summary is the published card states `PASS 6, FAIL 0, KNOWN FAIL 3, PENDING 1, INVALID 0`. The fixtures are trimmed: one Cal knee report, one invalid Documenso report, a 180-sample soak head, and a subset of histograms. The published page is 393822 bytes because it includes every released run. The three LOAD-009 leak counts add 78 bytes to the evidence table (69916 before those cells, 69994 with them).
+- On the fixture page the style is 3868 bytes, the findings block is 16739 bytes, the knee card is 7541 bytes, and the twelve charts sum to 23293 bytes. The smallest chart is 702 bytes. A typical chart is about 2.0–2.6 KB. Those section sizes were counted before the 78 leak-count bytes, which sit in the invariants-under-load table.
+- Headroom: 4096 bytes, which is `4096 / 69994` = 5.85% of the fixture page. That covers a caption or a short table. A second knee card is 7541 bytes, past this headroom.
+- Budget: 74090 bytes (`69994 + 4096`).
 
 Raise the budget when a chart or a table that belongs on the page grows the fixture render by more than 4096 bytes, and record the new measured bytes in the same change. A failing check is a reason to look at the page, and the published 393822 bytes is a different file from this fixture render.
 

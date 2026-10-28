@@ -23,7 +23,7 @@ const SIZE_BUDGET = "tests/fixtures/dashboard/size-budget.json";
 const FIXTURES = "tests/fixtures/dashboard";
 
 /**
- * 4096 bytes is 5.86% of the 69916-byte fixture page. A typical chart on that page is about
+ * 4096 bytes is 5.85% of the 69994-byte fixture page. A typical chart on that page is about
  * 2.0–2.6 KB and the knee card is 7541 bytes. This headroom covers a caption or a short table.
  * A second knee card is past it. The reason is in docs/plans/2026-10-28-p6-dashboard-v2.md.
  */

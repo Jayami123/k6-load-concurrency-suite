@@ -222,3 +222,40 @@ describe("the build reads its inputs from files", () => {
     }
   });
 });
+
+describe("LOAD-009 evidence rows", () => {
+  it("shows leaked canceled orders on LOAD-009 and not on another case", () => {
+    const page = renderSite(
+      buildSiteModel({
+        verdicts: [
+          {
+            runId: "20261027T115442Z-0b12a9c1",
+            caseId: "P6-MED-LOAD-009",
+            outcome: "PASS",
+            validity: "VALID",
+            reasons: [],
+            knownFail: "P6-OBS-MED-002",
+            leakedCanceledOrders: 4,
+          },
+          {
+            runId: "20261027T120000Z-other",
+            caseId: "P6-MED-LOAD-007",
+            outcome: "PASS",
+            validity: "VALID",
+            reasons: [],
+            leakedCanceledOrders: 9,
+          },
+        ],
+      }),
+      new Map(),
+      new Map(),
+      undefined,
+      { sha: "0123456789abcdef", builtAt: "2026-10-28 12:00 UTC", observations: [] },
+    );
+    const load = page.slice(page.indexOf('id="invariants-load"'), page.indexOf('id="aa-noise"'));
+    assert.match(load, /PASS \/ VALID; leaked canceled orders 4/);
+    assert.doesNotMatch(load, /leaked canceled orders 9/);
+    const two = page.slice(page.indexOf('id="two-instance"'), page.indexOf('id="promo"'));
+    assert.doesNotMatch(two, /leaked canceled orders/);
+  });
+});
