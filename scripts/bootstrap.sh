@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Same refs P1 CI pins (playwright-e2e-ci-framework .github/workflows/e2e.yml).
-MEDUSA_REF="f677db438f27294fc50e4c7c6612e71ff38eeff5"
+MEDUSA_REF="15ef93da7d155ad990d8cc6db0296446fecbdfe6"
 DOCUMENSO_REF="f4105e47eba56f5d8d7e70dd516a8fcc0c870d7c"
 TWENTY_REF="7cbdfec6f346b43715bc2056932f4fad5886f733"
 # P1 pins main for Cal; P6 pins the SHA main pointed at on 2026-10-20 (Task 3 probe).
