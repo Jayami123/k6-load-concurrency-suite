@@ -770,11 +770,11 @@ Run `40498902575` carries the KNOWN FAIL marker P6-OBS-MED-002 (cancel race: the
 
 ### A/A noise and the gate (P6-RULE-004)
 
-The A/A tolerance is committed in `k6/thresholds/tolerance.json` (PR #128, from the A/A runs `40497029348` and `40605925118`, six counted arms per product). The Cal p95 tolerance moved between the two days, which is a known issue (PR #130), so it is recorded and not changed. The A/B gate ran on `main` in run `40636843578`: Medusa PASS (ratios 1.015 / 1.008 / 0.998) and Cal PASS (ratios 0.998 / 0.985 / 1.025). Both A/A and A/B evidence are in the [p6-phase4 release](releases/tag/p6-phase4).
+The A/A tolerance is committed in `k6/thresholds/tolerance.json` (PR #128, from the A/A runs `40497029348` and `40605925118`, six counted arms per product). The Cal p95 tolerance moved between the two days, which is a known issue (PR #130), so it is recorded and not changed. The A/B gate ran on `main` in run `40636843578`: Medusa PASS (ratios 1.015 / 1.008 / 0.998) and Cal PASS (ratios 0.998 / 0.985 / 1.025). Both A/A and A/B evidence are in the release `p6-phase4` (notes in [docs/releases/p6-phase4.md](docs/releases/p6-phase4.md)).
 
 ### Dashboard
 
-The evidence site is built by `pages.yml` from committed data and from the published [p6-phase4 release](releases/tag/p6-phase4). It shows the soak, invariant and Phase 4 data; the race cases that no release run contains show as pending.
+The evidence site is built by `pages.yml` from committed data and from the published release `p6-phase4` (notes in [docs/releases/p6-phase4.md](docs/releases/p6-phase4.md)). It shows the soak, invariant and Phase 4 data; the race cases that no release run contains show as pending.
 
 ### INVALID runs (listed, not used)
 
