@@ -1,0 +1,61 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40455577906",
+    "file": "soak-medusa-120/P6-MED-LOAD-005/20261027T053030Z-ba00cb53/soak.json"
+  },
+  "verdict": "NO THRESHOLD YET",
+  "reasons": ["no soak-bounds.json entry for this product"],
+  "statistics": {
+    "durationSec": 7200,
+    "warmupSec": 1440,
+    "rssMb": {
+      "slope": {
+        "n": 5761,
+        "slopePerMin": -0.3723495702930429,
+        "theilSenPerMin": 0.1478153090900617,
+        "stepsOver": 1,
+        "reason": "ok"
+      },
+      "plateau": {
+        "n": 5761,
+        "middleMedian": 500.046875,
+        "lastMedian": 505.39453125,
+        "ratio": 1.010694309908446,
+        "reason": "ok"
+      }
+    },
+    "fds": {
+      "slope": {
+        "n": 5761,
+        "slopePerMin": 2.1016335044336974e-5,
+        "theilSenPerMin": 0,
+        "stepsOver": 0,
+        "reason": "ok"
+      },
+      "plateau": {
+        "n": 5761,
+        "middleMedian": 34,
+        "lastMedian": 34,
+        "ratio": 1,
+        "reason": "ok"
+      }
+    },
+    "dbConnections": {
+      "slope": {
+        "n": 5761,
+        "slopePerMin": 3.4233441951529364e-5,
+        "theilSenPerMin": 0,
+        "stepsOver": 24,
+        "reason": "ok"
+      },
+      "plateau": {
+        "n": 5761,
+        "middleMedian": 5,
+        "lastMedian": 5,
+        "ratio": 1,
+        "reason": "ok"
+      }
+    }
+  }
+}
