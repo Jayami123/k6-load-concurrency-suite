@@ -998,9 +998,25 @@ jobs:
           # The release scan (.gitleaks.toml) lets the publishable key through only in .../load-medusa/P6-MED-LOAD-nnn/<attempt>/k6-config.json:
           # each arm keeps its case and attempt folders, and the arm label (a-1, b-2 ...) stays out of the artefact path.
           mkdir -p stage/load-medusa/P6-MED-LOAD-002
+          node --input-type=module -e '
+            import { readdirSync, writeFileSync, existsSync, statSync } from "node:fs";
+            const arms = [];
+            for (const arm of ["a-1","a-2","a-3","b-1","b-2","b-3"]) {
+              const root = "results/ab/" + arm + "/P6-MED-LOAD-002";
+              if (!existsSync(root)) continue;
+              for (const name of readdirSync(root)) {
+                const p = root + "/" + name;
+                if (statSync(p).isDirectory()) arms.push({ arm, runId: name });
+              }
+            }
+            writeFileSync("stage/ab-medusa-arm-map.json", JSON.stringify({ product: "medusa", caseId: "P6-MED-LOAD-002", arms }, null, 2) + "\n");
+          '
           for d in results/ab/*/P6-MED-LOAD-002/*; do
             [ -d "$d" ] && cp -a "$d" stage/load-medusa/P6-MED-LOAD-002/
           done
+          if [ -f results/ab/gate-verdict-medusa.json ]; then
+            cp -a results/ab/gate-verdict-medusa.json stage/gate-verdict-medusa.json
+          fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
