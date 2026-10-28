@@ -78,3 +78,11 @@ export function diffBaseOf(input: DiffBaseInput): string {
     throw new Error("gate triggers: the push 'before' sha is not 40-hex");
   return input.beforeSha;
 }
+
+/**
+ * The checkout whose committed tolerance file the A/B verdict reads. On a pull request it is the base, so a PR is judged by the tolerance
+ * its base already has. On a push or a dispatch it is the head, so a tolerance merged to main applies to the push that merges it.
+ */
+export function toleranceCheckoutOf(eventName: string): "p6-base" | "p6" {
+  return eventName === "pull_request" ? "p6-base" : "p6";
+}

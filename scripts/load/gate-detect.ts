@@ -9,6 +9,7 @@ import {
   hasLabel,
   parseLabelNames,
   touchesLoadCode,
+  toleranceCheckoutOf,
 } from "../../src/load/gate/triggers.ts";
 
 const git = (args: string[]): string => execFileSync("git", args, { encoding: "utf8" });
@@ -35,6 +36,7 @@ const outputs = {
   cal_bump: String(refs.includes("CAL_REF")),
   medusa_bump: String(refs.includes("MEDUSA_REF")),
   perf_gate_label: String(hasLabel(labels, "perf-gate")),
+  tolerance_checkout: toleranceCheckoutOf(process.env.EVENT_NAME ?? ""),
 };
 const text = `${Object.entries(outputs)
   .map(([k, v]) => `${k}=${v}`)

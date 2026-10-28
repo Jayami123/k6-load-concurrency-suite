@@ -47,6 +47,7 @@ jobs:
       cal_bump: ${{ steps.detect.outputs.cal_bump }}
       medusa_bump: ${{ steps.detect.outputs.medusa_bump }}
       perf_gate_label: ${{ steps.detect.outputs.perf_gate_label }}
+      tolerance_checkout: ${{ steps.detect.outputs.tolerance_checkout }}
       cal_ref_b: ${{ steps.refs.outputs.cal_ref_b }}
       medusa_ref_b: ${{ steps.refs.outputs.medusa_ref_b }}
     steps:
@@ -465,18 +466,18 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
           exit "$status"
 
-      - name: A/B verdict (P6-CAL-LOAD-003; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+      - name: A/B verdict (P6-CAL-LOAD-003; the tolerance is read from the base on a pull request, from the head on a push or dispatch; no_reference when absent)
         id: verdict
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        working-directory: p6-base
+        working-directory: p6
         run: |
           set -euo pipefail
           a=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
           b=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
-          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product cal --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-cal.json"
+          node scripts/load/gate-ab.ts --product cal --tolerance "$GITHUB_WORKSPACE/${{ needs.detect.outputs.tolerance_checkout }}/k6/thresholds/tolerance.json" --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-cal.json"
 
       - name: Job summary (LOAD table)
         if: ${{ !cancelled() }}
@@ -830,18 +831,18 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
           exit "$status"
 
-      - name: A/B verdict (P6-MED-LOAD-002; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+      - name: A/B verdict (P6-MED-LOAD-002; the tolerance is read from the base on a pull request, from the head on a push or dispatch; no_reference when absent)
         id: verdict
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        working-directory: p6-base
+        working-directory: p6
         run: |
           set -euo pipefail
           a=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
           b=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
-          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product medusa --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-medusa.json"
+          node scripts/load/gate-ab.ts --product medusa --tolerance "$GITHUB_WORKSPACE/${{ needs.detect.outputs.tolerance_checkout }}/k6/thresholds/tolerance.json" --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-medusa.json"
 
       - name: Job summary (LOAD table)
         if: ${{ !cancelled() }}
