@@ -14,7 +14,11 @@ import {
   SOAK_CASE_IDS,
   type VerdictInput,
 } from "../../src/dashboard/site-model.ts";
-import { parsePendingFile, type PendingFile } from "../../src/dashboard/release-plan.ts";
+import {
+  parsePendingFile,
+  type PendingFile,
+  type ReleasePlan,
+} from "../../src/dashboard/release-plan.ts";
 import { collectFromArtefactDir, type CollectedEvidence } from "../../src/dashboard/collect.ts";
 import { preferReleasedAb } from "../../src/dashboard/gate/read-ab.ts";
 import { walkVerdicts } from "../../src/dashboard/verdicts.ts";
@@ -73,11 +77,29 @@ function utcStamp(date: Date): string {
   return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-/** Usage: build-site.ts <outDir> <artefactDir>=<githubRunId> ... (each artefact folder with its GitHub run) */
+/** The pages job writes this file. The soak tile uses it and does not guess a tag. */
+function readReleasePlan(file: string): ReleasePlan {
+  const plan = JSON.parse(readFileSync(file, "utf8")) as ReleasePlan;
+  if (!plan || !Array.isArray(plan.fetch))
+    throw new Error(`TEST BUG: release plan ${file} has no fetch list`);
+  return plan;
+}
+
+/** Usage: build-site.ts <outDir> [--plan <plan.json>] <artefactDir>=<githubRunId> ... */
 function main(argv: string[]): void {
-  const [outDir, ...sources] = argv;
+  const args = [...argv];
+  let planPath: string | undefined;
+  const flag = args.indexOf("--plan");
+  if (flag !== -1) {
+    planPath = args[flag + 1];
+    if (planPath === undefined || planPath.startsWith("--"))
+      throw new Error("usage: build-site.ts <outDir> [--plan <plan.json>] <dir>=<runId>...");
+    args.splice(flag, 2);
+  }
+  const [outDir, ...sources] = args;
   if (!outDir || sources.length === 0)
-    throw new Error("usage: build-site.ts <outDir> <dir>=<runId>...");
+    throw new Error("usage: build-site.ts <outDir> [--plan <plan.json>] <dir>=<runId>...");
+  const releasePlan = planPath === undefined ? undefined : readReleasePlan(planPath);
   const runs = new Map<string, string>();
   const verdicts: VerdictInput[] = [];
   const kneeCurves: CollectedEvidence["kneeCurves"] = [];
@@ -122,6 +144,7 @@ function main(argv: string[]): void {
     observations: readObservations(path.join("docs", "observations")),
     kneeCurves,
     soakTrends,
+    releasePlan,
     aa,
     ab: preferReleasedAb(ab),
     races,

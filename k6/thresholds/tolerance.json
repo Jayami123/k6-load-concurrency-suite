@@ -2,7 +2,7 @@
   "schema": 1,
   "metric": "A/A tolerance",
   "unit": "fraction of the median (relative)",
-  "release": "p6-phase4b",
+  "release": "p6-phase4",
   "products": {
     "cal": {
       "p50Ms": {

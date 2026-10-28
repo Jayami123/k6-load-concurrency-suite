@@ -1,7 +1,7 @@
 // Renders the evidence site as one report page (plan Phase 4b task 13). Pure: every value comes from the inputs, no script and no
 // remote asset. Order: header, summary strip, evidence cards, findings, provenance (collapsed). Empty data reads as PENDING.
-import { escapeLabel, type SiteModel } from "../site-model.ts";
-import type { PendingFile } from "../release-plan.ts";
+import { escapeLabel, type SiteModel, type VerdictInput } from "../site-model.ts";
+import type { PendingFile, ReleasePlan } from "../release-plan.ts";
 import { loadFindings, type FindingRow, type FindingsFile } from "../findings.ts";
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
 import type { KneeCurve } from "../knee/read-curves.ts";
@@ -40,6 +40,8 @@ export interface PageContext {
   observations: Array<{ id: string; title: string; file: string }>; // docs/observations/*.md, read at build time
   kneeCurves?: KneeCurve[];
   soakTrends?: SoakTrend[];
+  /** Where each cited zip was fetched from. The soak tile reads this; it does not invent a tag. */
+  releasePlan?: ReleasePlan;
   aa?: AaSeries[];
   ab?: AbGate[];
   races?: RaceTally[];
@@ -69,6 +71,13 @@ function runLink(runs: Map<string, string>, charts: Map<string, string>, runId: 
   return chart === undefined ? id : `${id} (<a href="${escapeLabel(chart)}">chart</a>)`;
 }
 
+function evidenceVerdict(r: VerdictInput): string {
+  const base = `${r.outcome} / ${r.validity}`;
+  if (r.caseId === "P6-MED-LOAD-009" && typeof r.leakedCanceledOrders === "number")
+    return `${base}; leaked canceled orders ${r.leakedCanceledOrders}`;
+  return base;
+}
+
 function evidenceTable(
   state: CardState,
   runs: Map<string, string>,
@@ -79,7 +88,7 @@ function evidenceTable(
   const rows = state.runs
     .map(
       (r) =>
-        `<tr><td>${runLink(runs, charts, r.runId)}</td><td><code>${escapeLabel(r.caseId)}</code></td><td>${utcOf(r.runId)}</td><td>${escapeLabel(`${r.outcome} / ${r.validity}`)}</td></tr>`,
+        `<tr><td>${runLink(runs, charts, r.runId)}</td><td><code>${escapeLabel(r.caseId)}</code></td><td>${utcOf(r.runId)}</td><td>${escapeLabel(evidenceVerdict(r))}</td></tr>`,
     )
     .join("");
   return `<details><summary>Evidence runs (${state.runs.length})</summary><div class="table-wrap"><table><caption>Evidence runs: ${escapeLabel(state.spec.title)}</caption><thead><tr><th scope="col">Run</th><th scope="col">Case</th><th scope="col">UTC time</th><th scope="col">Verdict</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
@@ -97,6 +106,26 @@ function cardHtml(
   return `<section id="${state.spec.id}" class="card"><header class="card-head"><h2>${escapeLabel(state.spec.title)}</h2>${pill(state)}</header><p>${escapeLabel(state.spec.proves)}</p>${reason}${body}<p class="muted">${valid} VALID and ${invalid} INVALID run(s).</p>${evidenceTable(state, runs, charts)}</section>`;
 }
 
+const NO_SATURATED = "no saturated resource reported by the knee run";
+
+/** One clause per bounds product, from that product's knee curves. A null or missing curve says so. */
+function kneeSaturation(products: string[], curves: KneeCurve[]): string {
+  return products
+    .map((product) => {
+      const rows = curves.filter((c) => c.product === product);
+      if (rows.length === 0) return `${escapeLabel(product)}: ${NO_SATURATED}`;
+      return rows
+        .map((row) => {
+          const sat = row.firstSaturated;
+          const run = escapeLabel(row.runId);
+          if (sat === null) return `${escapeLabel(product)} run ${run}: ${NO_SATURATED}`;
+          return `${escapeLabel(product)}: ${escapeLabel(sat.resource)} at step ${sat.step}, run ${run}`;
+        })
+        .join("; ");
+    })
+    .join(". ");
+}
+
 function kneeBody(ctx: PageContext): string {
   const knee = ctx.knee;
   if (!knee || knee.products.length === 0) return "";
@@ -107,7 +136,11 @@ function kneeBody(ctx: PageContext): string {
   const sources = knee.products.flatMap((p) =>
     p.runIds.map((id) => `<a href="${runUrl(id)}">${escapeLabel(id)}</a>`),
   );
-  return `<figure>${svg}<figcaption>Knee range per product from <code>k6/thresholds/knee-bounds.json</code>, release ${escapeLabel(knee.release)}. Bars run from the lower to the upper bound. Runs: ${[...new Set(sources)].join(", ")}. The first saturated resource is not in the committed bounds yet.</figcaption></figure>`;
+  const saturated = kneeSaturation(
+    knee.products.map((p) => p.product),
+    ctx.kneeCurves ?? [],
+  );
+  return `<figure>${svg}<figcaption>Knee range per product from <code>k6/thresholds/knee-bounds.json</code>, release ${escapeLabel(knee.release)}. Bars run from the lower to the upper bound. Runs: ${[...new Set(sources)].join(", ")}. ${saturated}.</figcaption></figure>`;
 }
 
 function raceCaseId(row: RaceTally): string | undefined {
@@ -134,6 +167,33 @@ function chartBody(id: string, ctx: PageContext): string {
   return "";
 }
 
+/** Groups soak trends by the zip's GitHub run and names the release the plan fetched that zip from. */
+function soakTrendProvenance(ctx: PageContext): string {
+  const groups = new Map<string, string[]>();
+  for (const trend of ctx.soakTrends ?? []) {
+    const ids = groups.get(trend.githubRunId) ?? [];
+    ids.push(trend.runId);
+    groups.set(trend.githubRunId, ids);
+  }
+  if (groups.size === 0) return "";
+  const bits = [...groups.entries()].map(([githubRunId, runIds]) => {
+    const tag = ctx.releasePlan?.fetch.find((row) => row.runId === githubRunId)?.tag;
+    const from = tag === undefined ? "not in the release plan" : escapeLabel(tag);
+    return `${escapeLabel(githubRunId)} (${runIds.map((id) => escapeLabel(id)).join(", ")}) from ${from}`;
+  });
+  return `Soak trend runs: ${bits.join("; ")}`;
+}
+
+function soakSource(ctx: PageContext): string {
+  if (!ctx.soak) return "k6/thresholds/soak-bounds.json not read";
+  const bounds =
+    ctx.soak.calibrated === 0
+      ? "k6/thresholds/soak-bounds.json has no calibrated product"
+      : `k6/thresholds/soak-bounds.json, release ${escapeLabel(ctx.soak.release)}`;
+  const trends = soakTrendProvenance(ctx);
+  return trends === "" ? bounds : `${bounds}. ${trends}`;
+}
+
 /** The summary strip: each fact is read from a file or a card at build time; an unread source reads "pending". */
 function summaryStrip(
   cards: CardState[],
@@ -156,9 +216,7 @@ function summaryStrip(
   const soakValue = ctx.soak
     ? `${ctx.soak.calibrated} of ${ctx.soak.products} products calibrated`
     : "pending";
-  const soakSrc = ctx.soak
-    ? `k6/thresholds/soak-bounds.json, release ${escapeLabel(ctx.soak.release)}`
-    : "k6/thresholds/soak-bounds.json not read";
+  const soakSrc = soakSource(ctx);
   const facts = [
     {
       value: escapeLabel(kneeValue),
