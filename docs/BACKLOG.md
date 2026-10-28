@@ -126,5 +126,21 @@ Merged in [#39](https://github.com/Jayami123/k6-load-concurrency-suite/pull/39) 
   50% the storm judge needs. Done when the storm reaches its threshold reliably, in a PR of its own, with no judge weakened.
 - **P6-OBS-DOC-006 (suspected).** Documenso reset-password with an unknown token returns HTTP 500, probably the same root cause
   as `P6-OBS-DOC-001`. Done when the root cause is confirmed or ruled out and a draft exists.
-- **Upstream drafts.** Drafts for the Cal link-usage mismatch and the Documenso double seal are in `docs/upstream/`. Done when the
-  owner files them or decides not to.
+- **Upstream drafts.** Moved to "Upstream filing (whole P6)" below.
+
+## Upstream filing (whole P6)
+
+Filed so far (Phase 1, 2026-10-21): calcom/cal.diy#30374 (P6-OBS-CAL-002), #30375 (P6-OBS-CAL-001), #30376
+(P6-OBS-CAL-003), and a repro comment on documenso/documenso#3187 (P6-OBS-DOC-002). Nothing has been filed since Phase 1.
+
+- **One draft file per finding.** Move every unfiled draft into `docs/upstream/` as its own dated file, starting with
+  "Status: not filed". Sources: Phase 2 closeout appendices B1–B3 (Medusa X04, X05, F-M2, F-M3, F-M4), C1–C3 (Cal F-C1
+  comment on calcom/cal.diy#29815, F-C2, F-C3), D1–D2 (Twenty reset token, empty-body hang), E (P6-OBS-DOC-001), F
+  (P6-OBS-DOC-003); the two existing Phase 3 drafts; and a new draft for P6-OBS-MED-002 (Phase 4 cancel race leaves
+  reservations). Done when every open PRODUCT BUG has a draft file or a filed URL.
+- **Recheck before filing.** For each draft, confirm the cause is still present on the upstream default branch and search
+  for duplicates; a duplicate gets a comment with the repro, not a new issue.
+- **Filing order.** Twenty findings by private email to Twenty's security contact (never public issues); P6-OBS-DOC-003
+  as a private advisory; then Medusa, Cal, and Documenso as public issues.
+- **Record the result.** Each filed draft gets its URL and "Status: filed <date>"; README and findings tables link the URL.
+  Done when every draft is filed, sent privately, or closed with a reason. Owner action, due before Phase 5 starts.
