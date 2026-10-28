@@ -103,7 +103,8 @@ export const CARD_SPECS: readonly CardSpec[] = [
     proves:
       "It proves how much two identical runs differ, which sets the tolerance a change must exceed before the A/B gate reads it as a regression.",
     caseIds: [],
-    pendingReason: "no A/A tolerance is committed yet (k6/thresholds has no aa-tolerance file)",
+    pendingReason:
+      "tolerance committed in k6/thresholds/tolerance.json; its A/A runs are not in a published release yet",
   },
   {
     id: "ab-gate",
@@ -111,7 +112,8 @@ export const CARD_SPECS: readonly CardSpec[] = [
     proves:
       "It proves whether a change moved a measured metric beyond the A/A tolerance. Without a tolerance no verdict can be read.",
     caseIds: [],
-    pendingReason: "waits for the A/A tolerance; no gate verdict can be read yet",
+    pendingReason:
+      "the A/B gate runs are not in a published release yet; the tolerance they read is committed",
   },
 ];
 
