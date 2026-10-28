@@ -770,11 +770,11 @@ Run `40498902575` carries the KNOWN FAIL marker P6-OBS-MED-002 (cancel race: the
 
 ### A/A noise and the gate (P6-RULE-004)
 
-Not met yet. The A/A tolerance and the A/B gate evidence are produced by a separate task and are not on `main` at this point. This section is updated when they are.
+The A/A tolerance is committed in `k6/thresholds/tolerance.json` (PR #128, from the A/A runs `40497029348` and `40605925118`, six counted arms per product). The Cal p95 tolerance moved between the two days, which is a known issue (PR #130), so it is recorded and not changed. The A/B gate ran on `main` in run `40636843578`: Medusa PASS (ratios 1.015 / 1.008 / 0.998) and Cal PASS (ratios 0.998 / 0.985 / 1.025). Both A/A and A/B evidence are in the [p6-phase4 release](releases/tag/p6-phase4).
 
 ### Dashboard
 
-The evidence site is built from committed data by `pages.yml`. It shows the soak, invariant and Phase 4 data and lists the runs that are not in a release yet.
+The evidence site is built by `pages.yml` from committed data and from the published [p6-phase4 release](releases/tag/p6-phase4). It shows the soak, invariant and Phase 4 data; the race cases that no release run contains show as pending.
 
 ### INVALID runs (listed, not used)
 
@@ -783,14 +783,14 @@ The evidence site is built from committed data by `pages.yml`. It shows the soak
 
 ### Rule status
 
-| Rule        | Status              |
-| ----------- | ------------------- |
-| P6-RULE-001 | met with a gap      |
-| P6-RULE-002 | met                 |
-| P6-RULE-003 | met with a gap      |
-| P6-RULE-004 | not met (see above) |
-| P6-RULE-005 | met with a gap      |
-| P6-RULE-006 | met with a gap      |
+| Rule        | Status                                         |
+| ----------- | ---------------------------------------------- |
+| P6-RULE-001 | met with a gap                                 |
+| P6-RULE-002 | met                                            |
+| P6-RULE-003 | met with a gap                                 |
+| P6-RULE-004 | met with a gap (Cal p95 runner shift, PR #130) |
+| P6-RULE-005 | met with a gap                                 |
+| P6-RULE-006 | met with a gap                                 |
 
 The gaps are listed in the closeout record and in the release notes.
 
