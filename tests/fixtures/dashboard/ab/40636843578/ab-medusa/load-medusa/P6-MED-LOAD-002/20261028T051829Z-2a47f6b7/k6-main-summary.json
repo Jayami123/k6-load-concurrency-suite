@@ -1,0 +1,12 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40636843578",
+    "file": "ab-medusa/load-medusa/P6-MED-LOAD-002/20261028T051829Z-2a47f6b7/k6-main-summary.json"
+  },
+  "metrics": {
+    "http_req_duration": {
+      "p(95)": 218.6320742
+    }
+  }
+}
