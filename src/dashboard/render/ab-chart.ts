@@ -1,5 +1,5 @@
 import { escapeLabel } from "../site-model.ts";
-import type { AbGate } from "../gate/read-ab.ts";
+import { preferReleasedAb, type AbGate } from "../gate/read-ab.ts";
 import { SELFTEST_TOLERANCE } from "../../load/gate/selftest.ts";
 import { VIEW, axis, bandRect, mark, scaleLinear, svgDoc, svgText } from "./charts.ts";
 
@@ -176,8 +176,9 @@ function renderSelftest(row: AbGate): string {
 }
 
 export function renderAbChart(rows: AbGate[]): string {
-  if (rows.length === 0) return "";
-  return rows
+  const selected = preferReleasedAb(rows);
+  if (selected.length === 0) return "";
+  return selected
     .map((row) => {
       if (row.source === "selftest.json" || row.product === "selftest") return renderSelftest(row);
       if (row.source === "unlabelled-arms") return renderUnlabelled(row);

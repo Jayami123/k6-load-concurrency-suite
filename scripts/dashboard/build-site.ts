@@ -16,6 +16,7 @@ import {
 } from "../../src/dashboard/site-model.ts";
 import { parsePendingFile, type PendingFile } from "../../src/dashboard/release-plan.ts";
 import { collectFromArtefactDir, type CollectedEvidence } from "../../src/dashboard/collect.ts";
+import { preferReleasedAb } from "../../src/dashboard/gate/read-ab.ts";
 import { walkVerdicts } from "../../src/dashboard/verdicts.ts";
 import {
   DEFAULT_CONTEXT,
@@ -122,7 +123,7 @@ function main(argv: string[]): void {
     kneeCurves,
     soakTrends,
     aa,
-    ab,
+    ab: preferReleasedAb(ab),
     races,
   };
   writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending, context));
