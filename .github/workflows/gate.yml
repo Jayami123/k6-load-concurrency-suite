@@ -34,7 +34,7 @@ defaults:
 
 env:
   CAL_REF: c2b7ac44c66f24ffef1662b276f0653988a609a3 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh (the job verifies)
-  MEDUSA_REF: f677db438f27294fc50e4c7c6612e71ff38eeff5 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh
+  MEDUSA_REF: 15ef93da7d155ad990d8cc6db0296446fecbdfe6 # same SHA as perf.yml, knee.yml and scripts/bootstrap.sh
 
 jobs:
   detect:
