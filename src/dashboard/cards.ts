@@ -58,18 +58,18 @@ export const CARD_SPECS: readonly CardSpec[] = [
   },
   {
     id: "promo",
-    title: "Medusa promo ledger (P6-MED-RACE-008)",
+    title: "Medusa promo ledger (P6-MED-RACE-005, P6-MED-RACE-012)",
     proves:
       "It proves that a promotion's budget and its ledger balances hold when carts race for the same promotion: no overspend and no double redemption.",
-    caseIds: ["P6-MED-RACE-008"],
+    caseIds: ["P6-MED-RACE-005", "P6-MED-RACE-012"],
     pendingReason: "no VALID promo ledger run in a release yet",
   },
   {
     id: "cancel",
-    title: "Medusa cancel races (P6-MED-RACE-009)",
+    title: "Medusa cancel races (P6-MED-RACE-008, P6-MED-RACE-009)",
     proves:
       "It proves that a cancel racing a fulfilment or a second cancel leaves one terminal state and releases every reservation. The known failure is the reservation leak below.",
-    caseIds: ["P6-MED-RACE-009"],
+    caseIds: ["P6-MED-RACE-008", "P6-MED-RACE-009"],
     knownFail: { caseIds: ["P6-MED-RACE-009"], obs: "P6-OBS-MED-002" },
     pendingReason: "no VALID cancel race run in a release yet",
   },
@@ -79,6 +79,10 @@ export const CARD_SPECS: readonly CardSpec[] = [
     proves:
       "It proves that the race invariants of the Cal and Documenso flows hold under concurrent requests: one booking per slot and one signature per envelope.",
     caseIds: ["P6-CAL-RACE-001", "P6-CAL-RACE-003", "P6-DOC-RACE-001", "P6-DOC-RACE-002"],
+    knownFail: {
+      caseIds: ["P6-CAL-RACE-003", "P6-DOC-RACE-001"],
+      obs: "P6-OBS-CAL-002 / P6-OBS-DOC-002",
+    },
     pendingReason: "no VALID invariant run in a release yet",
   },
   {
@@ -102,18 +106,33 @@ export const CARD_SPECS: readonly CardSpec[] = [
     title: "A/A noise and tolerance",
     proves:
       "It proves how much two identical runs differ, which sets the tolerance a change must exceed before the A/B gate reads it as a regression.",
-    caseIds: [],
-    pendingReason:
-      "tolerance committed in k6/thresholds/tolerance.json; its A/A runs are not in a published release yet",
+    caseIds: ["P6-CAL-LOAD-003", "P6-MED-LOAD-002"],
+    pendingReason: "no VALID A/A arm in a published release yet",
   },
   {
     id: "ab-gate",
     title: "A/B gate verdicts",
     proves:
       "It proves whether a change moved a measured metric beyond the A/A tolerance. Without a tolerance no verdict can be read.",
-    caseIds: [],
+    caseIds: ["P6-CAL-LOAD-003"],
+    pendingReason: "no VALID A/B gate verdict in a published release yet",
+  },
+  {
+    id: "twenty",
+    title: "Twenty races (P6-TW-RACE-001–006)",
+    proves:
+      "It proves the Twenty race histograms carry an assigned pass or fail, not the createHistogram default.",
+    caseIds: [
+      "P6-TW-RACE-001",
+      "P6-TW-RACE-002",
+      "P6-TW-RACE-003",
+      "P6-TW-RACE-004",
+      "P6-TW-RACE-005",
+      "P6-TW-RACE-006",
+    ],
+    knownFail: { caseIds: ["P6-TW-RACE-004"], obs: "P6-OBS-TW-001" },
     pendingReason:
-      "the A/B gate runs are not in a published release yet; the tolerance they read is committed",
+      "published histograms still have the default fail; waiting for a release after PR-T",
   },
 ];
 
@@ -128,9 +147,20 @@ export function computeCard(spec: CardSpec, verdicts: readonly VerdictInput[]): 
   if (valid.length === 0)
     return { spec, status: "INVALID", reason: `${runs.length} run(s), none VALID`, obs: "", runs };
   const knownFail = spec.knownFail;
-  if (knownFail && valid.some((v) => knownFail.caseIds.includes(v.caseId) && v.outcome === "FAIL"))
+  if (knownFail && valid.some((v) => isKnownFail(v, spec)))
     return { spec, status: "KNOWN FAIL", reason: "", obs: knownFail.obs, runs };
   if (valid.some((v) => v.outcome === "FAIL"))
     return { spec, status: "FAIL", reason: "", obs: "", runs };
   return { spec, status: "PASS", reason: "", obs: "", runs };
+}
+
+function isKnownFail(v: VerdictInput, spec: CardSpec): boolean {
+  const kf = spec.knownFail;
+  if (!kf || !kf.caseIds.includes(v.caseId)) return false;
+  if (v.outcome === "FAIL") return true;
+  if (v.knownFail && kf.obs.split(" / ").includes(v.knownFail)) return true;
+  // Cancel -009 histograms are verdict "pass" with suspectedBug set (Q-4). That is KNOWN FAIL
+  // only because spec.knownFail.caseIds lists them. Never use this branch to map a case to FAIL.
+  if ((v.suspectedBugCount ?? 0) > 0 && v.outcome === "PASS") return true;
+  return false;
 }
