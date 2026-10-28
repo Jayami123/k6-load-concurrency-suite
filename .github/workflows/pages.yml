@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Workflow database ids whose successful main runs may be published: perf.yml, knee.yml and soak.yml (as evidence-release.yml).
-  EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763"
+  # Workflow database ids whose successful main runs may be published: perf.yml, knee.yml, soak.yml and gate.yml (as evidence-release.yml).
+  EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763 398161444"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
   EVIDENCE_RELEASE: "p6-phase4a"
