@@ -82,12 +82,29 @@ export const CARD_SPECS: readonly CardSpec[] = [
     pendingReason: "no VALID invariant run in a release yet",
   },
   {
+    id: "invariants-load",
+    title: "Invariants under load (Cal, Documenso, Medusa)",
+    proves:
+      "It proves that the race invariants still hold while the flows run under load: one booking per slot, one signature per envelope, and the Medusa order and reservation counts. The Medusa cancel-race leak is a known failure (P6-OBS-MED-002).",
+    caseIds: [
+      "P6-CAL-LOAD-002",
+      "P6-CAL-LOAD-006",
+      "P6-DOC-LOAD-003",
+      "P6-MED-LOAD-007",
+      "P6-MED-LOAD-008",
+      "P6-MED-LOAD-009",
+    ],
+    knownFail: { caseIds: ["P6-MED-LOAD-009"], obs: "P6-OBS-MED-002" },
+    pendingReason: "no VALID invariant-under-load run in a release yet",
+  },
+  {
     id: "aa-noise",
     title: "A/A noise and tolerance",
     proves:
       "It proves how much two identical runs differ, which sets the tolerance a change must exceed before the A/B gate reads it as a regression.",
     caseIds: [],
-    pendingReason: "no A/A tolerance is committed yet (k6/thresholds has no aa-tolerance file)",
+    pendingReason:
+      "tolerance committed in k6/thresholds/tolerance.json; its A/A runs are not in a published release yet",
   },
   {
     id: "ab-gate",
@@ -95,7 +112,8 @@ export const CARD_SPECS: readonly CardSpec[] = [
     proves:
       "It proves whether a change moved a measured metric beyond the A/A tolerance. Without a tolerance no verdict can be read.",
     caseIds: [],
-    pendingReason: "waits for the A/A tolerance; no gate verdict can be read yet",
+    pendingReason:
+      "the A/B gate runs are not in a published release yet; the tolerance they read is committed",
   },
 ];
 

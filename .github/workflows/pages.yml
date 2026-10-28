@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Workflow database ids whose successful main runs may be published: perf.yml, knee.yml and soak.yml (as evidence-release.yml).
-  EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763"
+  # Workflow database ids whose successful main runs may be published: perf.yml, knee.yml, soak.yml and gate.yml (as evidence-release.yml).
+  EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763 398161444"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
   EVIDENCE_RELEASE: "p6-phase4a"
@@ -41,11 +41,13 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Collect the run ids the thresholds cite
+      - name: Collect the run ids the thresholds cite and the published phase 4 release lists
         timeout-minutes: 1
         run: |
           set -euo pipefail
-          jq -r '.. | objects | .runIds? // empty | .[]' k6/thresholds/*.json | sort -u > "$RUNNER_TEMP/run-ids.txt"
+          # The thresholds cite the knee, baseline, tolerance and gate runs. The release notes list every run the
+          # p6-phase4 release publishes (soak and invariant runs included), so the site reads those zips too.
+          { jq -r '.. | objects | .runIds? // empty | .[]' k6/thresholds/*.json; grep -oE 'actions/runs/[0-9]+' docs/releases/p6-phase4.md | sed 's#actions/runs/##'; } | sort -u > "$RUNNER_TEMP/run-ids.txt"
           [[ -s "$RUNNER_TEMP/run-ids.txt" ]] || { echo "::error::no run ids in k6/thresholds"; exit 1; }
           cat "$RUNNER_TEMP/run-ids.txt"
 

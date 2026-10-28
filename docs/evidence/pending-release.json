@@ -1,30 +1,5 @@
 {
   "schema": 1,
   "release": "p6-phase4",
-  "pending": [
-    {
-      "runId": "40242002499",
-      "reason": "P6 baseline band run (k6/thresholds/baseline-band.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    },
-    {
-      "runId": "40242007346",
-      "reason": "P6 baseline band run (k6/thresholds/baseline-band.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    },
-    {
-      "runId": "40242009224",
-      "reason": "P6 baseline band run (k6/thresholds/baseline-band.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    },
-    {
-      "runId": "40234172872",
-      "reason": "P6 knee bound run for Cal (k6/thresholds/knee-bounds.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    },
-    {
-      "runId": "40235802167",
-      "reason": "P6 knee bound run for Cal (k6/thresholds/knee-bounds.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    },
-    {
-      "runId": "40237156783",
-      "reason": "P6 knee bound run for Cal (k6/thresholds/knee-bounds.json). Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4 (run_ids input)."
-    }
-  ]
+  "pending": []
 }

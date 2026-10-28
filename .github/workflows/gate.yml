@@ -47,8 +47,11 @@ jobs:
       cal_bump: ${{ steps.detect.outputs.cal_bump }}
       medusa_bump: ${{ steps.detect.outputs.medusa_bump }}
       perf_gate_label: ${{ steps.detect.outputs.perf_gate_label }}
+      tolerance_checkout: ${{ steps.detect.outputs.tolerance_checkout }}
       cal_ref_b: ${{ steps.refs.outputs.cal_ref_b }}
       medusa_ref_b: ${{ steps.refs.outputs.medusa_ref_b }}
+      cal_ref_a: ${{ steps.refs.outputs.cal_ref_a }}
+      medusa_ref_a: ${{ steps.refs.outputs.medusa_ref_a }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 2
@@ -62,14 +65,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Candidate product refs (B, from the head perf.yml)
-        id: refs
-        timeout-minutes: 1
-        run: |
-          set -euo pipefail
-          echo "cal_ref_b=$(grep -oE '^ *CAL_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
-          echo "medusa_ref_b=$(grep -oE '^ *MEDUSA_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
-
       - name: Decide the triggers (load code, ref bumps, perf-gate label)
         id: detect
         timeout-minutes: 1
@@ -80,6 +75,19 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
         run: node scripts/load/gate-detect.ts
+
+      - name: Product refs (B from the head perf.yml, A from the base perf.yml)
+        id: refs
+        timeout-minutes: 1
+        env:
+          BASE_SHA: ${{ steps.detect.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          echo "cal_ref_b=$(grep -oE '^ *CAL_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
+          echo "medusa_ref_b=$(grep -oE '^ *MEDUSA_REF: [0-9a-f]{40}' .github/workflows/perf.yml | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
+          base_perf="$(git show "${BASE_SHA}:.github/workflows/perf.yml")"
+          echo "cal_ref_a=$(printf '%s\n' "$base_perf" | grep -oE '^ *CAL_REF: [0-9a-f]{40}' | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
+          echo "medusa_ref_a=$(printf '%s\n' "$base_perf" | grep -oE '^ *MEDUSA_REF: [0-9a-f]{40}' | awk '{print $2}' | head -1)" >> "$GITHUB_OUTPUT"
 
   gate-selftest:
     name: gate-selftest
@@ -135,6 +143,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
+      CAL_REF_A: ${{ needs.detect.outputs.cal_ref_a }}
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
       CAL_CHECKOUT_PATH: products/cal
@@ -167,7 +176,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Jayami123/cal
-          ref: ${{ env.CAL_REF }}
+          ref: ${{ env.CAL_REF_A }}
           path: ${{ env.CAL_CHECKOUT_PATH }}
           persist-credentials: false
 
@@ -176,7 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           head="$(git -C "${CAL_CHECKOUT_PATH}" rev-parse HEAD)"
-          if [ "$head" != "${CAL_REF}" ]; then
+          if [ "$head" != "${CAL_REF_A}" ]; then
             echo "::error::Cal HEAD ${head} does not match CAL_REF ${CAL_REF}"
             exit 1
           fi
@@ -238,7 +247,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/node_modules
-          key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
+          key: ${{ runner.os }}-cal-nm-${{ env.CAL_REF_A }}-${{ hashFiles(format('{0}/yarn.lock', env.CAL_CHECKOUT_PATH)) }}
 
       # Always run: the node_modules cache holds only the root folder, not workspace-local node_modules.
       - name: Install Cal dependencies
@@ -270,7 +279,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF_A }}-h0.2.15
 
       - name: Pull Cal images (3 tries, 15 s then 30 s)
         id: cal_pull
@@ -303,6 +312,85 @@ jobs:
           path: products-b/cal
           persist-credentials: false
 
+      # The candidate gets the same checks, install and build cache as the A side (the Cal steps above), keyed on the B ref.
+      - name: Verify the candidate Cal fork HEAD and the yarn pin (B; only on a Cal ref bump)
+        id: cal_b_verify
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: products-b/cal
+        env:
+          CAL_REF_B_EXPECTED: ${{ needs.detect.outputs.cal_ref_b }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "${CAL_REF_B_EXPECTED}" ]; then
+            echo "::error::Candidate Cal HEAD ${head} does not match the head CAL_REF ${CAL_REF_B_EXPECTED}"
+            exit 1
+          fi
+          version="$(yarn --version)"
+          if [ "$version" != "4.12.0" ]; then
+            echo "::error::yarn ${version} is not the 4.12.0 the Cal fork pins"
+            exit 1
+          fi
+
+      - name: Restore Cal Yarn cache (B; only on a Cal ref bump)
+        id: cal_yarn_b
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: products-b/cal/.yarn/cache
+          key: cal-yarn-${{ hashFiles('products-b/cal/yarn.lock') }}
+
+      - name: Restore Cal node_modules cache (B; only on a Cal ref bump)
+        id: cal_nm_b
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: products-b/cal/node_modules
+          key: ${{ runner.os }}-cal-nm-${{ needs.detect.outputs.cal_ref_b }}-${{ hashFiles('products-b/cal/yarn.lock') }}
+
+      # Always run: the node_modules cache holds only the root folder, not workspace-local node_modules.
+      - name: Install Cal dependencies (B; only on a Cal ref bump)
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 3
+        working-directory: products-b/cal
+        run: |
+          set -euo pipefail
+          yarn install --immutable
+
+      - name: Generate Cal Prisma client (B; only on a Cal ref bump)
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: products-b/cal
+        run: |
+          set -euo pipefail
+          yarn workspace @calcom/prisma prisma generate
+
+      # The candidate has no .env of its own: the harness reads the one bootstrap wrote for the base (same generated secrets, ephemeral runner).
+      - name: Prepare the candidate Cal product .env (B; only on a Cal ref bump)
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          install -m 600 "${PRODUCTS_ROOT}/cal/.env" products-b/cal/.env
+          while IFS= read -r key; do
+            if ! grep -q "^${key}=" products-b/cal/.env; then
+              echo "::error::products-b/cal/.env lacks ${key}, which the candidate .env.example names"
+              exit 1
+            fi
+          done < <(sed -n 's/^\([A-Z][A-Z0-9_]*\)=.*/\1/p' products-b/cal/.env.example)
+
+      - name: Restore Cal build cache (B; only on a Cal ref bump)
+        id: cal_build_b
+        if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' && steps.cal_b.outcome == 'success' }}
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: products-b/cal/apps/web/.next
+          key: ${{ runner.os }}-cal-next-${{ needs.detect.outputs.cal_ref_b }}-h0.2.15
+
       - name: A/B switch 1 (A, cal; runs only on a ref bump)
         id: sw1
         if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
@@ -330,10 +418,11 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::A arm 1 INVALID (not counted)"; status=0; fi
           exit "$status"
 
+      # The first B start builds the candidate when the build cache misses: the harness next build cap is 45 min, plus the tRPC build (10 min).
       - name: A/B switch 2 (B, cal; runs only on a ref bump)
         id: sw2
         if: ${{ needs.detect.outputs.cal_bump == 'true' && !cancelled() && steps.cal_up.outcome == 'success' }}
-        timeout-minutes: 6
+        timeout-minutes: 60
         working-directory: p6
         env:
           PRODUCTS_ROOT: ${{ github.workspace }}/products-b
@@ -465,18 +554,18 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
           exit "$status"
 
-      - name: A/B verdict (P6-CAL-LOAD-003; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+      - name: A/B verdict (P6-CAL-LOAD-003; the tolerance is read from the base on a pull request, from the head on a push or dispatch; no_reference when absent)
         id: verdict
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        working-directory: p6-base
+        working-directory: p6
         run: |
           set -euo pipefail
           a=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
           b=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-CAL-LOAD-003/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
-          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product cal --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-cal.json"
+          node scripts/load/gate-ab.ts --product cal --tolerance "$GITHUB_WORKSPACE/${{ needs.detect.outputs.tolerance_checkout }}/k6/thresholds/tolerance.json" --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-cal.json"
 
       - name: Job summary (LOAD table)
         if: ${{ !cancelled() }}
@@ -515,6 +604,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
+      MEDUSA_REF_A: ${{ needs.detect.outputs.medusa_ref_a }}
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
       MEDUSA_CHECKOUT_PATH: products/medusa-dtc-starter
@@ -555,7 +645,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Jayami123/medusa-dtc-starter
-          ref: ${{ env.MEDUSA_REF }}
+          ref: ${{ env.MEDUSA_REF_A }}
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}
           persist-credentials: false
 
@@ -564,7 +654,7 @@ jobs:
         run: |
           set -euo pipefail
           head="$(git -C "${MEDUSA_CHECKOUT_PATH}" rev-parse HEAD)"
-          if [ "$head" != "${MEDUSA_REF}" ]; then
+          if [ "$head" != "${MEDUSA_REF_A}" ]; then
             echo "::error::Medusa HEAD ${head} does not match MEDUSA_REF ${MEDUSA_REF}"
             exit 1
           fi
@@ -615,7 +705,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.PNPM_STORE_PATH }}
-          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF_A }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
 
       - name: Install Medusa dependencies
         timeout-minutes: 1
@@ -630,7 +720,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF_A }}-h0.2.15
 
       - name: Generate the CI admin password
         timeout-minutes: 1
@@ -668,6 +758,53 @@ jobs:
           path: products-b/medusa-dtc-starter
           persist-credentials: false
 
+      # The candidate gets the same checks, install and build cache as the A side (the Medusa checkout above), keyed on the B ref.
+      - name: Verify the candidate Medusa fork HEAD and the pnpm pin (B; only on a Medusa ref bump)
+        id: medusa_b_verify
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' && steps.medusa_b.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: products-b/medusa-dtc-starter
+        env:
+          MEDUSA_REF_B_EXPECTED: ${{ needs.detect.outputs.medusa_ref_b }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "${MEDUSA_REF_B_EXPECTED}" ]; then
+            echo "::error::Candidate Medusa HEAD ${head} does not match the head MEDUSA_REF ${MEDUSA_REF_B_EXPECTED}"
+            exit 1
+          fi
+          version="$(pnpm --version)"
+          if [ "$version" != "10.11.1" ]; then
+            echo "::error::pnpm ${version} is not the 10.11.1 the Medusa fork pins"
+            exit 1
+          fi
+
+      - name: Restore pnpm store cache (B; only on a Medusa ref bump)
+        id: medusa_pnpm_b
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' && steps.medusa_b.outcome == 'success' }}
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ needs.detect.outputs.medusa_ref_b }}-${{ hashFiles('products-b/medusa-dtc-starter/pnpm-lock.yaml') }}
+
+      - name: Install Medusa dependencies (B; only on a Medusa ref bump)
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' && steps.medusa_b.outcome == 'success' }}
+        timeout-minutes: 3
+        working-directory: products-b/medusa-dtc-starter
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Restore Medusa build cache (B; only on a Medusa ref bump)
+        id: medusa_build_b
+        if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' && steps.medusa_b.outcome == 'success' }}
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: products-b/medusa-dtc-starter/apps/backend/.medusa/server
+          key: ${{ runner.os }}-medusa-build-${{ needs.detect.outputs.medusa_ref_b }}-h0.2.15
+
       - name: A/B switch 1 (A, medusa; runs only on a ref bump)
         id: sw1
         if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
@@ -695,10 +832,11 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::A arm 1 INVALID (not counted)"; status=0; fi
           exit "$status"
 
+      # The first B start builds the candidate when the build cache misses: the harness build cap is 10 min, plus the boot.
       - name: A/B switch 2 (B, medusa; runs only on a ref bump)
         id: sw2
         if: ${{ needs.detect.outputs.medusa_bump == 'true' && !cancelled() && steps.medusa_up.outcome == 'success' }}
-        timeout-minutes: 1
+        timeout-minutes: 12
         working-directory: p6
         env:
           PRODUCTS_ROOT: ${{ github.workspace }}/products-b
@@ -830,18 +968,18 @@ jobs:
           if [ "$status" -eq 3 ]; then echo "::warning::B arm 3 INVALID (not counted)"; status=0; fi
           exit "$status"
 
-      - name: A/B verdict (P6-MED-LOAD-002; the gate reads the base checkout's committed A/A tolerance, or stops at no_reference)
+      - name: A/B verdict (P6-MED-LOAD-002; the tolerance is read from the base on a pull request, from the head on a push or dispatch; no_reference when absent)
         id: verdict
         if: ${{ !cancelled() }}
         timeout-minutes: 1
-        working-directory: p6-base
+        working-directory: p6
         run: |
           set -euo pipefail
           a=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/a-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && a="${a:+${a},}$d"; done
           b=""
           for d in "$GITHUB_WORKSPACE"/p6/results/ab/b-*/P6-MED-LOAD-002/*; do [ -d "$d" ] && b="${b:+${b},}$d"; done
-          node "$GITHUB_WORKSPACE/p6/scripts/load/gate-ab.ts" --product medusa --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-medusa.json"
+          node scripts/load/gate-ab.ts --product medusa --tolerance "$GITHUB_WORKSPACE/${{ needs.detect.outputs.tolerance_checkout }}/k6/thresholds/tolerance.json" --a "$a" --b "$b" --out "$GITHUB_WORKSPACE/p6/results/ab/gate-verdict-medusa.json"
 
       - name: Job summary (LOAD table)
         if: ${{ !cancelled() }}
