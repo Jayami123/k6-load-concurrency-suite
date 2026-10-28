@@ -1,0 +1,12 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40605925118",
+    "file": "aa-cal/P6-CAL-LOAD-003/20261028T000739Z-ab0859c3/k6-main-summary.json"
+  },
+  "metrics": {
+    "http_req_duration": {
+      "p(95)": 59.50627204999999
+    }
+  }
+}

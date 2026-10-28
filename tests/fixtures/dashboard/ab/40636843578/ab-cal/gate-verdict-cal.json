@@ -1,0 +1,18 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40636843578",
+    "file": "ab-cal/gate-verdict-cal.json"
+  },
+  "product": "cal",
+  "caseId": "P6-CAL-LOAD-003",
+  "a": [86.6451533, 83.02161515, 83.48428944999999],
+  "b": [83.32342164999996, 82.27255435, 85.54178165],
+  "ratios": [0.9980730769698126, 0.9854854714823233, 1.0246452621631557],
+  "verdict": "PASS",
+  "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel",
+  "tolerance": {
+    "metric": "p95Ms",
+    "tolerance": 0.5630181754033532
+  }
+}

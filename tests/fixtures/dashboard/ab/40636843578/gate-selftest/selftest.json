@@ -1,0 +1,27 @@
+{
+  "_source": {
+    "release": "p6-phase4",
+    "githubRunId": "40636843578",
+    "file": "gate-selftest/selftest.json"
+  },
+  "p95": {
+    "a": [26.104919, 25.62725915, 25.534377],
+    "slow": [85.97103755, 85.941778, 85.8361133],
+    "same": [25.926499, 25.67494, 25.597466]
+  },
+  "slowed": {
+    "verdict": "FAIL (REGRESSION)",
+    "ratios": [3.3546715646335517, 3.3535298291936146, 3.349406692209611],
+    "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel",
+    "reasons": ["every B arm is above 1.20 x the A median"]
+  },
+  "unchanged": {
+    "verdict": "PASS",
+    "ratios": [1.0116766232490375, 1.0018605520676602, 0.9988374429811001],
+    "rule": "repeated regression: every B arm's ratio is above 1 + toleranceRel"
+  },
+  "check": {
+    "ok": true,
+    "reasons": []
+  }
+}
