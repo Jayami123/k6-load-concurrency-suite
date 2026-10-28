@@ -239,8 +239,8 @@ jobs:
     needs: cal-soak
     if: ${{ always() && (inputs.product == 'medusa' || ((github.event_name == 'schedule' || inputs.product == 'all') && needs.cal-soak.result == 'success')) }}
     runs-on: ubuntu-24.04
-    # 120 min: setup steps 20 (copied from medusa-knee, includes Start Medusa 3) + soak 165 + summary 2 + scan 2 + upload 5
-    # + stop 1 = 195, job 225, margin 30. 30 min: 20 + 45 + 10 = 75, job 105, margin 30.
+    # 120 min: setup steps 20 (copied from medusa-knee, includes Start Medusa 3) + soak 165 + summary 2 + scan 2 + stage 1 + upload 5
+    # + stop 1 = 196, job 225, margin 29. 30 min: 20 + 45 + 10 + 1 = 76, job 105, margin 29.
     timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 225 || 105 }}
     env:
       P6_WORKING_DIRECTORY: p6
@@ -390,12 +390,20 @@ jobs:
         timeout-minutes: 2
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         run: node scripts/write-ci-job-summary.ts
+      - name: Stage the results under load-medusa/
+        if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          mkdir -p stage/load-medusa
+          cp -a results/load/. stage/load-medusa/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.token_scan.outcome == 'success' }}
         timeout-minutes: 5
         with:
           name: soak-medusa-${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) }}
-          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/
+          path: ${{ env.P6_WORKING_DIRECTORY }}/stage/
           if-no-files-found: error
           retention-days: 90
       - name: Stop Medusa (harness down)
