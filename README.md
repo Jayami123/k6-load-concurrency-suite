@@ -1066,7 +1066,13 @@ one in `src/load/cases.ts` (`expect`), with the reasoning in the Task 1 plan, se
 
 ## Dashboard
 
-The evidence is shown on a static page built from the release artefacts (`scripts/dashboard/build-site.ts`, published by `.github/workflows/pages.yml` after each evidence release). Each showcase states what it proves.
+The evidence is shown on the GitHub Pages site of this repository, a static page built from the
+release artefacts (`scripts/dashboard/build-site.ts`, published by `.github/workflows/pages.yml`
+after each evidence release). The five chart families are knee curves, soak trends, A/A noise,
+A/B ratios, and race tallies.
+
+The machine-readable findings data file is [`docs/findings.json`](docs/findings.json). The Known
+product bugs table in this README is the human view of the same findings.
 
 - **Knee chart with the first saturated resource.** This shows where each product's knee range sits and which resource gave first (rule in src/load/knee/first-saturated.ts). It proves the stop rule finds a range, not a single maximum: the range and the run IDs are the evidence, and the label is 'knee range, environment-bound'.
 - **Soak leak check.** This shows the RSS, fds and connection slope after warm-up and the plateau verdict, with the DB growth reported separately. It proves that growth which does not plateau is flagged and that data growth is not read as a leak.
