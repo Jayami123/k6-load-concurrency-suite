@@ -3,8 +3,18 @@
 import { escapeLabel, type SiteModel } from "../site-model.ts";
 import type { PendingFile } from "../release-plan.ts";
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
+import type { KneeCurve } from "../knee/read-curves.ts";
+import type { SoakTrend } from "../soak/read-trends.ts";
+import type { AaSeries } from "../gate/read-aa.ts";
+import type { AbGate } from "../gate/read-ab.ts";
+import type { RaceTally } from "../races/read-tallies.ts";
 import { kneeRangeSvg } from "./svg.ts";
 import { PAGE_CSS } from "./style.ts";
+import { renderKneeCurves } from "./knee-chart.ts";
+import { renderSoakTrends } from "./soak-chart.ts";
+import { renderAaChart } from "./aa-chart.ts";
+import { renderAbChart } from "./ab-chart.ts";
+import { renderRaceChart } from "./race-chart.ts";
 
 export const REPO = "https://github.com/Jayami123/k6-load-concurrency-suite";
 
@@ -27,6 +37,11 @@ export interface PageContext {
   knee?: { release: string; products: KneeProduct[] };
   soak?: { release: string; calibrated: number; products: number };
   observations: Array<{ id: string; title: string; file: string }>; // docs/observations/*.md, read at build time
+  kneeCurves?: KneeCurve[];
+  soakTrends?: SoakTrend[];
+  aa?: AaSeries[];
+  ab?: AbGate[];
+  races?: RaceTally[];
 }
 
 export const DEFAULT_CONTEXT: PageContext = {
@@ -92,6 +107,30 @@ function kneeBody(ctx: PageContext): string {
     p.runIds.map((id) => `<a href="${runUrl(id)}">${escapeLabel(id)}</a>`),
   );
   return `<figure>${svg}<figcaption>Knee range per product from <code>k6/thresholds/knee-bounds.json</code>, release ${escapeLabel(knee.release)}. Bars run from the lower to the upper bound. Runs: ${[...new Set(sources)].join(", ")}. The first saturated resource is not in the committed bounds yet.</figcaption></figure>`;
+}
+
+function raceCaseId(row: RaceTally): string | undefined {
+  const rec = row as Record<string, unknown>;
+  return typeof rec.caseId === "string" ? rec.caseId : undefined;
+}
+
+function chartBody(id: string, ctx: PageContext): string {
+  if (id === "knee") return kneeBody(ctx) + renderKneeCurves(ctx.kneeCurves ?? []);
+  if (id === "soak") return renderSoakTrends(ctx.soakTrends ?? []);
+  if (id === "aa-noise") return renderAaChart(ctx.aa ?? []);
+  if (id === "ab-gate") return renderAbChart(ctx.ab ?? []);
+  if (
+    id === "promo" ||
+    id === "cancel" ||
+    id === "invariants" ||
+    id === "two-instance" ||
+    id === "twenty"
+  ) {
+    const spec = CARD_SPECS.find((s) => s.id === id);
+    const caseIds = spec?.caseIds ?? [];
+    return renderRaceChart((ctx.races ?? []).filter((r) => caseIds.includes(raceCaseId(r) ?? "")));
+  }
+  return "";
 }
 
 /** The summary strip: each fact is read from a file or a card at build time; an unread source reads "pending". */
@@ -219,7 +258,7 @@ export function renderSite(
 ): string {
   const cards = CARD_SPECS.map((spec) => computeCard(spec, model.verdicts));
   const cardBlocks = cards
-    .map((c) => cardHtml(c, runs, charts, c.spec.id === "knee" ? kneeBody(ctx) : ""))
+    .map((c) => cardHtml(c, runs, charts, chartBody(c.spec.id, ctx)))
     .join("\n");
   const nav = cards
     .map((c) => `<li><a href="#${c.spec.id}">${escapeLabel(c.spec.title)}</a></li>`)

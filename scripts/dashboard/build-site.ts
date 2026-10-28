@@ -6,7 +6,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -16,6 +15,8 @@ import {
   type VerdictInput,
 } from "../../src/dashboard/site-model.ts";
 import { parsePendingFile, type PendingFile } from "../../src/dashboard/release-plan.ts";
+import { collectFromArtefactDir, type CollectedEvidence } from "../../src/dashboard/collect.ts";
+import { walkVerdicts } from "../../src/dashboard/verdicts.ts";
 import {
   DEFAULT_CONTEXT,
   renderSite,
@@ -66,32 +67,6 @@ export function readObservations(dir: string): PageContext["observations"] {
     });
 }
 
-function walkVerdicts(root: string): Array<{ dir: string; verdict: VerdictInput }> {
-  const out: Array<{ dir: string; verdict: VerdictInput }> = [];
-  const visit = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      const p = path.join(dir, name);
-      if (statSync(p).isDirectory()) visit(p);
-      else if (name === "verdict.json") {
-        const v = JSON.parse(readFileSync(p, "utf8"));
-        const caseId = path.basename(path.dirname(path.dirname(p)));
-        out.push({
-          dir: path.dirname(p),
-          verdict: {
-            runId: path.basename(path.dirname(p)),
-            caseId,
-            outcome: String(v.outcome ?? ""),
-            validity: String(v.validity?.verdict ?? "INVALID"),
-            reasons: (v.reasons ?? []).map(String),
-          },
-        });
-      }
-    }
-  };
-  visit(root);
-  return out;
-}
-
 /** The build time as "YYYY-MM-DD HH:MM UTC". The clock is read here, never inside the renderer. */
 function utcStamp(date: Date): string {
   return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
@@ -104,13 +79,24 @@ function main(argv: string[]): void {
     throw new Error("usage: build-site.ts <outDir> <dir>=<runId>...");
   const runs = new Map<string, string>();
   const verdicts: VerdictInput[] = [];
+  const kneeCurves: CollectedEvidence["kneeCurves"] = [];
+  const soakTrends: CollectedEvidence["soakTrends"] = [];
+  const aa: CollectedEvidence["aa"] = [];
+  const ab: CollectedEvidence["ab"] = [];
+  const races: CollectedEvidence["races"] = [];
   const chartCopies: Array<{ from: string; to: string }> = [];
   const charts = new Map<string, string>();
   for (const source of sources) {
     const [dir = "", githubRunId = ""] = source.split("=");
     if (!existsSync(dir)) throw new Error(`TEST BUG: artefact folder ${dir} missing`);
-    for (const { dir: runDir, verdict } of walkVerdicts(dir)) {
-      verdicts.push(verdict);
+    const collected = collectFromArtefactDir(dir, githubRunId);
+    verdicts.push(...collected.verdicts);
+    kneeCurves.push(...collected.kneeCurves);
+    soakTrends.push(...collected.soakTrends);
+    aa.push(...collected.aa);
+    ab.push(...collected.ab);
+    races.push(...collected.races);
+    for (const { dir: runDir, verdict } of walkVerdicts(dir, githubRunId)) {
       runs.set(verdict.runId, githubRunId);
       const chart = path.join(runDir, "chart-main.html");
       if (existsSync(chart)) {
@@ -133,6 +119,11 @@ function main(argv: string[]): void {
     knee: readKnee(path.join("k6", "thresholds", "knee-bounds.json")),
     soak: readSoak(path.join("k6", "thresholds", "soak-bounds.json")),
     observations: readObservations(path.join("docs", "observations")),
+    kneeCurves,
+    soakTrends,
+    aa,
+    ab,
+    races,
   };
   writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending, context));
   for (const c of chartCopies) {

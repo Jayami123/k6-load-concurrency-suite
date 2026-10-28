@@ -1,5 +1,8 @@
 // The dashboard site model (plan Phase 4b task 13 §6.2). Pure: the caller reads the artefacts, this module decides what the site shows.
 // A showcase without its data is pending with its reason; INVALID runs are listed and never plotted.
+import type { VerdictInput } from "./verdicts.ts";
+export type { VerdictInput };
+
 export type ShowcaseId = "knee" | "soak" | "two-instance";
 
 export interface ShowcaseState {
@@ -15,14 +18,6 @@ export interface SiteModel {
   showcases: ShowcaseState[];
   invalidRuns: Array<{ runId: string; caseId: string; reasons: string[] }>; // listed, never plotted
   verdicts: VerdictInput[]; // every verdict the page is computed from (the cards read these, nothing else)
-}
-
-export interface VerdictInput {
-  runId: string;
-  caseId: string;
-  outcome: string;
-  validity: string;
-  reasons: string[];
 }
 
 const NOTES: Record<ShowcaseId, string> = {
