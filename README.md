@@ -943,9 +943,9 @@ recorded as findings and are never called passes.
 **Outcome word in these runs.** In the three runs above, `verdict.json` of `P6-TW-LOAD-004` and `P6-TW-LOAD-009` shows
 `outcome: "PASS"`, while the stage verdict (`reconcile.data.lostUpdate.verdict` and `reconcile.data.fairness.verdict`) is
 FINDING in all three runs. The runner did not read the stage verdict at the time. The FINDINGs stand, and this closeout
-reports them as FINDINGs. A fix follows in its own PR on `fix/2026-10-29-p6-finding-outcome`: a VALID run whose stage
-verdict is FINDING gets outcome `FINDING`, prints `<case> FINDING (<detail>)` and exits 0. Until that PR merges, read the
-stage verdict, not the outcome word, for these two cases.
+reports them as FINDINGs. The fix (`fix/2026-10-29-p6-finding-outcome`) makes a VALID run whose stage verdict is FINDING
+report outcome `FINDING`, print `<case> FINDING (<detail>)` and exit 0. Runs made before that fix keep the PASS word in
+`verdict.json`; read their stage verdict.
 
 #### `P6-TW-LOAD-004` variant B (FINDING, not a pass)
 
