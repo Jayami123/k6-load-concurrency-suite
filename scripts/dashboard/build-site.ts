@@ -6,9 +6,12 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { buildWeeklyTrend, type ReleaseEntry } from "../../src/dashboard/soak/weekly-trend.ts";
+import { latestWeeklyWeek } from "../../src/load/soak/weekly-summary.ts";
 import {
   buildSiteModel,
   SOAK_CASE_IDS,
@@ -85,20 +88,78 @@ function readReleasePlan(file: string): ReleasePlan {
   return plan;
 }
 
-/** Usage: build-site.ts <outDir> [--plan <plan.json>] <artefactDir>=<githubRunId> ... */
+const USAGE =
+  "usage: build-site.ts <outDir> [--plan <plan.json>] [--weekly-soak <dir>] <dir>=<runId>...";
+
+/** Removes "<name> <value>" from args and returns the value; undefined when the flag is absent. */
+function takeFlag(args: string[], name: string): string | undefined {
+  const at = args.indexOf(name);
+  if (at === -1) return undefined;
+  const value = args[at + 1];
+  if (value === undefined || value.startsWith("--")) throw new Error(USAGE);
+  args.splice(at, 2);
+  return value;
+}
+
+function readText(file: string): string | null {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** release.json as the releases command wrote it. A missing or unreadable file reads as an incomplete release (sums null). */
+function releaseMeta(file: string): {
+  draft: boolean;
+  assets: string[] | null;
+  sums: string[] | null;
+} {
+  try {
+    const j = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    const names = (v: unknown) =>
+      Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
+    return { draft: j.draft === true, assets: names(j.assets), sums: names(j.sums) };
+  } catch {
+    return { draft: false, assets: null, sums: null };
+  }
+}
+
+/**
+ * The p6-soak-* releases the soak-summaries job wrote, one folder per tag (release.json and the summary files). A missing
+ * directory is no releases (the first build before a week is captured). A bad release.json reads as an incomplete release.
+ */
+export function readWeeklySoak(dir: string): ReleaseEntry[] {
+  if (!existsSync(dir)) {
+    console.log(`weekly soak: no directory ${dir}; no weekly releases`);
+    return [];
+  }
+  return readdirSync(dir)
+    .filter((tag) => tag.startsWith("p6-soak-") && statSync(path.join(dir, tag)).isDirectory())
+    .sort()
+    .map((tag) => {
+      const folder = path.join(dir, tag);
+      const onDisk = readdirSync(folder).sort();
+      const meta = releaseMeta(path.join(folder, "release.json"));
+      return {
+        tag,
+        draft: meta.draft,
+        assets: meta.assets ?? onDisk,
+        sums: meta.sums,
+        files: onDisk
+          .filter((name) => /^soak-summary-.+\.json$/.test(name))
+          .map((name) => ({ name, text: readText(path.join(folder, name)) })),
+      };
+    });
+}
+
+/** Usage: build-site.ts <outDir> [--plan <plan.json>] [--weekly-soak <dir>] <artefactDir>=<githubRunId> ... */
 function main(argv: string[]): void {
   const args = [...argv];
-  let planPath: string | undefined;
-  const flag = args.indexOf("--plan");
-  if (flag !== -1) {
-    planPath = args[flag + 1];
-    if (planPath === undefined || planPath.startsWith("--"))
-      throw new Error("usage: build-site.ts <outDir> [--plan <plan.json>] <dir>=<runId>...");
-    args.splice(flag, 2);
-  }
+  const planPath = takeFlag(args, "--plan");
+  const weeklyDir = takeFlag(args, "--weekly-soak");
   const [outDir, ...sources] = args;
-  if (!outDir || sources.length === 0)
-    throw new Error("usage: build-site.ts <outDir> [--plan <plan.json>] <dir>=<runId>...");
+  if (!outDir || sources.length === 0) throw new Error(USAGE);
   const releasePlan = planPath === undefined ? undefined : readReleasePlan(planPath);
   const runs = new Map<string, string>();
   const verdicts: VerdictInput[] = [];
@@ -148,6 +209,10 @@ function main(argv: string[]): void {
     aa,
     ab: preferReleasedAb(ab),
     races,
+    weeklySoak:
+      weeklyDir === undefined
+        ? undefined
+        : buildWeeklyTrend(readWeeklySoak(weeklyDir), latestWeeklyWeek(new Date())),
   };
   writeFileSync(path.join(outDir, "index.html"), renderSite(model, runs, charts, pending, context));
   for (const c of chartCopies) {

@@ -131,3 +131,23 @@ describe("soak-release.yml: permissions, timeouts, triggers, concurrency and the
     assert.match(publish, /gh release edit "\$TAG" --draft=false --latest=false/);
   });
 });
+
+describe("pages.yml reads the weekly soak releases", () => {
+  const PAGES = readFileSync(".github/workflows/pages.yml", "utf8");
+  const PAGES_JOBS = jobsOf(PAGES);
+
+  it("workflow_run lists soak-release; build needs soak-summaries; build (margin 10) and soak-summaries (margin 11) keep C3; the deploy job is not asserted here", () => {
+    assert.match(PAGES, /workflows: \["evidence-release", "soak-release"\]/);
+    assert.match(PAGES_JOBS.get("build") ?? "", /\n {4}needs: soak-summaries\n/);
+    assert.deepEqual(budgetOf(PAGES_JOBS.get("build") ?? ""), { timeout: 20, caps: 10 });
+    assert.deepEqual(budgetOf(PAGES_JOBS.get("soak-summaries") ?? ""), { timeout: 20, caps: 9 });
+    assert.ok(
+      20 - budgetOf(PAGES_JOBS.get("build") ?? "").caps >= 10,
+      "build keeps a 10 min margin",
+    );
+    assert.ok(
+      20 - budgetOf(PAGES_JOBS.get("soak-summaries") ?? "").caps >= 10,
+      "soak-summaries keeps a 10 min margin",
+    );
+  });
+});
