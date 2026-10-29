@@ -110,8 +110,10 @@ export async function reconcileTwenty(
   pool: pg.Pool,
   cfg: TwentyAuditConfig,
   clientCount: number | undefined,
+  counts?: BackgroundCounts, // additive, optional (added at the plan review, §6.7): the patch, 5xx and 429 counters
 ): Promise<AuditResult>;
 // clientCount = the k6 counter p6_tw_created. Returns the AuditResult shape of src/load/reconcile/types.ts (existing).
+// Without `counts` the patch, 5xx and 429 checks are skipped and reported as "pending", so Tasks 4-6 can call it unchanged.
 ```
 
 Registration (one line each, `src/load/reconcile/index.ts`, existing): a `case "twenty":` in the `reconcile()` switch
@@ -205,7 +207,7 @@ clock skew), ENV (setup failed before load). This is a functional-load label: it
 **`P6-TW-LOAD-010` (gated, worker queue drain).** After a write burst on the background journey, the BullMQ backlog of
 the Twenty worker must drain. The question is how long the backlog takes to reach zero. Oracle: sample the queue
 lengths every second with read-only Redis commands (`LLEN` of `:wait` and `:active`, `ZCARD` of `:delayed`, the
-pattern in §5.6). Verdicts: PASS (the backlog reaches zero inside the drain window, and the drain time is recorded),
+whitelist in §8). Verdicts: PASS (the backlog reaches zero inside the drain window, and the drain time is recorded),
 FAIL (the backlog never reaches zero inside the window; a PRODUCT BUG candidate, SUSPECTED until it repeats, rule 13),
 INVALID (the monitor could not read the queue more than once in five seconds), NOT RUN (the gate is closed, §12). The
 drain window is a bound for the wait, not a latency target; the build records it from its own probe (Q6).
@@ -223,43 +225,43 @@ Every probe below ran in this session on 2026-10-29 (Asia/Colombo, approximately
 Nothing was written to the Twenty database. Secrets: the harness dev credentials were read in memory only; no token,
 password, hash or pk key was printed. Timings are session facts (rule P4), not published numbers.
 
-| #   | fact                                                                                | evidence (path:line, command + output, or run URL)                                                                                                                                                                                                                                                                                                                                                                                                                                  | what it changes in the design                                                                                                                                                        |
-| --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P1  | Twenty fork is at `TWENTY_REF` `7cbdfec6…`                                          | `bash scripts/bootstrap.sh twenty` exit 0 in 12 s; `git -C /home/user/products/twenty-CRM rev-parse HEAD` = `7cbdfec6f346b43715bc2056932f4fad5886f733`. The fork is public; `add_repo` returned read access without attaching.                                                                                                                                                                                                                                                      | The job template clones the fork exactly as `perf.yml` does (§2.8).                                                                                                                  |
-| P2  | Image pull through the CI helper                                                    | `scripts/ci/compose-pull.sh -p qa-harness-twenty -f docker-compose.yml -f <overlay>` exit 0, 26 s; `Image twentycrm/twenty:v2.44.0 Pulled`.                                                                                                                                                                                                                                                                                                                                         | Pull cap 6 min is enough (§2.8 step 7).                                                                                                                                              |
-| P3  | `npm run up:twenty` starts 5 containers, healthy in 127 s                           | exit 0, 127 s. `docker ps` after up: `qa-harness-twenty-server-1` (healthy), `-worker-1`, `-db-1` (healthy), `-redis-1` (healthy), `-mailpit-1` (healthy). App `http://127.0.0.1:3002/healthz` HTTP 200 (harness output).                                                                                                                                                                                                                                                           | Up cap 12 min (§2.8 step 8). Container names are `qa-harness-twenty-<service>-1`.                                                                                                    |
-| P4  | Seed creates the workspace and four users                                           | `npm run seed:twenty` exit 0, 76 s; output `twenty seed: created=true users=4`.                                                                                                                                                                                                                                                                                                                                                                                                     | Seed cap 10 min (§2.8 step 9). Seed workspace subdomain `apple`, display name `Apple` (`src/twenty/env.ts` defaults).                                                                |
-| P5  | Health smoke passes                                                                 | `npm run smoke:twenty` exit 0, `5/5 shared iters`.                                                                                                                                                                                                                                                                                                                                                                                                                                  | Step 10 unchanged.                                                                                                                                                                   |
-| P6  | Auth for k6: sign-in then workspace token exchange works; token length and lifetime | `signInWorkspace` (`src/twenty/auth.ts`, existing) on `http://127.0.0.1:3002`: token length 668 (length only); JWT claims `sub,userId,workspaceId,workspaceMemberId,userWorkspaceId,type,authProvider,isImpersonating,iat,exp`; `exp - iat` = 1800 s. Token lifetime from `ACCESS_TOKEN_EXPIRES_IN = '30m'` (`config-variables.ts:348`).                                                                                                                                            | The runner mints the token in setup (not an API key, Q10). Runs longer than about 25 min need a re-sign-in (Q12).                                                                    |
-| P7  | An invalid bearer is refused with 401                                               | `curl -H 'Authorization: Bearer invalid.token.value' http://127.0.0.1:3002/rest/companies?limit=1` → HTTP 401.                                                                                                                                                                                                                                                                                                                                                                      | The error-code extra (§11, EXTRA-C) expects 401 and never 500.                                                                                                                       |
-| P8  | Limiter at image defaults, user workspace token, 150 requests                       | Probe script (scratchpad, not in repo): 100 × `GET /rest/companies?limit=1` → `{"200":100}`; 30 × `POST /graphql` companies → `{"200":30}`; 20 × `POST /metadata currentUser` → `{"200":20}`. No `retry-after` or `x-ratelimit-*` header on any response; no error code.                                                                                                                                                                                                            | At image defaults the user-token path is not rate-limited in this burst. The roadmap's "every run is limited at 100/min" does not hold for user tokens (§10, conflict 1).            |
-| P9  | Limiter state: no speed keys after the burst                                        | `docker compose -p qa-harness-twenty … exec -T redis redis-cli --scan --pattern '*speed*' \| wc -l` → `0`. `DBSIZE` 523; key prefixes `bull` 333, `engine` 189, `module` 1.                                                                                                                                                                                                                                                                                                         | The limiter writes only for buckets that exist; a user token creates none (source: `usage-limit-speed.service.ts` `consumeTokens` runs only when buckets exist).                     |
-| P10 | Which spenders the limiter binds (source)                                           | `usage-limit-definitions.constant.ts:15` (`spenderType: 'apiKey'`), `:19–21` (`API_RATE_LIMITING_SHORT_TTL_IN_MS`, `…_SHORT_LIMIT`, `perWorkspace`), `:28–34` (`…_LONG_*`, overridable), `:41` (`spenderType: 'application'`), `:45–47` (`APPLICATION_API_RATE_LIMITING_TTL_IN_MS`, `…_LIMIT`, `crossWorkspace`). There is no default for `userWorkspace`. `build-speed-buckets.util.ts:67` filters defaults by spender type.                                                       | Only API-key and application clients are limited. The functional profile matters for API-key clients only (§6.3, conflict 2).                                                        |
-| P11 | Headers and status on a limiter hit (source, NOT PROBED live)                       | `build-rate-limit-response-headers.util.ts:10–13`: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`. REST maps the limit to 429: `usage-limit-to-rest-api-exception-handler.util.ts:22`. GraphQL maps the code with `usageLimitToGraphqlApiExceptionHandler` (`usage-limit-graphql-api-exception.filter.ts:27`).                                                                                                                                    | Task 6 needs these; a 429 needs an API key, which is a write, so it is not probed here (NOT PROBED, §5 re-check 6).                                                                  |
-| P12 | Limiter state location and reset                                                    | Redis 8.10.3 service `redis` (`packages/twenty-docker/docker-compose.yml:128`, no volume: `docker inspect` Mounts empty). Key shape from `build-speed-bucket-key.util.ts:28`: `{<workspaceId>}:speed:<resourceType>:<operationType>:<spenderType>:<spenderId                                                                                                                                                                                                                        | ->:<windowSec>`. Script `usage-limit:try-consume-token-buckets` (`try-consume-token-buckets-script.constant.ts:7`). `down:twenty` removed the Redis container, so its state is gone. | A fresh `up` starts with empty limiter state, so Task 6 needs no Redis flush and P6 never writes Redis (Q9). |
-| P13 | The limiter fails open                                                              | `usage-limit-speed.service.ts:154` and `:166` return `fullAdmission` when the cache store fails (`CacheStorageException`).                                                                                                                                                                                                                                                                                                                                                          | A 500 cannot come from the limiter; a Redis outage shows as no 429 (noted for Task 6).                                                                                               |
-| P14 | Speed limiter binds only root query-runner operations                               | `common-base-query-runner.service.ts:135–136`: `consumeApiSpeedLimit` runs when `isRootOperation`. `/metadata` auth calls do not go through it.                                                                                                                                                                                                                                                                                                                                     | Auth calls are not limited by the API speed limiter (matches P8's auth-path burst).                                                                                                  |
-| P15 | Auth-path throttle exists for password reset                                        | `auth.resolver.ts:126–127`: `PASSWORD_RESET_EMAIL_RATE_LIMIT_MAX = 3`, window 15 min; `:1127–1131` `tokenBucketThrottleOrThrow('password-reset-email:<email>', …)`.                                                                                                                                                                                                                                                                                                                 | Task 5 must request each reset at most three times per email per 15 min (cross-task note, §10).                                                                                      |
-| P16 | Captcha is off when no driver is set                                                | `captcha-driver.factory.ts:27–28`: `if (!driver) return 'disabled'`. `CaptchaGuard` is on `emailPasswordResetLink` (`auth.resolver.ts`). Whether `validate()` passes when disabled: NOT PROBED.                                                                                                                                                                                                                                                                                     | Cross-task note for Task 5 only.                                                                                                                                                     |
-| P17 | Password reset token expiry                                                         | `config-variables.ts:143`: `PASSWORD_RESET_TOKEN_EXPIRES_IN = '5m'`. `reset-password.service.ts:106–117` computes `expiresAt` from it.                                                                                                                                                                                                                                                                                                                                              | The `P6-TW-LOAD-011` gate (expiry ≤ 15 min) looks open for Task 5 (cross-task note, §10).                                                                                            |
-| P18 | Queue is BullMQ on Redis; queue keys readable with read-only commands               | `BullMQDriver` (`src/engine/core-modules/message-queue/drivers/bullmq.driver.ts`, fork); `docker compose … exec -T redis redis-cli --scan --pattern 'bull:*'` → 333 keys: `bull:cron-queue:repeat` 77, `bull:webhook-queue:metrics`, `bull:workspace-queue:meta`, `bull:workflow-queue:stalled-check`, `bull:workspace-destroy-queue:*`. `:completed` is a sorted set (`ZCARD` 193 and 17). No `:wait` key at idle (empty list = no key).                                           | `P6-TW-LOAD-010` gate: job state is readable without writes through read-only Redis commands (Q6). Redis is not published to the host; the read goes through `docker compose exec`.  |
-| P19 | The harness adds no rate-limit env                                                  | `node_modules/qa-portfolio-harness/docker/twenty.compose.yml` has no `API_RATE_LIMITING` (grep returns none). The image env has only `PATH`, `NODE_VERSION`, `NODE_ENV` (`docker image inspect`). `twenty.adapter.ts` passes only `TAG` and `TWENTY_BASE_URL` in the compose env (`composeOpts`).                                                                                                                                                                                   | Process env does not reach the containers today. Setting `API_RATE_LIMITING_*` in the shell is a no-op until H4 (Task 1) is tagged and pinned (Q5).                                  |
-| P20 | The Twenty DB container is not found by the existing discovery                      | `src/load/telemetry/cgroup-stats.ts:54` filters `name=qa-harness-${product}-postgres`. Live: `docker ps --filter name=qa-harness-twenty-postgres` → 0 lines; `--filter name=qa-harness-twenty-db` → 1 line.                                                                                                                                                                                                                                                                         | The container source of the sampler stays absent unless the filter gets a Twenty pattern (Q4).                                                                                       |
-| P21 | `docker stats` is too slow to sample every second                                   | `docker stats --no-stream --format '{{json .}}' qa-harness-twenty-server-1` → 1037 ms for one container; the four-container call averaged 2029 ms over 3 calls. `cgroup-stats.ts:86–88` already calls it "the slow fallback".                                                                                                                                                                                                                                                       | docker-stats.ts reads cgroup files instead (P22, P23), not `docker stats`.                                                                                                           |
-| P22 | cgroup v1 file reads are cheap                                                      | Host is cgroup v1 (`stat -f -c %T /sys/fs/cgroup` → `tmpfs`; `blkio`, `cpu`, `cpuacct`, `memory` dirs). `/sys/fs/cgroup/memory/docker/<id>/memory.usage_in_bytes` read: 874188800 for the server. 20 reads: 35 ms. Paths in `cgroup-stats.ts:17–20`.                                                                                                                                                                                                                                | docker-stats.ts reads v1 files per container (server, worker, db).                                                                                                                   |
-| P23 | `/proc/<pid>` of a container is readable on the host                                | `docker inspect -f '{{.State.Pid}}' qa-harness-twenty-server-1` in 27 ms; `/proc/<pid>/status` → `VmRSS: 846304 kB`, `Threads: 11`; `/proc/<pid>/fd` count 38.                                                                                                                                                                                                                                                                                                                      | Process-level fds and threads for each container come from `/proc` (GitHub-hosted runner: NOT PROBED, §5 re-check 9).                                                                |
-| P24 | Reconcile sources: tables, columns, counts                                          | Read-only SQL through `createReadOnlyPool` on `127.0.0.1:5434` (the repo's oracle pool, `src/oracles/pg.ts`): `resolveWorkspaceSchema(pool,'apple')` resolves a `workspace_<base36>` schema. `workspace.company` columns include `id, createdAt, updatedAt, deletedAt, name`; company rows: total 599, live 599, with `updatedAt` 599. `core."apiKey"` total 1, active 1. `core."appToken"` by type: `REFRESH_TOKEN` 2, no `PASSWORD_RESET_TOKEN` at seed time. `core."user"` 1005. | The reconcile for the background journey counts `company` rows by name prefix and `updatedAt > createdAt`. Token checks belong to Task 5.                                            |
-| P25 | The oracle pool refuses non-SELECT queries                                          | `src/oracles/pg.ts:39` `assertSelectOnly` threw `TEST BUG: oracle query is not SELECT-only` for `SHOW shared_preload_libraries`. A write attempt in a rolled-back transaction gave SQLSTATE `25006` (`readOnlyWriteSqlstate`, `src/twenty/oracle.ts`).                                                                                                                                                                                                                              | Reads for the Twenty oracle use `SELECT current_setting(...)`. The read-only guard works.                                                                                            |
-| P26 | Harness H1 is not active on this stack                                              | `SELECT current_setting('shared_preload_libraries')` → empty; `pg_stat_statements` not installed (`pg_extension` count 0).                                                                                                                                                                                                                                                                                                                                                          | Not a Task 3 concern; it is the Task 2 starting state (noted in §10).                                                                                                                |
-| P27 | Image facts (one-shot read-only containers, no server started)                      | `docker image inspect twentycrm/twenty:v2.44.0`: `Entrypoint ["/app/entrypoint.sh"]`, `Cmd ["node","dist/main"]`, `User 1000`, `WorkingDir /app/packages/twenty-server`. `docker run --rm --entrypoint node … -v` → `v24.19.0`. `tail -3 /app/entrypoint.sh` ends with `exec "$@"`. No `NODE_OPTIONS` in the image env.                                                                                                                                                             | Consistent with roadmap Note 3 (H2 feasible in principle). Nothing in this task needs H2.                                                                                            |
-| P28 | Mailpit is reachable and empty                                                      | `GET http://127.0.0.1:8025/api/v1/messages` HTTP 200, `"total":0`.                                                                                                                                                                                                                                                                                                                                                                                                                  | Mailpit is not needed by the background journey (Task 5 uses it).                                                                                                                    |
-| P29 | Token scope for the seeded admin                                                    | `signIn` returned `availableWorkspaces` with the seeded workspace; `getAuthTokensFromLoginToken` exchanged it (`src/twenty/auth.ts` `signInWorkspace`). The harness's own `authenticate()` picks `workspaces[0]` (`twenty.adapter.ts:258–`), P6's helper picks by display name (`src/twenty/auth.ts` `pickWorkspace`).                                                                                                                                                              | The k6 helper picks by name and fails loudly when the name is missing (TEST BUG).                                                                                                    |
-| P30 | `docker compose down` with `TWENTY_DOWN_VOLUMES=1` leaves nothing                   | `npm run down:twenty` exit 0, 3 s; containers left for project `qa-harness-twenty`: 0; volumes left: 0.                                                                                                                                                                                                                                                                                                                                                                             | Matches CI's `TWENTY_DOWN_VOLUMES: "1"` (`perf.yml:1786` pattern).                                                                                                                   |
-| P31 | Pre-existing CI budget arithmetic                                                   | `perf.yml` `twenty-smoke` (lines 1777–1967): 17 step caps summing to 95 min against `timeout-minutes: 20` (line 1781). `twenty-races` (1971) and `twenty-obs` (2151) have the same shape.                                                                                                                                                                                                                                                                                           | The roadmap's "LOAD step inside twenty-smoke" does not fit C3 (§10, conflict 3).                                                                                                     |
-| P32 | Existing `package.json` has one npm script per LOAD case                            | `package.json:35–58` (`load:*` lines). Lane A's Task 2 owns `package.json` for the pin only.                                                                                                                                                                                                                                                                                                                                                                                        | The workflow calls `node scripts/load/run-load.ts --case …` directly; this plan adds no npm script (§6.5, conflict 6).                                                               |
-| P33 | Evidence workflow ids                                                               | `pages.yml:30` and `evidence-release.yml:39`: `EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763 398161444"`; `tests/unit/evidence-release-ids.test.ts:8` asserts four ids.                                                                                                                                                                                                                                                                                                     | A new workflow needs its own `ci(evidence)` PR after its first `main` run (§2.7).                                                                                                    |
-| P34 | Harness pin and overlay                                                             | `package.json:63`: `"qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.15"`. The overlay (`docker/twenty.compose.yml`) has no passthrough, no `NODE_OPTIONS`, `TAG` default `v2.44.0`.                                                                                                                                                                                                                                                                             | Same as P19.                                                                                                                                                                         |
-| P35 | Baseline `npm run check` on `main`                                                  | `npm run check` exit 0; `# tests 1405`, `# pass 1405`, `# fail 0` (`$HOME/check-b0.log`).                                                                                                                                                                                                                                                                                                                                                                                           | B0 = 1405 (§14).                                                                                                                                                                     |
+| #   | fact                                                                                | evidence (path:line, command + output, or run URL)                                                                                                                                                                                                                                                                                                                                                                                                                                  | what it changes in the design                                                                                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P1  | Twenty fork is at `TWENTY_REF` `7cbdfec6…`                                          | `bash scripts/bootstrap.sh twenty` exit 0 in 12 s; `git -C /home/user/products/twenty-CRM rev-parse HEAD` = `7cbdfec6f346b43715bc2056932f4fad5886f733`. The fork is public; `add_repo` returned read access without attaching.                                                                                                                                                                                                                                                      | The job template clones the fork exactly as `perf.yml` does (§2.8).                                                                                                                                                                                                                  |
+| P2  | Image pull through the CI helper                                                    | `scripts/ci/compose-pull.sh -p qa-harness-twenty -f docker-compose.yml -f <overlay>` exit 0, 26 s; `Image twentycrm/twenty:v2.44.0 Pulled`.                                                                                                                                                                                                                                                                                                                                         | Pull cap 6 min is enough (§2.8 step 7).                                                                                                                                                                                                                                              |
+| P3  | `npm run up:twenty` starts 5 containers, healthy in 127 s                           | exit 0, 127 s. `docker ps` after up: `qa-harness-twenty-server-1` (healthy), `-worker-1`, `-db-1` (healthy), `-redis-1` (healthy), `-mailpit-1` (healthy). App `http://127.0.0.1:3002/healthz` HTTP 200 (harness output).                                                                                                                                                                                                                                                           | Up cap 12 min (§2.8 step 8). Container names are `qa-harness-twenty-<service>-1`.                                                                                                                                                                                                    |
+| P4  | Seed creates the workspace and four users                                           | `npm run seed:twenty` exit 0, 76 s; output `twenty seed: created=true users=4`.                                                                                                                                                                                                                                                                                                                                                                                                     | Seed cap 10 min (§2.8 step 9). Seed workspace subdomain `apple`, display name `Apple` (`src/twenty/env.ts` defaults).                                                                                                                                                                |
+| P5  | Health smoke passes                                                                 | `npm run smoke:twenty` exit 0, `5/5 shared iters`.                                                                                                                                                                                                                                                                                                                                                                                                                                  | Step 10 unchanged.                                                                                                                                                                                                                                                                   |
+| P6  | Auth for k6: sign-in then workspace token exchange works; token length and lifetime | `signInWorkspace` (`src/twenty/auth.ts`, existing) on `http://127.0.0.1:3002`: token length 668 (length only); JWT claims `sub,userId,workspaceId,workspaceMemberId,userWorkspaceId,type,authProvider,isImpersonating,iat,exp`; `exp - iat` = 1800 s. Token lifetime from `ACCESS_TOKEN_EXPIRES_IN = '30m'` (`config-variables.ts:348`).                                                                                                                                            | The runner mints the token in setup (not an API key, Q10). Runs longer than about 25 min need a re-sign-in (Q12).                                                                                                                                                                    |
+| P7  | An invalid bearer is refused with 401                                               | `curl -H 'Authorization: Bearer invalid.token.value' http://127.0.0.1:3002/rest/companies?limit=1` → HTTP 401.                                                                                                                                                                                                                                                                                                                                                                      | The error-code extra (§11, EXTRA-C) expects 401 and never 500.                                                                                                                                                                                                                       |
+| P8  | Limiter at image defaults, user workspace token, 150 requests                       | Probe script (scratchpad, not in repo): 100 × `GET /rest/companies?limit=1` → `{"200":100}`; 30 × `POST /graphql` companies → `{"200":30}`; 20 × `POST /metadata currentUser` → `{"200":20}`. No `retry-after` or `x-ratelimit-*` header on any response; no error code.                                                                                                                                                                                                            | At image defaults the user-token path is not rate-limited in this burst. The roadmap's "every run is limited at 100/min" does not hold for user tokens (§10, conflict 1).                                                                                                            |
+| P9  | Limiter state: no speed keys after the burst                                        | `docker compose -p qa-harness-twenty … exec -T redis redis-cli --scan --pattern '*speed*' \| wc -l` → `0`. `DBSIZE` 523; key prefixes `bull` 333, `engine` 189, `module` 1.                                                                                                                                                                                                                                                                                                         | The limiter writes only for buckets that exist; a user token creates none (source: `usage-limit-speed.service.ts` `consumeTokens` runs only when buckets exist).                                                                                                                     |
+| P10 | Which spenders the limiter binds (source)                                           | `usage-limit-definitions.constant.ts:15` (`spenderType: 'apiKey'`), `:19–21` (`API_RATE_LIMITING_SHORT_TTL_IN_MS`, `…_SHORT_LIMIT`, `perWorkspace`), `:28–34` (`…_LONG_*`, overridable), `:41` (`spenderType: 'application'`), `:45–47` (`APPLICATION_API_RATE_LIMITING_TTL_IN_MS`, `…_LIMIT`, `crossWorkspace`). There is no default for `userWorkspace`. `build-speed-buckets.util.ts:67` filters defaults by spender type.                                                       | Only API-key and application clients are limited. The functional profile matters for API-key clients only (§6.3, conflict 2).                                                                                                                                                        |
+| P11 | Headers and status on a limiter hit (source, NOT PROBED live)                       | `build-rate-limit-response-headers.util.ts:10–13`: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`. REST maps the limit to 429: `usage-limit-to-rest-api-exception-handler.util.ts:22`. GraphQL maps the code with `usageLimitToGraphqlApiExceptionHandler` (`usage-limit-graphql-api-exception.filter.ts:27`).                                                                                                                                    | Task 6 needs these; a 429 needs an API key, which is a write, so it is not probed here (NOT PROBED, §5 re-check 6).                                                                                                                                                                  |
+| P12 | Limiter state location and reset                                                    | Redis 8.10.3 service `redis` (`packages/twenty-docker/docker-compose.yml:128`, no volume: `docker inspect` Mounts empty). Key shape from `build-speed-bucket-key.util.ts:28`: `{<workspaceId>}:speed:<resourceType>:<operationType>:<spenderType>:<spenderId                                                                                                                                                                                                                        | ->:<windowSec>`. Script `usage-limit:try-consume-token-buckets` (`try-consume-token-buckets-script.constant.ts:7`). `down:twenty`removed the Redis container; its state should be gone (inferred from the removal and the empty mounts, not re-checked after a fresh`up`, §5 row 8). | A fresh `up` starts with empty limiter state, so Task 6 needs no Redis flush and P6 never writes Redis (Q9). |
+| P13 | The limiter fails open                                                              | `usage-limit-speed.service.ts:154` and `:166` return `fullAdmission` when the cache store fails (`CacheStorageException`).                                                                                                                                                                                                                                                                                                                                                          | A 500 cannot come from the limiter; a Redis outage shows as no 429 (noted for Task 6).                                                                                                                                                                                               |
+| P14 | Speed limiter binds only root query-runner operations                               | `common-base-query-runner.service.ts:135–136`: `consumeApiSpeedLimit` runs when `isRootOperation`. `/metadata` auth calls do not go through it.                                                                                                                                                                                                                                                                                                                                     | Auth calls are not limited by the API speed limiter (matches P8's auth-path burst).                                                                                                                                                                                                  |
+| P15 | Auth-path throttle exists for password reset                                        | `auth.resolver.ts:126–127`: `PASSWORD_RESET_EMAIL_RATE_LIMIT_MAX = 3`, window 15 min; `:1127–1131` `tokenBucketThrottleOrThrow('password-reset-email:<email>', …)`.                                                                                                                                                                                                                                                                                                                 | Task 5 must request each reset at most three times per email per 15 min (cross-task note, §10).                                                                                                                                                                                      |
+| P16 | Captcha is off when no driver is set                                                | `captcha-driver.factory.ts:27–28`: `if (!driver) return 'disabled'`. `CaptchaGuard` is on `emailPasswordResetLink` (`auth.resolver.ts`). Whether `validate()` passes when disabled: NOT PROBED.                                                                                                                                                                                                                                                                                     | Cross-task note for Task 5 only.                                                                                                                                                                                                                                                     |
+| P17 | Password reset token expiry                                                         | `config-variables.ts:143`: `PASSWORD_RESET_TOKEN_EXPIRES_IN = '5m'`. `reset-password.service.ts:106–117` computes `expiresAt` from it.                                                                                                                                                                                                                                                                                                                                              | The `P6-TW-LOAD-011` gate (expiry ≤ 15 min) looks open for Task 5 (cross-task note, §10).                                                                                                                                                                                            |
+| P18 | Queue is BullMQ on Redis; queue keys readable with read-only commands               | `BullMQDriver` (`src/engine/core-modules/message-queue/drivers/bullmq.driver.ts`, fork); `docker compose … exec -T redis redis-cli --scan --pattern 'bull:*'` → 333 keys: `bull:cron-queue:repeat` 77, `bull:webhook-queue:metrics`, `bull:workspace-queue:meta`, `bull:workflow-queue:stalled-check`, `bull:workspace-destroy-queue:*`. `:completed` is a sorted set (`ZCARD` 193 and 17). No `:wait` key at idle (empty list = no key).                                           | `P6-TW-LOAD-010` gate: job state is readable without writes through read-only Redis commands (Q6). Redis is not published to the host; the read goes through `docker compose exec`.                                                                                                  |
+| P19 | The harness adds no rate-limit env                                                  | `node_modules/qa-portfolio-harness/docker/twenty.compose.yml` has no `API_RATE_LIMITING` (grep returns none). The image env has no `API_RATE_LIMITING_*` name (`docker image inspect`; the list was filtered on `NODE                                                                                                                                                                                                                                                               | PATH                                                                                                                                                                                                                                                                                 | PORT                                                                                                         | RATE | PG_`, which matched `PATH`, `NODE_VERSION`, `NODE_ENV`and no rate name).`twenty.adapter.ts`passes only`TAG`and`TWENTY_BASE_URL` in the compose env (`composeOpts`). | Process env does not reach the containers today. Setting `API_RATE_LIMITING_*` in the shell is a no-op until H4 (Task 1) is tagged and pinned (Q5). |
+| P20 | The Twenty DB container is not found by the existing discovery                      | `src/load/telemetry/cgroup-stats.ts:54` filters `name=qa-harness-${product}-postgres`. Live: `docker ps --filter name=qa-harness-twenty-postgres` → 0 lines; `--filter name=qa-harness-twenty-db` → 1 line.                                                                                                                                                                                                                                                                         | The container source of the sampler stays absent unless the filter gets a Twenty pattern (Q4).                                                                                                                                                                                       |
+| P21 | `docker stats` is too slow to sample every second                                   | `docker stats --no-stream --format '{{json .}}' qa-harness-twenty-server-1` → 1037 ms for one container; the four-container call averaged 2029 ms over 3 calls. `cgroup-stats.ts:86–88` already calls it "the slow fallback".                                                                                                                                                                                                                                                       | docker-stats.ts reads cgroup files instead (P22, P23), not `docker stats`.                                                                                                                                                                                                           |
+| P22 | cgroup v1 file reads are cheap                                                      | Host is cgroup v1 (`stat -f -c %T /sys/fs/cgroup` → `tmpfs`; `blkio`, `cpu`, `cpuacct`, `memory` dirs). `/sys/fs/cgroup/memory/docker/<id>/memory.usage_in_bytes` read: 874188800 for the server. 20 reads: 35 ms. Paths in `cgroup-stats.ts:17–20`.                                                                                                                                                                                                                                | docker-stats.ts reads v1 files per container (server, worker, db).                                                                                                                                                                                                                   |
+| P23 | `/proc/<pid>` of a container is readable on the host                                | `docker inspect -f '{{.State.Pid}}' qa-harness-twenty-server-1` in 27 ms; `/proc/<pid>/status` → `VmRSS: 846304 kB`, `Threads: 11`; `/proc/<pid>/fd` count 38.                                                                                                                                                                                                                                                                                                                      | Process-level fds and threads for each container come from `/proc` (GitHub-hosted runner: NOT PROBED, §5 re-check 9).                                                                                                                                                                |
+| P24 | Reconcile sources: tables, columns, counts                                          | Read-only SQL through `createReadOnlyPool` on `127.0.0.1:5434` (the repo's oracle pool, `src/oracles/pg.ts`): `resolveWorkspaceSchema(pool,'apple')` resolves a `workspace_<base36>` schema. `workspace.company` columns include `id, createdAt, updatedAt, deletedAt, name`; company rows: total 599, live 599, with `updatedAt` 599. `core."apiKey"` total 1, active 1. `core."appToken"` by type: `REFRESH_TOKEN` 2, no `PASSWORD_RESET_TOKEN` at seed time. `core."user"` 1005. | The reconcile for the background journey counts `company` rows by name prefix and `updatedAt > createdAt`. Token checks belong to Task 5.                                                                                                                                            |
+| P25 | The oracle pool refuses non-SELECT queries                                          | `src/oracles/pg.ts:39` `assertSelectOnly` threw `TEST BUG: oracle query is not SELECT-only` for `SHOW shared_preload_libraries`. A write attempt in a rolled-back transaction gave SQLSTATE `25006` (`readOnlyWriteSqlstate`, `src/twenty/oracle.ts`).                                                                                                                                                                                                                              | Reads for the Twenty oracle use `SELECT current_setting(...)`. The read-only guard works.                                                                                                                                                                                            |
+| P26 | Harness H1 is not active on this stack                                              | `SELECT current_setting('shared_preload_libraries')` → empty; `pg_stat_statements` not installed (`pg_extension` count 0).                                                                                                                                                                                                                                                                                                                                                          | Not a Task 3 concern; it is the Task 2 starting state (noted in §10).                                                                                                                                                                                                                |
+| P27 | Image facts (one-shot read-only containers, no server started)                      | `docker image inspect twentycrm/twenty:v2.44.0`: `Entrypoint ["/app/entrypoint.sh"]`, `Cmd ["node","dist/main"]`, `User 1000`, `WorkingDir /app/packages/twenty-server`. `docker run --rm --entrypoint node … -v` → `v24.19.0`. `tail -3 /app/entrypoint.sh` ends with `exec "$@"`. No `NODE_OPTIONS` in the image env.                                                                                                                                                             | Consistent with roadmap Note 3 (H2 feasible in principle). Nothing in this task needs H2.                                                                                                                                                                                            |
+| P28 | Mailpit is reachable and empty                                                      | `GET http://127.0.0.1:8025/api/v1/messages` HTTP 200, `"total":0`.                                                                                                                                                                                                                                                                                                                                                                                                                  | Mailpit is not needed by the background journey (Task 5 uses it).                                                                                                                                                                                                                    |
+| P29 | Token scope for the seeded admin                                                    | `signIn` returned `availableWorkspaces` with the seeded workspace; `getAuthTokensFromLoginToken` exchanged it (`src/twenty/auth.ts` `signInWorkspace`). The harness's own `authenticate()` picks `workspaces[0]` (`twenty.adapter.ts:258–`), P6's helper picks by display name (`src/twenty/auth.ts` `pickWorkspace`).                                                                                                                                                              | The k6 helper picks by name and fails loudly when the name is missing (TEST BUG).                                                                                                                                                                                                    |
+| P30 | `docker compose down` with `TWENTY_DOWN_VOLUMES=1` leaves nothing                   | `npm run down:twenty` exit 0, 3 s; containers left for project `qa-harness-twenty`: 0; volumes left: 0.                                                                                                                                                                                                                                                                                                                                                                             | Matches CI's `TWENTY_DOWN_VOLUMES: "1"` (`perf.yml:1786` pattern).                                                                                                                                                                                                                   |
+| P31 | Pre-existing CI budget arithmetic                                                   | `perf.yml` `twenty-smoke` (lines 1777–1967): 17 step caps summing to 95 min against `timeout-minutes: 20` (line 1781). `twenty-races` (1971) and `twenty-obs` (2151) have the same shape.                                                                                                                                                                                                                                                                                           | The roadmap's "LOAD step inside twenty-smoke" does not fit C3 (§10, conflict 3).                                                                                                                                                                                                     |
+| P32 | Existing `package.json` has one npm script per LOAD case                            | `package.json:35–58` (`load:*` lines). Lane A's Task 2 owns `package.json` for the pin only.                                                                                                                                                                                                                                                                                                                                                                                        | The workflow calls `node scripts/load/run-load.ts --case …` directly; this plan adds no npm script (§6.5, conflict 6).                                                                                                                                                               |
+| P33 | Evidence workflow ids                                                               | `pages.yml:30` and `evidence-release.yml:39`: `EVIDENCE_WORKFLOW_IDS: "376454455 396253729 397232763 398161444"`; `tests/unit/evidence-release-ids.test.ts:8` asserts four ids.                                                                                                                                                                                                                                                                                                     | A new workflow needs its own `ci(evidence)` PR after its first `main` run (§2.7).                                                                                                                                                                                                    |
+| P34 | Harness pin and overlay                                                             | `package.json:63`: `"qa-portfolio-harness": "github:Jayami123/qa-portfolio-harness#v0.2.15"`. The overlay (`docker/twenty.compose.yml`) has no passthrough, no `NODE_OPTIONS`, `TAG` default `v2.44.0`.                                                                                                                                                                                                                                                                             | Same as P19.                                                                                                                                                                                                                                                                         |
+| P35 | Baseline `npm run check` on `main`                                                  | `npm run check` exit 0; `# tests 1405`, `# pass 1405`, `# fail 0` (`$HOME/check-b0.log`).                                                                                                                                                                                                                                                                                                                                                                                           | B0 = 1405 (§14).                                                                                                                                                                                                                                                                     |
 
 NOT PROBED items (each has a build-time re-check in §5): a 429 response with the headers (needs an API key, P11); the
 `apiKey` and `application` keying with two credentials (needs a second key, §10 conflict 2); REST write shapes
@@ -294,8 +296,662 @@ container discovery finds nothing for Twenty).
 | 6   | 429 headers and status (P11)                                          | Task 6 build: create an API key in its setup and send a bounded burst; record status and headers. Task 3 does not need this.                         | Update the Task 6 plan.                                                                   |
 | 7   | REST write shapes (`createCompany`, `patchCompany`, `destroyCompany`) | 1-iteration smoke of `tw-background` in the build's first run (a dispatch), read the response bodies' status and the `data.createCompany.id` path    | Adjust `runTwBackground` and the cleanup sweep.                                           |
 | 8   | Redis state after `up`                                                | `docker compose … exec -T redis redis-cli DBSIZE` right after `up:twenty` is small (no seed yet)                                                     | If not small, the reset-by-recreate rule (Q9) fails: add a flush-free check to preflight. |
-| 9   | docker-stats source on GitHub-hosted runners                          | the first CI run's `telemetry-main.json` `sources` shows `containers: true`; `cgroup-v1` or `cgroup-v2` in `run-meta`                                | If absent, record the gap and use `/proc` only.                                           |
+| 9   | docker-stats source on GitHub-hosted runners                          | the first CI run's `telemetry-main.json` `sources` shows `containers: true`; the container `kind` (cgroup-v1 or cgroup-v2) in the telemetry file     | If absent, record the gap and use `/proc` only.                                           |
 | 10  | BullMQ key names                                                      | `redis-cli --scan --pattern 'bull:*:wait'` returns keys while the queue is busy (during a burst)                                                     | If not, the `P6-TW-LOAD-010` monitor changes (Q6).                                        |
 | 11  | Effective limiter env inside the container (3b)                       | `docker compose … exec -T server printenv API_RATE_LIMITING_LONG_LIMIT` equals the profile value                                                     | If not equal, the run is ENV (§7).                                                        |
 | 12  | Seed workspace and user names                                         | `npm run seed:twenty` `users=4`; `core.workspace` row for subdomain `apple`                                                                          | Update the defaults in `src/twenty/env.ts`.                                               |
 | 13  | Reset token expiry (for Task 5, not Task 3)                           | `config-variables.ts:143`                                                                                                                            | Task 5 re-checks.                                                                         |
+
+## 6. Design
+
+### 6.1 File list and ownership (this table is the Lane B Task 3 row of the four-prompt table, copied)
+
+The same table is in all four Phase 5 planning prompts. This plan keeps to its own rows. A "registration line" is a one-line
+or one-entry edit in a shared file. The PR that merges second runs `git merge origin/main` and keeps both entries (a merge commit).
+
+| Owner (build)                      | Owns (may create or change)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Shared, registration line only                                                                                                                                                                                                                                                                                                                                                      | Must NOT touch                                                                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lane A, Task 1 (harness repo only) | everything in qa-portfolio-harness for H1, H2, H4: docker/{medusa,documenso,twenty,cal}.compose.yml, src/adapters/*, src/config.ts, tests, README, CHANGELOG, package.json version                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | none                                                                                                                                                                                                                                                                                                                                                                                | the P6 repo, product forks, node_modules/                                                                                                      |
+| Lane A, Task 2 (P6)                | package.json and package-lock.json (the harness pin only); every -h0.2.15 cache-key suffix line in perf.yml, knee.yml, gate.yml and soak.yml; tests/unit/harness-pin.test.ts; harness-flag env: lines in EXISTING LOAD steps of perf.yml and soak.yml (env only, no cap change); src/load/telemetry/{pg-top-queries,event-loop}.ts, src/load/telemetry/preload/el-delay.cjs, src/load/telemetry/sampler.ts, src/load/telemetry/run.ts, src/load/chart/*; tests/unit/telemetry-top-queries.test.ts, tests/unit/telemetry-event-loop.test.ts; the P6-X-LOAD-009 A/A step; README "How to read the chart" and harness-version lines; harness-flag lines in .env.example (placeholders only) | none                                                                                                                                                                                                                                                                                                                                                                                | every Twenty load file below, the new Twenty load workflow or jobs, pages.yml, scripts/dashboard/_, src/dashboard/_, the soak-release workflow |
+| Lane B, Task 3                     | k6/lib/twenty-auth.js, k6/journeys/tw-background.js, k6/cases/tw-background.js, k6/cases/tw-load-008.js, k6/cases/tw-load-010.js, src/load/reconcile/twenty.ts, src/load/telemetry/docker-stats.ts, a new Twenty limiter-profile module (functional values; name chosen in the Task 3 plan), tests/unit/reconcile-twenty.test.ts and its other new tests; the Twenty load CI home (default: a NEW workflow .github/workflows/twenty-load.yml, see Q-PLACE) with its foundation job and three empty, separated marker comments # >>> task4 jobs, # >>> task5 jobs, # >>> task6 jobs; README "Twenty load" section with the same three sub-markers                                         | scripts/load/run-load.ts and the case registry (Twenty entries); src/load/reconcile/index.ts; src/load/telemetry/sampler.ts (one hook for docker-stats); evidence-release.yml, pages.yml and tests/unit/evidence-release-ids.test.ts workflow-id list ONLY if Q-PLACE picks a new workflow, and then in a separate ci(evidence) PR after the workflow's first main run gives its id | perf.yml existing jobs, Lane A rows, Tasks 4–7 own files                                                                                       |
+| Lane B, Task 4                     | k6/cases/tw-load-004.js, src/load/lost-update.ts, tests/unit/lost-update.test.ts, new Twenty oracle code in a NEW file (for example src/twenty/oracle-lost-update.ts); its job under # >>> task4 jobs; README under its sub-marker                                                                                                                                                                                                                                                                                                                                                                                                                                                       | case registry; src/load/reconcile/twenty.ts (one per-case hook); src/twenty/oracle.ts only as an appended export if a new file is impossible                                                                                                                                                                                                                                        | Tasks 3, 5, 6, 7 own files, Lane A rows                                                                                                        |
+| Lane B, Task 5                     | k6/cases/tw-load-005.js, new reset-token oracle code in a NEW file (for example src/twenty/oracle-reset-token.ts), its tests; src/twenty/mailpit.ts (append-only helpers); its job under # >>> task5 jobs (plus P6-TW-LOAD-011 if the gate opens); README under its sub-marker                                                                                                                                                                                                                                                                                                                                                                                                           | case registry; src/load/reconcile/twenty.ts (one per-case hook); src/twenty/oracle.ts only as an appended export                                                                                                                                                                                                                                                                    | Tasks 3, 4, 6, 7 own files, Lane A rows                                                                                                        |
+| Lane B, Task 6                     | k6/cases/tw-load-006.js, k6/cases/tw-load-009.js (gated), its tests; its job (own Twenty start with image-default limits and its own down) under # >>> task6 jobs; README under its sub-marker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | case registry; src/load/recovery.ts (reuse; an appended export only if needed)                                                                                                                                                                                                                                                                                                      | the functional-profile module (reads it never), Tasks 3, 4, 5, 7 own files, Lane A rows                                                        |
+| Lane C, Task 7                     | a NEW workflow that captures the weekly soak (default name .github/workflows/soak-release.yml), the weekly summary writer (new script), the trend module (roadmap name src/load/soak/trend.ts, or src/dashboard/soak/weekly-trend.ts if the probe shows that is where readers live), its render section, tests/unit/soak-trend.test.ts and fixtures, README trend section                                                                                                                                                                                                                                                                                                                | scripts/dashboard/build-site.ts (trend hook), src/dashboard/render/page.ts (one section call), pages.yml (add the new workflow to workflow_run and a step that lists p6-soak-* releases; contents: read stays)                                                                                                                                                                      | soak.yml (Lane A owns it; Task 7 reads the soak run's artefacts instead), perf.yml, every Lane A and Lane B file                               |
+
+Merge order: Task 1 harness PRs, then the owner tags the harness; Task 2 (pin bump); Task 3 (if the Task 3 plan splits it, 3a foundation may merge before Task 2 and 3b, the verified functional profile, after Task 2); Tasks 4, 5 and 6 in any order after Task 3 (4 and 5 also need Task 2 merged for their CI; 6 does not); Task 7 any time. Task 8 (closeout) comes last and is not planned now.
+
+**Gaps in that table (Q4).** Five shared files must change for this task and no row names them: `src/load/types.ts` (`LoadProduct`, `LoadCase`, `RunMeta`), `src/load/reconcile/types.ts` (`AuditProduct`, `AuditStageConfig`), `src/load/telemetry/stages.ts` (the `LOG_FILES` and `DATABASE_URL` maps keyed by `LoadProduct`, lines 27 and 47), `src/load/readiness.ts` (`READINESS`, line 8) and `src/load/telemetry/cgroup-stats.ts` (the discovery filter, line 54), plus `src/load/run-meta.ts` (the `limiterProfile` field). Each change is one line or one entry. The plan treats them as registration lines of Lane B Task 3 and asks the owner to confirm (Q4).
+
+### 6.2 Data flow (one run)
+
+The runner order is fixed by `src/load/runner.ts` (`ORDER`, line 39 region): `setup → preflight → samplerStart → k6 → samplerStop →
+drain → reconcile → cleanup → tokenScan → verdict`. For `TW-BG-FOUNDATION`:
+
+1. **setup** (`twentySetup`, §6.5): read the Twenty env (`src/twenty/env.ts`), open the read-only pool, sign in and exchange
+   the workspace token (`signInWorkspace`, `src/twenty/auth.ts`), resolve the workspace schema (`resolveWorkspaceSchema`,
+   `src/twenty/oracle.ts`), set `ctx.secrets.TWENTY_TOKEN`, `ctx.config.audit`, `ctx.meta.limiterProfile`.
+2. **preflight**: `ok` (the existing stage). Build-time check §5 row 8 runs as a read-only preflight in 3b.
+3. **samplerStart** (`samplerStart`, `src/load/telemetry/stages.ts`): the product sources for `twenty` (§6.4).
+4. **k6**: `runAllK6` runs `k6/cases/tw-background.js` with `P6_LOAD_CONFIG` and the secret env `TWENTY_TOKEN`.
+5. **samplerStop**, **drain** (`ok`).
+6. **reconcile**: the validity judge (existing), then `reconcileTwenty` (§6.7).
+7. **cleanup**: `twentyCleanup` (sweep, then the leak check, §8).
+8. **tokenScan**: the existing scan of the run directory.
+9. **verdict**: the existing writer. Outcome from `evaluateVerdict` (`src/load/runner.ts`).
+
+### 6.3 Limiter profiles and the functional values
+
+`src/twenty/limiter-profile.ts` (NEW) holds the two profiles. Only the functional profile sets anything.
+
+| Environment name                          | Functional value | Image default (fork pin)          | Why                                                     |
+| ----------------------------------------- | ---------------- | --------------------------------- | ------------------------------------------------------- |
+| `API_RATE_LIMITING_SHORT_TTL_IN_MS`       | `1000`           | 1000 (`config-variables.ts:1713`) | unchanged                                               |
+| `API_RATE_LIMITING_SHORT_LIMIT`           | `100`            | 100 (`:1722`)                     | unchanged; headroom 5× over the 20 rps ceiling          |
+| `API_RATE_LIMITING_LONG_TTL_IN_MS`        | `60000`          | 60000 (`:1730`)                   | unchanged                                               |
+| `API_RATE_LIMITING_LONG_LIMIT`            | `3600`           | 100 (`:1739`)                     | raised by the formula below                             |
+| `APPLICATION_API_RATE_LIMITING_TTL_IN_MS` | `60000`          | 60000 (`:1748`)                   | unchanged (application clients are not used in Phase 5) |
+| `APPLICATION_API_RATE_LIMITING_LIMIT`     | `500`            | 500 (`:1757`)                     | unchanged                                               |
+
+**Formula.** For each window `W` (seconds), `LIMIT_W = ceil(P_peak × W × H)`, where `P_peak` is the peak request rate of
+all functional Phase 5 runs and `H` is the headroom factor. `P_peak = 20` requests per second is the **design ceiling**
+for every functional run in Phase 5: the Task 3 `full` profile is 2 iterations/s × 4 requests = 8 rps, and the ceiling
+leaves 2.5× for Tasks 4 and 5, which must keep their peak at or below 20 rps or change this table (Q8). `H = 3`.
+Long window: `ceil(20 × 60 × 3) = 3600`. Short window: `ceil(20 × 1 × 3) = 60`, which is below the default 100, so the
+short limit keeps its default.
+
+**What the values do, and do not do.** The limiter binds only `apiKey` and `application` spenders (P10). The user-token
+journeys of Tasks 3, 4 and 5 are not limited at image defaults (P8, P9). So the functional profile changes the result
+only for API-key clients, and no Phase 5 journey uses one. The profile is still applied, recorded and checked (Q8).
+
+**Verification (3b only).** Before a functional run, the job reads each of the six names from the running server
+container (`docker compose … exec -T server printenv <name>`, read-only) and compares it with the profile. A mismatch is
+`ENV` (§7, O9). Until H4 reaches the containers, this check fails, and 3b must not run (Q2, P19).
+
+### 6.4 Telemetry: container sources and `docker-stats`
+
+`src/load/telemetry/docker-stats.ts` (NEW) reads the three Twenty containers without `docker stats` (P21):
+
+```ts
+export const TWENTY_CONTAINER_ROLES = ["server", "worker", "db"] as const;
+export interface TwentyContainer {
+  role: (typeof TWENTY_CONTAINER_ROLES)[number];
+  name: string;
+  id: string;
+  kind: CgroupKind;
+}
+export async function discoverTwentyContainers(
+  exec?: (cmd: string, args: string[]) => Promise<string>,
+): Promise<TwentyContainer[]>;
+// For each role: docker ps --filter name=qa-harness-twenty-<role>-1 (exact name), then docker inspect -f {{.Id}}.
+// A role that is not running is left out and reported in the sampler's sources (never a throw).
+export function readContainerSample(
+  c: TwentyContainer,
+): { cpuNs: number; memBytes: number } | undefined;
+// Calls readContainerStats(c.kind, c.id) (src/load/telemetry/cgroup-stats.ts:69, existing). Undefined when unreadable.
+export function readProcSample(
+  pid: number,
+): { rssKb: number; threads: number; fds: number } | undefined;
+// Reads /proc/<pid>/status (VmRSS, Threads) and counts /proc/<pid>/fd. Undefined when unreadable.
+```
+
+`openSources("twenty")` (`src/load/telemetry/stages.ts`, registration line for `DATABASE_URL.twenty` = `twentyDatabaseUrlFromEnv`)
+gives the pool (port 5434, one connection, `max: 1`), the readiness URL `${TWENTY_BASE_URL}/healthz` (`READINESS.twenty`), no
+log file (the Twenty container logs are captured by the job, §2.8 step 14), and no single app process. The database
+container is found by `discoverContainer` (`cgroup-stats.ts:46`). Its filter is changed to a per-product name pattern: `qa-harness-twenty-db-1` for Twenty (P20, Q4).
+
+The sampler (`src/load/telemetry/sampler.ts`, registration line) takes one optional `containers?: TwentyContainer[]`. When set,
+each tick adds `containers: [{ role, cpuNs, memBytes, rssKb, threads, fds }]`. Off by default, so no other product changes.
+The sample cost is recorded in `sampleCostMs` (existing). The measured read cost is about 6 ms per tick for three containers
+(P22: 35 ms for 20 reads of one file).
+
+### 6.5 Setup and cleanup stages: `src/load/products/twenty.ts` (NEW)
+
+```ts
+export interface TwentyDeps {
+  openPool: () => pg.Pool; // createReadOnlyPool(twentyDatabaseUrlFromEnv())
+  signIn: (env: NodeJS.ProcessEnv) => Promise<{ authorizationHeader: string; origin: string }>; // signInWorkspace
+  resolveSchema: (
+    pool: pg.Pool,
+    subdomain: string,
+  ) => Promise<{ workspaceId: string; schema: string }>;
+  listPrefixedIds: (pool: pg.Pool, schema: string, prefix: string) => Promise<string[]>; // read-only SELECT
+  destroy: (ids: string[], authorizationHeader: string) => Promise<string[]>; // GraphQL, one call per id
+  leakCount: (pool: pg.Pool, schema: string, prefix: string) => Promise<number>; // companyRowsByPrefix
+}
+export async function twentySetupWith(ctx: LoadContext, deps: TwentyDeps): Promise<StageResult>;
+// Errors: any failure returns { ok: false, kind: "ENV", reasons: ["twenty setup failed: <message>"] } (the message holds no token).
+// Sets: ctx.secrets.TWENTY_TOKEN, ctx.config.audit = { product: "twenty", prefixLike, schema }, ctx.handles.twentyPool, ctx.meta.limiterProfile.
+export async function twentyCleanupWith(ctx: LoadContext, deps: TwentyDeps): Promise<StageResult>;
+// Sweep (ids of prefixed companies, live and soft-deleted, then destroy), then leak = leakCount; leak !== 0 → TEST BUG.
+export const twentySetup = (ctx: LoadContext) => twentySetupWith(ctx, defaultTwentyDeps);
+export const twentyCleanup = (ctx: LoadContext) => twentyCleanupWith(ctx, defaultTwentyDeps);
+```
+
+The limiter profile name comes from `P6_TWENTY_LIMITER_PROFILE` (set by the workflow step, §6.8). A missing or unknown name
+is `ENV`. The stage writes the profile name to `ctx.meta` (Q4 adds the field to `RunMeta`), so `run-meta.json` records it.
+
+### 6.6 The background journey (k6) skeleton
+
+```js
+// k6/journeys/tw-background.js (NEW)
+import http from "k6/http";
+import exec from "k6/execution";
+import { Counter } from "k6/metrics";
+import { authorizationHeader, restHeaders } from "../lib/twenty-auth.js";
+export const createdCounter = new Counter("p6_tw_created");
+export const updatedCounter = new Counter("p6_tw_updated");
+export const serverErrorCounter = new Counter("p6_tw_5xx");
+
+export function runTwBackground(cfg, opts = {}) {
+  const headers = restHeaders(authorizationHeader());
+  const n = exec.scenario.iterationInTest;
+  const name = `${cfg.prefix}-${n}-a`; // companyName(prefix, trial, side) in src/twenty/payloads.ts:4
+  // 1. POST /rest/companies {name}  → 2xx: createdCounter.add(1), keep id = data.createCompany.id (path to confirm, §5 row 7)
+  // 2. GET  /rest/companies/<id>    → read back the name (a check, not a counter)
+  // 3. PATCH /rest/companies/<id> {name: name + "-u"} → 2xx: updatedCounter.add(1)
+  // 4. GET  /rest/companies/<id>    → read back the new name
+  // Any status >= 500 → serverErrorCounter.add(1). Returns { created: [id], patched: 0 | 1, serverErrors: count }.
+  return { created: [], patched: 0, serverErrors: 0 }; // skeleton; the build fills the four steps
+}
+```
+
+The case script composes the journey as `k6/cases/doc-load-001.js` does (§2.3). The journey uses `k6/lib/http.js` only
+through `restHeaders`; it adds no retry (the Phase 3 retry rules apply only to the Phase 4 journeys).
+
+### 6.7 The reconcile hook: `src/load/reconcile/twenty.ts` (NEW)
+
+```ts
+export interface BackgroundCounts {
+  created: number;
+  patched: number;
+  serverErrors: number;
+  limited429: number;
+}
+export interface BackgroundRows {
+  total: number;
+  updated: number;
+} // rows with the prefix (any state); updatedAt > createdAt
+export function judgeBackground(counts: BackgroundCounts, rows: BackgroundRows): Finding[];
+// Pure. created != total → PRODUCT BUG (total < created: lost write) or TEST BUG (total > created: phantom row).
+// patched != updated → PRODUCT BUG (updated < patched) or TEST BUG (updated > patched).
+// serverErrors > 0 → PRODUCT BUG "5xx on background journey" (SUSPECTED until it repeats, rule 13).
+// limited429 > 0 → TEST BUG "limiter engaged on a user token" (a finding about the profile, not a product verdict).
+export async function reconcileTwenty(
+  pool: pg.Pool,
+  cfg: TwentyAuditConfig,
+  clientCount: number | undefined,
+  counts?: BackgroundCounts,
+): Promise<AuditResult>;
+// SCHEMA_RE check (src/twenty/oracle.ts), then one SELECT count(*), count(*) FILTER (WHERE "updatedAt" > "createdAt") FROM "<schema>".company WHERE name LIKE $1.
+// Returns an AuditResult (schema 1, src/load/reconcile/types.ts) with checks named "created-vs-rows", "patched-vs-updated", "5xx", "429".
+```
+
+Registration in `src/load/reconcile/index.ts`: `case "twenty":` in `reconcile()` (line 75 region) calls `reconcileTwenty`,
+and `CLIENT_COUNTER.twenty = "p6_tw_created"` (line 54 region). The `counts` input is read from the k6 summary by the
+case's own stage (`summaryCounter`, `src/load/reconcile/index.ts`, existing).
+
+### 6.8 CI: `.github/workflows/twenty-load.yml` (NEW)
+
+```yaml
+name: twenty-load
+on:
+  pull_request:
+    paths:
+      [
+        ".github/workflows/twenty-load.yml",
+        "k6/**",
+        "src/load/**",
+        "src/twenty/**",
+        "scripts/load/**",
+        "scripts/ci/**",
+        "package.json",
+        "package-lock.json",
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        ".github/workflows/twenty-load.yml",
+        "k6/**",
+        "src/load/**",
+        "src/twenty/**",
+        "scripts/load/**",
+        "scripts/ci/**",
+        "package.json",
+        "package-lock.json",
+      ]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "pr or full (dispatches default to full)"
+        required: false
+        default: full
+        type: choice
+        options: [full, pr]
+  schedule:
+    - cron: "43 3 * * *" # nightly, off perf.yml's 02:17 UTC
+permissions:
+  contents: read
+concurrency:
+  group: twenty-load-${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: true
+jobs:
+  twenty-load-foundation: # steps and caps: §2.8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80 # 70 (sum of step caps) + 10
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      TWENTY_REF: 7cbdfec6f346b43715bc2056932f4fad5886f733 # must equal scripts/bootstrap.sh (step 6 checks it)
+      TWENTY_IMAGE_TAG: v2.44.0
+      TAG: v2.44.0
+      TWENTY_BASE_URL: http://127.0.0.1:3002
+      P6_TWENTY_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/default # public harness default, not a secret
+      TWENTY_DOWN_VOLUMES: "1"
+      P6_PROFILE: ${{ github.event_name == 'pull_request' && 'pr' || inputs.profile || 'full' }}
+      P6_TWENTY_LIMITER_PROFILE: productionLike # 3b: functional (the six env entries, §6.3, on the up step)
+    steps: [] # the 15 steps of §2.8, in that order
+# >>> task4 jobs
+
+# >>> task5 jobs
+
+# >>> task6 jobs
+```
+
+Why the triggers: `pull_request` with paths runs the short profile only when Twenty load code changes; `push` to `main` runs
+the full profile on merge; the nightly cron gives the roadmap's scheduled evidence; `workflow_dispatch`
+lets the owner run the runs for the closeout medians (P4: medians come only from at least 3 VALID Actions runs). The concurrency group keeps a nightly run and a push
+from cancelling each other, the same pattern as `perf.yml:21–25`.
+
+The step `up:twenty` takes `env:` entries from `limiterProfileEnv(...)` (§2.6). In 3a it is empty (`productionLike`). The
+YAML values for `functional` are written by hand in the 3b job and checked against `src/twenty/limiter-profile.ts` by
+`tests/unit/twenty-load-workflow.test.ts` (no drift).
+
+### 6.9 Case registry and gate guard (registration lines)
+
+- `src/load/cases.ts`: `TW_BG_FOUNDATION` (§2.4) and the gated `P6_TW_LOAD_008`, `P6_TW_LOAD_010` (`gated: true`, no `runs`
+  until their gate opens). Add the three entries to `CASES` (`src/load/cases.ts:1462`).
+- `scripts/load/run-load.ts`: after `found` is resolved (line 37 region), `if (found.gated) fail("ENV: case " + found.id + " is gated (NOT RUN)")`.
+- The workflow calls the runner directly: `node scripts/load/run-load.ts --case TW-BG-FOUNDATION --profile "$P6_PROFILE"`.
+  No npm script is added (P32, §10 conflict 6).
+
+## 7. Oracles and verdict rules
+
+Verdict words: **PASS** (every check holds), **FAIL** (a PRODUCT BUG or TEST BUG, or a k6 exit code not allowed), **INVALID**
+(the validity judge says the run is not valid), **ENV** (setup or preflight failed), **NOT RUN** (a gated case whose gate is
+closed). Labels follow rule 13: PRODUCT BUG is SUSPECTED until a repeated full-count run reproduces it.
+
+| ID  | check                      | formula                                                                            | where the number lives                           | a violation is                                                                                       |
+| --- | -------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| O1  | created rows               | `rows(all states, prefix) == p6_tw_created`                                        | exact equality, no tolerance                     | `rows < created`: PRODUCT BUG (lost write). `rows > created`: TEST BUG (phantom or prefix collision) |
+| O2  | updated rows               | `rows(updatedAt > createdAt, prefix) == p6_tw_updated`                             | exact                                            | `<`: PRODUCT BUG (lost update). `>`: TEST BUG                                                        |
+| O3  | server errors              | `p6_tw_5xx == 0`                                                                   | exact                                            | PRODUCT BUG, SUSPECTED until repeated                                                                |
+| O4  | no response                | every k6 request has a status                                                      | exact                                            | TEST BUG (harness or network)                                                                        |
+| O5  | limiter at production-like | HTTP 429 count `== 0` on the user token                                            | exact                                            | TEST BUG "limiter engaged on a user token" (a finding for §10)                                       |
+| O6  | k6 thresholds              | `checks: rate==1`, `http_req_failed: rate==0`                                      | `standardOptions` (`k6/lib/pure/options.js:120`) | k6 exit 99 → FAIL                                                                                    |
+| O7  | leak after cleanup         | `leakCount(prefix, all states) == 0`                                               | `twentyCleanupWith`                              | TEST BUG → FAIL                                                                                      |
+| O8  | validity                   | the existing judge (dropped iterations, VU exhaustion, telemetry gaps, clock skew) | `src/load/validity.ts`                           | INVALID                                                                                              |
+| O9  | functional env (3b)        | each of the six names equals the profile value inside `server`                     | the preflight read (§6.3)                        | ENV                                                                                                  |
+
+There are **no latency or throughput thresholds** in this foundation (the roadmap sets none). Latency percentiles are
+reported, not gated. The background journey's `checks` threshold is the only gate on the k6 side.
+
+**P6-TW-LOAD-010 (gated):** PASS when the Twenty worker backlog (`LLEN :wait` + `LLEN :active` + `ZCARD :delayed`, in the
+`workspace-queue` and `webhook-queue` lists the journey writes to) reaches zero inside the drain window, and the drain time is
+recorded. FAIL when it does not reach zero inside the window (PRODUCT BUG candidate). INVALID when the monitor cannot read the
+queue more than once in five seconds. The drain window is a bound on the wait, not a latency target; the build records it
+from its own probe (Q6).
+
+**P6-TW-LOAD-008 (gated):** the Phase 4 knee stop rule, unchanged, on the background journey with the functional profile.
+PASS when the stop rule ends the run and no limiter 429 caused the stop; FAIL when the limiter ends it (recorded as a
+finding); otherwise the step range is reported (P6-RULE-006).
+
+## 8. Data isolation, cleanup and leak check
+
+- **Prefix.** `p6RunPrefix()` (`src/races/prefix.ts`, existing) → `caseDataPrefix(runPrefix, "TW-BG-FOUNDATION")`
+  (`k6/lib/pure/prefix.js:19`). Every company name is `<prefix>-<n>-<side>`. A name without the prefix is never touched.
+- **Sweep.** `listPrefixedIds` is a read-only `SELECT id FROM "<schema>".company WHERE name LIKE '<prefix>%'` (any deletion
+  state). `destroy` calls the product's GraphQL `destroyCompany` once per id (`src/twenty/api.ts`, existing mutation). Writes
+  go through the product's API, never through the oracle pool.
+- **Leak check.** `leakCount` (`companyRowsByPrefix`, `src/twenty/oracle.ts`, existing) counts rows of any state after the
+  sweep. It must be 0. A soft-deleted row that `destroyCompany` cannot remove is a leak and fails the job (rule O7). Whether
+  `destroyCompany` hard-deletes a soft-deleted row is NOT PROBED (§5 row 7); the build checks it on a one-row smoke first.
+- **Token.** `TWENTY_TOKEN` lives in `ctx.secrets` and reaches only the k6 process named in `secretEnv`. It is never written
+  to a file. The token scan (`scanOutDir`, `src/load/stages.ts`; and the workflow's token-scan step) runs on every result file.
+- **Credentials.** The Twenty dev credentials come from `src/twenty/env.ts` defaults (the harness's public dev seed). They
+  are read in memory and never printed (rule O4).
+- **Redis (3b, P6-TW-LOAD-010 only).** Read-only commands only, from a whitelist of `SCAN`, `TYPE`, `LLEN`, `ZCARD`,
+  `DBSIZE`. Any other command name throws `TEST BUG: redis command not allowed`. A unit test covers the whitelist.
+- **Limiter state.** Read-only check in preflight (3b): speed keys are 0 before a functional run (Q9).
+
+## 9. CI budget (rule C4)
+
+Job `twenty-load-foundation` (new). Rule C3 is met by construction: job timeout 80, sum of step caps 70, margin 10.
+
+| job                                       | job timeout | each step and its cap                                                                                                                                                                                             | sum of step caps | worst case | margin (>= 10 min) |
+| ----------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------- | ------------------ |
+| twenty-load-foundation (3a)               | 80          | checkout 3; setup-node 3; npm ci 5; k6 setup 3; bootstrap 3; verify TWENTY_REF 1; compose pull 6; up:twenty 12; seed 10; smoke 2; LOAD run 10; token scan 2; artefact upload 3; container logs 2; down (always) 5 | 70               | 70         | 10                 |
+| twenty-load-foundation (3b adds one step) | 82          | + verify limiter env in server (read-only printenv) 2                                                                                                                                                             | 72               | 72         | 10                 |
+
+Measured in this session (not published, P4): pull 26 s, bootstrap 12 s, up 127 s, seed 76 s, smoke under 1 s.
+Triggers and expected run lengths: PR (`pr` profile, an estimate of about 8 min), push to `main` and nightly and dispatch (`full`,
+an estimate of about 10 min). The timeouts of every existing job are unchanged (C1). The existing `twenty-smoke`, `twenty-races`
+and `twenty-obs` jobs do not meet C3 read literally (P31); they are recorded, not changed (Q11).
+
+## 10. Roadmap conflicts and cross-task notes
+
+### 10.1 Conflicts with the roadmap (numbered; the numbers are referenced in §4 and §6)
+
+| #   | roadmap says                                                                                                                     | probe shows                                                                                                                                                                                                                | decision or open question                                                                                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | "Twenty's limiter appears to be ON by default ... every Twenty run is limited at about 100 requests/minute" (roadmap D2 note 1)  | User-token bursts of 150 requests: 0 × 429, no rate-limit headers, no speed key in Redis (P8, P9). The limiter binds only `apiKey` and `application` spenders (P10).                                                       | Record the observation. The user-token path is not limited at image defaults. Tasks 4 and 5 are not shaped by the limiter; Task 6 must use API keys to see a 429 (P11).                 |
+| 2   | Functional profile (D3) is used by `-004` and `-005` because the limiter would shape them                                        | Those journeys use the user token, so the profile changes nothing at image defaults (P8, P9).                                                                                                                              | Keep D3 as agreed (the profile is applied and recorded per run, and protects against a future limiter change). The owner should know the Task 4 and 5 results do not depend on it (Q8). |
+| 3   | The Task 3 LOAD step sits inside `twenty-smoke` (roadmap "Scope", CI)                                                            | `twenty-smoke` is capped at 20 min (`perf.yml:1781`) and its 17 step caps sum to 95 min (P31).                                                                                                                             | A new job in a new workflow (Q1). The existing job is not changed.                                                                                                                      |
+| 4   | H4 is "opt-in passthrough of `API_RATE_LIMITING_*` only" (roadmap D6)                                                            | The application limits are named `APPLICATION_API_RATE_LIMITING_*` (`usage-limit-definitions.constant.ts:45–46`), which does not start with `API_RATE_LIMITING_`.                                                          | H4's allowlist must name the six exact variables (Q5). This is a request to Lane A's Task 1.                                                                                            |
+| 5   | Container telemetry through `docker stats` (roadmap "Scope", telemetry)                                                          | `docker stats --no-stream` costs about 1 s per container (P21).                                                                                                                                                            | Read cgroup and `/proc` files per container (P22, P23). `docker stats` stays only as the existing slow fallback.                                                                        |
+| 6   | Each LOAD case has a `load:*` npm script (roadmap is silent; existing pattern P32)                                               | This task would need a `package.json` edit, which Lane A's Task 2 owns for the pin only.                                                                                                                                   | The workflow calls `node scripts/load/run-load.ts --case …` directly. No npm script is added.                                                                                           |
+| 7   | The DB container is found by the existing discovery (roadmap "container telemetry" for Twenty)                                   | The filter is `qa-harness-<product>-postgres`; Twenty's DB is `qa-harness-twenty-db-1` (P20).                                                                                                                              | A per-product name pattern in `cgroup-stats.ts` (Q4).                                                                                                                                   |
+| 8   | "Phase 2 Task 6 decides the mechanism" for k6 auth (roadmap "Scope", `k6/lib`)                                                   | The roadmap says Phase 2 Task 6 decides; no decision text for it was found in `src/twenty`. The harness has `authenticate()` (`twenty.adapter.ts:258`), and `src/twenty/auth.ts` already signs in and exchanges the token. | Runner signs in and exchanges the user token; no API key (Q10).                                                                                                                         |
+| 9   | Gate for `P6-TW-LOAD-008`: "H4 raises the limits enough that the stop rule, not the limiter, ends the run"                       | H4 is not tagged. At image defaults the user-token path is not limited (P8, P9), so the limiter is not the stop today.                                                                                                     | The gate stays closed until H4 is tagged and pinned and a dry run shows the stop rule ends the run (Q7).                                                                                |
+| 10  | Gate for `P6-TW-LOAD-010`: "job state readable from outside without writes (e.g. a read-only queue inspect the harness exposes)" | The harness exposes no queue endpoint. BullMQ state is readable with read-only Redis commands through `docker compose exec` (P18).                                                                                         | Open the gate on that evidence if the owner accepts the exec route (Q6).                                                                                                                |
+| 11  | Gate for `P6-TW-LOAD-011` (Task 5): expiry ≤ 15 min                                                                              | `PASSWORD_RESET_TOKEN_EXPIRES_IN = '5m'` (P17).                                                                                                                                                                            | Cross-task note for Task 5 (§10.2). Not a Task 3 decision.                                                                                                                              |
+| 12  | Agent rule A.6: plan branches never get a PR                                                                                     | This task's instruction asks for one plan PR.                                                                                                                                                                              | The explicit task instruction is followed. The owner can close the PR and keep the branch if the rule should apply.                                                                     |
+| 13  | Roadmap "files likely touched" for Task 3                                                                                        | Five shared files and one run-meta field are needed (§6.1 gaps).                                                                                                                                                           | Registration lines, owner to confirm (Q4).                                                                                                                                              |
+| 14  | Prompt: "B0 was 1403 after PR #157"                                                                                              | Measured 1405 on `5215127` (P35).                                                                                                                                                                                          | B0 = 1405 (re-measured at build start, §5).                                                                                                                                             |
+| 15  | Roadmap Note 3 and D3: set `API_RATE_LIMITING_*` for the functional profile through H4                                           | The harness compose passes only `TAG` and `TWENTY_BASE_URL` into the compose environment, and the overlay does not reference any rate-limit name (P19).                                                                    | Until H4 reaches the containers, a functional env is a no-op. That is why 3a is production-like and 3b waits for the pin (Q2).                                                          |
+| 16  | Roadmap D2 note 1: production-like limits are "image defaults, nothing set"                                                      | Confirmed for the names checked: no `API_RATE_LIMITING_*` name in the image env (P27).                                                                                                                                     | No conflict. Recorded.                                                                                                                                                                  |
+| 17  | The roadmap's probe item "which routes the limiter guards"                                                                       | Covered: root query-runner operations, REST and GraphQL data calls. `/metadata` auth is not covered (P14).                                                                                                                 | Recorded. The route list is final for this task.                                                                                                                                        |
+| 18  | Roadmap's "Twenty job time with seed (Phase 2 Task 6 measures first boot)"                                                       | Measured in this session: up 127 s, seed 76 s (P3, P4).                                                                                                                                                                    | Used for the caps (§2.8).                                                                                                                                                               |
+
+### 10.2 Cross-task notes (for the plans of Tasks 2, 4, 5 and 6; not decided here)
+
+- **Task 2 (Lane A, pin bump).** `shared_preload_libraries` is empty and `pg_stat_statements` is not installed on the
+  Twenty DB in this stack (P26), so the Task 2 top-query rows cannot read Twenty until H1 reaches it. Task 2's
+  `sampler.ts` and `run.ts` changes overlap this task's one-hook edit in `sampler.ts`: whichever PR merges second
+  merges the other's line.
+- **Task 4 (`P6-TW-LOAD-004`).** The journey's writes are plain PATCH calls. The roadmap's probe item "whether PATCH writes
+  only the sent fields" is still open for Task 4 (not probed here: writes).
+- **Task 5 (`P6-TW-LOAD-005`, `-011`).** (a) Password-reset requests are throttled to 3 per 15 minutes per email
+  (`auth.resolver.ts:126–127` and `:1127–1131`, P15), so each throwaway user may request at most three resets per window.
+  (b) `CaptchaGuard` is on the reset mutation, but no captcha driver is set by default and the factory returns
+  `disabled` (`captcha-driver.factory.ts:27–28`, P16). Whether `validate()` passes when disabled is NOT PROBED.
+  (c) The reset token expires after `5m` (`config-variables.ts:143`, P17): the `-011` gate (≤ 15 min) looks open.
+- **Task 6 (`P6-TW-LOAD-006`, `-009`).** A 429 needs an API-key client (P10, P11). The production-like profile is
+  image defaults. Redis state resets on a fresh `up` because the Redis container has no volume (P12). `-009` fairness
+  needs two keys, which Task 6 creates in its own setup (a write through the API, not the oracle).
+
+## 11. EXTRA cases (labelled EXTRA, no new P6 ID)
+
+Each extra is proposed only. It is in scope only if the owner accepts it and the budget fits (§9 has no room in the
+foundation job; an extra runs as its own step only after 3a is green).
+
+| label                            | question                                                              | oracle                                                                       | cost                                               | note                                                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| EXTRA-A (replay of a create)     | does a repeated identical `POST /rest/companies` create a second row? | each replay is counted; the expectation is recorded as a finding, not a pass | 2 requests per sampled iteration, 1% of iterations | Twenty's REST create has no idempotency key in the calls this plan uses (`src/twenty/api.ts`).                                         |
+| EXTRA-B (authorisation boundary) | can a Limited member PATCH a company created by the Admin?            | `403` or `404`, and the row is unchanged in the DB (read-only check)         | 2 requests per sampled iteration                   | Uses the seeded Limited member from the harness seed list (`twenty.adapter.ts`, `seedUsers`); the dev password is read in memory only. |
+| EXTRA-C (error codes under load) | do invalid or missing ids return 401 or 404, never 500?               | status class per request; 500 is a PRODUCT BUG (SUSPECTED)                   | 1% of iterations, one request each                 | P7 shows the invalid-bearer status is 401.                                                                                             |
+
+## 12. Gates
+
+| case           | gate condition (roadmap)                                             | evidence now                                                                                                       | status                                                                                       | opens when                                                                                                   |
+| -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| P6-TW-LOAD-010 | job state readable from outside without writes                       | P18: `LLEN`, `ZCARD`, `TYPE`, `SCAN` on BullMQ keys through `docker compose exec redis-cli` work and are read-only | **NOT RUN** until Q6 is accepted and the 3b monitor proves a read during a burst (§5 row 10) | Q6 accepted, a dispatch shows the backlog rising and draining, then at least 3 VALID runs before any medians |
+| P6-TW-LOAD-008 | H4 raises the limits so the stop rule, not the limiter, ends the run | H4 not tagged (P19). At image defaults the user-token path is not limited (P8, P9).                                | **NOT RUN** (gate closed)                                                                    | H4 tagged and pinned by Task 2, and a dry run whose stop reason is the stop rule (Q7)                        |
+
+## 13. Environment changes (rule E1)
+
+**No environment change, in either cloud.** Every tool the probe used worked in this Claude Code cloud session with no
+change: Docker 29.9.2 and Compose v5.6.1 (`/usr/bin/docker`), Node v22.23.3 first on `PATH`, k6 v2.3.0 (`.k6-version`,
+installed by the session hook), the harness scripts, and the cgroup v1 files the telemetry reads (P22). Cursor cloud was
+not probed in this session; the build re-checks row 9 of §5 there (the cgroup layout and `docker stats` cost) before its
+first run. The GitHub-hosted runner's cgroup layout is also NOT PROBED here (§5 row 9): the first CI run records it.
+
+## 14. Done when (roadmap, made measurable) and rule self-check
+
+### 14.1 Done when
+
+The roadmap's Task 3 "Done when", adjusted only by the agreed decisions:
+
+1. The background journey runs VALID with telemetry, a chart and a clean Twenty audit **on the PR and once on `main`**.
+   Measurable: `TW-BG-FOUNDATION` `verdict.json` `outcome: PASS`, `validity.verdict: VALID`, `audit.json` with no violation,
+   on the PR run and on the push run.
+2. The active limiter profile is recorded per run. Measurable: `run-meta.json` `limiterProfile` is present on every run
+   (3a: `productionLike`; 3b: `functional`).
+3. `P6-TW-LOAD-010` and `P6-TW-LOAD-008` each land (at least 3 VALID runs), or each is listed under "Later" with its gate
+   evidence. Measurable: §12 status updated in the 3b PR.
+4. `npm run check` is green. Measurable: the unit count after each build step matches §14.2.
+
+### 14.2 Unit count (B0 = 1405, measured on main at 5215127; the build re-measures at its start)
+
+| build step (§16)                           | expected new unit tests       | expected total |
+| ------------------------------------------ | ----------------------------- | -------------- |
+| S1 (start, no commit)                      | 0                             | 1405           |
+| S2 (types and registration lines)          | 0                             | 1405           |
+| S3 (limiter profile)                       | 4                             | 1409           |
+| S4 (k6 helper, journey, case script)       | 0 (`npm run k6:inspect` only) | 1409           |
+| S5 (docker-stats and sampler hook)         | 4                             | 1413           |
+| S6 (reconcile hook)                        | 6                             | 1419           |
+| S7 (products stages, registry, gate guard) | 5                             | 1424           |
+| S8 (workflow and its shape test)           | 3                             | 1427           |
+| S9 (README)                                | 0                             | 1427           |
+| S12 (3b functional profile)                | 1                             | 1428           |
+
+If a step's count differs, the build stops and explains (rule C.11). It never edits the expected number.
+
+### 14.3 Rule self-check (section 0 of the task prompt and `docs/agent-rules.md`)
+
+| rule                                                        | status for this plan                                                                                                                                                                                                                             |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| N1–N5 (no pause, unknowns probed, root causes, log updates) | met: every probe ran; the findings are root-caused in §4 and §10                                                                                                                                                                                 |
+| R1–R8 (GitHub and git)                                      | met, with one note: the identity used is the repository owner's (`get_me` returned the owner login, not the excluded account, so H1 did not apply); commits stage explicit paths; no force push; no merge; `add_repo` was used for the fork read |
+| R5 (commit and PR text)                                     | met: no attribution footers, no session links in commit or PR text                                                                                                                                                                               |
+| R6 (no personal names in repo text)                         | met: the text says "the owner"                                                                                                                                                                                                                   |
+| R7 (no comments, no @-mentions)                             | met: no PR or issue comment was posted                                                                                                                                                                                                           |
+| O1 (only the plan file is added)                            | met: `docs/plans/2026-10-29-p6-phase5-task3-twenty-load-foundation.md` is the only file added                                                                                                                                                    |
+| O2 (no roadmap or earlier plan edited)                      | met                                                                                                                                                                                                                                              |
+| O3 (no product fork or node_modules edit)                   | met: the fork checkout was used read-only; the harness wrote its gitignored docker env file in the fork's docker directory (harness behaviour, not a tracked change); no tracked file was edited                                                 |
+| O4 (no secret printed)                                      | met: tokens were printed as length only; the dev password was not printed; the DB URL is the harness public default                                                                                                                              |
+| O5 (private items)                                          | met: no private-disclosure item is named or described in this file                                                                                                                                                                               |
+| O6 (IDs unchanged, no renumbering)                          | met: `P6-TW-LOAD-008`, `-010` and `-011` are as the roadmap writes them; the foundation has no P6 ID (Q3)                                                                                                                                        |
+| O7 (no weaker threshold)                                    | met: no threshold is set; the k6 thresholds are the existing ones                                                                                                                                                                                |
+| O8 (no GitHub CLI)                                          | met                                                                                                                                                                                                                                              |
+| P1 (probe first)                                            | met: §4                                                                                                                                                                                                                                          |
+| P2 (products only through harness scripts)                  | met: Twenty was started, seeded and stopped only through `npm run up:twenty`, `seed:twenty` and `down:twenty`; the image pull used the CI script                                                                                                 |
+| P3 (no foreign process touched)                             | met: only the project `qa-harness-twenty` containers were read or stopped                                                                                                                                                                        |
+| P4 (session timings are not published numbers)              | met                                                                                                                                                                                                                                              |
+| P5 (one-shot image facts)                                   | met: P27 names its commands                                                                                                                                                                                                                      |
+| C1–C5 (CI budget)                                           | met: no timeout raised; every new step has a cap; job timeout 80 = 70 + 10; the Twenty load job brings its product up and has its own down (C5)                                                                                                  |
+| E1 (environment)                                            | met: §13                                                                                                                                                                                                                                         |
+| H1–H8 (hard stops)                                          | none hit (H1: the identity is the owner's; H3: the probe needed no secret beyond the public harness dev defaults; H5: no secret found in the files this probe read)                                                                              |
+
+## 15. Expected output
+
+**Files** (under `results/load/TW-BG-FOUNDATION/<runId>/`, `<runId>` = `<UTC compact>-<8 hex>` from `newRunId()`):
+`verdict.json`, `run-meta.json`, `k6-main-summary.json`, `k6-main.json.gz`, `k6-main.log`, `telemetry-main.json`,
+`telemetry-main.csv`, `chart-main.html`, `audit.json`. The container logs (`results/twenty/containers.log`) and the token
+scan result are not in this directory.
+
+**Shapes** (shape only, not a measured run; `…` marks fields a run fills):
+
+```text
+verdict.json   { "schema": 1, "caseId": "TW-BG-FOUNDATION", "runId": "…", "profile": "pr|full",
+                 "label": "functional load, not capacity", "outcome": "PASS|FAIL|INVALID|ENV",
+                 "reasons": [], "invalid": [], "validity": { "verdict": "VALID|INVALID", "reasons": [] },
+                 "k6": [ { "label": "main", "exitCode": 0, "requests": …, "iterations": …, "dropped": 0, … } ],
+                 "runMeta": "run-meta.json", "stages": { "setup": {…}, "k6": {…}, "reconcile": {…}, … } }
+run-meta.json  … "software": { "products": { "twenty": "<fork SHA>" } }, "limiterProfile": "productionLike|functional",
+                 "environment": { "kind": "github-actions", "workflow": "twenty-load", "runUrl": "…" }
+telemetry-main.json  … "containers": [ { "role": "server|worker|db", "cpuNs": …, "memBytes": …, "rssKb": …, "threads": …, "fds": … } ]
+audit.json     { "schema": 1, "product": "twenty", "prefixLike": "<prefix>%", "rowsSeen": …,
+                 "checks": [ { "name": "created-vs-rows", "ok": true, "detail": "…counts…" }, … ],
+                 "violations": [], "knownBugs": {}, "unexpected": [], "pending": [], "leak": [] }
+```
+
+Counts and ids only in every file; no token, password, hash or pk key (token scan, §8).
+
+**Job summary** (written by the runner to `GITHUB_STEP_SUMMARY`, existing format in `src/load/runner.ts`):
+`### TW-BG-FOUNDATION: PASS (pr profile, functional load, not capacity)`, then one line per reason if any.
+
+**Artefact.** Name `twenty-load-foundation`, path `results/load/`, `retention-days: 14` (the `perf.yml` practice; 14 days is
+the Actions expiry noted in the roadmap). Uploaded only after the token scan passes (`if: always() && steps.token_scan.outcome == 'success'`).
+
+## 16. Build order (one commit per step; `npm run check` before every push)
+
+Each step lists its files, its exact command, the expected output and its commit message (lowercase Conventional Commit).
+Before every push, run `npm run check` and compare the unit count with §14.2. If it differs, stop and explain.
+
+**S1. Start and re-check (no commit).** `git fetch origin main && git switch -c feat/<date>-p6-twenty-load-foundation origin/main`;
+`npm ci`; `npm run check`. Expected: every stage passes; the unit count is 1405 (re-measure; if different, record it as the
+new B0). Run every row of §5 and record the result. Do not start the build if row 1 or 5 changed; stop and report.
+
+**S2. Register the product in the shared types (no behaviour).** Files (registration lines, Q4):
+`src/load/types.ts` (`LoadProduct` gains `"twenty"`, line 1; `LoadCase` gains `gated?: boolean`; `RunMeta` gains
+`limiterProfile?: "functional" | "productionLike"`);
+`src/load/reconcile/types.ts` (`AuditProduct` gains `"twenty"`, line 3; `AuditStageConfig` gains
+`{ product: "twenty"; prefixLike: string; schema: string }`);
+`src/load/telemetry/stages.ts` (`LOG_FILES.twenty = ""`, and `openSources` skips an empty name; `DATABASE_URL.twenty = (env) => twentyDatabaseUrlFromEnv(env)`);
+`src/load/readiness.ts` (`READINESS.twenty = (env) => [\`${base(env.TWENTY_BASE_URL, "http://127.0.0.1:3002")}/healthz\`]`);
+`src/load/telemetry/cgroup-stats.ts` (a per-product container name: `twenty` → `qa-harness-twenty-db-1`; the other products unchanged, P20);
+`src/load/run-meta.ts` (writes `limiterProfile` when `ctx.meta.limiterProfile` is set).
+Command: `npm run typecheck`. Expected: no error. Commit: `feat(load): register the twenty product in the load types`.
+
+**S3. Limiter profile module (+4 tests).** Files: `src/twenty/limiter-profile.ts` (§2.6, the six values of §6.3),
+`tests/unit/twenty-limiter-profile.test.ts`. Tests: (1) `productionLike` is empty; (2) `functional` has exactly the six names;
+(3) `functional` values equal §6.3; (4) an unknown name throws `TEST BUG: unknown limiter profile`. Command:
+`node --test tests/unit/twenty-limiter-profile.test.ts`. Expected: 4 pass. Commit: `feat(twenty): add the limiter profile module`.
+
+**S4. k6 side: auth helper, journey, case script (no unit tests).** Files: `k6/lib/twenty-auth.js` (§2.1),
+`k6/journeys/tw-background.js` (the four steps of §6.6, filled), `k6/cases/tw-background.js` (§2.3),
+`k6/cases/tw-background.example.json` (the defaults of the case script). Command: `npm run k6:inspect`. Expected: the
+inspect step passes. Commit: `feat(k6): add the twenty auth helper and background journey`.
+
+**S5. docker-stats module and the sampler hook (+4 tests).** Files: `src/load/telemetry/docker-stats.ts` (§6.4),
+`tests/unit/docker-stats.test.ts`, one hook in `src/load/telemetry/sampler.ts` (`containers?: TwentyContainer[]` in
+`SamplerOptions`; one line in the tick that adds `containers` when set). Tests: (1) discovery returns only the running roles
+(a fake `exec`); (2) `readContainerSample` is undefined for kind `absent`; (3) `readProcSample` parses `VmRSS` and `Threads`
+(a fake `readFile`); (4) `readProcSample` is undefined when the file cannot be read. Command: `node --test tests/unit/docker-stats.test.ts`.
+Expected: 4 pass. Commit: `feat(load): sample twenty containers from cgroup and proc files`.
+
+**S6. Reconcile hook (+6 tests).** Files: `src/load/reconcile/twenty.ts` (§6.7), `tests/unit/reconcile-twenty.test.ts`,
+registration lines in `src/load/reconcile/index.ts` (the `twenty` case in `reconcile()`; `CLIENT_COUNTER.twenty`). Tests:
+(1) equal counts → no finding; (2) `total < created` → PRODUCT BUG; (3) `total > created` → TEST BUG; (4) `updated != patched`
+both ways; (5) `serverErrors > 0` → PRODUCT BUG; (6) `limited429 > 0` → TEST BUG. Commit: `feat(load): add the twenty background reconcile`.
+
+**S7. Setup and cleanup stages and the registry (+5 tests).** Files: `src/load/products/twenty.ts` (§6.5),
+`tests/unit/twenty-products.test.ts`, registry entries in `src/load/cases.ts` (`TW_BG_FOUNDATION`, and the two gated cases
+with `gated: true` and no `runs`), the gate guard in `scripts/load/run-load.ts` (§6.9). Tests: (1) a missing Twenty env is `ENV`;
+(2) a good setup sets `TWENTY_TOKEN` and `ctx.config.audit`; (3) cleanup calls `destroy` with exactly the prefixed ids;
+(4) a leak count of 1 is a TEST BUG; (5) cleanup with no prefixed rows is ok. Command: `node --test tests/unit/twenty-products.test.ts`.
+Expected: 5 pass. Commit: `feat(load): wire the twenty background case`.
+
+**S8. The CI workflow (+3 tests).** Files: `.github/workflows/twenty-load.yml` (§6.8 and the 15 steps of §2.8, with the three
+markers at the end), `tests/unit/twenty-load-workflow.test.ts` (tests: (1) the jobs are exactly `twenty-load-foundation`;
+(2) the `P6_TWENTY_LIMITER_PROFILE` value of 3a is `productionLike`; (3) the three markers appear in order, each followed by one
+unchanged blank line). Commands: `npm run lint:actions` and `node --test tests/unit/twenty-load-workflow.test.ts`. Expected:
+actionlint passes; 3 tests pass. Commit: `ci(twenty): add the twenty load workflow`.
+
+**S9. README section (no tests).** File: `README.md`, a "Twenty load" section with three sub-markers
+`<!-- >>> task4 section -->`, `<!-- >>> task5 section -->`, `<!-- >>> task6 section -->` (each followed by one blank line).
+Command: `npm run format:check`. Expected: passes. Commit: `docs(readme): describe the twenty load foundation`.
+
+**S10. Local proof through the harness (no commit unless a fix).** Commands, in order: `bash scripts/bootstrap.sh twenty`;
+`bash scripts/ci/compose-pull.sh -p qa-harness-twenty -f docker-compose.yml -f <overlay>` (from the fork's docker dir);
+`npm run up:twenty`; `npm run seed:twenty`; `npm run smoke:twenty`;
+`node scripts/load/run-load.ts --case TW-BG-FOUNDATION --profile pr`; then
+`TWENTY_DOWN_VOLUMES=1 npm run down:twenty`. Expected: `TW-BG-FOUNDATION PASS …/verdict.json`; zero containers and zero
+volumes left for `qa-harness-twenty`. Record the wall times (rule P4: session timings only). Any failure: root-cause it (N4)
+and fix in a new commit on the branch.
+
+**S11. Push 3a and open its PR.** `git push -u origin feat/<date>-p6-twenty-load-foundation`. Open one PR with the title
+`feat(twenty): add the twenty load foundation`. Wait for the CI run; read its log once (rule 15). Expected: the `pr` profile
+run is PASS and VALID; the job's token scan passes. After the owner merges (merge commit), the `main` run on the `full`
+profile must also be PASS and VALID. Record both run URLs.
+
+**S12. The functional profile (3b; after Task 2 is merged).** Files: the `up:twenty` step of `.github/workflows/twenty-load.yml`
+gains the six `env:` entries of §6.3 and `P6_TWENTY_LIMITER_PROFILE: functional`; one 2-minute step after `up:twenty` that runs
+`docker compose … exec -T server printenv <name>` for the six names and fails `ENV` on any mismatch (§6.3, O9); the
+workflow test (S8 test 2) changes to expect `functional`. Expected: `npm run check` gives 1428; the functional run is VALID;
+`run-meta.json` shows `limiterProfile: functional`; the verified values appear in the job log. Commit:
+`feat(twenty): verify the functional limiter profile`.
+
+**S13. The gated cases (only when their gate is open; §12).** Files: `k6/cases/tw-load-010.js` and
+`src/load/telemetry/queue-depth.ts` (read-only whitelist, §8, with its own unit test) or `k6/cases/tw-load-008.js`. A separate PR.
+Commit: `feat(twenty): add the gated worker drain case` (or `…knee case`).
+
+## 17. Open decisions, owner steps and the plan PR
+
+### 17.1 Open decisions (each with options and a recommendation)
+
+**Q1 (Q-PLACE) — blocks the build start.** Where do the Twenty load jobs live?
+(a) New jobs at the end of `perf.yml`, as the roadmap says. (b) A new workflow `.github/workflows/twenty-load.yml`.
+Evidence: `perf.yml` is 3,089 lines and runs on `pull_request`, `push` to `main`, `workflow_dispatch` and a 02:17 UTC cron
+(`perf.yml:3–16`), and Lane A and Tasks 4–6 all append to it; new Twenty jobs would make every perf run longer. **Recommendation: (b).**
+Consequence: one `ci(evidence)` PR after its first `main` run (§2.7).
+
+**Q2 (Q-SPLIT3) — blocks the build start.** One PR, or 3a then 3b?
+**Recommendation: 3a then 3b.** 3a (the foundation on the production-like profile) needs no H4 and can merge now. 3b needs the
+Task 2 pin: P19 shows an `API_RATE_LIMITING_*` value does not reach the containers until H4 is tagged and pinned, so a single
+PR would either wait for Tasks 1 and 2 or ship an unverified profile.
+
+**Q3 (foundation label) — blocks S2.** Name the foundation run `TW-BG-FOUNDATION` (no P6 ID) or give it a new P6 ID.
+**Recommendation: no P6 ID.** Rule O6 forbids a new ID unless the roadmap lists one, and the roadmap lists none for the foundation.
+
+**Q4 (shared registration lines) — blocks S2.** Accept the shared-file edits in §6.1 (the gaps: `types.ts`, `reconcile/types.ts`,
+`telemetry/stages.ts`, `readiness.ts`, `cgroup-stats.ts`, `run-meta.ts`, plus the `sampler.ts` hook the table already allows)?
+**Recommendation: accept**, each as one line or one entry, and coordinate `sampler.ts` and `cgroup-stats.ts` with Task 2 (§10.2).
+The alternative keeps Twenty without a container or DB telemetry source, which weakens the audit (P20).
+
+**Q5 (H4 allowlist names) — for Lane A's Task 1; blocks 3b only.** The H4 allowlist should name the six exact variables in §6.3,
+including `APPLICATION_API_RATE_LIMITING_TTL_IN_MS` and `APPLICATION_API_RATE_LIMITING_LIMIT`, because the roadmap's
+"`API_RATE_LIMITING_*` only" wording does not match them (P10, §10.1 row 4). **Recommendation: the six exact names, each
+tested by the harness.**
+
+**Q6 (P6-TW-LOAD-010 gate, read route) — blocks `-010` only.** Read the BullMQ queue state with read-only Redis commands run
+through `docker compose exec`, with a whitelist (`SCAN`, `TYPE`, `LLEN`, `ZCARD`, `DBSIZE`), or ask Lane A for a read-only
+queue endpoint (new harness work). **Recommendation: the exec route with the whitelist.** It is read-only (P18) and needs no
+harness change. The drain window is then set from a 3b probe, not from a target.
+
+**Q7 (P6-TW-LOAD-008 gate) — blocks `-008` only.** Open the knee when H4 is tagged (the literal gate), or when a dry run shows
+the stop rule ends the run and not the limiter? **Recommendation: the second.** At image defaults the user-token path is not
+limited (P8, P9), so tagging H4 alone proves nothing about the stop reason.
+
+**Q8 (functional profile for the user-token journeys) — for Tasks 4 and 5.** The profile changes nothing for user tokens at
+image defaults (P8, P9). Keep D3 and record the profile per run, or drop it for the user-token journeys? **Recommendation: keep it
+and record it.** It guards a future limiter change or an API-key client. Tasks 4 and 5 must keep their functional peak at or
+below the 20 rps design ceiling (§6.3), or change §6.3 in their own plans.
+
+**Q9 (limiter state reset) — for Task 6 and 3b.** Rely on container recreation (no Redis volume, P12) with a read-only preflight
+that speed keys are 0? **Recommendation: yes.** A flush command would write to Redis, which P6 never does.
+
+**Q10 (k6 auth mechanism) — decided, owner to confirm.** Runner sign-in and token exchange (`src/twenty/auth.ts`) into
+`TWENTY_TOKEN` (**recommended**), or a per-run API key? The API key is a write, and the API-key limiter applies to it (P10).
+
+**Q11 (C3 for the existing Twenty jobs) — no build change.** `twenty-smoke`, `twenty-races` and `twenty-obs` do not meet C3
+read literally (P31). Leave them and record it (**recommended**; C1 forbids raising a timeout). The new job meets C3 (§9).
+
+**Q12 (token lifetime) — for Tasks 4 to 6.** The user token lasts 1800 s (P6). Runs over about 25 min need a re-sign-in in the
+setup helper. **Recommendation:** keep runs under 25 min, or add the re-sign-in then. Not needed for the Task 3 profiles (2 min at most).
+
+### 17.2 Owner steps (GitHub web UI wording)
+
+1. Decide Q1, Q2, Q3 and Q4 before the build starts (Q1 and Q2 block it). Q5 is for Lane A before 3b.
+2. Review this plan PR and, when its checks are green, click **Merge pull request**, then **Create a merge commit**. Keep the
+   plan branch.
+3. After 3a merges, open the **Actions** tab, choose the `twenty-load` workflow, click **Run workflow** and pick `full`, to
+   produce the first `main` evidence run. Note its run id for the `ci(evidence)` PR.
+4. After Lane A's Task 1 tag, check that H4's allowlist names the six variables (Q5). This blocks 3b only.
+5. After the first `main` run of the new workflow, review and merge the `ci(evidence)` PR that adds its workflow id (§2.7).
+
+### 17.3 Unblocks
+
+- The 3a build can start once this plan is merged and Q1, Q2, Q3 and Q4 are decided.
+- 3b can start after Task 2 is merged (and H4 is tagged).
+- Tasks 4 and 5 can start after 3a merges (their CI also needs Task 2).
+- Task 6 can start after 3a merges (it uses the production-like profile and needs no H4).
+
+### 17.4 Plan PR (title and body)
+
+Title: `docs(plans): add the phase 5 task 3 plan`. Body: the plan file; the mapped IDs `P6-TW-LOAD-010` and `P6-TW-LOAD-008`
+(both gated); the base SHA `5215127`; open decisions Q1–Q12 with recommendations (§17.1); the owner steps (§17.2); and the
+line "Planning only: no code change." No footer and no session link.
