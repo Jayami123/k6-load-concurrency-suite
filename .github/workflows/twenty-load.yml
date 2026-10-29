@@ -46,6 +46,9 @@ permissions:
 concurrency:
   group: twenty-load-${{ github.event_name == 'schedule' && format('schedule-{0}', github.event.schedule) || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
+# The task markers below must stay at column 0 (tests/unit/twenty-load-workflow.test.ts reads them), so prettier
+# would re-indent them; this comment keeps the jobs block as written.
+# prettier-ignore
 jobs:
   # Twenty plan §2.8: the 15 steps and their caps. Job timeout 80 = the sum of the step caps (70) + 10 (rule C3).
   twenty-load-foundation:
@@ -438,5 +441,206 @@ jobs:
 # >>> task4 jobs
 
 # >>> task5 jobs
+
+  # Task 5 (P6-TW-LOAD-005 and its gated extra -011): nightly and dispatch only, never a pull request. Job timeout 100 = the step
+  # caps (90) + 10 (rule C3). Every step has timeout-minutes; the stop step runs always.
+  task5-reset-token:
+    name: task5-reset-token
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'schedule' && github.event.schedule == '43 3 * * *')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      TWENTY_REF: 7cbdfec6f346b43715bc2056932f4fad5886f733 # must equal scripts/bootstrap.sh (verify step checks it)
+      TWENTY_IMAGE_TAG: v2.44.0
+      TAG: v2.44.0
+      TWENTY_BASE_URL: http://127.0.0.1:3002
+      # Public harness default database URL (docker/twenty.compose.yml), not a secret.
+      P6_TWENTY_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/default
+      TWENTY_DOWN_VOLUMES: "1"
+      P6_PROFILE: ${{ inputs.profile || 'full' }}
+      # Productionlike profile: the image defaults, no API_RATE_LIMITING_* value (user sessions are not limited, Task 3 §2.12).
+      P6_TWENTY_LIMITER_PROFILE: productionLike
+    steps:
+      - name: Check out P6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+          echo "K6_PIN=$(tr -d '[:space:]' < .k6-version)" >> "$GITHUB_ENV"
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        timeout-minutes: 3
+        with:
+          k6-version: ${{ env.K6_PIN }}
+
+      - name: Prepare harness roots (Twenty fork at TWENTY_REF)
+        timeout-minutes: 3
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          BOOTSTRAP_SKIP_INSTALL: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap.sh twenty
+
+      - name: Verify TWENTY_REF and that no API rate-limit name is set (names only)
+        timeout-minutes: 1
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          if ! grep -q "^TWENTY_REF=\"${TWENTY_REF}\"$" scripts/bootstrap.sh; then
+            echo "::error::TWENTY_REF in twenty-load.yml does not match scripts/bootstrap.sh"
+            exit 1
+          fi
+          head="$(git -C "${PRODUCTS_ROOT}/twenty-CRM" rev-parse HEAD)"
+          if [ "$head" != "${TWENTY_REF}" ]; then
+            echo "::error::Twenty HEAD ${head} does not match TWENTY_REF ${TWENTY_REF}"
+            exit 1
+          fi
+          # No pipe into grep -q here: under pipefail an early exit of grep would fail the pipe with SIGPIPE.
+          if env | cut -d= -f1 | grep -E '^(APPLICATION_)?API_RATE_LIMITING_' >/dev/null; then
+            echo "::error::an API_RATE_LIMITING_* name is set; productionLike needs the image defaults"
+            exit 1
+          fi
+
+      - name: Pull Twenty images (3 tries, 15 s then 30 s)
+        id: twenty_pull
+        timeout-minutes: 6
+        working-directory: ${{ env.PRODUCTS_ROOT }}/twenty-CRM/packages/twenty-docker
+        env:
+          OVERLAY: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-twenty -f docker-compose.yml -f "$OVERLAY"
+
+      - name: Start Twenty (harness up, productionLike profile)
+        id: twenty_up
+        timeout-minutes: 12
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run up:twenty
+
+      - name: Seed Twenty (harness seed)
+        id: twenty_seed
+        if: ${{ steps.twenty_up.outcome == 'success' }}
+        timeout-minutes: 10
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run seed:twenty
+
+      - name: k6 smoke (GET /healthz)
+        id: twenty_smoke
+        if: ${{ steps.twenty_seed.outcome == 'success' }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run smoke:twenty
+
+      - name: LOAD run (P6-TW-LOAD-005, one-time reset token under load)
+        id: load_005
+        if: ${{ steps.twenty_smoke.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/load/run-load.ts --case P6-TW-LOAD-005 --profile "$P6_PROFILE"
+
+      - name: LOAD run (P6-TW-LOAD-011, expiry boundary; its gate is checked in the case)
+        id: load_011
+        if: ${{ !cancelled() && steps.twenty_smoke.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/load/run-load.ts --case P6-TW-LOAD-011 --profile "$P6_PROFILE"
+
+      - name: Capture container logs (before the scan and the stop)
+        if: ${{ always() && steps.twenty_pull.outcome == 'success' }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          mkdir -p results/twenty
+          docker compose -p qa-harness-twenty -f "${PRODUCTS_ROOT}/twenty-CRM/packages/twenty-docker/docker-compose.yml" \
+            -f "${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker/twenty.compose.yml" \
+            logs --no-color > results/twenty/containers.log
+
+      - name: Scan for token values and summarise the public verdicts
+        id: public_scan
+        if: ${{ always() }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          value='Bearer [A-Za-z0-9._~+/=-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+          # The uploaded trees also carry no 64-hex value and no bcrypt hash (the redaction patterns of src/twenty/oracle-reset-token.ts).
+          redacted='[0-9a-f]{64}|[$]2[aby][$][0-9]{2}[$][./A-Za-z0-9]{53}'
+          for f in results/load results/public; do
+            [ -e "$f" ] || continue
+            if grep -rqE "$value|$redacted" "$f"; then
+              echo "::error::${f} contains a token-shaped value; not uploading"
+              exit 1
+            fi
+          done
+          if [ -e results/twenty ] && grep -rqE "$value" results/twenty; then
+            echo "::error::results/twenty contains a token value"
+            exit 1
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            for (const id of ["P6-TW-LOAD-005", "P6-TW-LOAD-011"]) {
+              const dir = path.join("results/public", id);
+              const runs = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+              if (runs.length === 0) console.log(id + " verdict=NOT RUN");
+              for (const run of runs) {
+                const file = path.join(dir, run, "verdict-public.json");
+                const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+                console.log(doc.caseId + " verdict=" + doc.outcome);
+                if (doc.findingId) console.log("matches " + doc.findingId + ", see private security report");
+              }
+            }
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the public results (redacted verdicts only)
+        if: ${{ always() && steps.public_scan.outcome == 'success' }}
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tw-load-005-${{ github.run_id }}
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/public/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Stop Twenty (harness down, volumes removed)
+        if: ${{ always() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:twenty
 
 # >>> task6 jobs

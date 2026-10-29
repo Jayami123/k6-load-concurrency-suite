@@ -22,6 +22,7 @@ import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { twentyCleanup, twentySetup } from "./products/twenty.ts";
 import { TW_LOAD_004 } from "../twenty/lost-update-case.ts";
+import { BOUNDARY_STAGES, RESET_TOKEN_STAGES } from "./products/twenty-reset-token.ts";
 import {
   cancelRaceStage,
   ledgerStage,
@@ -1486,6 +1487,50 @@ export const TW_BG_FOUNDATION: LoadCase = {
   stages: { setup: twentySetup, reconcile: reconcileStage, cleanup: twentyCleanup },
 };
 
+/**
+ * P6-TW-LOAD-005 (Task 5): a one-time reset token is redeemed in parallel while steady background load runs. Nightly and dispatch
+ * only (twenty-load.yml). The result is named by its verdict word and finding ID only (Q-DISCLOSE).
+ */
+export const TW_LOAD_005: LoadCase = {
+  id: "P6-TW-LOAD-005",
+  title: "Twenty one-time reset token under load",
+  product: "twenty",
+  label: "functional load, not capacity",
+  telemetry: { product: "twenty" },
+  profiles: {
+    pr: { rate: 1, durationSec: 60, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 300, maxLatencyMs: 4000 },
+  },
+  runs: (ctx) =>
+    ctx.invalid.length > 0
+      ? []
+      : [
+          {
+            label: "main",
+            script: "k6/cases/tw-load-005.js",
+            env: {},
+            secretEnv: ["TWENTY_TOKEN"],
+          },
+        ],
+  stages: RESET_TOKEN_STAGES,
+};
+
+/**
+ * P6-TW-LOAD-011 (Task 5, accepted extra): the expiry boundary. Token A is redeemed 15 s before its expiry, token B 15 s after.
+ * It is not gated in the registry: run-load refuses gated cases, so its gate (an expiry above 15 min) is checked when the
+ * case runs, and the case reports NOT RUN when the gate is closed.
+ */
+export const TW_LOAD_011: LoadCase = {
+  ...TW_LOAD_005,
+  id: "P6-TW-LOAD-011",
+  title: "Twenty reset token expiry boundary",
+  profiles: {
+    pr: { rate: 1, durationSec: 330, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 330, maxLatencyMs: 4000 },
+  },
+  stages: BOUNDARY_STAGES,
+};
+
 /** P6-TW-LOAD-010 (gated, Twenty plan §12): registered, never run until its gate opens. Profiles are placeholders until then. */
 export const TW_LOAD_010: LoadCase = {
   ...TW_BG_FOUNDATION,
@@ -1541,4 +1586,6 @@ export const CASES: Record<string, LoadCase> = {
   [TW_LOAD_008.id]: TW_LOAD_008,
   [TW_LOAD_010.id]: TW_LOAD_010,
   [TW_LOAD_004.id]: TW_LOAD_004,
+  [TW_LOAD_005.id]: TW_LOAD_005,
+  [TW_LOAD_011.id]: TW_LOAD_011,
 };
