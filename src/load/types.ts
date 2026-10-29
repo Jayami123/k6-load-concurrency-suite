@@ -163,6 +163,8 @@ export interface LoadContext {
   handles: Record<string, unknown>;
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
+  /** Reasons the case did not run its measurement (a gate closed inside the case). The outcome is INCONCLUSIVE unless INVALID or FAIL. */
+  notRun?: string[];
   results: Partial<Record<StageName, StageResult>>;
   /** Run metadata (Task 4, P6-RULE-003); written to run-meta.json. */
   meta?: RunMeta;
@@ -171,7 +173,8 @@ export interface LoadContext {
 export type Stage = (ctx: LoadContext) => Promise<StageResult>;
 export type StageSet = Record<StageName, Stage>;
 
-export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV";
+/** INCONCLUSIVE: the case ran no measurement because its gate closed in the case (NOT RUN). It is never PASS. */
+export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV" | "INCONCLUSIVE";
 
 /** A gate check's answer. A closed gate carries the reason that goes into the NOT RUN line. */
 export type GateState = { open: true } | { open: false; reason: string };

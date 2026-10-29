@@ -34,6 +34,24 @@ export function boundarySchedule(expiresAtMs: number): { beforeMs: number; after
   };
 }
 
+/** Rounding allowed between the recorded lifetime and the observed one (database timestamps and clock reads). */
+export const PREMISE_TOLERANCE_MS = 1_000;
+
+/** Pure. Whether the observed token windows match the recorded lifetime (the gate's premise) and whether the gate is open. */
+export function boundaryPremise(
+  windows: ReadonlyArray<{ createdAtMs: number; expiresAtMs: number }>,
+  recordedMs = IMAGE_DEFAULT_RESET_LIFETIME_MS,
+): { gateOpen: boolean; premiseMatches: boolean; observedLifetimesMs: number[] } {
+  const observedLifetimesMs = windows.map((w) => w.expiresAtMs - w.createdAtMs);
+  return {
+    gateOpen: windows.every((w) => expiryGateOpen(w.createdAtMs, w.expiresAtMs)),
+    premiseMatches: observedLifetimesMs.every(
+      (ms) => Math.abs(ms - recordedMs) <= PREMISE_TOLERANCE_MS,
+    ),
+    observedLifetimesMs,
+  };
+}
+
 /** Pure. True when a token's lifetime (expiresAt minus createdAt) is at most the gate. */
 export function expiryGateOpen(createdAtMs: number, expiresAtMs: number): boolean {
   return expiresAtMs - createdAtMs <= GATE_MAX_EXPIRY_MS;

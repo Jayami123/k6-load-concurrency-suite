@@ -18,7 +18,7 @@ import type {
   StageSet,
 } from "./types.ts";
 
-export const EXIT_CODES = { PASS: 0, FAIL: 1, ENV: 2, INVALID: 3 } as const;
+export const EXIT_CODES = { PASS: 0, FAIL: 1, ENV: 2, INVALID: 3, INCONCLUSIVE: 0 } as const;
 
 export interface RunOptions {
   profile: LoadProfileName;
@@ -76,6 +76,8 @@ export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: 
   }
   if (reasons.length > 0) return { outcome: "FAIL", reasons };
   if (ctx.invalid.length > 0) return { outcome: "INVALID", reasons: [...ctx.invalid] };
+  if (ctx.notRun && ctx.notRun.length > 0)
+    return { outcome: "INCONCLUSIVE", reasons: [...ctx.notRun] };
   return { outcome: "PASS", reasons: [] };
 }
 

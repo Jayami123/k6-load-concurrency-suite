@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  boundaryPremise,
   boundarySchedule,
   expiryBoundaryVerdict,
   expiryGateOpen,
@@ -37,5 +38,30 @@ describe("expiryBoundaryVerdict", () => {
     assert.equal(expiryGateOpen(0, 300_000), true);
     assert.equal(expiryGateOpen(0, 900_000), true);
     assert.equal(expiryGateOpen(0, 900_001), false);
+  });
+});
+
+describe("boundaryPremise", () => {
+  const recorded = 300_000;
+  const windowOf = (lifetimeMs: number) => ({ createdAtMs: 0, expiresAtMs: lifetimeMs });
+
+  it("matches the recorded lifetime and is gate-open at the image default", () => {
+    const p = boundaryPremise([windowOf(recorded), windowOf(recorded)], recorded);
+    assert.deepEqual(p, {
+      gateOpen: true,
+      premiseMatches: true,
+      observedLifetimesMs: [recorded, recorded],
+    });
+  });
+
+  it("allows one second of rounding and no more", () => {
+    assert.equal(boundaryPremise([windowOf(recorded + 1_000)], recorded).premiseMatches, true);
+    assert.equal(boundaryPremise([windowOf(recorded + 1_001)], recorded).premiseMatches, false);
+  });
+
+  it("closes the gate above 15 minutes and reports the mismatch", () => {
+    const p = boundaryPremise([windowOf(16 * 60_000)], recorded);
+    assert.equal(p.gateOpen, false);
+    assert.equal(p.premiseMatches, false);
   });
 });
