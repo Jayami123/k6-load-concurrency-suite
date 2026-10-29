@@ -21,6 +21,7 @@ import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
 import { twentyCleanup, twentySetup } from "./products/twenty.ts";
+import { TW_LOAD_004 } from "../twenty/lost-update-case.ts";
 import { BOUNDARY_STAGES, RESET_TOKEN_STAGES } from "./products/twenty-reset-token.ts";
 import {
   cancelRaceStage,
@@ -1584,6 +1585,7 @@ export const CASES: Record<string, LoadCase> = {
   [TW_BG_FOUNDATION.id]: TW_BG_FOUNDATION,
   [TW_LOAD_008.id]: TW_LOAD_008,
   [TW_LOAD_010.id]: TW_LOAD_010,
+  [TW_LOAD_004.id]: TW_LOAD_004,
   [TW_LOAD_005.id]: TW_LOAD_005,
   [TW_LOAD_011.id]: TW_LOAD_011,
 };

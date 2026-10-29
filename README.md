@@ -369,6 +369,37 @@ TWENTY_DOWN_VOLUMES=1 npm run down:twenty
 
 Timings are not published here; numbers come only from GitHub Actions runs (median of at least 3).
 
+### P6-TW-LOAD-004, lost update under sustained edits
+
+Two writers that edit different fields of one record (variant A) and two read-modify-write writers that increment one
+field on the same records (variant B) run next to the foundation background. The oracle reads the final values (read-only)
+and joins them with the k6 write intents:
+
+- **Variant A.** Two serialized writers, one per field. `PASS` when every field keeps its last acknowledged write. A lost
+  write is `PRODUCT_BUG_SUSPECTED`, with the intent ids and the stored value as evidence.
+- **Variant B.** Each attempt reads a record, then writes the value read plus one. The loss is the deficit between the
+  acknowledged increments and the observed value. A deficit is `FINDING` (labelled "silent lost update"), never a pass.
+  A `PASS` states whether two attempts overlapped (contention reached) or not.
+- **Validity.** A run is `INVALID` on any 429 or 5xx, any rejected write, or an achieved attempt rate outside 10% of the
+  plan for a writer and stage. Validity is decided by these rules, not by the verdict.
+- **Profiles.** `pr` runs stage 1. `full` runs all three stages (push to main, nightly, dispatch).
+- **Auth and limits.** Setup creates a seeded API key (revoked in cleanup) and the run needs the `functional` limiter
+  profile. At the image defaults the case cannot run.
+
+Locally, against a stack the harness starts:
+
+```bash
+bash scripts/bootstrap.sh twenty
+eval "$(node --input-type=module -e 'import { limiterProfileEnv } from "./src/twenty/limiter-profile.ts"; for (const [k, v] of Object.entries(limiterProfileEnv("functional"))) console.log("export " + k + "=" + v);')"
+npm run up:twenty
+npm run seed:twenty
+P6_TWENTY_LIMITER_PROFILE=functional node scripts/load/run-load.ts --case P6-TW-LOAD-004 --profile pr
+TWENTY_DOWN_VOLUMES=1 npm run down:twenty
+```
+
+Its job is `task4-lost-update` in `twenty-load.yml`. The case's files are `k6/cases/tw-load-004.js`,
+`src/load/lost-update.ts` (the pure join) and `src/twenty/oracle-lost-update.ts` (the read-only oracle).
+
 <!-- >>> task4 section -->
 
 <!-- >>> task5 section -->
