@@ -4,6 +4,12 @@ export const BOUNDARY_OFFSET_MS = 15_000;
 /** The gate: an expiry above this many milliseconds (15 min of real time) closes P6-TW-LOAD-011 (plan §gate). */
 export const GATE_MAX_EXPIRY_MS = 900_000;
 
+/**
+ * The reset-token lifetime at the image default: PASSWORD_RESET_TOKEN_EXPIRES_IN = '5m' (config-variables.ts:143, recorded by the
+ * Task 3 probe, P17). The pre-run gate of P6-TW-LOAD-011 reads this value; the case still checks each issued token's real window.
+ */
+export const IMAGE_DEFAULT_RESET_LIFETIME_MS = 300_000;
+
 export type BoundaryVerdict = "PASS" | "PRODUCT_BUG_SUSPECTED" | "INCONCLUSIVE";
 
 /**

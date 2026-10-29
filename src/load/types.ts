@@ -88,8 +88,10 @@ export interface SpikeRunSpec {
 export interface LoadCase {
   /** Set only by P6-DOC-LOAD-004 (plan Phase 4 task 6 §6.5): a limited intent may leave one unfinished document. Any other case is a TEST BUG. */
   limitedFailMayLeaveUnfinished?: boolean;
-  /** A gated case is registered but never runs: the runner refuses it with ENV until its gate opens (Twenty plan §6.9, Q4). */
+  /** A gated case runs only when its gate check passes; a gated case without a gate check is refused with ENV (Twenty plan §6.9, Q4). */
   gated?: boolean;
+  /** The gate check of a gated case, run before the case: open runs it, closed is NOT RUN (never PASS). */
+  gate?: () => GateState;
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;
@@ -170,6 +172,9 @@ export type Stage = (ctx: LoadContext) => Promise<StageResult>;
 export type StageSet = Record<StageName, Stage>;
 
 export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV";
+
+/** A gate check's answer. A closed gate carries the reason that goes into the NOT RUN line. */
+export type GateState = { open: true } | { open: false; reason: string };
 
 export type InvalidCode =
   | "dropped_iterations"

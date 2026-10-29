@@ -1,9 +1,10 @@
 // CLI of the LOAD runner: node scripts/load/run-load.ts --case P6-X-LOAD-001 [--profile pr|full|steady|soak] [--out results/load]
 // The soak profile reads SOAK_DURATION_MIN (30 or 120) and writes soak.json next to verdict.json (plan Phase 4b task 7 §6.7).
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CASES } from "../../src/load/cases.ts";
 import { loadRepoEnv } from "../../src/load/env.ts";
+import { gateDecision, notRunReport } from "../../src/load/not-run.ts";
 import { parseKneeBounds } from "../../src/load/knee/bounds.ts";
 import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
 import type { LoadContext } from "../../src/load/types.ts";
@@ -36,8 +37,16 @@ if (!found || !["pr", "full", "steady", "soak"].includes(profile))
   );
 if (profile !== "steady" && profile !== "soak" && found.profiles[profile] === undefined)
   fail(`ENV: case ${found.id} has no ${profile} profile`);
-// A gated case stays registered until its gate opens (Twenty plan §6.9, Q4): it is refused, never run.
-if (found.gated) fail(`ENV: case ${found.id} is gated (NOT RUN)`);
+// A gated case runs only when its gate check passes (Twenty plan §6.9, Q4). A closed gate is NOT RUN: exit 0, never PASS.
+const decision = gateDecision(found);
+if (decision.kind === "refuse") fail(`ENV: case ${found.id} is gated and has no gate check`);
+if (decision.kind === "not-run") {
+  const report = notRunReport(found, decision.reason, profile);
+  console.log(report.console);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, report.summary);
+  process.exit(0);
+}
 
 // The steady and soak profiles are sized from the knee bounds: without the file they are not defined (plan task 5 §6.5, Task 7 §6.2).
 let caseDef: LoadCase = found;
