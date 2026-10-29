@@ -99,7 +99,12 @@ const judged = judgeKnownFailure(
   result.ctx.invalid.length === 0,
   result.exitCode,
 );
-console.log(`${judged.line ?? `${caseDef.id} ${result.outcome}`} ${result.verdictPath}`);
+// A FINDING is printed with its detail; it exits 0 (an expected result, not a test failure).
+const outcomeLine =
+  result.outcome === "FINDING"
+    ? `${caseDef.id} FINDING (${evaluateVerdict(result.ctx).reasons.join("; ")})`
+    : `${caseDef.id} ${result.outcome}`;
+console.log(`${judged.line ?? outcomeLine} ${result.verdictPath}`);
 if (judged.summary && process.env.GITHUB_STEP_SUMMARY)
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${judged.summary}\n\n`);
 process.exit(judged.exitCode);

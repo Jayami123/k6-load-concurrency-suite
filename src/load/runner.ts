@@ -19,7 +19,14 @@ import type {
   StageSet,
 } from "./types.ts";
 
-export const EXIT_CODES = { PASS: 0, FAIL: 1, ENV: 2, INVALID: 3, INCONCLUSIVE: 0 } as const;
+export const EXIT_CODES = {
+  PASS: 0,
+  FAIL: 1,
+  ENV: 2,
+  INVALID: 3,
+  INCONCLUSIVE: 0,
+  FINDING: 0,
+} as const;
 
 export interface RunOptions {
   profile: LoadProfileName;
@@ -51,7 +58,10 @@ const ORDER: StageName[] = [
 ];
 const ALWAYS: StageName[] = ["cleanup", "tokenScan", "verdict"];
 
-/** Pure. ENV if setup or preflight failed; else FAIL on a PRODUCT BUG or TEST BUG, or a k6 exit code other than expected; else INVALID; else PASS. */
+/**
+ * Pure. ENV if setup or preflight failed; else FAIL on a PRODUCT BUG or TEST BUG, or a k6 exit code other than expected; else
+ * INVALID; else INCONCLUSIVE (a NOT RUN); else FINDING when a stage recorded one; else PASS. A FINDING is not a failure.
+ */
 export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: string[] } {
   const setupFailed = (["setup", "preflight"] as const).filter((n) => ctx.results[n]?.ok === false);
   if (setupFailed.length > 0) {
@@ -79,6 +89,10 @@ export function evaluateVerdict(ctx: LoadContext): { outcome: Outcome; reasons: 
   if (ctx.invalid.length > 0) return { outcome: "INVALID", reasons: [...ctx.invalid] };
   if (ctx.notRun && ctx.notRun.length > 0)
     return { outcome: "INCONCLUSIVE", reasons: [...ctx.notRun] };
+  const findings = Object.values(ctx.results)
+    .map((r) => r?.finding)
+    .filter((f): f is string => f !== undefined);
+  if (findings.length > 0) return { outcome: "FINDING", reasons: findings };
   return { outcome: "PASS", reasons: [] };
 }
 
@@ -118,7 +132,14 @@ function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
   const stages = Object.fromEntries(
     Object.entries(ctx.results).map(([name, r]) => [
       name,
-      { ok: r?.ok, ms: r?.ms, kind: r?.kind, reasons: r?.reasons ?? [], data: r?.data },
+      {
+        ok: r?.ok,
+        ms: r?.ms,
+        kind: r?.kind,
+        reasons: r?.reasons ?? [],
+        data: r?.data,
+        finding: r?.finding,
+      },
     ]),
   );
   const doc = {

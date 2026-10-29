@@ -131,11 +131,13 @@ export function seqStages(first: Stage, second: Stage): Stage {
   return async (ctx) => {
     const a = await first(ctx);
     const b = await second(ctx);
+    const finding = [a.finding, b.finding].filter((f): f is string => f !== undefined).join("; ");
     return {
       ok: a.ok && b.ok,
       kind: a.ok ? b.kind : a.kind,
       reasons: [...a.reasons, ...b.reasons],
       data: { ...a.data, ...b.data },
+      ...(finding ? { finding } : {}),
     };
   };
 }
