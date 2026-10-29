@@ -36,7 +36,7 @@ unless it says "existing".
 ```js
 // k6/lib/twenty-auth.js
 export function authorizationHeader() {
-  // Returns "Bearer <token>" from __ENV.TWENTY_API_KEY when set (API-key cases, §2.12), else from __ENV.TWENTY_TOKEN (user-token case). Throws when neither is set.
+  // Returns "Bearer <token>" from the first entry of __ENV.TWENTY_API_KEYS (a JSON array, API-key cases, §2.13) when set, else from __ENV.TWENTY_TOKEN (user-token case). Throws when neither is set.
   // Throws: Error("TEST BUG: TWENTY_TOKEN is not set"). Never logs the value.
 }
 export function signInWithPassword({ baseUrl, email, password, workspaceName }) {
@@ -142,6 +142,14 @@ writes the name to `run-meta.json` as `limiterProfile` (Q4 adds the field to `Ru
 - The workflow id is added to `EVIDENCE_WORKFLOW_IDS` (`pages.yml:30`, `evidence-release.yml:39`) and to
   `tests/unit/evidence-release-ids.test.ts` in a separate `ci(evidence)` PR after the first `main` run (the id exists only then).
 
+- **Cron and guards (Tasks 4 to 6 review, DECIDED).** There is one nightly cron, `43 3 * * *` (UTC). Tasks 4 and 5 use this
+  same entry, and their jobs run only on it. Task 6 adds its weekly Saturday entry as a second `- cron:` line under
+  `schedule:`, with its own job guard.
+- Every job carries an `if:` guard on `github.event_name` and `github.event.schedule` (§6.8), so a job runs only on its own trigger.
+- The `concurrency` group includes `github.event.schedule`, so the nightly run never cancels the Saturday run.
+- `workflow_dispatch` takes two inputs: `profile` (`pr` or `full`) and `case` (the case id to run). Tasks 4 to 6 append their
+  case ids to the `case` options and add their own guards; the markers keep the appends apart.
+
 ### 2.8 Job template (every Twenty load job copies this shape)
 
 Steps, in order, with the `timeout-minutes` cap of each. The job timeout is the sum of the caps plus 10 (rule C3).
@@ -187,9 +195,12 @@ Under `results/load/TW-BG-FOUNDATION/<runId>/` (the existing runner layout, `src
 
 ### 2.11 Run-label rule (P6-RULE-003)
 
-A run counts as VALID only when `verdict.json` has `outcome: "PASS"` and `validity.verdict: "VALID"`, and
-`run-meta.json` has `environment.kind: "github-actions"`. Medians come only from at least 3 VALID runs, computed by the
-owner. The verdict and the job summary name the profile (`functional` or `productionLike`) and the case label.
+**Validity and outcome are separate (owner decision, Tasks 4 to 6 review, option b: DECIDED).** A run is **VALID** when its
+`validity.verdict` is `VALID` and it ran on GitHub Actions (`run-meta.json` `environment.kind: "github-actions"`), whatever its
+outcome. Validity comes from the judge: the runner writes `validity.verdict` from `ctx.invalid` only (`src/load/runner.ts:133`).
+The **outcome** (`PASS`, `FAIL`, `INVALID`, `ENV` in `verdict.json`) is reported separately and never decides validity. Closeout
+medians use at least 3 VALID runs per case, and each median row shows the outcome counts beside it. The verdict and the job summary
+name the profile (`functional` or `productionLike`) and the case label.
 
 ## 2.12 Auth path per case (frozen)
 
@@ -214,7 +225,7 @@ limited at 100/min" holds only for API keys. Live check: P8 and P9.
 Rules:
 
 - A **user token** is the workspace token from `signInWorkspace` (`src/twenty/auth.ts`). k6 receives it as `TWENTY_TOKEN`.
-- An **API key** is a seeded per-run key created in setup (§2.13). k6 receives it as `TWENTY_API_KEY` and sends it as
+- An **API key** is a seeded per-run key created in setup (§2.13). k6 receives the values as the secret `TWENTY_API_KEYS` (a JSON array, one value per key) and sends each as
   `Bearer <key>`, the header the harness uses for API-key auth (`node_modules/qa-portfolio-harness/src/adapters/twenty.adapter.ts:258–263`).
 - The runner always mints the user token: setup, cleanup and the reconcile read-backs need it. k6 receives only the key
   for API-key cases, and only the token for user-token cases.
@@ -228,32 +239,41 @@ export interface RunApiKey {
   id: string;
   token: string;
 }
-export async function createRunApiKey(opts: {
+export async function createRunApiKeys(opts: {
   baseUrl: string; // e.g. http://127.0.0.1:3002
   authorizationHeader: string; // the user token's header from signInWorkspace
-  name: string; // "<runPrefix>-key": the prefix lets the leak check find it
+  names: string[]; // one per key, "<runPrefix>-key-<i>": the prefix lets the leak check find them
   expiresAt: string; // ISO time, now + 2 h (longer than any Phase 5 run)
   fetchImpl?: typeof fetch;
-}): Promise<RunApiKey>;
-// Calls the GraphQL mutation that creates an API key, on /metadata. The mutation name and response path are NOT PROBED
-// here (a write); the build confirms them in the 3b local proof (§5 row 6). Throws Error("TEST BUG: <GraphQL message>")
-// with messages only, never the key value.
-export async function revokeRunApiKey(opts: {
+}): Promise<RunApiKey[]>; // same order as names
+// Creates one key per name through the GraphQL mutation for API keys, on /metadata. NOT PROBED here (a write): the mutation
+// name and response path are confirmed in the 3b local proof (§5 row 6). If a creation fails, the keys already created are
+// revoked before the error is thrown. Throws Error("TEST BUG: <GraphQL message>") with messages only, never a key value.
+export async function revokeRunApiKeys(opts: {
   baseUrl: string;
   authorizationHeader: string;
-  id: string;
+  ids: string[];
   fetchImpl?: typeof fetch;
 }): Promise<void>;
+// Revokes every id. Failures are collected; one TEST BUG names the number of failed revocations, never a value.
 ```
 
-- **Created** in setup (`twentySetupWith`, §6.5), only for `apiKey` cases (`TWENTY_CASE_AUTH`). The value goes to
-  `ctx.secrets.TWENTY_API_KEY`; the id goes to `ctx.handles.apiKey`. Never to `ctx.config`, a file or a log.
-- **Revoked** in cleanup (`twentyCleanupWith`), before the leak check, via `revokeRunApiKey`. The leak query then reads
-  `SELECT count(*) FROM core."apiKey" WHERE name LIKE '<prefix>%' AND "revokedAt" IS NULL` (read-only; the columns
-  `name` and `revokedAt` are confirmed in P24). It must be 0; otherwise TEST BUG.
-- **Never printed or written to an artefact.** The k6 journey never logs the header. The workflow token scan (§8) must match
-  the key's format; that format is NOT PROBED here. In the first API-key build run, if the key does not match the scan
-  patterns, the scan is extended (never weakened) and the change is recorded.
+- **Key counts (N).** `TWENTY_CASE_KEYS` in `src/load/products/twenty.ts`: 1 key for `P6-TW-LOAD-004`, `-006`, `-008` and
+  `-010`; 2 keys for `P6-TW-LOAD-009`. The helper takes any N. Task 6 reuses it unchanged for `-006` (one key) and `-009` (two keys).
+- **Created** in setup (`twentySetupWith`, §6.5), only for `apiKey` cases. The values go to `ctx.secrets.TWENTY_API_KEYS` as one
+  JSON array, so k6 receives them as one secret (`secretEnv`). The ids go to `ctx.handles.apiKeyIds`. Never to `ctx.config`, a file or a log.
+- **Revoked** in cleanup (`twentyCleanupWith`), before the leak check, via `revokeRunApiKeys`. The leak query then reads
+  `SELECT count(*) FROM core."apiKey" WHERE name LIKE '<prefix>%' AND "revokedAt" IS NULL` (read-only; `name` and `revokedAt`
+  are confirmed in P24). It must be 0 for all N keys; otherwise TEST BUG.
+- **One speed bucket per workspace at image defaults.** `buildDefaultSpeedBucket` sets `spenderId` to null unless the counter
+  scope is cross-workspace and the spender is an application (`build-default-speed-bucket.util.ts:37`). The bucket key then uses
+  `-` for the spender id (`build-speed-bucket-key.util.ts:28`). So every `apiKey` key of one workspace shares the same `SHORT`
+  and `LONG` buckets. Consequences: (a) the two keys of `P6-TW-LOAD-009` get no separate quota at defaults, so its fairness test
+  measures shared-bucket starvation; (b) the 3b oracle (§5 row 6) counts all keys together. The functional values size the same
+  shared buckets. Task 6 states this in its plan.
+- **Never printed or written to an artefact.** The k6 journey never logs a header. The workflow token scan (§8) must match the key
+  format, which is NOT PROBED here. In the first API-key build run, if the key does not match the scan patterns, the scan is
+  extended (never weakened) and the change is recorded.
 - The harness seed's own key row (`core."apiKey"` count 1, P24) is not used: its token cannot be read back.
 
 ## 3. What it proves
@@ -351,21 +371,21 @@ container discovery finds nothing for Twenty).
 
 ## 5. Build-time re-check (the build session runs this table first)
 
-| #   | fact                                                                                                             | how to re-check at build start                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | if it changed                                                                             |
-| --- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 1   | Harness pin is still `v0.2.15` or the Task 2 tag                                                                 | `grep -n qa-portfolio-harness package.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Use the new pin; re-run P19 and P34.                                                      |
-| 2   | Twenty overlay still has no rate-limit names                                                                     | `grep -c API_RATE_LIMITING node_modules/qa-portfolio-harness/docker/twenty.compose.yml` → 0 for 3a; ≥ 6 after H4                                                                                                                                                                                                                                                                                                                                                                                                                                                           | After H4: 3b can pass the names; re-run §6.3 checks.                                      |
-| 3   | Limiter source at the fork pin                                                                                   | `grep -n "API_RATE_LIMITING_SHORT_LIMIT = " …/config-variables.ts` → 100 at 1722; `usage-limit-definitions.constant.ts` names at 19–21, 32–34, 45–47                                                                                                                                                                                                                                                                                                                                                                                                                       | Re-derive §6.3 from the new defaults.                                                     |
-| 4   | Token lifetime and claims                                                                                        | sign in once; print `exp - iat` only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Re-check the 25-min re-sign-in rule (Q12).                                                |
-| 5   | Container names after `up`                                                                                       | `docker ps --format '{{.Names}}' --filter label=com.docker.compose.project=qa-harness-twenty` → `…-server-1`, `…-worker-1`, `…-db-1`, `…-redis-1`                                                                                                                                                                                                                                                                                                                                                                                                                          | Fix §6.4 discovery patterns.                                                              |
-| 6   | API-key 429 path (P11). This is the oracle that proves H4's raised values take effect in the functional profile. | 3b, local, before the 3b PR. (1) Image defaults, a seeded key from `createRunApiKey` (§2.13): a paced burst of 300 requests at 20 rps (never above `SHORT_LIMIT` in one second); expect a 429 once the 100-per-60 s long window fills. Record the status, `Retry-After`, `X-RateLimit-Limit` (100), `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and the Redis speed key of the `apiKey` spender (shape in `build-speed-bucket-key.util.ts:28`). (2) Start the functional stack (six names, §6.3) and repeat the same burst with a new key: expect zero 429. Record both. | No 429 at defaults: the key is not limited, so stop 3b and root-cause it (TEST BUG).      |
-| 7   | REST write shapes (`createCompany`, `patchCompany`, `destroyCompany`)                                            | 1-iteration smoke of `tw-background` in the build's first run (a dispatch). The create response goes through the existing `createCompany` in `src/twenty/api.ts` (its `{ data: { createCompany: { id } } }` path); no new shape is defined. Also check `destroyCompany` on a soft-deleted id.                                                                                                                                                                                                                                                                              | Adjust `runTwBackground` and the cleanup sweep.                                           |
-| 8   | Redis state after `up`                                                                                           | `docker compose … exec -T redis redis-cli DBSIZE` right after `up:twenty` is small (no seed yet)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If not small, the reset-by-recreate rule (Q9) fails: add a flush-free check to preflight. |
-| 9   | docker-stats source on GitHub-hosted runners                                                                     | the first CI run's `telemetry-main.json` `sources` shows `containers: true`; the container `kind` (cgroup-v1 or cgroup-v2) in the telemetry file                                                                                                                                                                                                                                                                                                                                                                                                                           | If absent, record the gap and use `/proc` only.                                           |
-| 10  | BullMQ key names                                                                                                 | `redis-cli --scan --pattern 'bull:*:wait'` returns keys while the queue is busy (during a burst)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If not, the `P6-TW-LOAD-010` monitor changes (Q6).                                        |
-| 11  | Effective limiter env inside the container (3b)                                                                  | `docker compose … exec -T server printenv API_RATE_LIMITING_LONG_LIMIT` equals the profile value                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If not equal, the run is ENV (§7).                                                        |
-| 12  | Seed workspace and user names                                                                                    | `npm run seed:twenty` `users=4`; `core.workspace` row for subdomain `apple`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Update the defaults in `src/twenty/env.ts`.                                               |
-| 13  | Reset token expiry (for Task 5, not Task 3)                                                                      | `config-variables.ts:143`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Task 5 re-checks.                                                                         |
+| #   | fact                                                                                                     | how to re-check at build start                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | if it changed                                                                             |
+| --- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 1   | Harness pin is still `v0.2.15` or the Task 2 tag                                                         | `grep -n qa-portfolio-harness package.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Use the new pin; re-run P19 and P34.                                                      |
+| 2   | Twenty overlay still has no rate-limit names                                                             | `grep -c API_RATE_LIMITING node_modules/qa-portfolio-harness/docker/twenty.compose.yml` → 0 for 3a; ≥ 6 after H4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | After H4: 3b can pass the names; re-run §6.3 checks.                                      |
+| 3   | Limiter source at the fork pin                                                                           | `grep -n "API_RATE_LIMITING_SHORT_LIMIT = " …/config-variables.ts` → 100 at 1722; `usage-limit-definitions.constant.ts` names at 19–21, 32–34, 45–47                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Re-derive §6.3 from the new defaults.                                                     |
+| 4   | Token lifetime and claims                                                                                | sign in once; print `exp - iat` only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Re-check the 25-min re-sign-in rule (Q12).                                                |
+| 5   | Container names after `up`                                                                               | `docker ps --format '{{.Names}}' --filter label=com.docker.compose.project=qa-harness-twenty` → `…-server-1`, `…-worker-1`, `…-db-1`, `…-redis-1`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Fix §6.4 discovery patterns.                                                              |
+| 6   | API-key 429 path (P11). The oracle that proves H4's raised values take effect in the functional profile. | 3b, local, before the 3b PR, on two harness-started stacks, each started fresh so Redis is empty. Sustained rate: 240 requests at 4 rps over 60 s (240 per minute, between 100 and 3600 per minute). Keys: the seeded keys of `createRunApiKeys` (§2.13); all keys of a workspace share one bucket. (1) Image defaults: expect about 40 × 429. The `LONG` bucket starts with 100 tokens and refills 100 per 60 s, so at most 200 requests are admitted and 240 − 200 = 40 are denied. Record the status, `Retry-After`, `X-RateLimit-Limit` (100), `X-RateLimit-Remaining` and `X-RateLimit-Reset` on each 429, and the Redis bucket key of the `apiKey` spender (`{<workspaceId>}:speed:<resourceType>:<operationType>:apiKey:-:60`). (2) The functional stack (the six exact names, §6.3) and the same burst: expect zero 429. Record both. Correction of the review example: 150 requests over 60 s cannot cross the default window (150 ≤ 200), so it would give zero 429 at defaults. | No 429 at defaults: the key is not limited, so stop 3b and root-cause it (TEST BUG).      |
+| 7   | REST write shapes (`createCompany`, `patchCompany`, `destroyCompany`)                                    | 1-iteration smoke of `tw-background` in the build's first run (a dispatch). The create response goes through the existing `createCompany` in `src/twenty/api.ts` (its `{ data: { createCompany: { id } } }` path); no new shape is defined. Also check `destroyCompany` on a soft-deleted id.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Adjust `runTwBackground` and the cleanup sweep.                                           |
+| 8   | Redis state after `up`                                                                                   | `docker compose … exec -T redis redis-cli DBSIZE` right after `up:twenty` is small (no seed yet)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If not small, the reset-by-recreate rule (Q9) fails: add a flush-free check to preflight. |
+| 9   | docker-stats source on GitHub-hosted runners                                                             | the first CI run's `telemetry-main.json` `sources` shows `containers: true`; the container `kind` (cgroup-v1 or cgroup-v2) in the telemetry file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If absent, record the gap and use `/proc` only.                                           |
+| 10  | BullMQ key names                                                                                         | `redis-cli --scan --pattern 'bull:*:wait'` returns keys while the queue is busy (during a burst)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | If not, the `P6-TW-LOAD-010` monitor changes (Q6).                                        |
+| 11  | Effective limiter env inside the container (3b)                                                          | `docker compose … exec -T server printenv` for each of the six exact names equals the profile value (no prefix match)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | If not equal, the run is ENV (§7).                                                        |
+| 12  | Seed workspace and user names                                                                            | `npm run seed:twenty` `users=4`; `core.workspace` row for subdomain `apple`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Update the defaults in `src/twenty/env.ts`.                                               |
+| 13  | Reset token expiry (for Task 5, not Task 3)                                                              | `config-variables.ts:143`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Task 5 re-checks.                                                                         |
 
 **Row 9 note (cgroup, owner review).** The code uses the existing `readContainerStats` and `detectCgroup` (cgroup v1 and
 v2, `src/load/telemetry/cgroup-stats.ts`). The probe host was cgroup v1. The owner's note: GitHub `ubuntu-latest` (22.04 and
@@ -432,17 +452,20 @@ drain → reconcile → cleanup → tokenScan → verdict`. For `TW-BG-FOUNDATIO
 | `APPLICATION_API_RATE_LIMITING_LIMIT`     | `500`            | 500 (`:1757`)                     | unchanged                                               |
 
 **Formula.** For each window `W` (seconds), `LIMIT_W = ceil(P_peak × W × H)`, where `P_peak` is the peak request rate of
-all functional Phase 5 runs and `H` is the headroom factor. `P_peak = 20` requests per second is the **design ceiling**
-for every functional run in Phase 5: the Task 3 `full` profile is 2 iterations/s × 4 requests = 8 rps, and the ceiling
-leaves 2.5× for Tasks 4 and 5, which must keep their peak at or below 20 rps or change this table (Q8). `H = 3`.
-Long window: `ceil(20 × 60 × 3) = 3600`. Short window: `ceil(20 × 1 × 3) = 60`, which is below the default 100, so the
+any **single** functional run. Runs are separate jobs, and the runner starts one k6 process at a time (`runAllK6`,
+`src/load/stages.ts`), so the peak is a maximum, not a sum. The inputs are: the background journey (Task 3, `full`) at
+2 iterations/s × 4 requests = 8 rps; Task 4 (`P6-TW-LOAD-004`, API key) and the other API-key cases state their own peak in their
+plans. `P_peak = 20` requests per second is the **design ceiling** for every functional run in Phase 5. Each API-key case must stay
+at or below 20 rps, or change this table (Q8). Task 4's peak is not stated in this plan; the ceiling is the check it must pass.
+`H = 3`. Long window: `ceil(20 × 60 × 3) = 3600`. Short window: `ceil(20 × 1 × 3) = 60`, which is below the default 100, so the
 short limit keeps its default.
 
 **What the values do, and do not do.** The limiter binds only `apiKey` and `application` spenders (P10). The user-token
 journeys of Tasks 3, 4 and 5 are not limited at image defaults (P8, P9). So the functional profile changes the result
-only for API-key clients, and no Phase 5 journey uses one. The profile is still applied, recorded and checked (Q8).
+only for API-key clients. The API-key cases are `P6-TW-LOAD-004`, `-006`, `-008`, `-009` and `-010` (§2.12), so the values change
+their results. The profile is still applied, recorded and checked (Q8).
 
-**Verification (3b only).** Before a functional run, the job reads each of the six names from the running server
+**Verification (3b only).** Before a functional run, the job reads each of the six exact names (no prefix match) from the running server
 container (`docker compose … exec -T server printenv <name>`, read-only) and compares it with the profile. A mismatch is
 `ENV` (§7, O9). Until harness v0.2.16 (H4) reaches the containers, this check fails, and 3b must not run (Q2, P19). The API-key 429 proof in §5 row 6 is the second check.
 
@@ -508,7 +531,7 @@ export const twentyCleanup = (ctx: LoadContext) => twentyCleanupWith(ctx, defaul
 
 **Per-case auth (§2.12).** `src/load/products/twenty.ts` holds `TWENTY_CASE_AUTH` (case id → `"userToken"` or `"apiKey"`),
 copied from the frozen table of §2.12, and `LIMITER_CLAIM_CASES` (the four ids of rule O10). Setup always signs in for the
-user token. For an `apiKey` case it then calls `createRunApiKey` (§2.13) and sets `ctx.secrets.TWENTY_API_KEY`. A case in
+user token. For an `apiKey` case it then calls `createRunApiKeys` (§2.13) with the case's key count (`TWENTY_CASE_KEYS`: 1 for -004, -006, -008 and -010; 2 for -009) and sets `ctx.secrets.TWENTY_API_KEYS`. A case in
 `LIMITER_CLAIM_CASES` whose auth is not `apiKey` pushes `"rate-limit claim without an API key (by design, O10)"` to `ctx.invalid`
 and returns ok. Its `runs()` then returns no k6 run (`ctx.invalid.length > 0 ? [] : [...]`), so the verdict is INVALID through the
 runner's existing path (`evaluateVerdict`, `src/load/runner.ts:54`).
@@ -614,15 +637,25 @@ on:
         default: full
         type: choice
         options: [full, pr]
+      case:
+        description: "Case to run (dispatch only)"
+        required: false
+        default: TW-BG-FOUNDATION
+        type: choice
+        options: [TW-BG-FOUNDATION]
   schedule:
-    - cron: "43 3 * * *" # nightly, off perf.yml's 02:17 UTC
+    - cron: "43 3 * * *" # the one nightly cron (Tasks 4 and 5 use it); Task 6 adds its weekly Saturday line below it
 permissions:
   contents: read
 concurrency:
-  group: twenty-load-${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  group: twenty-load-${{ github.event_name == 'schedule' && format('schedule-{0}', github.event.schedule) || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 jobs:
   twenty-load-foundation: # steps and caps: §2.8
+    if: >-
+      github.event_name == 'pull_request' || github.event_name == 'push'
+      || (github.event_name == 'workflow_dispatch' && inputs.case == 'TW-BG-FOUNDATION')
+      || (github.event_name == 'schedule' && github.event.schedule == '43 3 * * *')
     runs-on: ubuntu-24.04
     timeout-minutes: 80 # 70 (sum of step caps) + 10
     env:
@@ -646,7 +679,7 @@ jobs:
 
 Why the triggers: `pull_request` with paths runs the short profile only when Twenty load code changes; `push` to `main` runs
 the full profile on merge; the nightly cron gives the roadmap's scheduled evidence; `workflow_dispatch`
-lets the owner run the runs for the closeout medians (P4: medians come only from at least 3 VALID Actions runs). The concurrency group keeps a nightly run and a push
+lets the owner run the runs for the closeout medians (P4: medians come only from at least 3 VALID Actions runs). The concurrency group includes the schedule string, so the nightly run never cancels the Saturday run (Task 6). The concurrency group keeps a nightly run and a push
 from cancelling each other, the same pattern as `perf.yml:21–25`.
 
 The step `up:twenty` takes `env:` entries from `limiterProfileEnv(...)` (§2.6). In 3a it is empty (`productionLike`). The
@@ -705,7 +738,7 @@ finding); otherwise the step range is reported (P6-RULE-006).
   `destroyCompany` hard-deletes a soft-deleted row is NOT PROBED (§5 row 7); the build checks it on a one-row smoke first.
 - **Token.** `TWENTY_TOKEN` lives in `ctx.secrets` and reaches only the k6 process named in `secretEnv`. It is never written
   to a file. The token scan (`scanOutDir`, `src/load/stages.ts`; and the workflow's token-scan step) runs on every result file.
-- **API key (per run, §2.13).** The seeded key is created in setup only for `apiKey` cases, is named with the run prefix,
+- **API key (per run, §2.13).** The seeded keys (one or two per case, §2.13) are created in setup only for `apiKey` cases, is named with the run prefix,
   is revoked in cleanup, and the leak query (active rows with the prefix must be 0) checks it. Its value is never printed,
   logged or written to a file; it reaches k6 only through `secretEnv`. The workflow's token scan must match the key's format (§2.13).
 - **Credentials.** The Twenty dev credentials come from `src/twenty/env.ts` defaults (the harness's public dev seed). They
@@ -770,7 +803,7 @@ and `twenty-obs` jobs do not meet C3 read literally (P31); they are recorded, no
   (c) The reset token expires after `5m` (`config-variables.ts:143`, P17): the `-011` gate (≤ 15 min) looks open.
 - **Task 6 (`P6-TW-LOAD-006`, `-009`).** Auth: API key, required (§2.12); `-009` uses two keys. A 429 needs an API-key client (P10, P11). The production-like profile is
   image defaults. Redis state resets on a fresh `up` because the Redis container has no volume (P12). `-009` fairness
-  needs two keys, which Task 6 creates in its own setup (a write through the API, not the oracle).
+  needs two keys, which Task 6 creates in its own setup (a write through the API, not the oracle). Both keys share one speed bucket per workspace at image defaults (§2.13), so the `-009` fairness test measures shared-bucket starvation; the gate's keying (per workspace) is Task 6's decision.
 
 ## 11. EXTRA cases (labelled EXTRA, no new P6 ID)
 
@@ -805,7 +838,7 @@ first run. The GitHub-hosted runner's cgroup layout is also NOT PROBED here (§5
 The roadmap's Task 3 "Done when", adjusted only by the agreed decisions:
 
 1. The background journey runs VALID with telemetry, a chart and a clean Twenty audit **on the PR and once on `main`**.
-   Measurable: `TW-BG-FOUNDATION` `verdict.json` `outcome: PASS`, `validity.verdict: VALID`, `audit.json` with no violation,
+   Measurable: `TW-BG-FOUNDATION` `verdict.json` with `validity.verdict: VALID` (the run counts) and `outcome: PASS` (a non-PASS outcome is reported as a finding), `audit.json` with no violation,
    on the PR run and on the push run.
 2. The active limiter profile is recorded per run. Measurable: `run-meta.json` `limiterProfile` is present on every run
    (3a: `productionLike`; 3b: `functional`).
@@ -996,8 +1029,8 @@ profile must also be PASS and VALID. Record both run URLs.
 
 **S12. The functional profile (3b; after Task 2 is merged and harness v0.2.16 is pinned).** Files: the `up:twenty` step of `.github/workflows/twenty-load.yml`
 gains the six `env:` entries of §6.3 and `P6_TWENTY_LIMITER_PROFILE: functional`; one 2-minute step after `up:twenty` that runs
-`docker compose … exec -T server printenv <name>` for the six names and fails `ENV` on any mismatch (§6.3, O9); the
-workflow test (S8 test 2) changes to expect `functional`. Before the PR, run the API-key 429 proof locally (§5 row 6): a defaults stack gives 429, then a functional stack gives zero 429 for the same paced burst; record both. Expected: `npm run check` gives 1430; the functional run is VALID;
+`docker compose … exec -T server printenv <name>` for each of the six exact names of §6.3 (no prefix match) and fails `ENV` on any mismatch (§6.3, O9); the
+workflow test (S8 test 2) changes to expect `functional`. Before the PR, run the API-key 429 proof locally (§5 row 6): 240 requests at 4 rps over 60 s on a defaults stack give about 40 × 429; the same burst on a fresh functional stack gives zero; record both. Expected: `npm run check` gives 1430; the functional run is VALID;
 `run-meta.json` shows `limiterProfile: functional`; the verified values appear in the job log. Commit:
 `feat(twenty): verify the functional limiter profile`.
 
@@ -1018,6 +1051,11 @@ Commit: `feat(twenty): add the gated worker drain case` (or `…knee case`).
 - **Q5 (H4 names): DECIDED.** H4 names all six variables: `API_RATE_LIMITING_SHORT_TTL_IN_MS`, `API_RATE_LIMITING_SHORT_LIMIT`, `API_RATE_LIMITING_LONG_TTL_IN_MS`, `API_RATE_LIMITING_LONG_LIMIT`, `APPLICATION_API_RATE_LIMITING_TTL_IN_MS`, `APPLICATION_API_RATE_LIMITING_LIMIT`. Sent to Lane A as its fix 18.
 - **Q10 (k6 auth): DECIDED, revised.** Per case, as frozen in §2.12: the user token for `TW-BG-FOUNDATION`; a seeded per-run API key (§2.13) for the other cases in that table. The earlier "runner sign-in, no API key" answer is replaced.
 - **Q11 (existing `twenty-*` jobs and C3): DECIDED.** `twenty-smoke` stays as it is in this plan. It joins the owner-tracked `ci(perf)` budget PR.
+
+- **Run validity and outcome (Tasks 4 to 6 review, option b): DECIDED.** A run is VALID on its validity alone; the outcome is reported separately (§2.11).
+- **Nightly cron and guards (Tasks 4 to 6 review): DECIDED.** One nightly cron, `43 3 * * *`, used by Tasks 4 and 5; per-job guards; the concurrency group includes the schedule (§2.7).
+- **Seeded keys (Tasks 4 to 6 review): DECIDED.** One or two keys per case, reusable by Task 6; all keys of a workspace share one speed bucket at image defaults (§2.13).
+- **3b API-key proof (rule kept, example corrected).** The sustained-rate rule is kept (between 100 and 3600 per minute). The example is corrected: 240 requests at 4 rps over 60 s, not 150 over 60 s, because 150 ≤ 200 cannot cross the default window (§5 row 6).
 
 **OPEN (the owner has not answered; each has a recommendation).**
 
