@@ -5,7 +5,7 @@ import { downsampleTelemetry, type Bucket } from "./downsample.ts";
 
 const SOAK_BOUNDS = path.join("k6", "thresholds", "soak-bounds.json");
 
-const PRODUCT_BY_CASE: Record<string, string> = {
+export const PRODUCT_BY_CASE: Record<string, string> = {
   "P6-CAL-LOAD-008": "cal",
   "P6-MED-LOAD-005": "medusa",
   "P6-DOC-LOAD-006": "documenso",
