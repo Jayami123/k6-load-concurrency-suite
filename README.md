@@ -1072,6 +1072,35 @@ The soak verdict has this precedence: TEST BUG (setup or slots ran out), INVALID
 audit, or a threshold in `k6/thresholds/soak-bounds.json`), NO THRESHOLD YET (no entry for the product yet), then PASS. Growth counts
 as a FAIL only when both slopes are positive, so one step cannot make a leak.
 
+### Weekly soak trend
+
+A scheduled 120-minute soak (the Sunday 19:29 UTC cron of `soak.yml`) is a weekly point. `soak-release.yml` runs when a soak
+run completes on `main`. For a weekly point it publishes one release, `p6-soak-<yyyy>-w<ww>`, holding `soak-summary-<product>.json`
+for `cal`, `medusa` and `documenso` and `SHA256SUMS.txt`. The release is never marked Latest. The raw artefacts are not published.
+Each summary is scanned for tokens and gitleaks before the upload. Any other completed soak run (a nightly 30-minute run, a
+cancelled run, a run with no 120-minute artefact) ends as NOT RUN and creates no release.
+
+- **Week.** The ISO week of `created_at` minus 6 days 19 h 29 min (UTC), so a run that starts late on the Monday still belongs to
+  the week of its slot.
+- **Point.** A summary is VALID when the soak verdict is `PASS`, `FAIL (PRODUCT BUG)` or `NO THRESHOLD YET`. `INVALID` and
+  `TEST BUG` are gaps. A failed weekly run is captured too, so each product that did not run shows its reason.
+- **Gaps** are listed with their reason and never plotted: `not run: upstream job failed` (the job was skipped after an earlier
+  product failed), `no artefact: job failed before upload`, `artefact missing`, `artefact unreadable`, the soak's own reason
+  (for example `telemetry gaps over two intervals: 3`), `incomplete release` (a listed file is missing, or the release is a draft),
+  and `no weekly release (soak failed before upload, cancelled, or not captured)` for a week that has no release at all, up to the
+  last week whose slot is 24 hours old.
+- **Status.** Each product reads `collecting (n/3 weeks)` until it has three VALID points, then `trend`. The chart is drawn only at
+  `trend`. There is no PASS or FAIL in this view: each point prints its soak verdict beside it.
+- **Measured values.** RSS, open fds and DB connection slopes and plateau ratios come from `soak.json`. The latency column is the
+  health-probe latency at 1 Hz (a proxy, not a k6 p95). A change of product SHA, harness tag or k6 version between two VALID
+  points is printed as a marker.
+
+Backfill: Actions, `soak-release`, Run workflow, branch `main`, `run_id` set to a scheduled 120-minute soak run id. The run is
+refused unless that run is a weekly point. Artefacts keep 90 days, so a backfill must be within 90 days of the soak run.
+If a capture or publish stopped after it created a draft, the week is refused until the draft is deleted (Releases, the draft,
+Delete). Scheduled workflows are disabled after 60 days without repository activity: check the `soak` schedule on the Actions
+tab after a quiet period.
+
 ## Cal invariants under load
 
 `perf.yml` job `cal-invariants` (schedule, and a full dispatch) runs two Cal invariants on a live stack: `P6-CAL-LOAD-002` (one free slot,

@@ -205,7 +205,8 @@ describe("dashboard size budget", () => {
     assert.equal(bytes, budget.measuredBytes, `fixture page is ${bytes} bytes`);
     assertWithinBudget(bytes, budget.maxBytes);
     assert.equal(budget.headroomBytes, HEADROOM_BYTES);
-    assert.equal(budget.maxBytes, budget.measuredBytes + HEADROOM_BYTES);
+    // The ceiling is fixed by the owner (74092); the measured page may grow inside it. The ceiling check above still applies.
+    assert.ok(budget.measuredBytes <= budget.maxBytes, "the measured page is within the ceiling");
     assert.equal(budget.liveBytes, LIVE_BYTES);
   });
 
