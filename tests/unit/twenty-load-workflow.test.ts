@@ -21,8 +21,13 @@ function jobIds(): string[] {
 }
 
 describe("twenty load workflow", () => {
-  it("has the foundation job, the task 5 job and the task 6 job, in that order", () => {
-    assert.deepEqual(jobIds(), ["twenty-load-foundation", "task5-reset-token", "task6-rate-limit"]);
+  it("has the foundation job and the task 4, 5 and 6 jobs, in that order", () => {
+    assert.deepEqual(jobIds(), [
+      "twenty-load-foundation",
+      "task4-lost-update",
+      "task5-reset-token",
+      "task6-rate-limit",
+    ]);
   });
 
   it("runs the functional limiter profile in 3b", () => {
