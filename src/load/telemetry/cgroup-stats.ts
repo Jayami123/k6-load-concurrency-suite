@@ -42,6 +42,24 @@ const run = (cmd: string, args: string[]): Promise<string> =>
     ),
   );
 
+/** Per-product database container name filters. Twenty's database is `qa-harness-twenty-db-1`, not `…-postgres` (Twenty plan P20). */
+const DB_CONTAINER_FILTER: Partial<Record<LoadProduct, string>> = {
+  twenty: "qa-harness-twenty-db-1",
+};
+
+/** The first file of the list that reads. Throws the last read error when none does. */
+function readFirst(files: string[], readFile: (p: string) => string): string {
+  let lastError: unknown = new Error("no candidate file");
+  for (const file of files) {
+    try {
+      return readFile(file);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 /** The case database's container, found once at start: docker ps by name, then its full id. Undefined when none runs. */
 export async function discoverContainer(
   product: LoadProduct,
@@ -51,7 +69,7 @@ export async function discoverContainer(
     await exec("docker", [
       "ps",
       "--filter",
-      `name=qa-harness-${product}-postgres`,
+      `name=${DB_CONTAINER_FILTER[product] ?? `qa-harness-${product}-postgres`}`,
       "--format",
       "{{.Names}}",
     ])
@@ -73,8 +91,13 @@ export function readContainerStats(
 ): { cpuNs: number; memBytes: number } | undefined {
   if (kind !== "cgroup-v1" && kind !== "cgroup-v2") return undefined;
   const paths = cgroupPaths(kind, id);
+  // A v1 host mounts cpu and cpuacct together (`cpu,cpuacct`) or apart (`cpuacct`); the file is read from whichever exists.
+  const cpuFiles =
+    kind === "cgroup-v1"
+      ? [paths.cpu, paths.cpu.replace("/cpu,cpuacct/", "/cpuacct/")]
+      : [paths.cpu];
   try {
-    const cpuNs = parseContainerCpuNs(readFile(paths.cpu), paths.cpuFormat);
+    const cpuNs = parseContainerCpuNs(readFirst(cpuFiles, readFile), paths.cpuFormat);
     const memBytes = Number(readFile(paths.mem).trim());
     if (!Number.isFinite(cpuNs) || !Number.isFinite(memBytes)) return undefined;
     return { cpuNs, memBytes };

@@ -1,4 +1,4 @@
-export type LoadProduct = "stub" | "medusa" | "cal" | "documenso";
+export type LoadProduct = "stub" | "medusa" | "cal" | "documenso" | "twenty";
 /** `steady` is the baseline at half the knee (plan Phase 4 task 5): only the steady cases define it. */
 /** `soak` holds the steady rate for SOAK_DURATION_MIN minutes (plan Phase 4b task 7): only the soak cases define it. */
 export type LoadProfileName = "pr" | "full" | "steady" | "soak";
@@ -88,6 +88,8 @@ export interface SpikeRunSpec {
 export interface LoadCase {
   /** Set only by P6-DOC-LOAD-004 (plan Phase 4 task 6 §6.5): a limited intent may leave one unfinished document. Any other case is a TEST BUG. */
   limitedFailMayLeaveUnfinished?: boolean;
+  /** A gated case is registered but never runs: the runner refuses it with ENV until its gate opens (Twenty plan §6.9, Q4). */
+  gated?: boolean;
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;
@@ -212,6 +214,8 @@ export interface RunMeta {
   plannedIterations: number;
   /** The knee plan of a knee run (plan task 1 §6.2); absent on every other run. */
   knee?: KneePlanSpec;
+  /** The Twenty limiter profile the run used (Twenty plan §2.6); absent on every other product. */
+  limiterProfile?: "functional" | "productionLike";
   startedAt: string;
   finishedAt?: string;
   environment: {

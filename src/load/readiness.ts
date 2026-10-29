@@ -14,6 +14,9 @@ export const READINESS = {
     `${base(env.DOCUMENSO_BASE_URL, "http://127.0.0.1:3001")}/signin`,
     `${base(env.DOCUMENSO_BASE_URL, "http://127.0.0.1:3001")}/api/auth/csrf`,
   ],
+  twenty: (env: NodeJS.ProcessEnv) => [
+    `${base(env.TWENTY_BASE_URL, "http://127.0.0.1:3002")}/healthz`,
+  ],
 } as const;
 
 /** HTTP 200 on every URL within timeoutMs. Returns the failing URLs with the status or the error name (never a body). */

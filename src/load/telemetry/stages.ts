@@ -4,6 +4,7 @@ import path from "node:path";
 import { documensoDatabaseUrlFromEnv } from "../../documenso/env.ts";
 import { createReadOnlyPool } from "../../oracles/pg.ts";
 import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../../races/env.ts";
+import { twentyDatabaseUrlFromEnv } from "../../twenty/env.ts";
 import { READINESS } from "../readiness.ts";
 import type {
   K6RunResult,
@@ -14,6 +15,7 @@ import type {
   TelemetrySummary,
 } from "../types.ts";
 import { detectCgroup, discoverContainer } from "./cgroup-stats.ts";
+import { discoverTwentyContainers } from "./docker-stats.ts";
 import { type AppProcess, HARNESS_DIR, resolveAppProcess } from "./proc-group.ts";
 import {
   finishRunTelemetry,
@@ -24,10 +26,12 @@ import {
 import type { SamplerOptions } from "./sampler.ts";
 
 /** The product's log file in the harness state directory (counted for error lines, never read back). */
+/** An empty name means no log file: the Twenty container logs are captured by the job (Twenty plan §2.8 step 14). */
 const LOG_FILES: Record<Exclude<LoadProduct, "stub">, string> = {
   medusa: "medusa-backend.log",
   cal: "cal-web.log",
   documenso: "documenso-web.log",
+  twenty: "",
 };
 
 /** One handle per case, stored in ctx.handles.telemetry: runAllK6 calls beforeRun and afterRun around each k6 process. */
@@ -48,6 +52,7 @@ const DATABASE_URL: Record<Exclude<LoadProduct, "stub">, (env: NodeJS.ProcessEnv
   medusa: (env) => medusaDatabaseUrlFromEnv(env),
   cal: (env) => calDatabaseUrlFromEnv(env),
   documenso: (env) => documensoDatabaseUrlFromEnv(env),
+  twenty: (env) => twentyDatabaseUrlFromEnv(env),
 };
 
 const statfsType = () =>
@@ -84,10 +89,18 @@ export async function openSources(
   const found = await orUndefined(() => discoverContainer(product));
   const fs = found ? await orUndefined(statfsType) : undefined;
   if (found && fs) sources.container = { id: found.id, kind: detectCgroup(fs) };
-  const logFile = path.join(HARNESS_DIR, LOG_FILES[product]);
-  if (existsSync(logFile)) sources.logFile = logFile;
+  const logName = LOG_FILES[product];
+  const logFile = path.join(HARNESS_DIR, logName);
+  if (logName && existsSync(logFile)) sources.logFile = logFile;
   sources.probeUrl = READINESS[product](env)[0];
   sources.appProcess = resolveAppProcess(product);
+  if (product === "twenty") {
+    const cgroupFs = await orUndefined(statfsType);
+    sources.containers =
+      (await orUndefined(() =>
+        discoverTwentyContainers(undefined, cgroupFs ? detectCgroup(cgroupFs) : "absent"),
+      )) ?? [];
+  }
   return sources;
 }
 

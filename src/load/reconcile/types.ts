@@ -1,6 +1,6 @@
 import type { IntentLog } from "../knee/intents.ts";
 
-export type AuditProduct = "cal" | "medusa" | "documenso";
+export type AuditProduct = "cal" | "medusa" | "documenso" | "twenty";
 
 /** A knee run's intent counters (plan task 1 §6.8): with these the audits reconcile per intent, not by count. */
 export interface IntentCounters {
@@ -75,4 +75,10 @@ export type AuditStageConfig =
       sequentialCompletions: boolean;
       /** Known bugs the case declares (LoadCase.knownBugs): their duplicates are counted, not violations. */
       knownBugs?: string[];
+    }
+  | {
+      product: "twenty";
+      prefixLike: string;
+      /** The workspace schema the run's rows live in (resolveWorkspaceSchema, src/twenty/oracle.ts). */
+      schema: string;
     };
