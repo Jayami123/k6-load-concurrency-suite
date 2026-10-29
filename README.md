@@ -895,6 +895,8 @@ The gaps are listed in the closeout record and in the release notes.
 
 ## Phase 5 results
 
+Phase 5 status: **closed, trend pending** (owner decision, 2026-10-29). See the change log below.
+
 Phase 5 adds the Twenty load evidence (the foundation, `P6-TW-LOAD-004`, `-005`, `-006`, `-011`), the accepted
 extras `P6-TW-LOAD-009` and `P6-X-LOAD-009`, the Later and retired IDs, and the soak-trend status. Every number here comes
 from a VALID GitHub Actions run on `main`. The three Twenty runs are `workflow_dispatch` runs on `main` at `f256d6e`, so
@@ -938,10 +940,12 @@ Limiter profile `functional` for the foundation and `P6-TW-LOAD-004`; `productio
 Labels follow rule 13. `P6-TW-LOAD-005` is a PRODUCT BUG (SUSPECTED) with a private report. The two FINDINGs are
 recorded as findings and are never called passes.
 
-**Known gap in the outcome word.** `verdict.json` of `P6-TW-LOAD-004` and `P6-TW-LOAD-009` reads `outcome: "PASS"`,
-because the runner (`src/load/runner.ts`, `evaluateVerdict`) does not read the stage verdicts. The stage data
-(`reconcile.data.lostUpdate.verdict` and `reconcile.data.fairness.verdict`) read FINDING in all three runs. This closeout
-reports the stage data. Changing the runner is an owner decision.
+**Outcome word in these runs.** In the three runs above, `verdict.json` of `P6-TW-LOAD-004` and `P6-TW-LOAD-009` shows
+`outcome: "PASS"`, while the stage verdict (`reconcile.data.lostUpdate.verdict` and `reconcile.data.fairness.verdict`) is
+FINDING in all three runs. The runner did not read the stage verdict at the time. The FINDINGs stand, and this closeout
+reports them as FINDINGs. A fix follows in its own PR on `fix/2026-10-29-p6-finding-outcome`: a VALID run whose stage
+verdict is FINDING gets outcome `FINDING`, prints `<case> FINDING (<detail>)` and exits 0. Until that PR merges, read the
+stage verdict, not the outcome word, for these two cases.
 
 #### `P6-TW-LOAD-004` variant B (FINDING, not a pass)
 
@@ -949,8 +953,10 @@ Each variant B attempt reads a record and writes the value read plus one. The ac
 the value observed after the run (read-only). The loss is the deficit: 361 of 724, 362 of 725 and 361 of 723
 acknowledged increments were lost in runs 1 to 3. Variant A had no lost field in any run.
 
-Twenty's REST API has no optimistic concurrency (no version or `If-Match` check), so two read-modify-write writers can
-overwrite each other silently. An upstream issue draft, in Twenty's own bug template, is in
+Owner decision (C13): variant B stays a FINDING. It is not a PRODUCT BUG and not a `knownFailure`. Twenty's REST API has
+no optimistic concurrency (no version or `If-Match` check); its writes are last-write-wins by design, so two
+read-modify-write writers can overwrite each other silently. An upstream feature-request draft, in Twenty's own
+feature template, is in
 [docs/upstream/2026-10-29-twenty-lost-update-variant-b.md](docs/upstream/2026-10-29-twenty-lost-update-variant-b.md). It is
 a draft only and is not filed.
 
@@ -1000,11 +1006,13 @@ penalty (median 207.3 against 205.8 ms). The cause is open.
 
 Status: **collecting (0/3 weeks)**. No weekly `p6-soak-<yyyy>-w<ww>` release exists yet. The first weekly capture is
 2026-11-01 UTC (a Sunday). Three VALID points take until the Sunday 2026-11-15 capture at the earliest. Until then the
-dashboard shows the collecting state and no trend.
+dashboard shows the collecting state and no trend. The trend is owner-tracked after Phase 5 closes (see the change log).
 
 ### Change log against the master plan (D9)
 
 The master plan is not edited (D9). Each change from the master plan is recorded here.
+
+**Phase status: closed, trend pending.**
 
 - **Case IDs retired:** `P6-TW-LOAD-001` to `-003` (owner decision D10).
 - **Case ID Later:** `P6-TW-LOAD-007`, out of P6 (owner decision D10).
@@ -1013,7 +1021,11 @@ The master plan is not edited (D9). Each change from the master plan is recorded
 - **Limiter profiles (D3):** functional (H4 limits) for the foundation and `-004`; production-like (image defaults) for
   `-006` and `-009`.
 - **Verdict words:** the variant B loss of `-004` and the fairness result of `-009` are FINDINGs in the stage data. The
-  run outcome word reads PASS (see the known gap above).
+  run outcome word reads PASS in these runs (see the outcome note above); the fix PR changes this for later runs.
+- **Phase 5 exit (owner decision, 2026-10-29):** Phase 5 is closed with one open item, "trend pending". The exit asked for
+  at least 3 weekly soak points. The soak trend is `collecting (0/3 weeks)`; the first capture is 2026-11-01 UTC and the
+  trend is due after 2026-11-15. The owner tracks it. This is a change against the master plan's Phase 5 exit, recorded
+  here (D9); the master plan is not edited.
 - **Closeout runs:** `workflow_dispatch` runs on `main` in place of nightly runs for the closeout medians (the README
   rule allows `main` runs of any event).
 - **Harness pin:** harness `v0.2.18` is the measured pin. The Task 3 plan's `v0.2.16` line is out of date.

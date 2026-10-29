@@ -15,7 +15,8 @@ Phase 5 put Twenty under load. The foundation and the cases `P6-TW-LOAD-004`, `-
 "Phase 5 results". Two results are findings, not passes: `P6-TW-LOAD-004` variant B (silent lost update) and
 `P6-TW-LOAD-009` (cross-key starvation). `P6-TW-LOAD-005` is a known failure linked to `P6-TW-RACE-004`. The gated cases
 `P6-TW-LOAD-008` and `-010` are NOT RUN. The A/A flag check `P6-X-LOAD-009` passed on-first and failed on off-first in two
-runs. The phase exit is not met: the soak trend has 0 of 3 weekly points (first capture 2026-11-01 UTC).
+runs. Phase 5 is closed, trend pending (owner decision, 2026-10-29): the soak trend has 0 of 3 weekly points (first capture
+2026-11-01 UTC; trend due after 2026-11-15, owner-tracked).
 
 ## 2. Models used
 
@@ -40,12 +41,12 @@ runs. The phase exit is not met: the soak trend has 0 of 3 weekly points (first 
 
 ## 4. Findings
 
-| ID                 | Product               | Case                       | Label                                 | Evidence                                                                         | Upstream issue                                                               |
-| ------------------ | --------------------- | -------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| P6-TW-LOAD-004 (B) | Twenty                | `P6-TW-LOAD-004` variant B | finding (silent lost update)          | runs `40896799127`, `40896827889`, `40896870640`, `reconcile.data.lostUpdate`    | draft `docs/upstream/2026-10-29-twenty-lost-update-variant-b.md` (not filed) |
-| P6-TW-LOAD-009     | Twenty                | `P6-TW-LOAD-009`           | finding (cross-key starvation)        | same runs, `reconcile.data.fairness`                                             | none (a FINDING about the limiter's keying)                                  |
-| P6-TW-RACE-004     | Twenty                | `P6-TW-LOAD-005`           | known failure (PRODUCT BUG SUSPECTED) | same runs, `verdict-public.json`; details withheld                               | private report (existing)                                                    |
-| P6-X-LOAD-009      | Medusa (harness tier) | `P6-MED-LOAD-002` A/A      | FAIL on off-first (cause open)        | `40848345879`, `40857206947` (off-first FAIL p95); `40850333800` (on-first PASS) | none                                                                         |
+| ID                 | Product               | Case                       | Label                                    | Evidence                                                                         | Upstream issue                                                                               |
+| ------------------ | --------------------- | -------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| P6-TW-LOAD-004 (B) | Twenty                | `P6-TW-LOAD-004` variant B | finding (C13: no optimistic concurrency) | runs `40896799127`, `40896827889`, `40896870640`, `reconcile.data.lostUpdate`    | feature-request draft `docs/upstream/2026-10-29-twenty-lost-update-variant-b.md` (not filed) |
+| P6-TW-LOAD-009     | Twenty                | `P6-TW-LOAD-009`           | finding (cross-key starvation)           | same runs, `reconcile.data.fairness`                                             | none (a FINDING about the limiter's keying)                                                  |
+| P6-TW-RACE-004     | Twenty                | `P6-TW-LOAD-005`           | known failure (PRODUCT BUG SUSPECTED)    | same runs, `verdict-public.json`; details withheld                               | private report (existing)                                                                    |
+| P6-X-LOAD-009      | Medusa (harness tier) | `P6-MED-LOAD-002` A/A      | FAIL on off-first (cause open)           | `40848345879`, `40857206947` (off-first FAIL p95); `40850333800` (on-first PASS) | none                                                                                         |
 
 ## 5. Decisions made without the owner
 
@@ -59,7 +60,11 @@ runs. The phase exit is not met: the soak trend has 0 of 3 weekly points (first 
 
 ## 6. Deviations
 
-- Phase 5 exit is not met: the soak trend has 0 of 3 weekly points. The README says `collecting (0/3 weeks)`.
+- Phase 5 is closed with one open item, "trend pending" (owner decision, 2026-10-29). The soak trend has 0 of 3 weekly
+  points; the README says `collecting (0/3 weeks)`. Recorded as a change against the master plan's Phase 5 exit.
+- Owner decisions, 2026-10-29: `-004` variant B stays a FINDING (C13), not a PRODUCT BUG or a known failure. The runner
+  outcome gap gets a fix PR (`fix/2026-10-29-p6-finding-outcome`). The `P6-X-LOAD-009` off-first breach is accepted as
+  open, consistent with arm order, not explained.
 - The roadmap asks for nightly runs for `-004`, `-005` and `-011`. The medians use `workflow_dispatch` runs on `main`.
 - `P6-X-LOAD-009` on off-first FAILED twice (`40848345879`, `40857206947`). The explanation (arm order, warm-up) fits
   the off-first runs but is not confirmed by the on-first run.
@@ -79,21 +84,27 @@ runs. The phase exit is not met: the soak trend has 0 of 3 weekly points (first 
 - The `tier-aa` run `40845100209` failed in setup (Medusa HEAD and pnpm checks); it is not counted.
 - `gh release list` is refused in this session (GraphQL 403); the release list was read through the REST API.
 
-## 9. Open questions for the owner
+## 9. Owner decisions and open questions
 
-1. The runner's `evaluateVerdict` ignores the `lostUpdate` and `fairness` stage verdicts, so `-004` and `-009` read
-   PASS. Proposed answer: a separate `fix(load)` PR that makes a FINDING set the outcome word and keeps the run VALID.
-2. `P6-X-LOAD-009` off-first FAIL is not explained by the on-first run. Proposed answer: record it as open and re-run one
-   dispatch of each order on `main` before the exit is claimed.
-3. The Phase 5 exit needs the soak trend (3 weekly points, earliest after 2026-11-15). Proposed answer: keep the exit
-   open until the third VALID point lands.
-4. Correct the `v0.2.16` line in the Task 3 plan to `v0.2.18`. Proposed answer: a docs fix in the next docs PR.
-5. The owner dispatches `evidence-release` for `p6-phase5`. Steps are in the plan, section 10.
+Decided by the owner on 2026-10-29:
+
+1. Runner gap: a fix PR follows #178 on `fix/2026-10-29-p6-finding-outcome`. A VALID run with a stage FINDING gets outcome
+   `FINDING`, prints `<case> FINDING (<detail>)` and exits 0. `knownFailure` stays for proven product bugs only.
+2. A/A: accepted as open. The off-first breach is consistent with arm order; it is not explained.
+3. Exit: Phase 5 closed, trend pending. Soak trend `collecting (0/3 weeks)`, first capture 2026-11-01 UTC, trend due after
+   2026-11-15, owner-tracked.
+4. C13: `-004` variant B stays a FINDING (no optimistic concurrency; last-write-wins by design). Not a PRODUCT BUG, not a
+   known failure. The upstream draft is a feature request.
+
+Still open:
+
+5. Correct the `v0.2.16` line in the Task 3 plan to `v0.2.18`. Proposed answer: a docs fix in the next docs PR.
+6. The owner dispatches `evidence-release` for `p6-phase5`. Steps are in the plan, section 10.
 
 ## 10. Backlog and next phase
 
-- Runner outcome for FINDINGs (question 1).
-- Re-run the A/A order check (question 2).
+- Runner outcome for FINDINGs (decision 1): `fix/2026-10-29-p6-finding-outcome`.
+- The A/A off-first cause stays open (decision 2); no re-run is scheduled.
 - Soak trend: weekly points on Sundays 2026-11-01, 11-08, 11-15.
 - Gated cases: `P6-TW-LOAD-008` (an API-key knee dry run after H4), `P6-TW-LOAD-010` (a finer monitor or a queued burst).
 - Later: `P6-TW-LOAD-007` (out of P6, belongs with P1).
