@@ -1,0 +1,49 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { describe, it } from "node:test";
+import { isLimiterProfileName } from "../../src/twenty/limiter-profile.ts";
+
+// The workflow has no YAML parser in this repo, so these checks read its text: job ids, the limiter value and the markers.
+const text = readFileSync(".github/workflows/twenty-load.yml", "utf8");
+const lines = text.split("\n");
+
+/** The job ids: keys at two-space indent under the top-level `jobs:` block. */
+function jobIds(): string[] {
+  const start = lines.indexOf("jobs:");
+  const ids: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    const match = /^ {2}([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line);
+    if (match?.[1]) ids.push(match[1]);
+  }
+  return ids;
+}
+
+describe("twenty load workflow", () => {
+  it("has exactly the foundation job", () => {
+    assert.deepEqual(jobIds(), ["twenty-load-foundation"]);
+  });
+
+  it("runs the image-default limiter profile in 3a", () => {
+    const match = /^ {6}P6_TWENTY_LIMITER_PROFILE: (\S+)/m.exec(text);
+    assert.ok(match?.[1], "P6_TWENTY_LIMITER_PROFILE is set in the job env");
+    assert.equal(match[1], "productionLike");
+    assert.equal(isLimiterProfileName(match[1]), true);
+  });
+
+  it("keeps the three task markers in order, each followed by one blank line", () => {
+    const markers = ["# >>> task4 jobs", "# >>> task5 jobs", "# >>> task6 jobs"];
+    const positions = markers.map((marker) => lines.indexOf(marker));
+    assert.ok(
+      positions.every((p) => p >= 0),
+      "every marker is present",
+    );
+    assert.deepEqual(
+      [...positions].sort((a, b) => a - b),
+      positions,
+    );
+    for (const position of positions) {
+      assert.equal(lines[position + 1], "", `blank line after ${lines[position]}`);
+    }
+  });
+});
