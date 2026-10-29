@@ -1,5 +1,11 @@
 // P6-TW-LOAD-006 (rate-limit contract) and P6-TW-LOAD-009 (limiter fairness) verdicts (Twenty plan §6.9, §7). Pure except the
-// stage at the end, which only reads the k6 log. Names and counts only: no key, token or response body is ever kept.
+// stages at the end, which only read the k6 log. Names and counts only: no key, token or response body is ever kept.
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { reconcileStage } from "../load/reconcile/index.ts";
+import { firstOkAfter } from "../load/recovery.ts";
+import { seqStages } from "../load/stages.ts";
+import type { LoadContext, Stage, StageResult } from "../load/types.ts";
 
 export type Phase = "below" | "at" | "above" | "recovery";
 
@@ -91,8 +97,8 @@ export function verdictForRateLimit(
  * inside F's refusal span.
  */
 export function fairnessVerdict(
-  flood: Sample[],
-  low: Sample[],
+  flood: Array<Pick<Sample, "tMs" | "status">>,
+  low: Array<Pick<Sample, "tMs" | "status">>,
 ): { verdict: "PASS" | "FINDING" | "INCONCLUSIVE"; reason: string } {
   const refused = flood.filter((s) => s.status === 429).map((s) => s.tMs);
   if (refused.length === 0) {
@@ -126,3 +132,149 @@ export function assertNoLimiterEnv(envNames: string[]): void {
     }
   }
 }
+
+/** The -006 planned requests per phase (tw-load-006.js: 1 per s for 120 s, 100 per 60 s for 120 s, 200 per 60 s for 120 s). */
+export const PLANNED_006: PlannedPerPhase = { below: 120, at: 200, above: 400, recovery: 60 };
+
+/** The lines a k6 case prints with one tag (`TW006 {json}`), parsed. A line whose JSON does not parse throws (a TEST BUG). */
+export function parseTaggedLines<T>(text: string, tag: string): T[] {
+  const re = new RegExp(`${tag} (\\{.*\\})`);
+  const out: T[] = [];
+  for (const line of text.split("\n")) {
+    const m = re.exec(line);
+    if (m?.[1]) out.push(JSON.parse(m[1]) as T);
+  }
+  return out;
+}
+
+/** The k6 log of one run (its stdout, where the console lines are). A missing run is a TEST BUG. */
+function k6Log(ctx: LoadContext, label: string): string {
+  const run = ctx.k6.find((k) => k.label === label);
+  if (!run) throw new Error(`TEST BUG: no k6 run ${label}`);
+  return readFileSync(run.stdoutPath, "utf8");
+}
+
+/** Preflight of both cases: no limiter variable and NODE_OPTIONS in this process (names only), and the productionLike profile. */
+export const limiterPreflight: Stage = async (ctx: LoadContext): Promise<StageResult> => {
+  try {
+    assertNoLimiterEnv(Object.keys(ctx.env));
+  } catch (err) {
+    return { ok: false, kind: "TEST BUG", reasons: [(err as Error).message] };
+  }
+  if (ctx.env.P6_TWENTY_LIMITER_PROFILE !== "productionLike") {
+    return {
+      ok: false,
+      kind: "TEST BUG",
+      reasons: [
+        "TEST BUG: P6-TW-LOAD-006 and -009 run on the productionLike profile (image defaults)",
+      ],
+    };
+  }
+  return { ok: true, reasons: [] };
+};
+
+/**
+ * The -006 judge, in the reconcile slot after the case's own reconcile. Writes phases.json and recovery.json to the run
+ * directory and puts the verdict under stages.reconcile.data.rateLimit. PRODUCT_BUG_SUSPECTED is a PRODUCT BUG (the job
+ * fails until the repeat runs confirm it, rule C13); INCONCLUSIVE is INVALID.
+ */
+export const rateLimitStage: Stage = async (ctx: LoadContext): Promise<StageResult> => {
+  const samples = parseTaggedLines<Sample>(k6Log(ctx, "main"), "TW006");
+  const above = samples.filter((s) => s.phase === "above");
+  const recovery = samples.filter((s) => s.phase === "recovery");
+  if (samples.length === 0 || above.length === 0 || recovery.length === 0) {
+    return {
+      ok: false,
+      kind: "TEST BUG",
+      reasons: ["TEST BUG: the -006 run printed no above or recovery requests"],
+    };
+  }
+  const stopMs = Math.max(...above.map((s) => s.tMs));
+  const recoveryMs = firstOkAfter(recovery, stopMs);
+  const verdict = verdictForRateLimit(samples, recoveryMs, PLANNED_006);
+  const phases = (["below", "at", "above", "recovery"] as const).map((phase) => ({
+    ...phaseCounts(samples, phase),
+    phase,
+    contractOk: samples.filter((s) => s.phase === phase).every(contractOk),
+  }));
+  writeFileSync(path.join(ctx.outDir, "phases.json"), `${JSON.stringify(phases, null, 2)}\n`);
+  writeFileSync(
+    path.join(ctx.outDir, "recovery.json"),
+    `${JSON.stringify({ recoveryMs, probes: recovery.length }, null, 2)}\n`,
+  );
+  const limited = samples.filter((s) => s.status === 429);
+  const data = {
+    rateLimit: {
+      verdict: verdict.verdict,
+      reasons: verdict.reasons,
+      recoveryMs,
+      planned: PLANNED_006,
+      observed429: {
+        periodCounts: [...new Set(limited.map((s) => s.periodCount))]
+          .filter((n) => n !== null)
+          .sort(),
+        scopeKeysPresent: limited.length > 0 && limited.every((s) => s.scopeKeys.length > 0),
+      },
+    },
+  };
+  if (verdict.verdict === "PRODUCT_BUG_SUSPECTED") {
+    return {
+      ok: false,
+      kind: "PRODUCT BUG",
+      reasons: verdict.reasons.map((r) => `SUSPECTED: ${r}`),
+      data,
+    };
+  }
+  if (verdict.verdict === "INCONCLUSIVE") {
+    ctx.invalid.push(...verdict.reasons.map((r) => `P6-TW-LOAD-006 INCONCLUSIVE: ${r}`));
+  }
+  return { ok: true, reasons: [], data };
+};
+
+/**
+ * The -009 judge, in the reconcile slot after the case's own reconcile. The F and L lines are judged on one clock. Any 5xx is
+ * a PRODUCT BUG suspicion (never 500). FINDING is an expected result and stays ok (it is recorded, not a failure).
+ */
+export const fairnessStage: Stage = async (ctx: LoadContext): Promise<StageResult> => {
+  const lines = parseTaggedLines<{ key: "F" | "L"; tMs: number; status: number }>(
+    k6Log(ctx, "main"),
+    "TW009",
+  );
+  const flood = lines.filter((l) => l.key === "F");
+  const low = lines.filter((l) => l.key === "L");
+  if (flood.length === 0 || low.length === 0) {
+    return {
+      ok: false,
+      kind: "TEST BUG",
+      reasons: ["TEST BUG: the -009 run printed no F or no L requests"],
+    };
+  }
+  const fairness = fairnessVerdict(flood, low);
+  const data = {
+    fairness: {
+      verdict: fairness.verdict,
+      reason: fairness.reason,
+      floodRequests: flood.length,
+      floodRefused: flood.filter((l) => l.status === 429).length,
+      lowRequests: low.length,
+      lowRefused: low.filter((l) => l.status === 429).length,
+    },
+  };
+  const s5xx = lines.filter((l) => l.status >= 500 && l.status < 600).length;
+  if (s5xx > 0) {
+    return {
+      ok: false,
+      kind: "PRODUCT BUG",
+      reasons: [`SUSPECTED: ${s5xx} 5xx response(s) (the limiter must answer 429, never 500)`],
+      data,
+    };
+  }
+  if (fairness.verdict === "INCONCLUSIVE") {
+    ctx.invalid.push(`P6-TW-LOAD-009 INCONCLUSIVE: ${fairness.reason}`);
+  }
+  return { ok: true, reasons: [], data };
+};
+
+/** The reconcile slot of each case: the Twenty reconcile (relations, audits), then the judge. */
+export const rateLimit006Reconcile: Stage = seqStages(reconcileStage, rateLimitStage);
+export const fairness009Reconcile: Stage = seqStages(reconcileStage, fairnessStage);
