@@ -4,9 +4,11 @@ import { findHits } from "../../../scripts/evidence-token-scan.mjs";
 import { calDatabaseUrlFromEnv, medusaDatabaseUrlFromEnv } from "../../races/env.ts";
 import { documensoDatabaseUrlFromEnv } from "../../documenso/env.ts";
 import { closePool, createReadOnlyPool } from "../../oracles/pg.ts";
+import { twentyDatabaseUrlFromEnv } from "../../twenty/env.ts";
 import { reconcileCal } from "./cal.ts";
 import { reconcileDocumenso } from "./documenso.ts";
 import { reconcileMedusa } from "./medusa.ts";
+import { type BackgroundCounts, reconcileTwenty } from "./twenty.ts";
 import type { AuditResult, AuditStageConfig, IntentCounters } from "./types.ts";
 import { parseIntentLog } from "../knee/intents.ts";
 import type { LoadContext, Stage, StageResult } from "../types.ts";
@@ -55,6 +57,7 @@ export const CLIENT_COUNTER = {
   cal: "p6_bookings_accepted",
   medusa: "p6_orders",
   documenso: "p6_docs_completed",
+  twenty: "p6_tw_created",
 } as const;
 
 /** A custom counter's total from a k6 summary export (metrics.<name>.count); undefined when the run did not define it. */
@@ -70,7 +73,12 @@ export function summaryCounter(summary: unknown, name: string): number | undefin
 export async function reconcile(
   cfg: AuditStageConfig,
   pool: import("pg").Pool,
-  counters: { clientCount?: number; intents?: IntentCounters; cancelsOk?: number },
+  counters: {
+    clientCount?: number;
+    intents?: IntentCounters;
+    cancelsOk?: number;
+    counts?: BackgroundCounts;
+  },
 ): Promise<AuditResult> {
   switch (cfg.product) {
     case "cal":
@@ -79,7 +87,20 @@ export async function reconcile(
       return reconcileMedusa(pool, cfg, counters.clientCount, counters.intents);
     case "documenso":
       return reconcileDocumenso(pool, cfg, counters.clientCount, counters.intents?.interrupted);
+    case "twenty":
+      return reconcileTwenty(pool, cfg, counters.clientCount, counters.counts);
   }
+}
+
+/** The Twenty background counters of a k6 summary (Twenty plan §6.7). Absent counters are 0; created is the client count. */
+function twentyCounts(summary: unknown, created: number | undefined): BackgroundCounts | undefined {
+  if (summary === undefined) return undefined;
+  return {
+    created: created ?? 0,
+    patched: summaryCounter(summary, "p6_tw_updated") ?? 0,
+    serverErrors: summaryCounter(summary, "p6_tw_5xx") ?? 0,
+    limited429: summaryCounter(summary, "p6_tw_429") ?? 0,
+  };
 }
 
 export interface ReconcileDeps {
@@ -94,7 +115,9 @@ const defaultDeps: ReconcileDeps = {
         ? calDatabaseUrlFromEnv()
         : product === "documenso"
           ? documensoDatabaseUrlFromEnv()
-          : medusaDatabaseUrlFromEnv(),
+          : product === "twenty"
+            ? twentyDatabaseUrlFromEnv()
+            : medusaDatabaseUrlFromEnv(),
     ),
   reconcile,
 };
@@ -133,7 +156,8 @@ export function makeReconcileStage(deps: ReconcileDeps = defaultDeps): Stage {
         cfg.product === "documenso" ? { ...cfg, knownBugs: ctx.caseDef.knownBugs } : cfg;
       const intents = await intentCountersFor(ctx, summary);
       const cancelsOk = summary ? summaryCounter(summary, "p6_cancels_ok") : undefined;
-      result = await deps.reconcile(audited, pool, { clientCount, intents, cancelsOk });
+      const counts = cfg.product === "twenty" ? twentyCounts(summary, clientCount) : undefined;
+      result = await deps.reconcile(audited, pool, { clientCount, intents, cancelsOk, counts });
     } finally {
       await closePool(pool);
     }

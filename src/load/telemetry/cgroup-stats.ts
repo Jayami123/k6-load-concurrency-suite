@@ -42,6 +42,11 @@ const run = (cmd: string, args: string[]): Promise<string> =>
     ),
   );
 
+/** Per-product database container name filters. Twenty's database is `qa-harness-twenty-db-1`, not `…-postgres` (Twenty plan P20). */
+const DB_CONTAINER_FILTER: Partial<Record<LoadProduct, string>> = {
+  twenty: "qa-harness-twenty-db-1",
+};
+
 /** The case database's container, found once at start: docker ps by name, then its full id. Undefined when none runs. */
 export async function discoverContainer(
   product: LoadProduct,
@@ -51,7 +56,7 @@ export async function discoverContainer(
     await exec("docker", [
       "ps",
       "--filter",
-      `name=qa-harness-${product}-postgres`,
+      `name=${DB_CONTAINER_FILTER[product] ?? `qa-harness-${product}-postgres`}`,
       "--format",
       "{{.Names}}",
     ])

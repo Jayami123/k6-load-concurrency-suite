@@ -13,7 +13,15 @@ const PRODUCT_FOLDERS = {
   medusa: "medusa-dtc-starter",
   cal: "cal",
   documenso: "documenso",
+  twenty: "twenty-CRM",
 } as const;
+/** The pinned-ref variable per product (the bootstrap pins; scripts/bootstrap.sh). */
+const REF_ENV: Record<keyof typeof PRODUCT_FOLDERS, string> = {
+  medusa: "MEDUSA_REF",
+  cal: "CAL_REF",
+  documenso: "DOCUMENSO_REF",
+  twenty: "TWENTY_REF",
+};
 
 /** Pure: the harness tag in package.json's "qa-portfolio-harness" entry (github:Owner/repo#vX.Y.Z). */
 export function parseHarnessPin(packageJsonText: string): string {
@@ -64,8 +72,7 @@ export function buildRunMeta(input: BuildRunMetaInput): RunMeta {
   for (const [name, folder] of Object.entries(PRODUCT_FOLDERS) as Array<
     [keyof typeof PRODUCT_FOLDERS, string]
   >) {
-    const fromEnv =
-      env[`${name === "medusa" ? "MEDUSA" : name === "cal" ? "CAL" : "DOCUMENSO"}_REF`];
+    const fromEnv = env[REF_ENV[name]];
     const sha =
       fromEnv && SHA.test(fromEnv)
         ? fromEnv
