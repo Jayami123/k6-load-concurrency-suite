@@ -5,6 +5,7 @@
 import { appendFileSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { runValues, type RunFolder } from "../../src/load/baseline-band.ts";
+import { armRunFolder } from "../../src/load/tier-aa/arm-folder.ts";
 import { validateRunMeta } from "../../src/load/run-meta.ts";
 import { aaFlagsVerdict, medusaTolerances, type AaArm } from "../../src/load/tier-aa/verdict.ts";
 
@@ -14,7 +15,9 @@ if (!dir) throw new Error("usage: aa-flags-verdict.ts <dir> --order <off-first|o
 const orderAt = args.indexOf("--order");
 const order = orderAt === -1 ? "off-first" : (args[orderAt + 1] ?? "off-first");
 
-function readFolder(folder: string): RunFolder {
+/** The arm's one run folder (<arm>/P6-MED-LOAD-002/<runId>/), then its three files. */
+function readFolder(armDir: string): RunFolder {
+  const folder = armRunFolder(armDir);
   return {
     verdict: JSON.parse(readFileSync(path.join(folder, "verdict.json"), "utf8")),
     meta: validateRunMeta(JSON.parse(readFileSync(path.join(folder, "run-meta.json"), "utf8"))),
