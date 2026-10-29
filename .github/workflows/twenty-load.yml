@@ -55,7 +55,7 @@ jobs:
       || (github.event_name == 'workflow_dispatch' && inputs.case == 'TW-BG-FOUNDATION')
       || (github.event_name == 'schedule' && github.event.schedule == '43 3 * * *')
     runs-on: ubuntu-24.04
-    timeout-minutes: 80
+    timeout-minutes: 82
     env:
       P6_WORKING_DIRECTORY: p6
       PRODUCTS_ROOT: ${{ github.workspace }}/products
@@ -67,8 +67,8 @@ jobs:
       P6_TWENTY_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5434/default
       TWENTY_DOWN_VOLUMES: "1"
       P6_PROFILE: ${{ github.event_name == 'pull_request' && 'pr' || inputs.profile || 'full' }}
-      # Image defaults: nothing is set on the server (Twenty plan §2.6). 3b switches this to functional.
-      P6_TWENTY_LIMITER_PROFILE: productionLike
+      # Functional limiter profile (Twenty plan §6.3): the six values are set on the up step below.
+      P6_TWENTY_LIMITER_PROFILE: functional
     steps:
       - name: Check out P6
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -133,13 +133,46 @@ jobs:
           set -euo pipefail
           bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-twenty -f docker-compose.yml -f "$OVERLAY"
 
-      - name: Start Twenty (harness up, limiter profile from the job env)
+      - name: Start Twenty (harness up, functional limiter profile)
         id: twenty_up
         timeout-minutes: 12
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        # The functional values (Twenty plan §6.3) are read by the harness, which writes them into the server and worker
+        # environment. src/twenty/limiter-profile.ts must hold the same values (tests/unit/twenty-load-workflow.test.ts).
+        env:
+          API_RATE_LIMITING_SHORT_TTL_IN_MS: "1000"
+          API_RATE_LIMITING_SHORT_LIMIT: "100"
+          API_RATE_LIMITING_LONG_TTL_IN_MS: "60000"
+          API_RATE_LIMITING_LONG_LIMIT: "3600"
+          APPLICATION_API_RATE_LIMITING_TTL_IN_MS: "60000"
+          APPLICATION_API_RATE_LIMITING_LIMIT: "500"
         run: |
           set -euo pipefail
           npm run up:twenty
+
+      - name: Verify the functional limiter env in the server (read-only printenv)
+        if: ${{ steps.twenty_up.outcome == 'success' }}
+        timeout-minutes: 2
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          API_RATE_LIMITING_SHORT_TTL_IN_MS: "1000"
+          API_RATE_LIMITING_SHORT_LIMIT: "100"
+          API_RATE_LIMITING_LONG_TTL_IN_MS: "60000"
+          API_RATE_LIMITING_LONG_LIMIT: "3600"
+          APPLICATION_API_RATE_LIMITING_TTL_IN_MS: "60000"
+          APPLICATION_API_RATE_LIMITING_LIMIT: "500"
+        run: |
+          set -euo pipefail
+          # Exact names only (no prefix match): each must equal the functional value inside the server container (ENV on mismatch).
+          for name in API_RATE_LIMITING_SHORT_TTL_IN_MS API_RATE_LIMITING_SHORT_LIMIT API_RATE_LIMITING_LONG_TTL_IN_MS API_RATE_LIMITING_LONG_LIMIT APPLICATION_API_RATE_LIMITING_TTL_IN_MS APPLICATION_API_RATE_LIMITING_LIMIT; do
+            want="${!name}"
+            got="$(docker exec qa-harness-twenty-server-1 printenv "$name" || true)"
+            if [ "$got" != "$want" ]; then
+              echo "::error::ENV: ${name} in the server is '${got}', expected '${want}'"
+              exit 1
+            fi
+            echo "${name}=${got}"
+          done
 
       - name: Seed Twenty (harness seed)
         id: twenty_seed
