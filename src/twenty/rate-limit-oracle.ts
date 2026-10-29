@@ -142,7 +142,8 @@ export function parseTaggedLines<T>(text: string, tag: string): T[] {
   const out: T[] = [];
   for (const line of text.split("\n")) {
     const m = re.exec(line);
-    if (m?.[1]) out.push(JSON.parse(m[1]) as T);
+    // k6's log quotes the message (msg="TW006 {\"phase\":...}"), so the JSON's quotes and backslashes are unescaped first.
+    if (m?.[1]) out.push(JSON.parse(m[1].replace(/\\(["\\])/g, "$1")) as T);
   }
   return out;
 }
