@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aaFlagsVerdict, medusaTolerances, type AaArm } from "../../src/load/tier-aa/verdict.ts";
+import {
+  aaExitCode,
+  aaFlagsVerdict,
+  medusaTolerances,
+  type AaArm,
+} from "../../src/load/tier-aa/verdict.ts";
 
 const arm = (
   state: "off" | "on",
@@ -99,5 +104,11 @@ describe("flags-on versus flags-off A/A verdict", () => {
     assert.deepEqual(medusaTolerances(file), { p50Ms: 0.4238, p95Ms: 0.1, requestsPerSec: 0.1 });
     const noMedusa = { products: { cal: file.products.cal } };
     assert.throws(() => medusaTolerances(noMedusa), /no medusa entry for p50Ms/);
+  });
+
+  it("exits 0 on PASS and 1 on FAIL or INCONCLUSIVE", () => {
+    assert.equal(aaExitCode("PASS"), 0);
+    assert.equal(aaExitCode("FAIL"), 1);
+    assert.equal(aaExitCode("INCONCLUSIVE"), 1);
   });
 });

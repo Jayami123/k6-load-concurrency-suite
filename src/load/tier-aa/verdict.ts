@@ -38,6 +38,11 @@ export function medusaTolerances(file: unknown): Record<AaMetric, number> {
 
 /** relDiff = |medOn - medOff| / pooled, with the tolerance from the file. Fewer than MIN_ARMS VALID arms in a state, or any INVALID
  *  arm, makes the metric INCONCLUSIVE (never PASS). The overall verdict is INCONCLUSIVE, then FAIL, then PASS. */
+/** The verdict CLI's exit code: only PASS exits 0, so a FAIL or INCONCLUSIVE turns the tier-aa job red. */
+export function aaExitCode(verdict: AaVerdict): 0 | 1 {
+  return verdict === "PASS" ? 0 : 1;
+}
+
 export function aaFlagsVerdict(
   arms: AaArm[],
   tolerances: Record<string, number>,
