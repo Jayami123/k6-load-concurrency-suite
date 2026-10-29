@@ -42,7 +42,7 @@ export interface PageContext {
   observations: Array<{ id: string; title: string; file: string }>; // docs/observations/*.md, read at build time
   kneeCurves?: KneeCurve[];
   soakTrends?: SoakTrend[];
-  /** The weekly soak trend per product (p6-soak-* releases). The build always passes it; without it the section is omitted. */
+  /** The weekly soak trend per product (p6-soak-* releases). Without it the section reads "no weekly soak data yet". */
   weeklySoak?: ProductTrend[];
   /** Where each cited zip was fetched from. The soak tile reads this; it does not invent a tag. */
   releasePlan?: ReleasePlan;
@@ -368,7 +368,7 @@ export function renderSite(
 <main>
 ${summaryStrip(cards, ctx, pending, findings)}
 <section id="evidence" class="block" aria-labelledby="evidence-title"><h2 id="evidence-title">Evidence</h2><div class="cards">${cardBlocks}</div></section>
-${ctx.weeklySoak ? weeklySoakSection(ctx.weeklySoak) : ""}${findingsSection(ctx, findings)}
+${weeklySoakSection(ctx.weeklySoak ?? [])}${findingsSection(ctx, findings)}
 ${provenanceSection(model, runs, charts, pending)}
 </main>
 <footer>Source: <a href="${REPO}">${REPO.replace("https://", "")}</a>, built from main commit <code>${sha}</code>. Charts link their run's chart file.</footer>

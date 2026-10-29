@@ -3,7 +3,6 @@
 // script, no image and no colour rule: a point's soak verdict is printed as text beside it.
 import {
   isoWeekIndex,
-  buildWeeklyTrend,
   REQUIRED_VALID_WEEKS,
   type ProductTrend,
   type TrendPoint,
@@ -155,6 +154,10 @@ function productBlock(t: ProductTrend): string {
 
 /** The section. With no trend given, each product reads "collecting (0/3 weeks)" with an empty table. */
 export function weeklySoakSection(trends: ProductTrend[]): string {
-  const list = trends.length > 0 ? trends : buildWeeklyTrend([], null);
-  return `<section id="soak-weekly" class="block" aria-labelledby="soak-weekly-title"><h2 id="soak-weekly-title">Weekly soak trend</h2><p>Each point is one weekly 2 h soak with a VALID summary; its soak verdict is printed beside it. Gaps are listed with their reason and never plotted.</p>${list.map(productBlock).join("")}</section>`;
+  const intro = `<p>Each point is one weekly 2 h soak with a VALID summary; its soak verdict is printed beside it. Gaps are listed with their reason and never plotted.</p>`;
+  const hasData = trends.some((t) => t.points.length > 0 || t.gaps.length > 0);
+  const body = hasData
+    ? trends.map(productBlock).join("")
+    : `<p class="empty">no weekly soak data yet</p>`;
+  return `<section id="soak-weekly" class="block" aria-labelledby="soak-weekly-title"><h2 id="soak-weekly-title">Weekly soak trend</h2>${intro}${body}</section>`;
 }
