@@ -196,6 +196,10 @@ jobs:
         # 6 min: the slowest Cal start over 55 cal-smoke runs was 255 s (PRE-2 section 3.2); cap >= 1.25 x that.
         timeout-minutes: 6
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           SECONDS=0
@@ -205,6 +209,10 @@ jobs:
       - name: Soak P6-CAL-LOAD-008 (setup, run, audit and cleanup inside the step)
         timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           export PATH="/usr/local/bin:$PATH"
@@ -370,6 +378,10 @@ jobs:
         id: medusa_up
         if: ${{ steps.medusa_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           SECONDS=0
@@ -378,6 +390,10 @@ jobs:
       - name: Soak P6-MED-LOAD-005 (setup, run, audit and cleanup inside the step)
         timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: node scripts/load/run-load.ts --case P6-MED-LOAD-005 --profile soak
       - name: Token scan of the soak results
         id: token_scan
@@ -544,6 +560,10 @@ jobs:
         id: documenso_up
         if: ${{ steps.documenso_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           SECONDS=0
@@ -552,6 +572,10 @@ jobs:
       - name: Soak P6-DOC-LOAD-006 (setup, run, audit and cleanup inside the step)
         timeout-minutes: ${{ (github.event_name == 'schedule' && (github.event.schedule == '29 19 * * 0' && '120' || '30') || inputs.duration_min) == '120' && 165 || 45 }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: node scripts/load/run-load.ts --case P6-DOC-LOAD-006 --profile soak
       - name: Token scan of the soak results
         id: token_scan

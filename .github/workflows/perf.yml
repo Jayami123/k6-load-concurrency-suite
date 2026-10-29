@@ -501,6 +501,10 @@ jobs:
         id: medusa_up
         if: ${{ steps.medusa_pull.outcome == 'success' }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           SECONDS=0
@@ -521,6 +525,10 @@ jobs:
         if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           status=0
@@ -532,6 +540,10 @@ jobs:
         if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           status=0
@@ -543,6 +555,10 @@ jobs:
         if: ${{ !cancelled() && steps.medusa_up.outcome == 'success' && (github.event_name != 'workflow_dispatch' || inputs.medusa_retry_repeats == '') }}
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: ${{ github.event_name == 'pull_request' && 4 || 6 }}
+        env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
         run: |
           set -euo pipefail
           status=0
@@ -559,6 +575,9 @@ jobs:
         working-directory: ${{ env.P6_WORKING_DIRECTORY }}
         timeout-minutes: 25
         env:
+          HARNESS_PG_STATS: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ github.event_name != 'pull_request' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ github.event_name != 'pull_request' && format('{0}/p6/results/load/el', github.workspace) || '' }}
           REPEATS: ${{ inputs.medusa_retry_repeats }}
         run: |
           set -euo pipefail
