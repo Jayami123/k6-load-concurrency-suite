@@ -135,12 +135,12 @@ describe("a/b candidate install: ref bump", () => {
     );
     assert.match(
       stepNamed(job, "Restore Medusa build cache (B"),
-      /key: \$\{\{ runner\.os \}\}-medusa-build-\$\{\{ needs\.detect\.outputs\.medusa_ref_b \}\}-h0\.2\.15/,
+      /key: \$\{\{ runner\.os \}\}-medusa-build-\$\{\{ needs\.detect\.outputs\.medusa_ref_b \}\}-h0\.2\.18/,
     );
     const cal = jobOf("ab-cal");
     assert.match(
       stepNamed(cal, "Restore Cal build cache (B"),
-      /key: \$\{\{ runner\.os \}\}-cal-next-\$\{\{ needs\.detect\.outputs\.cal_ref_b \}\}-h0\.2\.15/,
+      /key: \$\{\{ runner\.os \}\}-cal-next-\$\{\{ needs\.detect\.outputs\.cal_ref_b \}\}-h0\.2\.18/,
     );
     assert.match(
       stepNamed(cal, "Restore Cal node_modules cache (B"),
