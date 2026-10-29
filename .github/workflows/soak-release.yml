@@ -1,0 +1,317 @@
+name: soak-release
+
+# Captures each weekly soak into one p6-soak-<yyyy>-w<ww> release of three summaries (soak-summary-<product>.json and
+# SHA256SUMS.txt). A weekly point is a scheduled 120-minute run of soak.yml that ended with success or failure. Any other
+# completed soak run ends in decide with NOT RUN and exits 0. The owner's backfill of a weekly run is a dispatch, which
+# is refused unless the run is a weekly point. Raw artefacts are never uploaded; only the summaries are.
+
+on:
+  workflow_run:
+    workflows: ["soak"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Scheduled 120-minute soak run id to backfill (must be a weekly point)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  decide:
+    name: decide whether the soak run is a weekly point
+    if: github.event_name == 'workflow_run' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      weekly: ${{ steps.decide.outputs.weekly }}
+      run_id: ${{ steps.decide.outputs.run_id }}
+      tag: ${{ steps.decide.outputs.tag }}
+      iso_week: ${{ steps.decide.outputs.iso_week }}
+      head_sha: ${{ steps.decide.outputs.head_sha }}
+      created_at: ${{ steps.decide.outputs.created_at }}
+      job_results: ${{ steps.decide.outputs.job_results }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          fetch-depth: 0 # origin/main is needed for the ancestor check
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: .nvmrc
+
+      - name: Read the soak run, its artefacts and its jobs
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.run_id || github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > "$RUNNER_TEMP/run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/artifacts.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+
+      - name: "Decide (trigger mode is NOT RUN unless weekly; dispatch mode refuses unless weekly)"
+        id: decide
+        timeout-minutes: 1
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && 'dispatch' || 'trigger' }}
+        run: node scripts/soak/weekly-capture.ts decide "$RUNNER_TEMP/run.json" "$RUNNER_TEMP/artifacts.json" "$RUNNER_TEMP/jobs.json" "$MODE"
+
+      - name: The soak head must be on main (the release targets it)
+        if: ${{ steps.decide.outputs.weekly == 'true' }}
+        timeout-minutes: 1
+        env:
+          HEAD_SHA: ${{ steps.decide.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$HEAD_SHA" origin/main || { echo "::error::soak head is not on main"; exit 1; }
+
+  capture:
+    name: capture the weekly soak summaries
+    needs: decide
+    if: needs.decide.outputs.weekly == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: soak-release-${{ needs.decide.outputs.tag }}
+      cancel-in-progress: false
+    outputs:
+      refused: ${{ steps.refuse.outputs.refused }}
+    env:
+      RUN_ID: ${{ needs.decide.outputs.run_id }}
+      TAG: ${{ needs.decide.outputs.tag }}
+      HEAD_SHA: ${{ needs.decide.outputs.head_sha }}
+      CREATED_AT: ${{ needs.decide.outputs.created_at }}
+      JOB_RESULTS: ${{ needs.decide.outputs.job_results }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: .nvmrc
+
+      - name: Refuse a week whose tag already exists (REFUSED, exit 0)
+        id: refuse
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          exists=0
+          rc=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || rc=$?
+          case "$rc" in
+            0) exists=1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote failed with $rc"; exit 1 ;;
+          esac
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == env.TAG) | .id')
+          [[ -z "$ids" ]] || exists=1
+          if [[ "$exists" == 1 ]]; then
+            echo "::warning::REFUSED: tag $TAG exists"
+            echo "REFUSED: tag $TAG exists; nothing is changed" >> "$GITHUB_STEP_SUMMARY"
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "refused=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the soak artefacts of the weekly run
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/soak" --pattern 'soak-*-120'
+
+      - name: Keep the evidence file types, then token scan the raw download
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          find "$RUNNER_TEMP/soak" -type f \! \( -name '*.json' -o -name '*.log' -o -name '*.csv' -o -name '*.html' -o -name '*.txt' \) -delete
+          node scripts/evidence-token-scan.mjs "$RUNNER_TEMP/soak"
+
+      - name: Install gitleaks (pinned version, pinned sha256)
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+
+      - name: gitleaks over the raw download
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/soak" --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: Summarize each product (a gap where its artefact is missing) and sum the files
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          node scripts/soak/weekly-capture.ts summarize "$RUNNER_TEMP/soak" "$RUNNER_TEMP/summaries"
+          (cd "$RUNNER_TEMP/summaries" && sha256sum -- soak-summary-*.json > SHA256SUMS.txt)
+
+      - name: Token scan and gitleaks over the summaries (the bytes that are uploaded)
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs "$RUNNER_TEMP/summaries"
+          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/summaries" --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: Upload the summaries to the publish job (1 day)
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weekly-summaries
+          path: ${{ runner.temp }}/summaries
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: publish the weekly release as a draft, verify it, then publish it (not Latest)
+    needs: [decide, capture]
+    if: needs.decide.outputs.weekly == 'true' && needs.capture.result == 'success' && needs.capture.outputs.refused != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: soak-release-${{ needs.decide.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.decide.outputs.tag }}
+      ISO_WEEK: ${{ needs.decide.outputs.iso_week }}
+      HEAD_SHA: ${{ needs.decide.outputs.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: .nvmrc
+
+      - name: Download the summaries from the capture job
+        timeout-minutes: 2
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: weekly-summaries
+          path: ${{ runner.temp }}/handoff
+
+      - name: Refuse a week whose tag or draft already exists (REFUSED, exit 0)
+        id: refuse
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          exists=0
+          rc=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || rc=$?
+          case "$rc" in
+            0) exists=1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote failed with $rc"; exit 1 ;;
+          esac
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == env.TAG) | .id')
+          [[ -z "$ids" ]] || exists=1
+          if [[ "$exists" == 1 ]]; then
+            echo "::warning::REFUSED: tag $TAG or a draft exists; nothing is changed"
+            echo "REFUSED: tag $TAG or a draft exists; nothing is changed" >> "$GITHUB_STEP_SUMMARY"
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "refused=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install gitleaks (pinned version, pinned sha256)
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+
+      - name: Token scan and gitleaks over the bytes about to be uploaded
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          node scripts/evidence-token-scan.mjs "$RUNNER_TEMP/handoff"
+          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/handoff" --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: Create the release as a draft, not Latest
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          gh release create --help | grep -E -- '--(draft|latest)' || true
+          gh release create "$TAG" --draft --latest=false --target "$HEAD_SHA" \
+            --title "P6 weekly soak $ISO_WEEK" --notes-file "$RUNNER_TEMP/handoff/NOTES.md"
+
+      - name: Upload the summaries and their sums to the draft
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$RUNNER_TEMP"/handoff/soak-summary-*.json "$RUNNER_TEMP/handoff/SHA256SUMS.txt"
+
+      - name: Verify the draft's assets against the local files and SHA256SUMS.txt
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/handoff"
+          (cd "$dir" && sha256sum -c SHA256SUMS.txt)
+          (cd "$dir" && awk '{print $2}' SHA256SUMS.txt | sort) > "$RUNNER_TEMP/sums-names.txt"
+          (cd "$dir" && printf '%s\n' soak-summary-*.json | sort) > "$RUNNER_TEMP/local-names.txt"
+          diff "$RUNNER_TEMP/local-names.txt" "$RUNNER_TEMP/sums-names.txt"
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"' | sort > "$RUNNER_TEMP/remote.txt"
+          (cd "$dir" && for f in soak-summary-*.json SHA256SUMS.txt; do echo "$f $(stat -c %s "$f")"; done) | sort > "$RUNNER_TEMP/local.txt"
+          diff "$RUNNER_TEMP/local.txt" "$RUNNER_TEMP/remote.txt" || { echo "::error::the draft's assets differ from the local files; the draft stays unpublished"; exit 1; }
+
+      - name: Publish the release, not Latest
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: gh release edit "$TAG" --draft=false --latest=false
+
+      - name: Check that the weekly release is not the repository's Latest
+        if: ${{ steps.refuse.outputs.refused != 'true' }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          [[ "$latest" != "$TAG" ]] || { echo "::error::$TAG is marked Latest"; exit 1; }
+          echo "release $TAG: draft created, assets verified, published (not Latest; latest is $latest)" >> "$GITHUB_STEP_SUMMARY"
