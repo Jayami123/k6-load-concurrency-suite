@@ -1,5 +1,14 @@
 {
   "schema": 1,
-  "release": "p6-phase4",
-  "pending": []
+  "release": "p6-phase4c",
+  "pending": [
+    {
+      "runId": "40809447906",
+      "reason": "P6 Medusa A/B gate run on main. Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4c (run_ids input)."
+    },
+    {
+      "runId": "40746212122",
+      "reason": "P6 perf.yml run on main. Its evidence zip is in no p6-* release yet. Owner to-do: publish it in release p6-phase4c (run_ids input)."
+    }
+  ]
 }
