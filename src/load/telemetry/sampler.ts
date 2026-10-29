@@ -6,6 +6,12 @@ import { readGroupStats, type AppProcess, type GroupStats } from "./proc-group.t
 import { readMaxConnections, readPgSample, type PgSample } from "./pg-stats.ts";
 import { readHostSample, type CpuTimes, type HostSample } from "./host-stats.ts";
 import { readContainerStats, type CgroupKind } from "./cgroup-stats.ts";
+import {
+  sampleTwentyContainers,
+  TWENTY_CONTAINER_ROLES,
+  type TwentyContainer,
+  type TwentyContainerSample,
+} from "./docker-stats.ts";
 import { createLogCounter, type LogCounts, type LogIo } from "./log-grep.ts";
 import { timedProbe, type ProbeResult } from "./probe.ts";
 import type { LoadProduct } from "../types.ts";
@@ -15,6 +21,8 @@ export interface TelemetrySample {
   proc?: GroupStats;
   db?: PgSample;
   container?: { cpuNs: number; memBytes: number };
+  /** The Twenty containers of this tick (Twenty plan §6.4); absent for every other product. */
+  containers?: TwentyContainerSample[];
   log?: LogCounts;
   probe?: ProbeResult;
   /** The host the run shares (plan task 1 §3.9 R2); absent unless the sampler was asked for it. */
@@ -47,6 +55,8 @@ export interface SamplerOptions {
   probeUrl?: string;
   /** The product's log file; counts only are kept. */
   logFile?: string;
+  /** The Twenty containers to sample each tick (discovered once at start). Off by default. */
+  containers?: TwentyContainer[];
   logIo?: LogIo;
   /** Read the host cpu and MemAvailable of each sample (plan task 1 §3.9 R2). Default off. */
   host?: boolean;
@@ -232,6 +242,7 @@ export function startSampler(opts: SamplerOptions): Sampler {
       const sampleStart = now();
       const sample: TelemetrySample = { t: sampleStart, sampleCostMs: 0 };
       await readAll(sample);
+      if (opts.containers) sample.containers = sampleTwentyContainers(opts.containers);
       sample.sampleCostMs = now() - sampleStart;
       samples.push(sample);
       n += 1;
@@ -246,6 +257,15 @@ export function startSampler(opts: SamplerOptions): Sampler {
       if (opts.pool) sources.db = { present: true, errors: errors.db ?? 0 };
       if (opts.container && opts.container.kind !== "absent")
         sources.container = { present: true, errors: errors.container ?? 0 };
+      if (opts.containers) {
+        const missing = TWENTY_CONTAINER_ROLES.filter(
+          (role) => !opts.containers?.some((c) => c.role === role),
+        );
+        sources.containers = {
+          present: opts.containers.length > 0,
+          reason: missing.length > 0 ? `not running: ${missing.join(",")}` : undefined,
+        };
+      }
       if (opts.logFile) sources.log = { present: true, errors: errors.log ?? 0 };
       if (opts.probeUrl) sources.probe = { present: true, errors: errors.probe ?? 0 };
       if (opts.host) sources.host = { present: true, errors: errors.host ?? 0 };

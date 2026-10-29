@@ -9,6 +9,7 @@ const POINTS_STREAM_BYTES = 20 * 1024 * 1024;
 const POINTS_KEEP_BYTES = 25 * 1024 * 1024;
 import { renderChartHtml, type ChartSample } from "../chart/render-chart.ts";
 import type { CgroupKind } from "./cgroup-stats.ts";
+import type { TwentyContainer } from "./docker-stats.ts";
 import { startSampler, type Sampler, type SamplerOptions } from "./sampler.ts";
 import { readStatementSnapshot, topQueryDeltas, type StatementSnapshot } from "./pg-top-queries.ts";
 import { perSecondMaxP99, readElWindow, type ElWindow } from "./event-loop.ts";
@@ -32,6 +33,8 @@ export interface ProductSources {
   logFile?: string;
   probeUrl?: string;
   appProcess?: AppProcess[];
+  /** The Twenty containers the sampler reads each tick (Twenty plan §6.4). Absent for every other product. */
+  containers?: TwentyContainer[];
 }
 
 export interface RunTelemetry {

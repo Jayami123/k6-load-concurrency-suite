@@ -15,6 +15,7 @@ import type {
   TelemetrySummary,
 } from "../types.ts";
 import { detectCgroup, discoverContainer } from "./cgroup-stats.ts";
+import { discoverTwentyContainers } from "./docker-stats.ts";
 import { type AppProcess, HARNESS_DIR, resolveAppProcess } from "./proc-group.ts";
 import {
   finishRunTelemetry,
@@ -93,6 +94,13 @@ export async function openSources(
   if (logName && existsSync(logFile)) sources.logFile = logFile;
   sources.probeUrl = READINESS[product](env)[0];
   sources.appProcess = resolveAppProcess(product);
+  if (product === "twenty") {
+    const cgroupFs = await orUndefined(statfsType);
+    sources.containers =
+      (await orUndefined(() =>
+        discoverTwentyContainers(undefined, cgroupFs ? detectCgroup(cgroupFs) : "absent"),
+      )) ?? [];
+  }
   return sources;
 }
 
