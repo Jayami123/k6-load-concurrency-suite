@@ -416,6 +416,27 @@ its expiry and token B 15 s after it. The case reports NOT RUN when the token ex
 
 <!-- >>> task6 section -->
 
+### Rate-limit contract (P6-TW-LOAD-006) and limiter fairness (P6-TW-LOAD-009)
+
+- **Profile.** Both cases run on the production-like profile: the image defaults, with no limiter variable and no
+  `NODE_OPTIONS` in the job (checked by name only, `assertNoLimiterEnv`). The job starts and stops its own stack.
+- **006 phases.** One API key sends `GET /rest/companies?limit=1` at 0.6x, 1.0x and 2.0x of the sustained limit (100 per
+  60 s), with 60 s idle before the second and third phases. Then one request per second until the first 200 (recovery).
+  The verdict needs no 429 under the limit, a 429 above it that carries `Retry-After`, the three rate headers and
+  `RATE_LIMITED`, no 5xx, and a 200 within 60 s. A 429 in the `at` phase is reported and never decides the verdict.
+- **009 (accepted extra).** Key F floods at the 2.0x rate and key L asks 12 times a minute, both for 120 s on one clock.
+  The gate ("keys per token or workspace") is met: the limiter keys by workspace, so every API key of a workspace shares
+  one speed bucket per window. **Expected verdict at image defaults: `FINDING` (cross-key starvation).** It is recorded
+  as a finding, not a failure: a low-rate client is refused while another client's flood is refused.
+- **B4 (shared bucket, confirmed before the first run).** One key flooded with 110 parallel requests. A second key then
+  sent three requests at once and three more one second later: three of its six requests were refused during the flood.
+  After 60 s idle, its three requests passed. This matches the shared bucket.
+- **Schedule.** The weekly Saturday run is at 03:23 UTC (08:53 Asia/Colombo). The nightly cron never starts this job, and
+  the concurrency group keys on the schedule, so a nightly run cannot cancel it. A manual dispatch starts this job too.
+- **Validity.** The Redis preflight counts the speed buckets before the seed; any bucket makes the run INVALID. A
+  `FINDING` or a suspected product bug keeps the run VALID. A suspected product bug fails the job until repeated runs
+  confirm it.
+
 ## Phase 1 results
 
 Every number here comes from a GitHub Actions run on `main` (push, schedule or `workflow_dispatch`). No number

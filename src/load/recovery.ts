@@ -90,3 +90,16 @@ export function recoverySeconds(
 export function isStorm(w: Window): boolean {
   return w.status.r5xx >= 5 && w.requests > 0 && w.status.r5xx / w.requests > 0.01;
 }
+
+/** One timed answer: the ms of the request and its HTTP status (the rate-limit recovery probe, Twenty plan P6-TW-LOAD-006). */
+export interface Sample {
+  tMs: number;
+  status: number;
+}
+
+/** Ms from stopMs to the first 200 at or after stopMs, or null when none. Pure. */
+export function firstOkAfter(samples: Sample[], stopMs: number): number | null {
+  const ok = samples.filter((s) => s.tMs >= stopMs && s.status === 200).map((s) => s.tMs);
+  if (ok.length === 0) return null;
+  return Math.min(...ok) - stopMs;
+}

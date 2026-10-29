@@ -24,6 +24,11 @@ import { twentyCleanup, twentySetup } from "./products/twenty.ts";
 import { TW_LOAD_004 } from "../twenty/lost-update-case.ts";
 import { BOUNDARY_STAGES, RESET_TOKEN_STAGES } from "./products/twenty-reset-token.ts";
 import {
+  fairness009Reconcile,
+  limiterPreflight,
+  rateLimit006Reconcile,
+} from "../twenty/rate-limit-oracle.ts";
+import {
   cancelRaceStage,
   ledgerStage,
   KNOWN_LEAK_ID,
@@ -1549,6 +1554,71 @@ export const TW_LOAD_008: LoadCase = {
   runs: () => [],
 };
 
+/**
+ * P6-TW-LOAD-006 (Twenty plan, rate-limit contract): one API key on the production-like profile (image defaults). The phases
+ * live in k6/cases/tw-load-006.js; the profile fields are informational. No PR run (roadmap line 459): the weekly job only.
+ */
+export const TW_LOAD_006: LoadCase = {
+  id: "P6-TW-LOAD-006",
+  title: "Twenty rate-limit contract (production-like profile)",
+  product: "twenty",
+  label: "functional load, not capacity",
+  telemetry: { product: "twenty" },
+  profiles: {
+    pr: { rate: 1, durationSec: 540, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 540, maxLatencyMs: 4000 },
+  },
+  runs: (ctx) =>
+    ctx.invalid.length > 0
+      ? []
+      : [
+          {
+            label: "main",
+            script: "k6/cases/tw-load-006.js",
+            env: {},
+            secretEnv: ["TWENTY_API_KEYS"],
+          },
+        ],
+  stages: {
+    setup: twentySetup,
+    preflight: limiterPreflight,
+    reconcile: rateLimit006Reconcile,
+    cleanup: twentyCleanup,
+  },
+};
+
+/**
+ * P6-TW-LOAD-009 (Twenty plan, limiter fairness, the accepted extra): key F floods and key L asks at a low rate, both on the
+ * production-like profile. The expected verdict at image defaults is FINDING (cross-key starvation). It runs (not gated): its
+ * gate, per token or workspace, is met (Twenty plan, gate section).
+ */
+export const TW_LOAD_009: LoadCase = {
+  ...TW_LOAD_006,
+  id: "P6-TW-LOAD-009",
+  title: "Twenty limiter fairness across keys (cross-key)",
+  profiles: {
+    pr: { rate: 1, durationSec: 120, maxLatencyMs: 4000 },
+    full: { rate: 1, durationSec: 120, maxLatencyMs: 4000 },
+  },
+  runs: (ctx) =>
+    ctx.invalid.length > 0
+      ? []
+      : [
+          {
+            label: "main",
+            script: "k6/cases/tw-load-009.js",
+            env: {},
+            secretEnv: ["TWENTY_API_KEYS"],
+          },
+        ],
+  stages: {
+    setup: twentySetup,
+    preflight: limiterPreflight,
+    reconcile: fairness009Reconcile,
+    cleanup: twentyCleanup,
+  },
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1588,4 +1658,6 @@ export const CASES: Record<string, LoadCase> = {
   [TW_LOAD_004.id]: TW_LOAD_004,
   [TW_LOAD_005.id]: TW_LOAD_005,
   [TW_LOAD_011.id]: TW_LOAD_011,
+  [TW_LOAD_006.id]: TW_LOAD_006,
+  [TW_LOAD_009.id]: TW_LOAD_009,
 };

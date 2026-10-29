@@ -21,11 +21,12 @@ function jobIds(): string[] {
 }
 
 describe("twenty load workflow", () => {
-  it("has exactly the foundation, task 4 and task 5 jobs", () => {
+  it("has the foundation job and the task 4, 5 and 6 jobs, in that order", () => {
     assert.deepEqual(jobIds(), [
       "twenty-load-foundation",
       "task4-lost-update",
       "task5-reset-token",
+      "task6-rate-limit",
     ]);
   });
 
