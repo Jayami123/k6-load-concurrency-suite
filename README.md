@@ -373,6 +373,16 @@ Timings are not published here; numbers come only from GitHub Actions runs (medi
 
 <!-- >>> task5 section -->
 
+**P6-TW-LOAD-005 (one-time reset token under load).** Runs nightly and on `workflow_dispatch` only, in the
+`task5-reset-token` job of `twenty-load.yml`. While the background journey runs, each throwaway member requests one reset
+token and every token is redeemed in parallel. PASS means each token is accepted exactly once, the stored hash changes,
+and no reset token stays live. A multi-success result is published as "PRODUCT BUG (SUSPECTED), matches P6-TW-RACE-004,
+see private security report", with no count. The uploaded artefact is `verdict-public.json` only: verdict word, validity
+and environment.
+
+**P6-TW-LOAD-011 (expiry boundary, accepted extra).** Runs after `-005` in the same job. Token A is redeemed 15 s before
+its expiry and token B 15 s after it. The case reports NOT RUN when the token expiry is above 15 minutes.
+
 <!-- >>> task6 section -->
 
 ## Phase 1 results

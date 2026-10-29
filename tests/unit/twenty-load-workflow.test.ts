@@ -12,7 +12,8 @@ function jobIds(): string[] {
   const start = lines.indexOf("jobs:");
   const ids: string[] = [];
   for (const line of lines.slice(start + 1)) {
-    if (/^\S/.test(line)) break;
+    // Column-0 comments are the task markers, which sit between the jobs; they do not end the job list.
+    if (/^\S/.test(line) && !line.startsWith("#")) break;
     const match = /^ {2}([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line);
     if (match?.[1]) ids.push(match[1]);
   }
@@ -20,8 +21,8 @@ function jobIds(): string[] {
 }
 
 describe("twenty load workflow", () => {
-  it("has exactly the foundation job", () => {
-    assert.deepEqual(jobIds(), ["twenty-load-foundation"]);
+  it("has the foundation job and the task 5 job", () => {
+    assert.deepEqual(jobIds(), ["twenty-load-foundation", "task5-reset-token"]);
   });
 
   it("runs the functional limiter profile in 3b", () => {
