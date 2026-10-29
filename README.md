@@ -822,6 +822,10 @@ only, not a result; no latency gate in Phase 3), the generator and app-group CPU
 longer than two intervals or a clock skew beyond 100 ms makes the run INVALID (`telemetry_gap`, `clock_skew`). Database, container
 and log sources are not part of this build: the stub has none, and they are added with the product cases.
 
+Harness telemetry (Task 2 tier). A run with a health probe shows `event-loop proxy (health probe)`: the probe latency, a proxy for the event loop and not its own measurement. A run with the preload rows (the event-loop flag on) also shows `eventLoop p99 (preload)`, the per-second maximum of p99 across the in-window server process. `telemetry-<label>.json` carries `topQueries` (`pg_stat_statements` deltas) and `eventLoop` only when the flags are on.
+
+The flags-on versus flags-off A/A (P6-X-LOAD-009, Medusa steady, `tier-aa` runs 40848345879 off-first and 40850333800 on-first) breached on one metric, `p95Ms`. Off-first: medOff 161.65 ms, medOn 143.42 ms, relDiff 0.1269 against the stored tolerance 0.1000 (FAIL). On-first: medOff 205.79 ms, medOn 207.27 ms, relDiff 0.0072 (PASS). The two runs disagree on `p95Ms`, and the p95 medians of the same flag state differ by about 27% between them, which is larger than the 0.1 floor. The `p95Ms` evidence from flags-on runs stays flags-off until this is explained. `p50Ms` and `requestsPerSec` passed in both runs. The thresholds are unchanged.
+
 Standalone commands (not in CI):
 
 ```bash
