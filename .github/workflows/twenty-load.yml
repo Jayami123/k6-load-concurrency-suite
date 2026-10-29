@@ -566,7 +566,7 @@ jobs:
           set -euo pipefail
           node scripts/load/run-load.ts --case P6-TW-LOAD-005 --profile "$P6_PROFILE"
 
-      - name: LOAD run (P6-TW-LOAD-011, expiry boundary; its gate is checked in the case)
+      - name: LOAD run (P6-TW-LOAD-011, expiry boundary; run-load checks its gate first)
         id: load_011
         if: ${{ !cancelled() && steps.twenty_smoke.outcome == 'success' }}
         timeout-minutes: 15
@@ -795,6 +795,7 @@ jobs:
           set -euo pipefail
           node scripts/load/run-load.ts --case P6-TW-LOAD-009 --profile full
           for f in results/load/P6-TW-LOAD-009/*/verdict.json; do
+            [ -e "$f" ] || continue # NOT RUN (gate closed) writes no verdict
             node -e 'const v = require(process.argv[1]); const r = (v.stages.reconcile || {}).data?.fairness || {}; console.log("P6-TW-LOAD-009 verdict=" + r.verdict + " outcome=" + v.outcome)' "$PWD/$f" | tee -a "$GITHUB_STEP_SUMMARY"
           done
 
