@@ -4,12 +4,12 @@ import { describe, it } from "node:test";
 
 const WORKFLOW = readFileSync(".github/workflows/evidence-release.yml", "utf8");
 
-describe("evidence release accepts the runs of perf.yml, knee.yml, soak.yml and gate.yml", () => {
-  it("declares EVIDENCE_WORKFLOW_IDS as the four workflow ids, perf.yml first, and no single PERF_WORKFLOW_ID", () => {
+describe("evidence release accepts the runs of perf.yml, knee.yml, soak.yml, gate.yml and twenty-load.yml", () => {
+  it("declares EVIDENCE_WORKFLOW_IDS as the five workflow ids, perf.yml first, and no single PERF_WORKFLOW_ID", () => {
     const m = /EVIDENCE_WORKFLOW_IDS: "([^"]*)"/.exec(WORKFLOW);
     assert.ok(m, "EVIDENCE_WORKFLOW_IDS is declared");
     const ids = (m[1] ?? "").split(" ");
-    assert.deepEqual(ids, ["376454455", "396253729", "397232763", "398161444"]);
+    assert.deepEqual(ids, ["376454455", "396253729", "397232763", "398161444", "400507136"]);
     assert.ok(ids.every((id) => /^\d+$/.test(id)));
     assert.doesNotMatch(WORKFLOW, /PERF_WORKFLOW_ID/);
   });
