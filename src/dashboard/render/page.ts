@@ -6,6 +6,7 @@ import { loadFindings, type FindingRow, type FindingsFile } from "../findings.ts
 import { CARD_SPECS, computeCard, utcOf, type CardState, type CardStatus } from "../cards.ts";
 import type { KneeCurve } from "../knee/read-curves.ts";
 import type { SoakTrend } from "../soak/read-trends.ts";
+import type { ProductTrend } from "../soak/weekly-trend.ts";
 import type { AaSeries } from "../gate/read-aa.ts";
 import type { AbGate } from "../gate/read-ab.ts";
 import type { RaceTally } from "../races/read-tallies.ts";
@@ -16,6 +17,7 @@ import { renderSoakTrends } from "./soak-chart.ts";
 import { renderAaChart } from "./aa-chart.ts";
 import { renderAbChart } from "./ab-chart.ts";
 import { renderRaceChart } from "./race-chart.ts";
+import { weeklySoakSection } from "./weekly-soak.ts";
 
 export const REPO = "https://github.com/Jayami123/k6-load-concurrency-suite";
 
@@ -40,6 +42,8 @@ export interface PageContext {
   observations: Array<{ id: string; title: string; file: string }>; // docs/observations/*.md, read at build time
   kneeCurves?: KneeCurve[];
   soakTrends?: SoakTrend[];
+  /** The weekly soak trend per product (p6-soak-* releases). The build always passes it; without it the section is omitted. */
+  weeklySoak?: ProductTrend[];
   /** Where each cited zip was fetched from. The soak tile reads this; it does not invent a tag. */
   releasePlan?: ReleasePlan;
   aa?: AaSeries[];
@@ -364,7 +368,7 @@ export function renderSite(
 <main>
 ${summaryStrip(cards, ctx, pending, findings)}
 <section id="evidence" class="block" aria-labelledby="evidence-title"><h2 id="evidence-title">Evidence</h2><div class="cards">${cardBlocks}</div></section>
-${findingsSection(ctx, findings)}
+${ctx.weeklySoak ? weeklySoakSection(ctx.weeklySoak) : ""}${findingsSection(ctx, findings)}
 ${provenanceSection(model, runs, charts, pending)}
 </main>
 <footer>Source: <a href="${REPO}">${REPO.replace("https://", "")}</a>, built from main commit <code>${sha}</code>. Charts link their run's chart file.</footer>

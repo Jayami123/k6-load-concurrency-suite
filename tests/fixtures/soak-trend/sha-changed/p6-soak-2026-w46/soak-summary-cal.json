@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "product": "cal",
+  "isoWeek": "2026-w46",
+  "tag": "p6-soak-2026-w46",
+  "caseId": "P6-CAL-LOAD-008",
+  "runId": "20261115T193000Z-f200aa03",
+  "githubRunId": "41000000046",
+  "runUrl": "https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/41000000046",
+  "soakHeadSha": "fcfa8f615095d0ead8f68377b0bf63e58a857461",
+  "event": "schedule",
+  "createdAt": "2026-11-15T19:29:00Z",
+  "durationSec": 7200,
+  "warmupSec": 360,
+  "productSha": "1111111111111111111111111111111111111111",
+  "harnessTag": "v0.2.15",
+  "k6Version": "2.3.0",
+  "valid": true,
+  "invalidReason": null,
+  "verdict": "NO THRESHOLD YET",
+  "reasons": ["no soak-bounds.json entry for this product"],
+  "statistics": {
+    "rssMb": {
+      "slopePerMin": 0.5,
+      "theilSenPerMin": 0.6,
+      "plateauRatio": 1.02
+    },
+    "fds": {
+      "slopePerMin": -0.0016,
+      "theilSenPerMin": 0,
+      "plateauRatio": 1
+    },
+    "dbConnections": {
+      "slopePerMin": 0.00065,
+      "theilSenPerMin": 0,
+      "plateauRatio": 1
+    }
+  },
+  "healthProbeMs": {
+    "p95": 14,
+    "slopePerMin": 0,
+    "samples": 6840
+  }
+}

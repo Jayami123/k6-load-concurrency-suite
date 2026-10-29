@@ -49,7 +49,7 @@ const ISO_WEEK = /^\d{4}-w\d{2}$/;
 const RUN_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+$/;
 
 /** The ISO week ("YYYY-wWW") of a UTC date: the week of its Thursday. */
-function isoWeekOf(date: Date): string {
+export function isoWeekOf(date: Date): string {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayOfWeek = d.getUTCDay() || 7; // Monday 1 .. Sunday 7
   d.setUTCDate(d.getUTCDate() + 4 - dayOfWeek);

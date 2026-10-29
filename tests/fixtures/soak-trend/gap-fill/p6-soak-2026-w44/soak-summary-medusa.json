@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "product": "medusa",
+  "isoWeek": "2026-w44",
+  "tag": "p6-soak-2026-w44",
+  "caseId": "P6-MED-LOAD-005",
+  "runId": "20261101T193000Z-f000aa06",
+  "githubRunId": "41000000044",
+  "runUrl": "https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/41000000044",
+  "soakHeadSha": "fcfa8f615095d0ead8f68377b0bf63e58a857461",
+  "event": "schedule",
+  "createdAt": "2026-11-01T19:29:00Z",
+  "durationSec": 7200,
+  "warmupSec": 360,
+  "productSha": "f677db438f27294fc50e4c7c6612e71ff38eeff5",
+  "harnessTag": "v0.2.15",
+  "k6Version": "2.3.0",
+  "valid": true,
+  "invalidReason": null,
+  "verdict": "NO THRESHOLD YET",
+  "reasons": ["no soak-bounds.json entry for this product"],
+  "statistics": {
+    "rssMb": {
+      "slopePerMin": 0.4,
+      "theilSenPerMin": 0.5,
+      "plateauRatio": 1
+    },
+    "fds": {
+      "slopePerMin": -0.0016,
+      "theilSenPerMin": 0,
+      "plateauRatio": 1
+    },
+    "dbConnections": {
+      "slopePerMin": 0.00065,
+      "theilSenPerMin": 0,
+      "plateauRatio": 1
+    }
+  },
+  "healthProbeMs": {
+    "p95": 12,
+    "slopePerMin": 0,
+    "samples": 6840
+  }
+}
