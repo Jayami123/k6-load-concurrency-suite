@@ -7,17 +7,18 @@ import { functional, isLimiterProfileName } from "../../src/twenty/limiter-profi
 const text = readFileSync(".github/workflows/twenty-load.yml", "utf8");
 const lines = text.split("\n");
 
-/** The job ids: keys at two-space indent under the top-level `jobs:` block. */
+/** The job ids: keys at the job indent under the `jobs:` block, matched by trimmed content at any indentation. */
 function jobIds(): string[] {
-  const start = lines.indexOf("jobs:");
-  const ids: string[] = [];
+  const start = lines.findIndex((line) => line.trim() === "jobs:");
+  const keys: { indent: number; id: string }[] = [];
   for (const line of lines.slice(start + 1)) {
     // Column-0 comments are the task markers, which sit between the jobs; they do not end the job list.
     if (/^\S/.test(line) && !line.startsWith("#")) break;
-    const match = /^ {2}([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line);
-    if (match?.[1]) ids.push(match[1]);
+    const match = /^([A-Za-z0-9_-]+):\s*(#.*)?$/.exec(line.trim());
+    if (match?.[1]) keys.push({ indent: line.length - line.trimStart().length, id: match[1] });
   }
-  return ids;
+  const jobIndent = keys[0]?.indent;
+  return keys.filter((key) => key.indent === jobIndent).map((key) => key.id);
 }
 
 describe("twenty load workflow", () => {
@@ -52,7 +53,7 @@ describe("twenty load workflow", () => {
 
   it("keeps the three task markers in order, each followed by one blank line", () => {
     const markers = ["# >>> task4 jobs", "# >>> task5 jobs", "# >>> task6 jobs"];
-    const positions = markers.map((marker) => lines.indexOf(marker));
+    const positions = markers.map((marker) => lines.findIndex((line) => line.trim() === marker));
     assert.ok(
       positions.every((p) => p >= 0),
       "every marker is present",

@@ -88,8 +88,10 @@ export interface SpikeRunSpec {
 export interface LoadCase {
   /** Set only by P6-DOC-LOAD-004 (plan Phase 4 task 6 §6.5): a limited intent may leave one unfinished document. Any other case is a TEST BUG. */
   limitedFailMayLeaveUnfinished?: boolean;
-  /** A gated case is registered but never runs: the runner refuses it with ENV until its gate opens (Twenty plan §6.9, Q4). */
+  /** A gated case runs only when its gate check passes; a gated case without a gate check is refused with ENV (Twenty plan §6.9, Q4). */
   gated?: boolean;
+  /** The gate check of a gated case, run before the case: open runs it, closed is NOT RUN (never PASS). */
+  gate?: () => GateState;
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;
@@ -161,6 +163,8 @@ export interface LoadContext {
   handles: Record<string, unknown>;
   k6: K6RunResult[]; // filled by the "k6" stage
   invalid: string[]; // INVALID reasons added by Task 4 and Task 5 stages
+  /** Reasons the case did not run its measurement (a gate closed inside the case). The outcome is INCONCLUSIVE unless INVALID or FAIL. */
+  notRun?: string[];
   results: Partial<Record<StageName, StageResult>>;
   /** Run metadata (Task 4, P6-RULE-003); written to run-meta.json. */
   meta?: RunMeta;
@@ -169,7 +173,11 @@ export interface LoadContext {
 export type Stage = (ctx: LoadContext) => Promise<StageResult>;
 export type StageSet = Record<StageName, Stage>;
 
-export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV";
+/** INCONCLUSIVE: the case ran no measurement because its gate closed in the case (NOT RUN). It is never PASS. */
+export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV" | "INCONCLUSIVE";
+
+/** A gate check's answer. A closed gate carries the reason that goes into the NOT RUN line. */
+export type GateState = { open: true } | { open: false; reason: string };
 
 export type InvalidCode =
   | "dropped_iterations"

@@ -18,9 +18,10 @@ import { freshPassword, throwawayAddress } from "../../twenty/payloads.ts";
 import { runResetTokenLoad, successOf } from "../../twenty/reset-token-load.ts";
 import { setupTwentyContext, type CaseContext } from "../../twenty/run-case.ts";
 import {
+  boundaryPremise,
   boundarySchedule,
   expiryBoundaryVerdict,
-  expiryGateOpen,
+  IMAGE_DEFAULT_RESET_LIFETIME_MS,
 } from "../../twenty/window-oracle.ts";
 import { composeStages, reconcileStage } from "../reconcile/index.ts";
 import { evaluateVerdict } from "../runner.ts";
@@ -96,9 +97,38 @@ async function redeemOnce(
   return { successes: successOf(res) ? 1 : 0, status: res.status };
 }
 
+/** The NOT RUN reason of a closed boundary gate (the case's own gate, checked on the issued tokens). */
+export const BOUNDARY_GATE_CLOSED = "gate closed: token expiry is above 15 minutes, not run";
+/** The INVALID reason when the observed token lifetime disagrees with the recorded one (the gate's premise). */
+export const GATE_PREMISE_MISMATCH = "gate premise mismatch";
+
+/** One issued token's window: when it was created and when it expires, in epoch milliseconds. */
+export type TokenWindow = { createdAtMs: number; expiresAtMs: number };
+
 /**
- * P6-TW-LOAD-011: token A is redeemed 15 s before its expiry, token B 15 s after it. The gate is checked first: an expiry above
- * 15 min closes the case (NOT RUN). Expiry comes from the database clock; the wait is on the wall clock only.
+ * The gate of P6-TW-LOAD-011 on the issued tokens. A lifetime that disagrees with the recorded value is INVALID (the premise of the
+ * gate is wrong). A closed gate is NOT RUN: the outcome is INCONCLUSIVE, unless INVALID outranks it. Returns true when the
+ * redemptions may run.
+ */
+export function checkBoundaryPremise(ctx: LoadContext, windows: TokenWindow[]): boolean {
+  const premise = boundaryPremise(windows);
+  if (!premise.premiseMatches) {
+    const observed = premise.observedLifetimesMs.map((ms) => `${Math.round(ms / 1000)} s`).join(", ");
+    ctx.invalid.push(
+      `${GATE_PREMISE_MISMATCH}: observed reset token lifetime ${observed}, recorded ${IMAGE_DEFAULT_RESET_LIFETIME_MS / 1000} s`,
+    );
+  }
+  if (!premise.gateOpen) {
+    ctx.handles.resetVerdict = "NOT RUN";
+    ctx.notRun = [...(ctx.notRun ?? []), BOUNDARY_GATE_CLOSED];
+    return false;
+  }
+  return true;
+}
+
+/**
+ * P6-TW-LOAD-011: token A is redeemed 15 s before its expiry, token B 15 s after it. The gate is checked first on the issued tokens:
+ * an expiry above 15 min closes the case (NOT RUN, INCONCLUSIVE). Expiry comes from the database clock; the wait is on the wall clock only.
  */
 export const boundaryStage: Stage = (ctx) =>
   withCaseContext(ctx, async (cctx) => {
@@ -106,13 +136,12 @@ export const boundaryStage: Stage = (ctx) =>
     for (const address of addresses) await createInvitedMember(cctx, address);
     const tokens: string[] = [];
     for (const address of addresses) tokens.push(await requestResetToken(cctx, address));
-    const windows: Array<{ createdAtMs: number; expiresAtMs: number }> = [];
+    const windows: TokenWindow[] = [];
     for (const address of addresses) {
       windows.push(await resetTokenWindow(cctx.pool, await userIdByEmail(cctx.pool, address)));
     }
-    if (!windows.every((w) => expiryGateOpen(w.createdAtMs, w.expiresAtMs))) {
-      ctx.handles.resetVerdict = "NOT RUN";
-      return { ok: true, reasons: ["gate closed: token expiry is above 15 minutes, not run"] };
+    if (!checkBoundaryPremise(ctx, windows)) {
+      return { ok: true, reasons: [BOUNDARY_GATE_CLOSED] };
     }
     const [first, second] = windows.map((w) => boundarySchedule(w.expiresAtMs));
     await sleepUntil(first!.beforeMs);
