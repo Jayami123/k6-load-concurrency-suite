@@ -340,6 +340,41 @@ and the test asserts that no socket is left open. The spec writes no records.
 
 Timings are not published here; numbers come only from GitHub Actions runs.
 
+## Twenty load
+
+Twenty load cases run through the LOAD runner (`scripts/load/run-load.ts`) in the `twenty-load` workflow
+(`.github/workflows/twenty-load.yml`). The foundation case `TW-BG-FOUNDATION` is not a P6 case ID. It carries the
+label "functional load, not capacity": it proves the pipeline end to end and nothing about limits.
+
+Locally, against a stack the harness starts (the limiter profile is required; `productionLike` is the image default):
+
+```bash
+bash scripts/bootstrap.sh twenty
+npm run up:twenty
+npm run seed:twenty
+P6_TWENTY_LIMITER_PROFILE=productionLike node scripts/load/run-load.ts --case TW-BG-FOUNDATION --profile pr
+TWENTY_DOWN_VOLUMES=1 npm run down:twenty
+```
+
+- **Auth.** Each case authenticates one way (Twenty plan §2.12). The foundation signs in and k6 receives the
+  workspace token through `secretEnv`, never in a file. API-key cases create seeded per-run keys in setup and revoke
+  them in cleanup.
+- **Limiter profile.** The run records the profile in `run-meta.json` as `limiterProfile`. `productionLike` means the
+  image defaults. The `functional` profile is verified in a later change.
+- **Verdict.** A run is VALID or INVALID on its validity judge alone. The outcome (PASS, FAIL, INVALID, ENV) is
+  reported separately (P6-RULE-003).
+- **Cleanup.** Setup and cleanup leave no company row with the run prefix (the leak check must read 0).
+- **Gated cases.** `P6-TW-LOAD-008` and `P6-TW-LOAD-010` are registered with `gated: true`. The runner refuses them with
+  `ENV: case <id> is gated (NOT RUN)` until their gates open.
+
+Timings are not published here; numbers come only from GitHub Actions runs (median of at least 3).
+
+<!-- >>> task4 section -->
+
+<!-- >>> task5 section -->
+
+<!-- >>> task6 section -->
+
 ## Phase 1 results
 
 Every number here comes from a GitHub Actions run on `main` (push, schedule or `workflow_dispatch`). No number
