@@ -818,7 +818,7 @@ The self-test `P6-X-LOAD-004` checks both sides: a normal run must be VALID and 
 
 Each k6 run also has a sampler outside the generator (one row per second: the application process group's CPU, RSS and fds, and
 the sampler's own cost) and a clock marker. `chart-<label>.html` is one self-contained page per run: requests per second, p95 (info
-only, not a result; no latency gate in Phase 3), the generator and app-group CPU, memory, fds, the sampler cost and the gaps. A gap
+only, not a result; no latency gate in Phase 3), the generator and app-group CPU, memory, fds, the sampler cost and the gaps. A run with a health probe also shows `event-loop proxy (health probe)`, the probe latency (a proxy for the event loop, not its own measurement). A run with the preload rows (the harness event-loop flag on) also shows `eventLoop p99 (preload)`, the per-second maximum of p99 across the in-window server processes. A gap
 longer than two intervals or a clock skew beyond 100 ms makes the run INVALID (`telemetry_gap`, `clock_skew`). Database, container
 and log sources are not part of this build: the stub has none, and they are added with the product cases.
 
