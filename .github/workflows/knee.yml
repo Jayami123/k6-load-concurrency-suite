@@ -195,7 +195,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.18
 
       - name: Pull Cal images (3 tries, 15 s then 30 s)
         id: cal_pull
@@ -377,7 +377,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.18
 
       - name: Generate the CI admin password
         timeout-minutes: 1
@@ -577,7 +577,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
-          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.18
 
       - name: Pull Documenso images (3 tries, 15 s then 30 s)
         id: documenso_pull
@@ -782,7 +782,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.18
 
       - name: Pull Cal images (3 tries, 15 s then 30 s)
         id: cal_pull
@@ -960,7 +960,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.18
 
       - name: Generate the CI admin password
         timeout-minutes: 1
@@ -1183,7 +1183,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CAL_CHECKOUT_PATH }}/apps/web/.next
-          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.15
+          key: ${{ runner.os }}-cal-next-${{ env.CAL_REF }}-h0.2.18
 
       - name: Pull Cal images (3 tries, 15 s then 30 s)
         id: cal_pull
@@ -1361,7 +1361,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
-          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.15
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.18
 
       - name: Generate the CI admin password
         timeout-minutes: 1
@@ -1554,7 +1554,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.DOCUMENSO_CHECKOUT_PATH }}/apps/remix/build
-          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.15
+          key: ${{ runner.os }}-documenso-build-${{ env.DOCUMENSO_REF }}-h0.2.18
 
       - name: Pull Documenso images (3 tries, 15 s then 30 s)
         id: documenso_pull
