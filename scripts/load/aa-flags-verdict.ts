@@ -7,7 +7,12 @@ import path from "node:path";
 import { runValues, type RunFolder } from "../../src/load/baseline-band.ts";
 import { armRunFolder } from "../../src/load/tier-aa/arm-folder.ts";
 import { validateRunMeta } from "../../src/load/run-meta.ts";
-import { aaFlagsVerdict, medusaTolerances, type AaArm } from "../../src/load/tier-aa/verdict.ts";
+import {
+  aaExitCode,
+  aaFlagsVerdict,
+  medusaTolerances,
+  type AaArm,
+} from "../../src/load/tier-aa/verdict.ts";
 
 const args = process.argv.slice(2);
 const dir = args[0];
@@ -53,3 +58,5 @@ const part = (m: keyof typeof metrics) => {
 const line = `P6-X-LOAD-009 A/A flags (${order}): ${verdict} (${part("p50Ms")}; ${part("p95Ms")}; ${part("requestsPerSec")})`;
 console.log(line);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
+// Only PASS exits 0: a FAIL or INCONCLUSIVE fails the tier-aa job after the verdict and summary are written.
+process.exitCode = aaExitCode(verdict);
