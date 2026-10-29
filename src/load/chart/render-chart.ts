@@ -7,6 +7,8 @@ export interface ChartSample {
   fds?: number;
   members?: number;
   sampleCostMs?: number;
+  /** The health probe's latency in ms (sampler `probe.ms`); drawn as the event-loop proxy when present. */
+  probeMs?: number;
 }
 
 export interface ChartInput {
@@ -16,6 +18,8 @@ export interface ChartInput {
   gaps: Array<{ fromMs: number; toMs: number }>;
   /** Knee runs (plan task 1 §6.6): one labelled band per held step, drawn behind every chart. */
   steps?: Array<{ index: number; rate: number; fromMs: number; toMs: number }>;
+  /** Per-second maximum of p99 across the in-window server pids (the preload); drawn only when present. */
+  eventLoop?: Array<{ t: number; v: number }>;
 }
 
 const W = 720;
@@ -113,6 +117,28 @@ export function renderChartHtml(input: ChartInput): string {
       end,
       `${input.gaps.length} gap(s) longer than 2 intervals.`,
     ),
+    ...(samples.some((s) => s.probeMs !== undefined)
+      ? [
+          panel(
+            "event-loop proxy (health probe)",
+            samples.map((s) => ({ t: s.t, v: s.probeMs })),
+            base,
+            end,
+            "Health-probe latency in ms: a proxy for the event loop, not the loop's own delay.",
+          ),
+        ]
+      : []),
+    ...(input.eventLoop && input.eventLoop.length > 0
+      ? [
+          panel(
+            "eventLoop p99 (preload)",
+            input.eventLoop,
+            base,
+            end,
+            "Per-second maximum of p99 across the server processes in the run window.",
+          ),
+        ]
+      : []),
   ].join("\n");
   const span = Math.max(end - base, 1);
   const bandMarkup = (input.steps ?? [])

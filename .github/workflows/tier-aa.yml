@@ -1,0 +1,304 @@
+name: tier-aa
+
+# P6-X-LOAD-009: the flags-on versus flags-off A/A (plan §5.4). Dispatch only. One job, one runner: three arms per state, the
+# state changed by `npm run down:medusa` and `npm run up:medusa` in the same job. The owner dispatches it on main, in both orders.
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: "off-first (normal order) or on-first (reversed order, EXTRA-AA-ORDER)"
+        required: true
+        default: off-first
+        type: choice
+        options:
+          - off-first
+          - on-first
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tier-aa-${{ github.run_id }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  MEDUSA_REF: f677db438f27294fc50e4c7c6612e71ff38eeff5
+
+jobs:
+  flags-aa:
+    name: flags-aa (${{ inputs.order }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    env:
+      P6_WORKING_DIRECTORY: p6
+      PRODUCTS_ROOT: ${{ github.workspace }}/products
+      MEDUSA_CHECKOUT_PATH: products/medusa-dtc-starter
+      MEDUSA_BASE_URL: http://127.0.0.1:9000
+      # Public harness default database URL, not a secret.
+      MEDUSA_DB_URL: postgres://medusa:medusa@127.0.0.1:5433/medusa
+      MEDUSA_ADMIN_EMAIL: admin@qa.local
+      MEDUSA_SKIP_STOREFRONT: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      COREPACK_ENABLE_STRICT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          path: ${{ env.P6_WORKING_DIRECTORY }}
+
+      - name: Checkout Medusa fork
+        timeout-minutes: 6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Jayami123/medusa-dtc-starter
+          ref: ${{ env.MEDUSA_REF }}
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}
+          persist-credentials: false
+
+      - name: Verify Medusa fork HEAD
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          head="$(git -C "${MEDUSA_CHECKOUT_PATH}" rev-parse HEAD)"
+          if [ "$head" != "${MEDUSA_REF}" ]; then
+            echo "::error::Medusa HEAD ${head} does not match MEDUSA_REF ${MEDUSA_REF}"
+            exit 1
+          fi
+
+      - name: Stub harness product roots
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          mkdir -p "${PRODUCTS_ROOT}/cal" "${PRODUCTS_ROOT}/documenso" "${PRODUCTS_ROOT}/twenty-CRM"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version-file: ${{ env.P6_WORKING_DIRECTORY }}/.nvmrc
+          cache: npm
+          cache-dependency-path: ${{ env.P6_WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install P6 dependencies
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install k6 (pinned in .k6-version, checksum-verified)
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/install-k6.sh"
+
+      - name: Enable pnpm via corepack
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.11.1 --activate
+          version="$(pnpm --version)"
+          if [ "$version" != "10.11.1" ]; then
+            echo "::error::pnpm ${version} is not the 10.11.1 the Medusa fork pins"
+            exit 1
+          fi
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Restore pnpm store cache
+        id: medusa_pnpm
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-medusa-pnpm-${{ env.MEDUSA_REF }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', env.MEDUSA_CHECKOUT_PATH)) }}
+
+      - name: Install Medusa dependencies
+        timeout-minutes: 10
+        working-directory: ${{ env.MEDUSA_CHECKOUT_PATH }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Restore Medusa build cache
+        id: medusa_build
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.MEDUSA_CHECKOUT_PATH }}/apps/backend/.medusa/server
+          key: ${{ runner.os }}-medusa-build-${{ env.MEDUSA_REF }}-h0.2.18
+
+      - name: Generate the CI admin password
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::${pw}"
+          echo "MEDUSA_ADMIN_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Pull Medusa images (3 tries, 15 s then 30 s)
+        id: medusa_pull
+        timeout-minutes: 6
+        working-directory: ${{ github.workspace }}/p6/node_modules/qa-portfolio-harness/docker
+        run: |
+          set -euo pipefail
+          bash "${{ github.workspace }}/p6/scripts/ci/compose-pull.sh" -p qa-harness-medusa -f medusa.compose.yml
+
+      # State 1 is OFF in the normal order (off-first) and ON in the reversed order (on-first). The flag env is set on the start
+      # step and on every arm of the state; an empty value is off in the harness.
+      - name: Start Medusa, state 1 (harness up)
+        id: up1
+        timeout-minutes: 10
+        if: ${{ steps.medusa_pull.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'on-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'on-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'on-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          npm run up:medusa
+
+      - name: Arm 1-1 (state 1, steady)
+        id: arm11
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up1.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'on-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'on-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'on-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'on-first' && 'on' || 'off' }}-1" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Arm 1-2 (state 1, steady)
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up1.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'on-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'on-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'on-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'on-first' && 'on' || 'off' }}-2" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Arm 1-3 (state 1, steady)
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up1.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'on-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'on-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'on-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'on-first' && 'on' || 'off' }}-3" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Stop Medusa, state 1 (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+
+      # State 2 is ON in the normal order and OFF in the reversed order.
+      - name: Start Medusa, state 2 (harness up)
+        id: up2
+        timeout-minutes: 10
+        if: ${{ !cancelled() }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'off-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'off-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'off-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          npm run up:medusa
+
+      - name: Arm 2-1 (state 2, steady)
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up2.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'off-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'off-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'off-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'off-first' && 'on' || 'off' }}-1" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Arm 2-2 (state 2, steady)
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up2.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'off-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'off-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'off-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'off-first' && 'on' || 'off' }}-2" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Arm 2-3 (state 2, steady)
+        timeout-minutes: 4
+        if: ${{ !cancelled() && steps.up2.outcome == 'success' }}
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        env:
+          HARNESS_PG_STATS: ${{ inputs.order == 'off-first' && '1' || '' }}
+          HARNESS_EL_PRELOAD: ${{ inputs.order == 'off-first' && format('{0}/p6/src/load/telemetry/preload/el-delay.cjs', github.workspace) || '' }}
+          HARNESS_EL_OUT: ${{ inputs.order == 'off-first' && format('{0}/p6/results/load/el', github.workspace) || '' }}
+        run: |
+          set -euo pipefail
+          status=0
+          npm run load:medusa-steady -- --out "results/load/aa-flags/${{ inputs.order == 'off-first' && 'on' || 'off' }}-3" || status=$?
+          if [ "$status" -eq 3 ]; then echo "::warning::A/A arm INVALID; kept as evidence and counted as INVALID"; status=0; fi
+          exit "$status"
+
+      - name: Stop Medusa, state 2 (harness down)
+        if: ${{ always() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          npm run down:medusa || true
+
+      - name: Verdict, token scan and job summary
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        working-directory: ${{ env.P6_WORKING_DIRECTORY }}
+        run: |
+          set -euo pipefail
+          node scripts/load/aa-flags-verdict.ts results/load/aa-flags --order "${{ inputs.order }}"
+          node scripts/evidence-token-scan.mjs results/load/aa-flags
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        with:
+          name: load-aa-flags-${{ inputs.order }}
+          path: ${{ env.P6_WORKING_DIRECTORY }}/results/load/aa-flags/
+          if-no-files-found: warn
+          retention-days: 14

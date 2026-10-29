@@ -43,6 +43,18 @@ describe("render chart", () => {
     assert.match(html, /no data for this panel/);
   });
 
+  it("adds the event-loop series and the proxy label", () => {
+    const f = fixture(10);
+    const html = renderChartHtml({
+      ...f,
+      samples: f.samples.map((s) => ({ ...s, probeMs: 4 })),
+      eventLoop: [0, 1, 2].map((i) => ({ t: 1_792_801_000_000 + i * 1000, v: 2.5 })),
+    });
+    assert.match(html, /event-loop proxy \(health probe\)/);
+    assert.match(html, /eventLoop p99 \(preload\)/);
+    assert.equal((html.match(/<section>/g) ?? []).length, 10);
+  });
+
   it("makes no external reference", () => {
     const html = renderChartHtml(fixture(10));
     assert.doesNotMatch(html, /(src|href)=["']https?:/i);
