@@ -133,6 +133,8 @@ export interface StageResult {
   reasons: string[]; // one line each; no secrets, ids and counts only
   data?: Record<string, unknown>; // stage output, merged into verdict.json under stages.<name>
   ms?: number;
+  /** One line, set when the stage's own verdict is a FINDING (an expected result, ok stays true). Read by evaluateVerdict. */
+  finding?: string;
 }
 
 export interface K6RunResult {
@@ -175,8 +177,11 @@ export interface LoadContext {
 export type Stage = (ctx: LoadContext) => Promise<StageResult>;
 export type StageSet = Record<StageName, Stage>;
 
-/** INCONCLUSIVE: the case ran no measurement because its gate closed in the case (NOT RUN). It is never PASS. */
-export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV" | "INCONCLUSIVE";
+/**
+ * INCONCLUSIVE: the case ran no measurement because its gate closed in the case (NOT RUN). It is never PASS.
+ * FINDING: a VALID run whose stage verdict is a FINDING (an expected result, recorded, exit 0). It is never PASS.
+ */
+export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV" | "INCONCLUSIVE" | "FINDING";
 
 /** The finding ID of a known failure. The name is the only public detail: no count, mechanism or timing. */
 export interface KnownFailure {

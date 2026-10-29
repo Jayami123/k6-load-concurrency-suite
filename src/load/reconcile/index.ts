@@ -20,14 +20,22 @@ export function composeStages(stages: Stage[]): Stage {
     let kind: StageResult["kind"];
     const reasons: string[] = [];
     const data: Record<string, unknown> = {};
+    const findings: string[] = [];
     for (const stage of stages) {
       const r = await stage(ctx);
       if (!r.ok && ok) kind = r.kind;
       ok = ok && r.ok;
       reasons.push(...r.reasons);
       Object.assign(data, r.data);
+      if (r.finding !== undefined) findings.push(r.finding);
     }
-    return { ok, kind: ok ? undefined : kind, reasons, data };
+    return {
+      ok,
+      kind: ok ? undefined : kind,
+      reasons,
+      data,
+      ...(findings.length > 0 ? { finding: findings.join("; ") } : {}),
+    };
   };
 }
 

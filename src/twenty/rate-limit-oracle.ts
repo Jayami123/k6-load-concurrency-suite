@@ -246,6 +246,11 @@ export const rateLimitStage: Stage = async (ctx: LoadContext): Promise<StageResu
   return { ok: true, reasons: [], data };
 };
 
+/** The stage finding of a -009 verdict (pure): a FINDING is recorded with its reason; PASS and INCONCLUSIVE record nothing. */
+export function fairnessFinding(fairness: { verdict: string; reason: string }): string | undefined {
+  return fairness.verdict === "FINDING" ? `P6-TW-LOAD-009: ${fairness.reason}` : undefined;
+}
+
 /**
  * The -009 judge, in the reconcile slot after the case's own reconcile. The F and L lines are judged on one clock. Any 5xx is
  * a PRODUCT BUG suspicion (never 500). FINDING is an expected result and stays ok (it is recorded, not a failure).
@@ -287,7 +292,8 @@ export const fairnessStage: Stage = async (ctx: LoadContext): Promise<StageResul
   if (fairness.verdict === "INCONCLUSIVE") {
     ctx.invalid.push(`P6-TW-LOAD-009 INCONCLUSIVE: ${fairness.reason}`);
   }
-  return { ok: true, reasons: [], data };
+  const finding = fairnessFinding(fairness);
+  return { ok: true, reasons: [], data, ...(finding ? { finding } : {}) };
 };
 
 /** The reconcile slot of each case: the Twenty reconcile (relations, audits), then the judge. */

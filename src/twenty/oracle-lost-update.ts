@@ -87,6 +87,28 @@ export function parseTw004(logText: string): WriteIntent[] {
   return intents;
 }
 
+/**
+ * The stage result of the combined verdict. Pure. A variant A loss is a PRODUCT BUG suspicion (the run fails until repeated
+ * runs confirm it). A variant B loss is a FINDING (owner decision C13: last-write-wins by design): recorded, exit 0.
+ */
+export function lostUpdateOutcome(
+  verdict: LostUpdateVerdict,
+  a: JoinResult,
+  b: JoinResult,
+): Pick<StageResult, "ok" | "kind" | "reasons" | "finding"> {
+  if (verdict === "PRODUCT_BUG_SUSPECTED") {
+    return {
+      ok: false,
+      kind: "PRODUCT BUG",
+      reasons: [`SUSPECTED: P6-TW-LOAD-004 variant A: ${a.verdictReason}`],
+    };
+  }
+  if (verdict === "FINDING") {
+    return { ok: true, reasons: [], finding: `P6-TW-LOAD-004 variant B: ${b.verdictReason}` };
+  }
+  return { ok: true, reasons: [] };
+}
+
 /** The overall verdict: a variant A loss is PRODUCT_BUG_SUSPECTED, a variant B loss is a FINDING, else PASS or INCONCLUSIVE. */
 export function combineVerdicts(a: JoinResult, b: JoinResult): LostUpdateVerdict {
   if (a.verdict === "PRODUCT_BUG_SUSPECTED") return "PRODUCT_BUG_SUSPECTED";
@@ -189,8 +211,7 @@ export const lostUpdateStage: Stage = async (ctx: LoadContext): Promise<StageRes
   writeFileSync(path.join(ctx.outDir, "finals.json"), `${JSON.stringify(finals, null, 2)}\n`);
   const unique = dedupeIntents(intents).kept.length;
   return {
-    ok: true,
-    reasons: [],
+    ...lostUpdateOutcome(verdict, a, b),
     data: {
       lostUpdate: { variantA: a, variantB: b, verdict, intents: unique, finals: finals.length },
       intents: "intents.jsonl",

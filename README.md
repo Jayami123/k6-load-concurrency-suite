@@ -943,9 +943,9 @@ recorded as findings and are never called passes.
 **Outcome word in these runs.** In the three runs above, `verdict.json` of `P6-TW-LOAD-004` and `P6-TW-LOAD-009` shows
 `outcome: "PASS"`, while the stage verdict (`reconcile.data.lostUpdate.verdict` and `reconcile.data.fairness.verdict`) is
 FINDING in all three runs. The runner did not read the stage verdict at the time. The FINDINGs stand, and this closeout
-reports them as FINDINGs. A fix follows in its own PR on `fix/2026-10-29-p6-finding-outcome`: a VALID run whose stage
-verdict is FINDING gets outcome `FINDING`, prints `<case> FINDING (<detail>)` and exits 0. Until that PR merges, read the
-stage verdict, not the outcome word, for these two cases.
+reports them as FINDINGs. The fix (`fix/2026-10-29-p6-finding-outcome`) makes a VALID run whose stage verdict is FINDING
+report outcome `FINDING`, print `<case> FINDING (<detail>)` and exit 0. Runs made before that fix keep the PASS word in
+`verdict.json`; read their stage verdict.
 
 #### `P6-TW-LOAD-004` variant B (FINDING, not a pass)
 
@@ -1037,9 +1037,20 @@ A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<
 Every LOAD run is labelled **functional load, not capacity** (D1): the rate is small, fixed and chosen by its probe; no latency
 number from it is a published result; the label above applies.
 
-The outcome is one of four words: `PASS`, `FAIL` (a product or test bug, or a k6 exit code that differs from the expected one),
-`INVALID` (the run is not a measurement; a reason is listed) or `ENV` (setup failed before any load). Exit codes are 0, 1, 2 and 3
-in the same order. An INVALID run never hides a FAIL.
+The outcome is one of these words: `PASS`, `FAIL` (a product or test bug, or a k6 exit code that differs from the expected one),
+`INVALID` (the run is not a measurement; a reason is listed), `ENV` (setup failed before any load), `INCONCLUSIVE` (a gated case
+that is NOT RUN) or `FINDING` (a VALID run whose stage verdict is a FINDING: an expected result, recorded with its detail, not a
+test failure). Exit codes: `PASS`, `INCONCLUSIVE` and `FINDING` exit 0, `FAIL` exits 1, `ENV` exits 2 and `INVALID` exits 3.
+
+The precedence is fixed: `ENV`, then `FAIL`, then `INVALID`, then `INCONCLUSIVE`, then `FINDING`, then `PASS`. An INVALID run never
+hides a FAIL, and a FINDING never hides an INVALID or a FAIL. A stage records its FINDING in `stages.<name>.finding` of
+`verdict.json` (one line); the outcome's `reasons` repeat it. A FINDING is printed as `<case> FINDING (<detail>)`. A `knownFailure`
+marker still applies only to a proven product bug; it never turns a FINDING into a pass.
+
+`verdict.json` is schema 1. Its `outcome` is one of the six words above. Its `stages.<name>` objects hold `ok`, `ms`, `kind`,
+`reasons`, `data` and, when the stage's verdict is a FINDING, `finding`. Runs before the FINDING outcome (the Phase 5 runs in
+the Phase 5 results section) show `outcome: "PASS"` for `P6-TW-LOAD-004` and `P6-TW-LOAD-009` with a FINDING stage verdict;
+their stage data is the source for those FINDINGs.
 
 The self-test `P6-X-LOAD-001` runs three k6 processes against one stub: an open model at the planned rate, a closed model and an
 under-sized open model. Six relations (R1 to R6) must hold; they show the coordinated omission the open model avoids. Its margins
