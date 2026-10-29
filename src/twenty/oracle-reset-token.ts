@@ -1,3 +1,6 @@
+import type pg from "pg";
+import { selectRows } from "../oracles/pg.ts";
+
 /** The finding ID a multi-success result is named by. The public wording carries this ID only, never a count (Q-DISCLOSE). */
 export const FINDING_ID = "P6-TW-RACE-004";
 
@@ -150,4 +153,71 @@ const REDACT_PATTERNS: RegExp[] = [
 /** Pure. Replaces token-shaped text; plain text passes unchanged. */
 export function redactForArtefact(text: string): string {
   return REDACT_PATTERNS.reduce((out, pattern) => out.replace(pattern, "<redacted>"), text);
+}
+
+/** SQL text only. One boolean: the stored hash differs from the digest passed in. IS DISTINCT FROM keeps a NULL digest honest. */
+export function hashChangedSql(): string {
+  return `SELECT (md5("passwordHash") IS DISTINCT FROM $2) AS changed FROM core."user" WHERE id = $1`;
+}
+
+/** Read-only. The user row id of one member, which must exist exactly once. */
+export async function userIdByEmail(pool: pg.Pool, email: string): Promise<string> {
+  const rows = await selectRows<{ id: string }>(
+    pool,
+    `SELECT id FROM core."user" WHERE email = $1`,
+    [email],
+  );
+  if (rows.length !== 1) throw new Error("TEST BUG: member row not found exactly once");
+  return rows[0]!.id;
+}
+
+/** Read-only. The md5 of the stored hash, taken before the redemptions. The digest stays in memory and is never logged. */
+export async function snapshotDigest(pool: pg.Pool, userId: string): Promise<string | null> {
+  const rows = await selectRows<{ h: string | null }>(
+    pool,
+    `SELECT md5("passwordHash") AS h FROM core."user" WHERE id = $1`,
+    [userId],
+  );
+  return rows[0]?.h ?? null;
+}
+
+/** Read-only. True when the stored hash differs from the digest. Returns the boolean only, never the hash. */
+export async function hashChangedSince(
+  pool: pg.Pool,
+  userId: string,
+  digest: string | null,
+): Promise<boolean> {
+  const rows = await selectRows<{ changed: boolean }>(pool, hashChangedSql(), [userId, digest]);
+  return rows[0]?.changed === true;
+}
+
+/** Read-only. Live (not revoked, not expired) reset-token rows of one user. */
+export async function unrevokedRows(pool: pg.Pool, userId: string): Promise<number> {
+  const rows = await selectRows<{ n: string }>(
+    pool,
+    `SELECT count(*) AS n FROM core."appToken"
+      WHERE "userId" = $1 AND type = 'PASSWORD_RESET_TOKEN'
+        AND "revokedAt" IS NULL AND "expiresAt" > now()`,
+    [userId],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Read-only. The newest reset-token window of one user, in epoch milliseconds (the DB clock). */
+export async function resetTokenWindow(
+  pool: pg.Pool,
+  userId: string,
+): Promise<{ createdAtMs: number; expiresAtMs: number }> {
+  const rows = await selectRows<{ createdAtMs: string; expiresAtMs: string }>(
+    pool,
+    `SELECT extract(epoch FROM "createdAt") * 1000 AS "createdAtMs",
+            extract(epoch FROM "expiresAt") * 1000 AS "expiresAtMs"
+       FROM core."appToken"
+      WHERE "userId" = $1 AND type = 'PASSWORD_RESET_TOKEN'
+      ORDER BY "createdAt" DESC LIMIT 1`,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) throw new Error("TEST BUG: no reset token row for the member");
+  return { createdAtMs: Number(row.createdAtMs), expiresAtMs: Number(row.expiresAtMs) };
 }

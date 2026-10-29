@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  hashChangedSql,
   joinTokens,
   publicArtefact,
   publicWording,
@@ -114,5 +115,16 @@ describe("publicArtefact", () => {
     for (const banned of ["tokens", "redeemsPerToken", "stages", "successes", "exactlyOne"]) {
       assert.equal(text.includes(banned), false, `no ${banned} in the public artefact`);
     }
+  });
+});
+
+describe("hashChangedSql", () => {
+  it("returns one boolean and never selects the hash value", () => {
+    const sql = hashChangedSql();
+    assert.match(
+      sql,
+      /^SELECT \(md5\("passwordHash"\) IS DISTINCT FROM \$2\) AS changed FROM core\."user" WHERE id = \$1$/,
+    );
+    assert.doesNotMatch(sql, /SELECT\s+"passwordHash"/);
   });
 });
