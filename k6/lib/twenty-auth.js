@@ -16,10 +16,12 @@ const EXCHANGE = `mutation GetAuthTokensFromLoginToken($loginToken: String!, $or
  * "Bearer <key>" from the first entry of TWENTY_API_KEYS (a JSON array, the API-key cases, Twenty plan §2.13) when set,
  * else "Bearer <token>" from TWENTY_TOKEN (the user-token case). Throws a TEST BUG when neither is set.
  * A malformed TWENTY_API_KEYS names only the problem, never its text (a JSON parse error can quote the value).
+ * @returns {string}
  */
 export function authorizationHeader() {
   const keys = __ENV.TWENTY_API_KEYS;
   if (keys) {
+    /** @type {any} */
     let list;
     try {
       list = JSON.parse(keys);
@@ -36,15 +38,22 @@ export function authorizationHeader() {
   throw new Error("TEST BUG: TWENTY_TOKEN is not set");
 }
 
-/** One GraphQL call on /metadata. Throws with the GraphQL message only, never a body. */
+/**
+ * One GraphQL call on /metadata. Throws with the GraphQL message only, never a body.
+ * @param {string} url
+ * @param {string} query
+ * @param {Record<string, unknown>} variables
+ * @returns {any}
+ */
 function graphql(url, query, variables) {
   const res = http.post(url, JSON.stringify({ query, variables }), {
     headers: { "Content-Type": "application/json" },
     tags: { op: "auth" },
   });
+  /** @type {any} */
   let body = null;
   try {
-    body = res.json();
+    body = JSON.parse(/** @type {string} */ (res.body));
   } catch (_) {
     body = null;
   }
@@ -60,15 +69,20 @@ function graphql(url, query, variables) {
 /**
  * The standalone path for `k6 run` (no runner): sign in, then exchange the login token for the workspace token, the same
  * order as src/twenty/auth.ts signInWorkspace. Returns "Bearer <token>".
+ * @param {{ baseUrl: string, email: string, password: string, workspaceName: string }} opts
+ * @returns {string}
  */
 export function signInWithPassword({ baseUrl, email, password, workspaceName }) {
   const base = baseUrl.replace(/\/$/, "");
   const url = `${base}/metadata`;
   const signIn = graphql(url, SIGN_IN, { email, password });
-  const workspaces = signIn.signIn.availableWorkspaces.availableWorkspacesForSignIn;
-  const workspace = workspaces.find((w) => w.displayName === workspaceName);
-  if (!workspace)
+  let workspace;
+  for (const w of signIn.signIn.availableWorkspaces.availableWorkspacesForSignIn) {
+    if (w.displayName === workspaceName) workspace = w;
+  }
+  if (!workspace) {
     throw new Error(`TEST BUG: workspace ${workspaceName} is not in the sign-in list`);
+  }
   const subdomain = workspace.workspaceUrls && workspace.workspaceUrls.subdomainUrl;
   const custom = workspace.workspaceUrls && workspace.workspaceUrls.customUrl;
   const origin = (subdomain || custom || base).replace(/\/$/, "");
@@ -78,7 +92,11 @@ export function signInWithPassword({ baseUrl, email, password, workspaceName }) 
   return `Bearer ${token}`;
 }
 
-/** The REST headers of every Twenty request. */
+/**
+ * The REST headers of every Twenty request.
+ * @param {string} authorization
+ * @returns {Record<string, string>}
+ */
 export function restHeaders(authorization) {
   return { Authorization: authorization, "Content-Type": "application/json" };
 }
