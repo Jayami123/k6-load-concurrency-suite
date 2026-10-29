@@ -1,0 +1,7 @@
+{
+  "rate": 1,
+  "durationSec": 30,
+  "maxLatencyMs": 4000,
+  "baseUrl": "http://127.0.0.1:3002",
+  "prefix": "p6-qa-00000000t000000z-00000000-tw-bg-foundation"
+}
