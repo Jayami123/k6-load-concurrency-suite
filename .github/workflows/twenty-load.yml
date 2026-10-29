@@ -47,9 +47,6 @@ permissions:
 concurrency:
   group: twenty-load-${{ github.event_name == 'schedule' && format('schedule-{0}', github.event.schedule) || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
-# The task markers below must stay at column 0 (tests/unit/twenty-load-workflow.test.ts reads them), so prettier
-# would re-indent them; this comment keeps the jobs block as written.
-# prettier-ignore
 jobs:
   # Twenty plan §2.8: the 15 steps and their caps. Job timeout 80 = the sum of the step caps (70) + 10 (rule C3).
   twenty-load-foundation:
@@ -439,9 +436,9 @@ jobs:
           set -euo pipefail
           npm run down:twenty
 
-# >>> task4 jobs
+  # >>> task4 jobs
 
-# >>> task5 jobs
+  # >>> task5 jobs
 
   # Task 5 (P6-TW-LOAD-005 and its gated extra -011): nightly and dispatch only, never a pull request. Job timeout 100 = the step
   # caps (90) + 10 (rule C3). Every step has timeout-minutes; the stop step runs always.
@@ -644,7 +641,7 @@ jobs:
           set -euo pipefail
           npm run down:twenty
 
-# >>> task6 jobs
+  # >>> task6 jobs
 
   # Twenty plan §6.8 (Task 6): P6-TW-LOAD-006 and the gated extra -009 on the production-like profile (image defaults).
   # The step caps sum to 81; job timeout 91 keeps the 10-minute margin (rule C3). No PR run (roadmap line 459).
