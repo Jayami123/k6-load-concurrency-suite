@@ -92,6 +92,8 @@ export interface LoadCase {
   gated?: boolean;
   /** The gate check of a gated case, run before the case: open runs it, closed is NOT RUN (never PASS). */
   gate?: () => GateState;
+  /** A known finding the case reproduces: its FAIL on a VALID run is expected (exit 0); a PASS is unexpected (exit 1). */
+  knownFailure?: KnownFailure;
   id: string; // "P6-X-LOAD-001"
   title: string;
   product: LoadProduct;
@@ -175,6 +177,11 @@ export type StageSet = Record<StageName, Stage>;
 
 /** INCONCLUSIVE: the case ran no measurement because its gate closed in the case (NOT RUN). It is never PASS. */
 export type Outcome = "PASS" | "FAIL" | "INVALID" | "ENV" | "INCONCLUSIVE";
+
+/** The finding ID of a known failure. The name is the only public detail: no count, mechanism or timing. */
+export interface KnownFailure {
+  findingId: string;
+}
 
 /** A gate check's answer. A closed gate carries the reason that goes into the NOT RUN line. */
 export type GateState = { open: true } | { open: false; reason: string };

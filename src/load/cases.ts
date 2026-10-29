@@ -1521,6 +1521,7 @@ export const TW_LOAD_005: LoadCase = {
           },
         ],
   stages: RESET_TOKEN_STAGES,
+  knownFailure: { findingId: "P6-TW-RACE-004" },
 };
 
 /**
@@ -1532,6 +1533,8 @@ export const TW_LOAD_011: LoadCase = {
   ...TW_LOAD_005,
   id: "P6-TW-LOAD-011",
   title: "Twenty reset token expiry boundary",
+  // -005 is a known failure; -011 spreads it, so it must not inherit the marker.
+  knownFailure: undefined,
   gated: true,
   gate: () =>
     expiryGateOpen(0, IMAGE_DEFAULT_RESET_LIFETIME_MS)

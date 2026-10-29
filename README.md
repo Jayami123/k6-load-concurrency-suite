@@ -411,6 +411,8 @@ and no reset token stays live. A multi-success result is published as "PRODUCT B
 see private security report", with no count. The uploaded artefact is `verdict-public.json` only: verdict word, validity
 and environment.
 
+The case is marked as a known failure linked to P6-TW-RACE-004: its FAIL on a VALID run exits 0, and a PASS exits 1.
+
 **P6-TW-LOAD-011 (expiry boundary, accepted extra).** Runs after `-005` in the same job. Token A is redeemed 15 s before
 its expiry and token B 15 s after it. The case reports NOT RUN when the token expiry is above 15 minutes.
 

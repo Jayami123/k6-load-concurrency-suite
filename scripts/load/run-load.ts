@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import path from "node:path";
 import { CASES } from "../../src/load/cases.ts";
 import { loadRepoEnv } from "../../src/load/env.ts";
+import { judgeKnownFailure } from "../../src/load/known-failure.ts";
 import { gateDecision, notRunReport } from "../../src/load/not-run.ts";
 import { parseKneeBounds } from "../../src/load/knee/bounds.ts";
 import { evaluateVerdict, runLoad } from "../../src/load/runner.ts";
@@ -90,8 +91,18 @@ if (profile === "steady" || profile === "soak") {
 loadRepoEnv();
 const result = await runLoad(caseDef, { profile, outRoot: arg("--out") });
 if (profile === "soak") writeSoakReport(result, soakSec, caseDef.product);
-console.log(`${caseDef.id} ${result.outcome} ${result.verdictPath}`);
-process.exit(result.exitCode);
+// A case with a known failure: its FAIL on a VALID run is expected (exit 0); the outcome in verdict.json stays FAIL.
+const judged = judgeKnownFailure(
+  caseDef.id,
+  caseDef.knownFailure,
+  result.outcome,
+  result.ctx.invalid.length === 0,
+  result.exitCode,
+);
+console.log(`${judged.line ?? `${caseDef.id} ${result.outcome}`} ${result.verdictPath}`);
+if (judged.summary && process.env.GITHUB_STEP_SUMMARY)
+  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${judged.summary}\n\n`);
+process.exit(judged.exitCode);
 
 /** soak.json: the statistics of the run's telemetry and the soak verdict (no thresholds yet: NO THRESHOLD YET). Points are not written (L5). */
 function writeSoakReport(

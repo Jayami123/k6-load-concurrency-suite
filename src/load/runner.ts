@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import path from "node:path";
 import { p6RunPrefix } from "../races/prefix.ts";
 import { LOAD_ROOT, newRunId } from "./paths.ts";
+import { verdictMarker } from "./known-failure.ts";
 import { execFileSync } from "node:child_process";
 import { buildRunMeta } from "./run-meta.ts";
 import { defaultStages, seqStages, validityStage } from "./stages.ts";
@@ -143,6 +144,8 @@ function writeVerdictFile(ctx: LoadContext, startedAt: string): void {
     })),
     runMeta: "run-meta.json",
     stages,
+    // The real outcome is kept; the marker sits beside it (the run-load console and job summary judge it).
+    ...verdictMarker(ctx.caseDef.knownFailure),
   };
   writeFileSync(path.join(ctx.outDir, "verdict.json"), `${JSON.stringify(doc, null, 2)}\n`);
 }
