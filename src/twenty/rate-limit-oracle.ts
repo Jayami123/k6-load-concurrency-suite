@@ -24,6 +24,20 @@ export interface Sample {
 /** The planned requests of each phase (Twenty plan, phase schedule). The 90% floor is applied per phase. */
 export type PlannedPerPhase = Record<Phase, number>;
 
+/** What the limiter's API-key bucket is keyed on. Only per token or per workspace lets -009 measure its fairness claim. */
+export type LimiterKeying = "token" | "workspace" | "ip" | "global";
+
+/**
+ * The keying recorded by the Task 3 probe (3b row 6): at image defaults every key of a workspace shares one bucket, whose key is
+ * `{<workspaceId>}:speed:...:apiKey:-:60`. That is per workspace. The pre-run gate of P6-TW-LOAD-009 reads this value.
+ */
+export const RECORDED_LIMITER_KEYING: LimiterKeying = "workspace";
+
+/** The -009 gate (Twenty plan §6.9): the limiter keys per token or per workspace. Per IP or global closes it (NOT RUN). */
+export function keyingGateOpen(keying: LimiterKeying): boolean {
+  return keying === "token" || keying === "workspace";
+}
+
 /** The four limiter variables and the Node option the production-like profile must not set (names only, exact match). */
 export const LIMITER_ENV_NAMES = [
   "API_RATE_LIMITING_SHORT_TTL_IN_MS",

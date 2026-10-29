@@ -25,9 +25,12 @@ import { TW_LOAD_004 } from "../twenty/lost-update-case.ts";
 import { BOUNDARY_STAGES, RESET_TOKEN_STAGES } from "./products/twenty-reset-token.ts";
 import {
   fairness009Reconcile,
+  keyingGateOpen,
   limiterPreflight,
+  RECORDED_LIMITER_KEYING,
   rateLimit006Reconcile,
 } from "../twenty/rate-limit-oracle.ts";
+import { expiryGateOpen, IMAGE_DEFAULT_RESET_LIFETIME_MS } from "../twenty/window-oracle.ts";
 import {
   cancelRaceStage,
   ledgerStage,
@@ -1522,13 +1525,18 @@ export const TW_LOAD_005: LoadCase = {
 
 /**
  * P6-TW-LOAD-011 (Task 5, accepted extra): the expiry boundary. Token A is redeemed 15 s before its expiry, token B 15 s after.
- * It is not gated in the registry: run-load refuses gated cases, so its gate (an expiry above 15 min) is checked when the
- * case runs, and the case reports NOT RUN when the gate is closed.
+ * Gated: run-load runs it only when the reset-token lifetime is at most 15 min; a closed gate is NOT RUN (exit 0). The stage
+ * checks each issued token's real window as well.
  */
 export const TW_LOAD_011: LoadCase = {
   ...TW_LOAD_005,
   id: "P6-TW-LOAD-011",
   title: "Twenty reset token expiry boundary",
+  gated: true,
+  gate: () =>
+    expiryGateOpen(0, IMAGE_DEFAULT_RESET_LIFETIME_MS)
+      ? { open: true }
+      : { open: false, reason: "reset token expiry is above 15 minutes" },
   profiles: {
     pr: { rate: 1, durationSec: 330, maxLatencyMs: 4000 },
     full: { rate: 1, durationSec: 330, maxLatencyMs: 4000 },
@@ -1589,13 +1597,18 @@ export const TW_LOAD_006: LoadCase = {
 
 /**
  * P6-TW-LOAD-009 (Twenty plan, limiter fairness, the accepted extra): key F floods and key L asks at a low rate, both on the
- * production-like profile. The expected verdict at image defaults is FINDING (cross-key starvation). It runs (not gated): its
- * gate, per token or workspace, is met (Twenty plan, gate section).
+ * production-like profile. The expected verdict at image defaults is FINDING (cross-key starvation). Gated: run-load runs it
+ * only when the limiter keys per token or per workspace (Twenty plan, gate section); otherwise NOT RUN (exit 0).
  */
 export const TW_LOAD_009: LoadCase = {
   ...TW_LOAD_006,
   id: "P6-TW-LOAD-009",
   title: "Twenty limiter fairness across keys (cross-key)",
+  gated: true,
+  gate: () =>
+    keyingGateOpen(RECORDED_LIMITER_KEYING)
+      ? { open: true }
+      : { open: false, reason: "the limiter does not key per token or per workspace" },
   profiles: {
     pr: { rate: 1, durationSec: 120, maxLatencyMs: 4000 },
     full: { rate: 1, durationSec: 120, maxLatencyMs: 4000 },
