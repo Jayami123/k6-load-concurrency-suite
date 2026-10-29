@@ -36,6 +36,8 @@ if (!found || !["pr", "full", "steady", "soak"].includes(profile))
   );
 if (profile !== "steady" && profile !== "soak" && found.profiles[profile] === undefined)
   fail(`ENV: case ${found.id} has no ${profile} profile`);
+// A gated case stays registered until its gate opens (Twenty plan §6.9, Q4): it is refused, never run.
+if (found.gated) fail(`ENV: case ${found.id} is gated (NOT RUN)`);
 
 // The steady and soak profiles are sized from the knee bounds: without the file they are not defined (plan task 5 §6.5, Task 7 §6.2).
 let caseDef: LoadCase = found;

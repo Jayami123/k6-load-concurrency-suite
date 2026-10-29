@@ -20,6 +20,7 @@ import { readSmokeReference } from "./smoke-baseline.ts";
 import { documensoCleanup, documensoSetup, makeDocumensoSetup } from "./products/documenso.ts";
 import { pipelineStage, webhookRetryStage } from "./pipeline-stage.ts";
 import { makeMedusaSetup, medusaCleanup, medusaSetup } from "./products/medusa.ts";
+import { twentyCleanup, twentySetup } from "./products/twenty.ts";
 import {
   cancelRaceStage,
   ledgerStage,
@@ -1459,6 +1460,49 @@ export const MED_LOAD_009: LoadCase = {
   },
 };
 
+/** TW-BG-FOUNDATION (Twenty plan §2.4, Q3): the background journey through the runner, user-token auth (§2.12). Not a P6 case. */
+export const TW_BG_FOUNDATION: LoadCase = {
+  id: "TW-BG-FOUNDATION",
+  title: "Twenty background journey (foundation)",
+  product: "twenty",
+  label: "functional load, not capacity",
+  telemetry: { product: "twenty" },
+  profiles: {
+    pr: { rate: 1, durationSec: 30, maxLatencyMs: 4000 },
+    full: { rate: 2, durationSec: 120, maxLatencyMs: 4000 },
+  },
+  runs: (ctx) =>
+    ctx.invalid.length > 0
+      ? []
+      : [
+          {
+            label: "main",
+            script: "k6/cases/tw-background.js",
+            env: {},
+            secretEnv: ["TWENTY_TOKEN"],
+          },
+        ],
+  stages: { setup: twentySetup, reconcile: reconcileStage, cleanup: twentyCleanup },
+};
+
+/** P6-TW-LOAD-010 (gated, Twenty plan §12): registered, never run until its gate opens. Profiles are placeholders until then. */
+export const TW_LOAD_010: LoadCase = {
+  ...TW_BG_FOUNDATION,
+  id: "P6-TW-LOAD-010",
+  title: "Twenty worker queue drain (gated)",
+  gated: true,
+  runs: () => [],
+};
+
+/** P6-TW-LOAD-008 (gated, Twenty plan §12): registered, never run until its gate opens. Profiles are placeholders until then. */
+export const TW_LOAD_008: LoadCase = {
+  ...TW_BG_FOUNDATION,
+  id: "P6-TW-LOAD-008",
+  title: "Twenty API knee (gated)",
+  gated: true,
+  runs: () => [],
+};
+
 export const CASES: Record<string, LoadCase> = {
   [COOP_LOAD_001.id]: COOP_LOAD_001,
   [VALIDITY_LOAD_004.id]: VALIDITY_LOAD_004,
@@ -1492,4 +1536,7 @@ export const CASES: Record<string, LoadCase> = {
   [MED_LOAD_006.id]: MED_LOAD_006,
   [DOC_LOAD_007.id]: DOC_LOAD_007,
   [KNEE_RULE_006.id]: KNEE_RULE_006,
+  [TW_BG_FOUNDATION.id]: TW_BG_FOUNDATION,
+  [TW_LOAD_008.id]: TW_LOAD_008,
+  [TW_LOAD_010.id]: TW_LOAD_010,
 };
