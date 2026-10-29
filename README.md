@@ -893,6 +893,131 @@ The evidence site is built by `pages.yml` from committed data and from the publi
 
 The gaps are listed in the closeout record and in the release notes.
 
+## Phase 5 results
+
+Phase 5 adds the Twenty load evidence (the foundation, `P6-TW-LOAD-004`, `-005`, `-006`, `-011`), the accepted
+extras `P6-TW-LOAD-009` and `P6-X-LOAD-009`, the Later and retired IDs, and the soak-trend status. Every number here comes
+from a VALID GitHub Actions run on `main`. The three Twenty runs are `workflow_dispatch` runs on `main` at `f256d6e`, so
+they are not nightly runs. The release is [`p6-phase5`](docs/releases/p6-phase5.md) (once published). The closeout record
+is [docs/plans/2026-10-29-p6-phase5-closeout.md](docs/plans/2026-10-29-p6-phase5-closeout.md); its build plan is on
+branch `plan/2026-10-29-p6-phase5-task8`.
+
+### Twenty load medians (3 VALID runs)
+
+Runs: [40896799127](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40896799127),
+[40896827889](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40896827889) and
+[40896870640](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40896870640). Median of the three values
+in each row. The latency is the k6 p95 of the case's `main` run.
+
+| Case / metric                               | Run 1  | Run 2  | Run 3  | Median     |
+| ------------------------------------------- | ------ | ------ | ------ | ---------- |
+| `TW-BG-FOUNDATION` p95 (ms)                 | 12.047 | 16.275 | 11.979 | **12.047** |
+| `P6-TW-LOAD-004` p95 (ms)                   | 33.126 | 33.472 | 34.425 | **33.472** |
+| `P6-TW-LOAD-006` p95 (ms)                   | 8.681  | 11.931 | 9.504  | **9.504**  |
+| `P6-TW-LOAD-006` recovery to first 200 (ms) | 1007   | 1306   | 1009   | **1009**   |
+| `P6-TW-LOAD-006` 429s in the above phase    | 102    | 101    | 102    | **102**    |
+| `P6-TW-LOAD-009` p95 (ms)                   | 7.420  | 10.230 | 7.056  | **7.420**  |
+| `P6-TW-LOAD-004` variant B lost share       | 0.4986 | 0.4993 | 0.4993 | **0.4993** |
+
+**Environment label (all three runs):** GitHub-hosted `ubuntu-24.04` (image `20261026.354.1`), 4 vCPU, 15 984 MB RAM,
+k6 `2.3.0`, harness `v0.2.18`, Node `v22.23.4`, Twenty fork `7cbdfec6` on image `v2.44.0`, `workflow_dispatch` on `main`.
+Limiter profile `functional` for the foundation and `P6-TW-LOAD-004`; `productionLike` (image defaults) for
+`P6-TW-LOAD-006` and `P6-TW-LOAD-009`.
+
+### Verdicts
+
+| Case                               | Verdict in this closeout                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `TW-BG-FOUNDATION`                 | PASS, VALID. Labelled "functional load, not capacity"; it is not a P6 case ID.                              |
+| `P6-TW-LOAD-004`                   | Variant A PASS (no lost field). Variant B **FINDING**: a silent lost update (see below).                    |
+| `P6-TW-LOAD-005`                   | **Known failure**, linked to `P6-TW-RACE-004`. Details are withheld (private report).                       |
+| `P6-TW-LOAD-006` (production-like) | PASS, VALID.                                                                                                |
+| `P6-TW-LOAD-009` (accepted extra)  | **FINDING**: cross-key starvation at image defaults (every API key of a workspace shares one speed bucket). |
+| `P6-TW-LOAD-011` (accepted extra)  | PASS, VALID.                                                                                                |
+
+Labels follow rule 13. `P6-TW-LOAD-005` is a PRODUCT BUG (SUSPECTED) with a private report. The two FINDINGs are
+recorded as findings and are never called passes.
+
+**Known gap in the outcome word.** `verdict.json` of `P6-TW-LOAD-004` and `P6-TW-LOAD-009` reads `outcome: "PASS"`,
+because the runner (`src/load/runner.ts`, `evaluateVerdict`) does not read the stage verdicts. The stage data
+(`reconcile.data.lostUpdate.verdict` and `reconcile.data.fairness.verdict`) read FINDING in all three runs. This closeout
+reports the stage data. Changing the runner is an owner decision.
+
+#### `P6-TW-LOAD-004` variant B (FINDING, not a pass)
+
+Each variant B attempt reads a record and writes the value read plus one. The acknowledged increments are compared with
+the value observed after the run (read-only). The loss is the deficit: 361 of 724, 362 of 725 and 361 of 723
+acknowledged increments were lost in runs 1 to 3. Variant A had no lost field in any run.
+
+Twenty's REST API has no optimistic concurrency (no version or `If-Match` check), so two read-modify-write writers can
+overwrite each other silently. An upstream issue draft, in Twenty's own bug template, is in
+[docs/upstream/2026-10-29-twenty-lost-update-variant-b.md](docs/upstream/2026-10-29-twenty-lost-update-variant-b.md). It is
+a draft only and is not filed.
+
+#### `P6-TW-LOAD-005` (known failure)
+
+`P6-TW-LOAD-005` is a known failure linked to `P6-TW-RACE-004`. Its public artefact is `verdict-public.json` only. Details are
+withheld until the vendor ships a fix.
+
+#### `P6-TW-LOAD-009` (FINDING)
+
+At image defaults the limiter keys per workspace, so every API key in a workspace shares one speed bucket. The low-rate
+client was refused 23 of 24, 19 of 25 and 24 of 25 times, while the flooding client was refused 197 of 401, 200 of 400
+and 197 of 401 times. The case records this as a FINDING, not a failure.
+
+### Harness tier: A/A flags (`P6-X-LOAD-009`)
+
+The A/A set runs `P6-MED-LOAD-002` (steady, 120 s, 0.7 per second) three times per state, with the harness-tier flags off
+in one state and on in the other. The gate's p95 tolerance is 0.10 relative spread.
+
+| Run                                                                                            | Order     | Gate verdict | p95 relative spread |
+| ---------------------------------------------------------------------------------------------- | --------- | ------------ | ------------------- |
+| [40850333800](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40850333800) | on-first  | PASS         | 0.0072              |
+| [40848345879](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40848345879) | off-first | FAIL (p95)   | 0.1269              |
+| [40857206947](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40857206947) | off-first | FAIL (p95)   | 0.1148              |
+
+All six arms of each run are VALID; the FAIL is the gate's p95 comparison. Run
+[40845100209](https://github.com/Jayami123/k6-load-concurrency-suite/actions/runs/40845100209) failed in setup (a Medusa
+HEAD and pnpm version check) and is not counted.
+
+The off-first breach is on the first state's p95 only. In both off-first runs the flags-on arms were faster than the
+flags-off arms (median 132.7 against 149.3 ms, and 143.4 against 161.6 ms). The flags added no measurable latency in any
+run. The breach is consistent with arm order or warm-up, but it is not confirmed: the on-first run shows no first-state
+penalty (median 207.3 against 205.8 ms). The cause is open.
+
+### Later and retired IDs
+
+- **Gated and NOT RUN (Later):** `P6-TW-LOAD-008` (Twenty knee). The gate is that H4 raises the limits so the stop rule ends
+  the run. H4 is in the pinned harness and the six names reach the server. The 429 proof at 4 requests per second: 41 refusals (429) at image defaults and none on the functional profile. The API-key knee dry run has not been run.
+- **Gated and NOT RUN (Later):** `P6-TW-LOAD-010` (worker queue drain). The gate is that job state is readable without
+  writes. Read-only Redis commands work through `docker compose exec`, but the monitor is not yet proven: 40 one-second
+  samples of a functional foundation run saw no `bull:*:wait` key.
+- **Later, out of P6:** `P6-TW-LOAD-007` (`/welcome` Playwright study), an owner decision; it belongs with P1.
+- **Retired (superseded, never reused):** `P6-TW-LOAD-001`, `-002`, `-003` (superseded by `-004`..`-006`).
+  **Retired (withdrawn in Phase 3):** `P6-X-LOAD-007`.
+
+### Soak trend
+
+Status: **collecting (0/3 weeks)**. No weekly `p6-soak-<yyyy>-w<ww>` release exists yet. The first weekly capture is
+2026-11-01 UTC (a Sunday). Three VALID points take until the Sunday 2026-11-15 capture at the earliest. Until then the
+dashboard shows the collecting state and no trend.
+
+### Change log against the master plan (D9)
+
+The master plan is not edited (D9). Each change from the master plan is recorded here.
+
+- **Case IDs retired:** `P6-TW-LOAD-001` to `-003` (owner decision D10).
+- **Case ID Later:** `P6-TW-LOAD-007`, out of P6 (owner decision D10).
+- **Accepted extras (D11):** `P6-X-LOAD-009`, `P6-TW-LOAD-008`, `-009`, `-010` and `-011`. `-008` and `-010` are gated and
+  NOT RUN; `-009` and `-011` ran.
+- **Limiter profiles (D3):** functional (H4 limits) for the foundation and `-004`; production-like (image defaults) for
+  `-006` and `-009`.
+- **Verdict words:** the variant B loss of `-004` and the fairness result of `-009` are FINDINGs in the stage data. The
+  run outcome word reads PASS (see the known gap above).
+- **Closeout runs:** `workflow_dispatch` runs on `main` in place of nightly runs for the closeout medians (the README
+  rule allows `main` runs of any event).
+- **Harness pin:** harness `v0.2.18` is the measured pin. The Task 3 plan's `v0.2.16` line is out of date.
+
 ## How to read a LOAD run
 
 A LOAD run (`P6-X-LOAD-*`) writes `results/load/<case>/<run id>/` with one `k6-<label>-summary.json`, one `k6-<label>.json.gz`
