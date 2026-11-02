@@ -4,7 +4,7 @@ QA engineer with 2.5 years in industry, open to remote roles and contract work.
 
 This repository is the load and performance testing part of my QA portfolio. A typical load test sends a lot of traffic at a product and charts how fast it responds. I measure speed as well, but my focus is the specific mistakes a product makes when two or more people act at the same instant. Two customers book the same time slot. Two people save the same record. The same request arrives twice. A limit of three lets in a fourth. These failures follow a small number of patterns, and the same patterns show up again and again in very different software.
 
-To prove the method carries over, I ran it against four real open-source products that work like four different businesses. Medusa is an online store, Cal.com is a booking tool, Documenso handles e-signatures and Twenty is a CRM. Across the four I found 16 bugs, each one reproduced in repeat runs. If your product takes bookings, payments, orders or shared edits, I can test it the same way.
+To prove the method carries over, I ran it against four real open-source products that work like four different businesses. Medusa is an online store, Cal.com is a booking tool, Documenso handles e-signatures and Twenty is a CRM. Across the four I found 6 bugs confirmed in repeat runs. If your product takes bookings, payments, orders or shared edits, I can test it the same way.
 
 ## What that looks like in practice
 
@@ -25,6 +25,6 @@ Every number comes from automated runs on GitHub's servers, never from my laptop
 - **To talk about a role,** I'm open to remote QA roles.
 - **To get your product tested,** I take contract work for startups before a launch or a traffic spike.
 
-**[LinkedIn]** · **[Email]** · [GitHub](https://github.com/Jayami123)
+**&lt;your LinkedIn URL&gt;** · **mailto:&lt;chosen email&gt;** · [GitHub](https://github.com/Jayami123)
 
 <sub>Built with k6, Playwright, TypeScript, Docker and GitHub Actions.</sub>
