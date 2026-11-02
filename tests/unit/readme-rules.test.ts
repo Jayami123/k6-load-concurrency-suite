@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-const readme = readFileSync("README.md", "utf8");
+const readme = readFileSync("EVIDENCE.md", "utf8");
 
-describe("README rules (P6-RULE-003)", () => {
+describe("EVIDENCE rules (P6-RULE-003)", () => {
   it("every occurrence of the word capacity is part of the phrase not capacity", () => {
     const bare = readme.match(/(?<!not )\bcapacity\b/gi) ?? [];
     assert.deepEqual(bare, []);

@@ -17,8 +17,8 @@ describe("dashboard showcases", () => {
     for (const n of showcaseNotes()) assert.match(n.note, /proves/, n.id);
   });
 
-  it("the README carries the same three notes as the site", () => {
-    const readme = readFileSync("README.md", "utf8");
+  it("EVIDENCE.md carries the same three notes as the site", () => {
+    const readme = readFileSync("EVIDENCE.md", "utf8");
     for (const n of showcaseNotes()) assert.ok(readme.includes(n.note), n.id);
   });
 });

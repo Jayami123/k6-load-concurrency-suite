@@ -114,11 +114,11 @@ describe("findings.json schema", () => {
     }
   });
 
-  it("every README Known product bugs ID exists in findings.json", () => {
-    const readme = readFileSync("README.md", "utf8");
+  it("every EVIDENCE.md Known product bugs ID exists in findings.json", () => {
+    const readme = readFileSync("EVIDENCE.md", "utf8");
     const ids = new Set(loadFindingsFile().rows.map((row) => row.id));
     for (const id of readmeFindingIds(readme)) {
-      assert.ok(ids.has(id), `README id ${id} exists in findings.json`);
+      assert.ok(ids.has(id), `EVIDENCE.md id ${id} exists in findings.json`);
     }
   });
 
