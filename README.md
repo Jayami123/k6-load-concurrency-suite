@@ -25,6 +25,6 @@ Every number comes from automated runs on GitHub's servers, never from my laptop
 - **To talk about a role,** I'm open to remote QA roles.
 - **To get your product tested,** I take contract work for startups before a launch or a traffic spike.
 
-**&lt;your LinkedIn URL&gt;** · **mailto:&lt;chosen email&gt;** · [GitHub](https://github.com/Jayami123)
+**[LinkedIn](https://www.linkedin.com/in/jayamihettigoda/)** · **[Email](mailto:jayami2114@gmail.com)** · [GitHub](https://github.com/Jayami123)
 
 <sub>Built with k6, Playwright, TypeScript, Docker and GitHub Actions.</sub>
