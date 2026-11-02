@@ -41,7 +41,7 @@ describe("harness pin", () => {
       );
     }
   });
-  it("is the version README names in its first paragraph", () => {
-    assert.match(read("README.md").split("\n\n")[1] ?? "", new RegExp(`\`${tag}\``));
+  it("is the version EVIDENCE.md names in its first paragraph", () => {
+    assert.match(read("EVIDENCE.md").split("\n\n")[1] ?? "", new RegExp(`\`${tag}\``));
   });
 });
