@@ -1,6 +1,6 @@
 # I test what breaks when many people use a product at the same moment
 
-QA engineer with 2.5 years in industry, open to remote roles and contract work.
+QA engineer with 4 years in industry, open to remote roles and contract work.
 
 This repository is the load and performance testing part of my QA portfolio. A typical load test sends a lot of traffic at a product and charts how fast it responds. I measure speed as well, but my focus is the specific mistakes a product makes when two or more people act at the same instant. Two customers book the same time slot. Two people save the same record. The same request arrives twice. A limit of three lets in a fourth. These failures follow a small number of patterns, and the same patterns show up again and again in very different software.
 
